@@ -49,6 +49,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.2"
+  build_cli_annotations:
+    dependency: transitive
+    description:
+      name: build_cli_annotations
+      sha256: e563c2e01de8974566a1998410d3f6f03521788160a02503b0b1f1a46c7b3d95
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.1"
   characters:
     dependency: transitive
     description:
@@ -166,6 +174,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.1"
+  flutter_rust_bridge:
+    dependency: transitive
+    description:
+      name: flutter_rust_bridge
+      sha256: "37ef40bc6f863652e865f0b2563ea07f0d3c58d8efad803cc01933a4b2ee067e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.11.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -377,7 +393,7 @@ packages:
     source: hosted
     version: "2.3.0"
   pdf:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: pdf
       sha256: e47a275b267873d5944ad5f5ff0dcc7ac2e36c02b3046a0ffac9b72fd362c44b
@@ -549,6 +565,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  typst_flutter:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: main
+      resolved-ref: d8af77b1bdc776a85a7608f4175ed0cd30e9bd45
+      url: "https://github.com/jcmx9/typst_flutter.git"
+    source: git
+    version: "0.1.0"
   url_launcher_linux:
     dependency: transitive
     description:
