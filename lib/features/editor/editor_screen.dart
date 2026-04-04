@@ -30,13 +30,15 @@ class EditorScreen extends ConsumerWidget {
         _TemplateDropdown(
           templates: templates,
           selected: selectedTemplate,
-          onChanged: (t) => ref.read(selectedTemplateProvider.notifier).state = t,
+          onChanged: (t) =>
+              ref.read(selectedTemplateProvider.notifier).state = t,
         ),
         const SizedBox(width: 8),
         _ProfileDropdown(
           profiles: profiles,
           selected: selectedProfile,
-          onChanged: (key) => ref.read(selectedProfileProvider.notifier).state = key,
+          onChanged: (key) =>
+              ref.read(selectedProfileProvider.notifier).state = key,
         ),
         const SizedBox(width: 8),
         IconButton(
@@ -109,23 +111,14 @@ class EditorScreen extends ConsumerWidget {
               ],
             ),
             const Expanded(
-              child: TabBarView(
-                children: [
-                  DynamicForm(),
-                  PdfPreviewWidget(),
-                ],
-              ),
+              child: TabBarView(children: [DynamicForm(), PdfPreviewWidget()]),
             ),
           ],
         ),
       );
     }
 
-    return Scaffold(
-      appBar: appBar,
-      drawer: drawer,
-      body: body,
-    );
+    return Scaffold(appBar: appBar, drawer: drawer, body: body);
   }
 }
 
@@ -141,9 +134,9 @@ Future<void> _savePdf(WidgetRef ref, BuildContext context) async {
   if (path != null) {
     File(path).writeAsBytesSync(bytes);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gespeichert: $path')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gespeichert: $path')));
     }
   }
 }

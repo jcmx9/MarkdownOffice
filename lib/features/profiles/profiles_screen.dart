@@ -13,19 +13,31 @@ class ProfilesScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const ProfileEditor(profileName: null))),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const ProfileEditor(profileName: null),
+          ),
+        ),
         child: const Icon(Icons.add),
       ),
       body: profiles.isEmpty
           ? const Center(child: Text('Keine Profile vorhanden.'))
           : ListView(
-              children: profiles.entries.map((entry) => ListTile(
-                title: Text(entry.key),
-                subtitle: Text(entry.value.values['sender_name'] ?? ''),
-                onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => ProfileEditor(profileName: entry.key))),
-              )).toList(),
+              children: profiles.entries
+                  .map(
+                    (entry) => ListTile(
+                      title: Text(entry.key),
+                      subtitle: Text(entry.value.values['sender_name'] ?? ''),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfileEditor(profileName: entry.key),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
     );
   }

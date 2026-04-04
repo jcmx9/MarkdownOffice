@@ -15,11 +15,7 @@ class ConfigLoader {
   final String? cwdPath;
   final String? cloudPath;
 
-  ConfigLoader({
-    required this.homePath,
-    this.cwdPath,
-    this.cloudPath,
-  });
+  ConfigLoader({required this.homePath, this.cwdPath, this.cloudPath});
 
   AppConfig loadConfig() {
     final file = File('$homePath/mdo_config.yaml');
@@ -38,7 +34,10 @@ class ConfigLoader {
     for (final entry in yaml.entries) {
       final name = entry.key.toString();
       if (entry.value is YamlMap) {
-        profiles[name] = Profile.fromMap(name, _yamlToMap(entry.value as YamlMap));
+        profiles[name] = Profile.fromMap(
+          name,
+          _yamlToMap(entry.value as YamlMap),
+        );
       }
     }
     return profiles;
@@ -80,11 +79,7 @@ class ConfigLoader {
   }
 
   List<String> get _searchPaths {
-    return [
-      ?cwdPath,
-      ?cloudPath,
-      homePath,
-    ];
+    return [?cwdPath, ?cloudPath, homePath];
   }
 
   String? _findFile(String filename) {

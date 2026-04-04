@@ -4,7 +4,8 @@ import 'package:markdownoffice/core/markdown_parser.dart';
 void main() {
   group('splitFrontmatter', () {
     test('splits YAML frontmatter from body', () {
-      const input = '---\ntemplate: din5008_b\nprofile: default\nsubject: Test\n---\n\nBody text.';
+      const input =
+          '---\ntemplate: din5008_b\nprofile: default\nsubject: Test\n---\n\nBody text.';
       final result = splitFrontmatter(input);
       expect(result.frontmatter, contains('template: din5008_b'));
       expect(result.body.trim(), 'Body text.');
@@ -26,7 +27,8 @@ void main() {
 
   group('parseFrontmatter', () {
     test('extracts template, profile, and field values', () {
-      const yaml = 'template: din5008_b\nprofile: default\nsender_name: Roland\nsubject: Test\ndate: 2026-04-04';
+      const yaml =
+          'template: din5008_b\nprofile: default\nsender_name: Roland\nsubject: Test\ndate: 2026-04-04';
       final result = parseFrontmatter(yaml);
       expect(result.templateName, 'din5008_b');
       expect(result.profileName, 'default');

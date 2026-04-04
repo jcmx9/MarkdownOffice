@@ -15,8 +15,9 @@ void main() {
 
   group('ConfigLoader', () {
     test('loads config from home path', () {
-      File('${tempDir.path}/mdo_config.yaml')
-          .writeAsStringSync('cloud_path: /some/path');
+      File(
+        '${tempDir.path}/mdo_config.yaml',
+      ).writeAsStringSync('cloud_path: /some/path');
       final loader = ConfigLoader(homePath: tempDir.path);
       expect(loader.loadConfig().cloudPath, '/some/path');
     });
@@ -36,15 +37,18 @@ void main() {
     });
 
     test('cwd profiles take priority over home', () {
-      File('${tempDir.path}/mdo_profiles.yaml').writeAsStringSync(
-        'default:\n  sender_name: Home User\n',
-      );
+      File(
+        '${tempDir.path}/mdo_profiles.yaml',
+      ).writeAsStringSync('default:\n  sender_name: Home User\n');
       final cwdDir = Directory('${tempDir.path}/cwd')..createSync();
-      File('${cwdDir.path}/mdo_profiles.yaml').writeAsStringSync(
-        'default:\n  sender_name: CWD User\n',
-      );
+      File(
+        '${cwdDir.path}/mdo_profiles.yaml',
+      ).writeAsStringSync('default:\n  sender_name: CWD User\n');
       final loader = ConfigLoader(homePath: tempDir.path, cwdPath: cwdDir.path);
-      expect(loader.loadProfiles()['default']!.values['sender_name'], 'CWD User');
+      expect(
+        loader.loadProfiles()['default']!.values['sender_name'],
+        'CWD User',
+      );
     });
 
     test('discovers templates from templates/ subfolder', () {
@@ -60,7 +64,9 @@ void main() {
     test('loads label sidecar for template', () {
       final tDir = Directory('${tempDir.path}/templates')..createSync();
       File('${tDir.path}/din5008_b.typ').writeAsStringSync('#let x = 1');
-      File('${tDir.path}/din5008_b.labels.yaml').writeAsStringSync('sender_name: Name\nsubject: Betreff');
+      File(
+        '${tDir.path}/din5008_b.labels.yaml',
+      ).writeAsStringSync('sender_name: Name\nsubject: Betreff');
       final loader = ConfigLoader(homePath: tempDir.path);
       final labels = loader.loadLabels('din5008_b');
       expect(labels['sender_name'], 'Name');

@@ -48,9 +48,15 @@ class _ProfileEditorState extends ConsumerState<ProfileEditor> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.profileName == null ? 'Neues Profil' : 'Profil bearbeiten'),
+        title: Text(
+          widget.profileName == null ? 'Neues Profil' : 'Profil bearbeiten',
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.add), onPressed: _addField, tooltip: 'Feld hinzufuegen'),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _addField,
+            tooltip: 'Feld hinzufuegen',
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -59,7 +65,10 @@ class _ProfileEditorState extends ConsumerState<ProfileEditor> {
           children: [
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Profilname', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Profilname',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 16),
             for (final entry in _controllers.entries)

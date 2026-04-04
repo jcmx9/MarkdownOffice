@@ -26,10 +26,14 @@ final templateInputsProvider = FutureProvider<List<InputField>>((ref) async {
   final selected = ref.read(selectedTemplateProvider);
   if (selected == null) return fields;
   final labels = ref.read(configLoaderProvider).loadLabels(selected.name);
-  return fields.map((f) => InputField(
-    name: f.name,
-    required: f.required,
-    defaultValue: f.defaultValue,
-    label: labels[f.name],
-  )).toList();
+  return fields
+      .map(
+        (f) => InputField(
+          name: f.name,
+          required: f.required,
+          defaultValue: f.defaultValue,
+          label: labels[f.name],
+        ),
+      )
+      .toList();
 });

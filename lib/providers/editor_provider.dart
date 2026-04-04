@@ -17,10 +17,7 @@ final pdfBytesProvider = FutureProvider<Uint8List?>((ref) async {
   if (body.isNotEmpty) inputs['body'] = body;
 
   try {
-    return await TypstBridge.compile(
-      templateSource: source,
-      inputs: inputs,
-    );
+    return await TypstBridge.compile(templateSource: source, inputs: inputs);
   } catch (e) {
     return null;
   }

@@ -13,9 +13,7 @@ class PdfPreviewWidget extends ConsumerWidget {
     return pdfAsync.when(
       data: (bytes) {
         if (bytes == null) {
-          return const Center(
-            child: Text('Bitte Felder ausfüllen.'),
-          );
+          return const Center(child: Text('Bitte Felder ausfüllen.'));
         }
         return PdfPreview(
           build: (_) async => bytes,

@@ -9,14 +9,17 @@ import 'package:typst_flutter/typst_flutter.dart';
 // To run against a real device or macOS:
 //   flutter test integration_test/ --device-id=<id>
 void main() {
-  test('Typst compiles a simple template to PDF', () async {
-    await TypstFlutter.init();
-    final pdfBytes = await TypstFlutter.compileString(
-      template: '= Hello, World!',
-    );
-    expect(pdfBytes, isNotEmpty);
-    expect(String.fromCharCodes(pdfBytes.sublist(0, 4)), '%PDF');
-  },
-      skip:
-          'Requires native Rust dylib — run via `flutter build macos` or integration test.');
+  test(
+    'Typst compiles a simple template to PDF',
+    () async {
+      await TypstFlutter.init();
+      final pdfBytes = await TypstFlutter.compileString(
+        template: '= Hello, World!',
+      );
+      expect(pdfBytes, isNotEmpty);
+      expect(String.fromCharCodes(pdfBytes.sublist(0, 4)), '%PDF');
+    },
+    skip:
+        'Requires native Rust dylib — run via `flutter build macos` or integration test.',
+  );
 }

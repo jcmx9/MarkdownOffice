@@ -45,7 +45,10 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
     ref.read(fieldValuesProvider.notifier).state = values;
   }
 
-  void _rebuildControllers(List<InputField> fields, Map<String, String> profileValues) {
+  void _rebuildControllers(
+    List<InputField> fields,
+    Map<String, String> profileValues,
+  ) {
     // Dispose old controllers that are no longer needed
     final newKeys = fields.map((f) => f.name).toSet();
     final oldKeys = _controllers.keys.toSet();
@@ -132,7 +135,9 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
     final controller = _controllers[field.name];
     if (controller == null) return const SizedBox.shrink();
 
-    final label = field.required ? '${field.displayLabel} *' : field.displayLabel;
+    final label = field.required
+        ? '${field.displayLabel} *'
+        : field.displayLabel;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
