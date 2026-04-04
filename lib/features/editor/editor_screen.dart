@@ -1,12 +1,16 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:printing/printing.dart';
 import '../../core/config_loader.dart';
 import '../../models/profile.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/template_provider.dart';
+import '../../providers/editor_provider.dart';
 import 'dynamic_form.dart';
 import 'pdf_preview.dart';
-// import '../profiles/profiles_screen.dart'; // TODO: implement ProfilesScreen
+import '../profiles/profiles_screen.dart';
 
 class EditorScreen extends ConsumerWidget {
   const EditorScreen({super.key});
@@ -35,6 +39,21 @@ class EditorScreen extends ConsumerWidget {
           onChanged: (key) => ref.read(selectedProfileProvider.notifier).state = key,
         ),
         const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.save),
+          tooltip: 'PDF speichern',
+          onPressed: () => _savePdf(ref, context),
+        ),
+        IconButton(
+          icon: const Icon(Icons.share),
+          tooltip: 'PDF teilen',
+          onPressed: () => _sharePdf(ref, context),
+        ),
+        IconButton(
+          icon: const Icon(Icons.print),
+          tooltip: 'PDF drucken',
+          onPressed: () => _printPdf(ref, context),
+        ),
       ],
     );
 
@@ -59,9 +78,9 @@ class EditorScreen extends ConsumerWidget {
             title: const Text('Profile'),
             onTap: () {
               Navigator.of(context).pop();
-              // TODO: Navigate to ProfilesScreen once implemented
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Profile-Verwaltung folgt in Kürze.')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfilesScreen()),
               );
             },
           ),
@@ -108,6 +127,37 @@ class EditorScreen extends ConsumerWidget {
       body: body,
     );
   }
+}
+
+Future<void> _savePdf(WidgetRef ref, BuildContext context) async {
+  final bytes = await ref.read(pdfBytesProvider.future);
+  if (bytes == null) return;
+  final path = await FilePicker.platform.saveFile(
+    dialogTitle: 'PDF speichern',
+    fileName: 'dokument.pdf',
+    type: FileType.custom,
+    allowedExtensions: ['pdf'],
+  );
+  if (path != null) {
+    File(path).writeAsBytesSync(bytes);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gespeichert: $path')),
+      );
+    }
+  }
+}
+
+Future<void> _sharePdf(WidgetRef ref, BuildContext context) async {
+  final bytes = await ref.read(pdfBytesProvider.future);
+  if (bytes == null) return;
+  await Printing.sharePdf(bytes: bytes, filename: 'dokument.pdf');
+}
+
+Future<void> _printPdf(WidgetRef ref, BuildContext context) async {
+  final bytes = await ref.read(pdfBytesProvider.future);
+  if (bytes == null) return;
+  await Printing.layoutPdf(onLayout: (_) async => bytes);
 }
 
 class _TemplateDropdown extends StatelessWidget {
