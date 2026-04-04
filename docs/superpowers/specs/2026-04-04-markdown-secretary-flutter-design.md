@@ -1,6 +1,6 @@
 # Design: MarkdownOffice v2
 
-Universelle Dokumenten-App: Markdown + Typst-Templates = PDF. Templates definieren ihre eigenen Felder — die App generiert das Formular dynamisch. Nicht nur Briefe, sondern alles was ein Typst-Template darstellen kann.
+Universelle Dokumenten-App: Jedes Typst-Template wird zum Formular. User fuellt aus, schreibt Markdown-Body, bekommt PDF. Kein Typst-Wissen noetig.
 
 ## Plattformen
 
@@ -15,102 +15,63 @@ Universelle Dokumenten-App: Markdown + Typst-Templates = PDF. Templates definier
 
 ## Kern-Konzept
 
-### Template-Driven Dynamic Forms
+### Jedes Typst-Template wird zum Formular
 
-Ein Typst-Template definiert einen `meta`-Block der beschreibt welche Daten es braucht. Die App liest diesen Block und generiert daraus das UI-Formular.
+1. App liest ein `.typ`-Template
+2. `typst-syntax` parsed den AST und findet alle `sys.inputs.at("...")` Aufrufe
+3. Daraus entsteht eine Liste von Feldern mit Name, Required/Optional, Default-Wert
+4. App generiert ein Formular — ein Widget pro Feld
+5. User fuellt aus + schreibt Markdown-Body
+6. App uebergibt alles an Typst → PDF
 
-```typst
-// Am Anfang jedes MarkdownOffice-Templates
-#let mdo-meta = (
-  name: "DIN 5008 Form B",
-  description: "Geschaeftsbrief nach DIN 5008:2020",
-  author: "MarkdownOffice",
-  version: "1.0",
-  fields: (
-    sender_name: (label: "Name", required: true, group: "Absender"),
-    sender_street: (label: "Strasse", required: true, group: "Absender"),
-    sender_zip: (label: "PLZ", required: true, group: "Absender"),
-    sender_city: (label: "Ort", required: true, group: "Absender"),
-    sender_phone: (label: "Telefon", group: "Absender"),
-    sender_email: (label: "E-Mail", group: "Absender"),
-    recipient_name: (label: "Name", required: true, group: "Empfaenger"),
-    recipient_extra: (label: "Zusatz", group: "Empfaenger"),
-    recipient_street: (label: "Strasse", required: true, group: "Empfaenger"),
-    recipient_zip: (label: "PLZ", required: true, group: "Empfaenger"),
-    recipient_city: (label: "Ort", required: true, group: "Empfaenger"),
-    subject: (label: "Betreff", required: true),
-    date: (label: "Datum", type: "date", default: "today"),
-    closing: (label: "Schlussformel", default: "Mit freundlichen Gruessen"),
-    sign: (label: "Unterschrift", type: "bool", default: "false"),
-    attachments: (label: "Anlagen", type: "list"),
-  ),
-)
-```
+Der Template-Ersteller muss nichts ueber MarkdownOffice wissen. Jedes existierende Typst-Template das `sys.inputs` verwendet funktioniert automatisch.
 
 ### Datenfluss
 
 ```
 Template (.typ)
-    → App parsed mdo-meta → Generiert UI-Formular
-    → User fuellt Formular aus + schreibt Markdown-Body
-    → App fuettert Werte als sys.inputs + Body an Typst
-    → Typst rendert PDF
+    → typst-syntax AST → discover_inputs()
+    → Liste von InputField (name, required, default)
+    → App generiert Formular
+    → User fuellt aus + schreibt Body
+    → typst_bridge.compile(template, inputs, fonts, files) → PDF
 ```
 
-### Was der User sieht
+### Input-Erkennung (discover_inputs)
 
-1. Template auswaehlen (Dropdown: "DIN 5008", "Elegant", "Rechnung", ...)
-2. Formular erscheint — Felder passen sich dem Template an
-3. Markdown-Body schreiben
-4. PDF-Vorschau live
-5. Exportieren / Teilen / Drucken
+Rust-Funktion im `typst_flutter`-Fork, basierend auf `typst-syntax`:
 
-### Was der Template-Ersteller sieht
-
-Eine `.typ`-Datei die:
-1. Einen `mdo-meta`-Block definiert (welche Felder, welche Gruppen, welche Defaults)
-2. Die Felder via `sys.inputs.at("field_name")` liest
-3. Den Body via `sys.inputs.at("body")` einbindet
-4. Volle Typst-Gestaltungsfreiheit hat
-
-## Meta-Block Feld-Typen
-
-| type | UI-Widget | Wert |
-|------|-----------|------|
-| (default) | TextField | String |
-| date | DatePicker | YYYY-MM-DD |
-| bool | Switch | true/false |
-| list | Dynamische TextFields | Komma-separiert oder einzeln |
-| file | FilePicker | Pfad (Signatur, Logo) |
-| select | Dropdown | Optionen in `options`-Feld |
-
-### Erweiterte Feld-Definitionen
-
-```typst
-fields: (
-  // Einfaches Textfeld
-  subject: (label: "Betreff", required: true),
-
-  // Datum mit Default "heute"
-  date: (label: "Datum", type: "date", default: "today"),
-
-  // Boolean
-  sign: (label: "Unterschrift", type: "bool", default: "false"),
-
-  // Liste
-  attachments: (label: "Anlagen", type: "list"),
-
-  // Datei (Signatur, Logo)
-  signature: (label: "Unterschrift", type: "file", accept: "image/png,image/svg+xml"),
-
-  // Dropdown
-  anrede: (label: "Anrede", type: "select", options: ("Sehr geehrte/r", "Liebe/r", "Hallo")),
-)
+```rust
+fn discover_inputs(source: &str) -> Vec<InputField>
 ```
+
+Walked den AST und findet:
+- `sys.inputs.at("key")` → InputField(name: "key", required: true)
+- `sys.inputs.at("key", default: "value")` → InputField(name: "key", required: false, default: "value")
+
+Reine Syntax-Analyse, keine Kompilierung. Schnell.
+
+### Label-Mapping
+
+`sys.inputs` liefert nur den Key (z.B. `sender_name`). Das ist auch das Default-Label im Formular. Fuer unsere mitgelieferten Templates pflegen wir ein optionales Label-Mapping als Sidecar-Datei:
+
+```yaml
+# din5008_b.labels.yaml
+sender_name: Name
+sender_street: Strasse
+sender_zip: PLZ
+sender_city: Ort
+recipient_name: Empfaenger
+subject: Betreff
+date: Datum
+closing: Schlussformel
+```
+
+Fremde Templates ohne Sidecar zeigen den Feld-Namen direkt als Label. Funktioniert, sieht nur weniger poliert aus. Template-Ersteller die schoene Labels wollen benennen ihre Inputs entsprechend (z.B. `sys.inputs.at("Betreff")` statt `sys.inputs.at("subject")`).
 
 ## Profile
 
-Profile bleiben YAML-Dateien (`mdo_profiles.yaml`). Ein Profil speichert wiederkehrende Absenderdaten. Wenn der User ein Profil waehlt, werden die passenden Formular-Felder vorausgefuellt.
+Profile bleiben YAML-Dateien (`mdo_profiles.yaml`). Ein Profil speichert wiederkehrende Werte. Wenn der User ein Profil waehlt, werden alle Formular-Felder vorausgefuellt deren Key im Profil existiert.
 
 ```yaml
 default:
@@ -122,7 +83,7 @@ default:
   sender_email: roland@kreus.de
 ```
 
-Profile-Felder muessen zu Template-Feldern passen (gleiche Keys). Felder im Profil die das Template nicht kennt werden ignoriert. Felder im Template die das Profil nicht hat bleiben leer.
+Profil-Keys die das Template nicht kennt werden ignoriert. Template-Felder die das Profil nicht hat bleiben leer. YAML-Werte werden als Strings behandelt (alles nach `:` strippen).
 
 ## Dateien und Lookup
 
@@ -133,6 +94,7 @@ Profile-Felder muessen zu Template-Feldern passen (gleiche Keys). Felder im Prof
 | `mdo_config.yaml` | Cloud-Pfad, App-Einstellungen |
 | `mdo_profiles.yaml` | Absenderprofile |
 | `templates/*.typ` | Typst-Templates (ein Ordner, eine Datei pro Template) |
+| `templates/*.labels.yaml` | Optionales Label-Mapping (Sidecar) |
 
 ### Lookup-Kette (Desktop)
 
@@ -145,15 +107,19 @@ Profile-Felder muessen zu Template-Feldern passen (gleiche Keys). Felder im Prof
 1. Cloud-Pfad (aus Config)
 2. App-Documents
 
-Erster Treffer gewinnt. Kein Merge. Config nur unter `~/.config/markdownoffice/` (Desktop) bzw. App-Documents (Mobile).
+Config nur unter `~/.config/markdownoffice/` (Desktop) bzw. App-Documents (Mobile).
 
-### Templates-Ordner
-
-Templates liegen als einzelne `.typ`-Dateien in einem `templates/`-Unterordner an jedem Lookup-Pfad. Die App sammelt alle Templates aus allen Lookup-Pfaden (hier wird gemerged — Templates aus verschiedenen Quellen sind additiv, nicht exklusiv). Bei Namenskollision gewinnt die spezifischere Quelle (CWD > Cloud > Home).
+Fuer Profile und Config: erster Treffer gewinnt, kein Merge.
+Fuer Templates: alle Pfade werden gemerged (Templates aus verschiedenen Quellen sind additiv). Bei Namenskollision gewinnt die spezifischere Quelle (CWD > Cloud > Home).
 
 ### Mitgelieferte Templates
 
-Die App liefert DIN 5008 Form A, Form B und ein "Elegant"-Template (wie das Korrespondenz-Beispiel) als Default mit. "Werkseinstellungen" laedt diese aus dem App-Bundle neu.
+Die App liefert mit:
+- `din5008_b.typ` — DIN 5008 Form B Geschaeftsbrief (+ Labels-Sidecar)
+- `din5008_a.typ` — DIN 5008 Form A Geschaeftsbrief (+ Labels-Sidecar)
+- `elegant.typ` — Persoenlicher Brief im Korrespondenz-Stil (+ Labels-Sidecar)
+
+"Werkseinstellungen" laedt diese aus dem App-Bundle neu.
 
 ## Architektur
 
@@ -162,28 +128,31 @@ Die App liefert DIN 5008 Form A, Form B und ein "Elegant"-Template (wie das Korr
 ```
 lib/
   core/
-    typst_bridge.dart       # Typst FFI Wrapper, compileString
-    template_parser.dart    # mdo-meta aus .typ parsen
-    config_loader.dart      # Lookup-Kette, Config/Profiles/Templates lesen
+    typst_bridge.dart       # Typst FFI: compile + discoverInputs
+    template_loader.dart    # Templates aus Lookup-Kette laden, Labels mergen
+    config_loader.dart      # Lookup-Kette fuer Config/Profiles
     markdown_parser.dart    # YAML-Frontmatter + Body (fuer .md Import)
   features/
     editor/                 # Dokument-Screen, dynamisches Formular, Textfeld, Preview
     profiles/               # Profil-Liste, Profil-Editor
-    templates/              # Template-Liste, Template-Info
+    templates/              # Template-Auswahl
   models/
-    template_meta.dart      # Meta-Block Datenstruktur (Fields, Groups, Types)
+    input_field.dart        # InputField (name, required, default)
     profile.dart            # Absenderprofil
     config.dart             # App-Config
   providers/
-    editor_provider.dart    # Aktuelles Template, Formular-Werte, Body, PDF-Bytes
+    editor_provider.dart    # Aktuelles Template, Felder, Werte, Body, PDF
     profile_provider.dart
     template_provider.dart
     config_provider.dart
 assets/
   templates/
     din5008_b.typ
+    din5008_b.labels.yaml
     din5008_a.typ
+    din5008_a.labels.yaml
     elegant.typ
+    elegant.labels.yaml
   fonts/
     SourceSerif4-Regular.ttf
     SourceSerif4-Bold.ttf
@@ -192,47 +161,28 @@ assets/
     SourceCodePro-Regular.ttf
 ```
 
-### Datenfluss PDF-Erzeugung
-
-```
-Template (.typ) → template_parser → TemplateMeta (Felder, Gruppen, Defaults)
-                                  ↓
-                          Editor generiert Formular
-                                  ↓
-                    User fuellt aus + schreibt Body
-                                  ↓
-              typst_bridge.compile(template, inputs, fonts) → PDF-Bytes
-```
-
-### Typst-Bridge
+### Typst-Bridge API
 
 ```dart
 class TypstBridge {
+  /// Findet alle sys.inputs.at(...) im Template (AST-Analyse, keine Kompilierung)
+  static Future<List<InputField>> discoverInputs(String templateSource);
+
+  /// Kompiliert Template mit Inputs zu PDF
   static Future<Uint8List> compile({
-    required String templateSource,  // .typ Inhalt
-    required Map<String, String> inputs,  // Feld-Werte
+    required String templateSource,
+    required Map<String, String> inputs,
     required List<FontSource> fonts,
-    List<FileSource> files = const [],  // Signatur, Logo, etc.
-  }) async {
-    return TypstFlutter.compileString(
-      template: templateSource,
-      inputs: inputs,
-      fonts: fonts,
-      extraFiles: files,
-    );
-  }
+    List<FileSource> files = const [],  // Signatur (PNG/SVG), Logo, etc.
+  });
 }
 ```
-
-### Template-Parser
-
-Parsed den `mdo-meta`-Block aus einer `.typ`-Datei. Muss NICHT den ganzen Typst-Code verstehen — nur den Meta-Block am Anfang der Datei extrahieren und die Feld-Definitionen parsen.
 
 ### Packages
 
 | Zweck | Package |
 |-------|---------|
-| Typst Rendering | `typst_flutter` (git dependency) |
+| Typst Rendering + Input Discovery | `typst_flutter` (Fork, git dependency) |
 | YAML-Parsing | `yaml` |
 | State Management | `flutter_riverpod` |
 | Datei-Picker | `file_picker` |
@@ -255,16 +205,16 @@ Als Assets mitgeliefert und an Typst uebergeben:
 | Bereich | Inhalt |
 |---------|--------|
 | App-Bar | Template-Auswahl (Dropdown), Profil-Auswahl (Dropdown), Export/Share/Druck |
-| Links/Oben | Dynamisches Formular (aus Template-Meta generiert) + Textfeld fuer Markdown-Body |
+| Links/Oben | Dynamisches Formular (aus Template-Inputs generiert) + Textfeld fuer Markdown-Body |
 | Rechts/Unten | PDF-Live-Vorschau |
 
 ### Dynamisches Formular
 
-- Felder werden nach `group` gruppiert (Absender, Empfaenger, etc.)
-- Jede Gruppe ist ein ExpansionTile oder eine Section
-- Feld-Typ bestimmt das Widget (TextField, DatePicker, Switch, FilePicker, Dropdown)
+- Ein TextField pro erkanntem Input-Feld
 - Required-Felder sind markiert
+- Felder mit Default zeigen den Default als Placeholder
 - Profil-Auswahl fuellt Felder vor deren Key im Profil existiert
+- Label = Feld-Name, oder huebscher Name aus Labels-Sidecar
 
 ### Responsive Layout
 
@@ -274,8 +224,8 @@ Als Assets mitgeliefert und an Typst uebergeben:
 
 ### Navigation
 
-- Seitenleiste (Desktop) / Drawer (Mobile) fuer: Dokument, Profile, Templates
-- Template-Screen: Liste aller verfuegbaren Templates mit Beschreibung
+- Seitenleiste (Desktop) / Drawer (Mobile): Dokument, Profile, Templates
+- Template-Screen: Liste aller verfuegbaren Templates
 - Profil-Screen: Profile anlegen/bearbeiten/loeschen
 
 ### Export
@@ -287,14 +237,13 @@ Als Assets mitgeliefert und an Typst uebergeben:
 
 ## Markdown-Import
 
-User kann eine `.md`-Datei mit YAML-Frontmatter oeffnen. Die Frontmatter-Felder werden ins Formular geladen, der Body ins Textfeld. Das Profil und Template werden aus dem Frontmatter gelesen (falls angegeben).
+User kann eine `.md`-Datei oeffnen. Frontmatter-Felder werden ins Formular geladen, Body ins Textfeld.
 
 ```yaml
 ---
 template: din5008_b
 profile: default
 recipient_name: Max Mustermann
-recipient_street: Beispielweg 5
 subject: Kuendigung
 date: 2026-04-04
 ---
@@ -305,23 +254,23 @@ Sehr geehrter Herr Mustermann,
 
 ## Error Handling
 
-- Template hat keinen mdo-meta Block → Fehlermeldung, Template nicht ladbar
+- Typst-Kompilierung schlaegt fehl → Typst-Fehlermeldung in Preview anzeigen
 - Profil-Feld passt nicht zu Template-Feld → Wird ignoriert
-- Typst-Kompilierung schlaegt fehl → Fehler in Preview anzeigen (Typst-Fehlermeldung)
 - Signatur-Datei nicht gefunden → Warnung im UI
 - Keine Templates gefunden → Builtin-Templates aus App-Bundle laden
 - Keine Profile gefunden → Leerer Zustand, Default-Profil anlegen anbieten
+- Template ohne sys.inputs → Leeres Formular, nur Body-Textfeld
 
 ## Mitgelieferte Templates
 
 ### DIN 5008 Form B (din5008_b.typ)
 
-Standard-Geschaeftsbrief nach DIN 5008:2020 Form B. Felder: Absender, Empfaenger, Betreff, Datum, Schlussformel, Unterschrift, Anlagen. Falzmarken, Lochmarke, Ruecksendezeile, QR-Code, Fusszeile mit Kontakt/Bank/Seite.
+Standard-Geschaeftsbrief nach DIN 5008:2020 Form B. Falzmarken, Lochmarke, Ruecksendezeile, QR-Code, Fusszeile mit Kontakt/Bank/Seite. Serif-Body, Sans-UI-Elemente.
 
 ### DIN 5008 Form A (din5008_a.typ)
 
-Wie Form B, aber mit hoeherem Briefkopf und kurzerem Adressfeld.
+Wie Form B mit hoeherem Briefkopf und kurzerem Adressfeld.
 
 ### Elegant (elegant.typ)
 
-Persoenlicher Brief wie das Korrespondenz-Beispiel. Zentrierter Briefkopf in Burgundy Small Caps, Cremeton-Hintergrund, eingerueckte Absaetze, Referenzzeile, In-Kopie-Feld. Keine Falzmarken, kein QR-Code, minimale Fusszeile (nur Seitenzahl).
+Persoenlicher Brief: zentrierter Briefkopf in Burgundy Small Caps, Cremeton-Hintergrund, eingerueckte Absaetze, Referenzzeile, In-Kopie-Feld, minimale Fusszeile. Basiert auf dem Korrespondenz-Beispiel.
