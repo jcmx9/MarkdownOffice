@@ -1,0 +1,16 @@
+sender_name: Name
+sender_street: Strasse
+sender_zip: PLZ
+sender_city: Ort
+sender_phone: Telefon
+sender_email: E-Mail
+recipient_name: Empfaenger
+recipient_extra: Zusatz
+recipient_street: Strasse
+recipient_zip: PLZ
+recipient_city: Ort
+subject: Betreff
+date: Datum
+closing: Schlussformel
+body: Brieftext
+attachments: Anlagen
