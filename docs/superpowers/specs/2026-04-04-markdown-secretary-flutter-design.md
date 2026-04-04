@@ -1,33 +1,44 @@
-# Design: markdown-secretary Flutter App
+# Design: MarkdownOffice
 
-Cross-Platform Flutter-App (macOS, iOS, iPadOS, Android, Windows, Linux) die Geschaeftsbriefe aus Markdown erzeugt. Layout wird durch YAML-Templates definiert (nicht hardcoded). Port der Python-Implementierung: https://github.com/jcmx9/markdown-secretary
+Cross-Platform Flutter-App (macOS, iOS, iPadOS, Android, Windows, Linux, Web) die Geschaeftsbriefe aus Markdown erzeugt. Layout wird durch YAML-Templates definiert (nicht hardcoded). Port der Python-Implementierung: https://github.com/jcmx9/markdown-secretary
+
+## Zwei Varianten
+
+| Variante | Plattform | Features |
+|----------|-----------|----------|
+| Native App | macOS, iOS, iPadOS, Android, Windows, Linux | Voller Funktionsumfang: Template-Management, Profilverwaltung, Datei-Lookup-Kette |
+| Web App | Docker / statisch gehostet | Privacy-First: kein Login, kein Tracking, kein Backend. LocalStorage fuer Profile. Nur DIN 5008 Form B (technisch template-basiert, aber ohne UI fuer Template-Auswahl/-Aenderung) |
 
 ## Dateien und Lookup
 
-### Drei YAML-Dateien
+### Drei YAML-Dateien (Native App)
 
 | Datei | Inhalt |
 |-------|--------|
-| `mdsec_config.yaml` | Cloud-Pfad, App-Einstellungen |
-| `mdsec_profiles.yaml` | `default` + weitere Profile, jedes referenziert ein Template |
-| `mdsec_templates.yaml` | Layout-Definitionen (Positionen, Raender, Typografie) |
+| `mdo_config.yaml` | Cloud-Pfad, App-Einstellungen |
+| `mdo_profiles.yaml` | `default` + weitere Profile, jedes referenziert ein Template |
+| `mdo_templates.yaml` | Layout-Definitionen (Positionen, Raender, Typografie) |
 
 ### Lookup-Kette
 
 **Desktop (macOS, Windows, Linux):**
 
 1. Arbeitsverzeichnis (`./`)
-2. Cloud-Pfad (aus `mdsec_config.yaml`)
-3. Home (`~/.config/markdown-secretary/`)
+2. Cloud-Pfad (aus `mdo_config.yaml`)
+3. Home (`~/.config/markdownoffice/`)
 
 **Mobile (iOS, iPadOS, Android):**
 
 1. Cloud-Pfad (aus Config)
 2. App-Documents
 
+**Web:**
+
+Profile in LocalStorage. DIN 5008 Form B Template fest eingebaut (technisch template-basiert, ohne UI).
+
 Erster Treffer gewinnt. Kein Merge zwischen Ebenen.
 
-`mdsec_config.yaml` liegt nur an einem festen Ort: `~/.config/markdown-secretary/` (Desktop) bzw. App-Documents (Mobile).
+`mdo_config.yaml` liegt nur an einem festen Ort: `~/.config/markdownoffice/` (Desktop) bzw. App-Documents (Mobile).
 
 ### YAML-Werte
 
@@ -37,13 +48,13 @@ Alle Werte nach `:` werden gestrippt und als Text behandelt. Keine Anfuehrungsze
 zip: 12345      # wird als String "12345" gelesen
 ```
 
-### Beispiel mdsec_config.yaml
+### Beispiel mdo_config.yaml
 
 ```yaml
-cloud_path: /Users/roland/Nextcloud/markdown-secretary
+cloud_path: /Users/roland/Nextcloud/markdownoffice
 ```
 
-### Beispiel mdsec_profiles.yaml
+### Beispiel mdo_profiles.yaml
 
 ```yaml
 default:
@@ -70,7 +81,7 @@ geschaeftlich:
     bank_name: Commerzbank
 ```
 
-### Beispiel mdsec_templates.yaml
+### Beispiel mdo_templates.yaml
 
 ```yaml
 din5008_b:
@@ -183,10 +194,10 @@ Der PDF-Renderer bekommt nur fertige Objekte. Er kennt weder YAML noch Dateisyst
 
 ```
 config_loader.loadProfiles():
-  1. pruefe CWD/mdsec_profiles.yaml         (nur Desktop)
-  2. pruefe cloud_path/mdsec_profiles.yaml   (falls konfiguriert)
-  3. pruefe ~/.config/markdown-secretary/mdsec_profiles.yaml  (Desktop)
-     bzw. App-Documents/mdsec_profiles.yaml  (Mobile)
+  1. pruefe CWD/mdo_profiles.yaml           (nur Desktop)
+  2. pruefe cloud_path/mdo_profiles.yaml     (falls konfiguriert)
+  3. pruefe ~/.config/markdownoffice/mdo_profiles.yaml  (Desktop)
+     bzw. App-Documents/mdo_profiles.yaml    (Mobile)
   → return erster Treffer
 ```
 
@@ -214,7 +225,9 @@ Als Assets mitgeliefert (SIL Open Font License):
 
 ## GUI
 
-### Hauptscreen — Dokument-Ansicht
+### Native App
+
+#### Hauptscreen — Dokument-Ansicht
 
 | Bereich | Inhalt |
 |---------|--------|
@@ -222,30 +235,30 @@ Als Assets mitgeliefert (SIL Open Font License):
 | Links/Oben | Formular fuer Frontmatter-Felder (Empfaenger, Datum, Betreff, Schlussformel, Anlagen) + Textfeld fuer Markdown-Body |
 | Rechts/Unten | PDF-Live-Vorschau |
 
-### Responsive Layout
+#### Responsive Layout
 
 - **Desktop / Tablet (landscape):** Split-View — Formular links, Preview rechts
 - **Tablet (portrait):** Split-View mit schmalerem Formular
 - **Phone:** Tab-Wechsel — Bearbeiten / Vorschau
 
-### Navigation
+#### Navigation
 
 - Drawer oder Bottom-Nav fuer: Dokument, Profile, Templates, Einstellungen
 - Auf Desktop: Seitenleiste statt Drawer
 
-### Profilverwaltung-Screen
+#### Profilverwaltung-Screen
 
-- Liste aller Profile aus `mdsec_profiles.yaml`
+- Liste aller Profile aus `mdo_profiles.yaml`
 - Profil bearbeiten/loeschen/neu anlegen
 - Aenderungen schreiben direkt in die YAML-Datei
 
-### Template-Verwaltung-Screen
+#### Template-Verwaltung-Screen
 
-- Liste aller Templates aus `mdsec_templates.yaml`
+- Liste aller Templates aus `mdo_templates.yaml`
 - Template ansehen/bearbeiten
 - "Werkseinstellungen" — DIN 5008 A/B aus Repo neu laden
 
-### Datei-Workflow
+#### Datei-Workflow
 
 1. User oeffnet `.md`-Datei (File-Picker oder Drag&Drop auf Desktop)
 2. Frontmatter wird ins Formular geparsed, Body ins Textfeld
@@ -254,18 +267,28 @@ Als Assets mitgeliefert (SIL Open Font License):
 5. PDF-Vorschau rendert live bei Aenderungen
 6. Export: PDF speichern, Share-Sheet, oder Druck-Dialog
 
+### Web App
+
+Gleicher Hauptscreen (Formular + Textfeld + Preview), aber:
+- Kein Datei-Oeffnen — User tippt/pastet Markdown direkt oder laedt eine Datei hoch
+- Profilverwaltung: Profile anlegen/bearbeiten, gespeichert in LocalStorage
+- Kein Template-Management — DIN 5008 Form B wird automatisch verwendet
+- Export: PDF-Download, kein Share-Sheet/Druck-Dialog
+- Kein Drag&Drop noetig (nice-to-have spaeter)
+
 ### Export
 
 - PDF als primaeres Format
-- Share-Sheet (iOS/iPadOS/Android) und Druck-Dialog
+- Native: Share-Sheet (iOS/iPadOS/Android) und Druck-Dialog
+- Web: PDF-Download
 - Kein DOCX in v1
 
 ## Error Handling
 
-### Fehlende Dateien
+### Fehlende Dateien (Native)
 
-- Keine `mdsec_profiles.yaml` gefunden → App startet mit leerem Zustand, bietet an ein Default-Profil anzulegen
-- Keine `mdsec_templates.yaml` gefunden → App bietet an DIN 5008 Templates aus dem Repo zu laden
+- Keine `mdo_profiles.yaml` gefunden → App startet mit leerem Zustand, bietet an ein Default-Profil anzulegen
+- Keine `mdo_templates.yaml` gefunden → App bietet an DIN 5008 Templates aus dem Repo zu laden
 - Profil referenziert unbekanntes Template → Fehlermeldung im UI, kein PDF-Rendering
 
 ### YAML-Fehler
@@ -287,6 +310,7 @@ Als Assets mitgeliefert (SIL Open Font License):
 
 - Desktop: Drag&Drop und File-Picker
 - Mobile: File-Picker und Share Extension (Datei aus anderer App teilen)
+- Web: File-Upload und direktes Tippen
 - Cloud-Pfad nicht erreichbar → Fallback auf naechste Lookup-Ebene, kein Fehler
 
 ## Brief-Format (Markdown + YAML Frontmatter)
@@ -327,3 +351,10 @@ Diese Regeln sind Renderer-Logik, nicht Teil des Template-YAML. Das Template lie
 - QR-Code (vCard) im Absenderblock: 18x18mm, grau #808080
 - Signatur: max 15mm Hoehe, Breite proportional
 - Anlagen, Schlussformel und Ueberschriften ueber Seitenumbrueche zusammenhalten
+
+## Web-Deployment
+
+- Flutter Web Build, statisch gehostet
+- Docker: nginx serving Flutter Web Build
+- Kein Backend, kein Server-Side-Rendering
+- Alle Logik laeuft im Browser (Markdown-Parsing, PDF-Rendering)
