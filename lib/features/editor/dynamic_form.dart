@@ -5,6 +5,30 @@ import '../../providers/editor_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/template_provider.dart';
 
+const _defaultOverrides = {
+  'closing': 'Mit freundlichem Gruß',
+};
+
+const _months = [
+  '',
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+
+String _formatDate(DateTime d) {
+  return '${d.day}. ${_months[d.month]} ${d.year}';
+}
+
 class DynamicForm extends ConsumerStatefulWidget {
   const DynamicForm({super.key});
 
@@ -16,40 +40,37 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
   final Map<String, TextEditingController> _controllers = {};
   final TextEditingController _bodyController = TextEditingController();
   List<InputField> _currentFields = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _bodyController.addListener(_onBodyChanged);
-  }
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void dispose() {
     for (final c in _controllers.values) {
       c.dispose();
     }
-    _bodyController.removeListener(_onBodyChanged);
     _bodyController.dispose();
     super.dispose();
-  }
-
-  void _onBodyChanged() {
-    ref.read(bodyTextProvider.notifier).state = _bodyController.text;
   }
 
   void _syncFieldValues() {
     final values = <String, String>{};
     for (final entry in _controllers.entries) {
-      values[entry.key] = entry.value.text;
+      if (entry.value.text.isNotEmpty) {
+        values[entry.key] = entry.value.text;
+      }
     }
+    // Always include date
+    values['date'] = _formatDate(_selectedDate);
     ref.read(fieldValuesProvider.notifier).state = values;
+  }
+
+  void _syncBody() {
+    ref.read(bodyTextProvider.notifier).state = _bodyController.text;
   }
 
   void _rebuildControllers(
     List<InputField> fields,
     Map<String, String> profileValues,
   ) {
-    // Dispose old controllers that are no longer needed
     final newKeys = fields.map((f) => f.name).toSet();
     final oldKeys = _controllers.keys.toSet();
     for (final key in oldKeys.difference(newKeys)) {
@@ -58,11 +79,13 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
     }
 
     for (final field in fields) {
+      if (field.name == 'date' || field.name == 'body') continue;
       if (!_controllers.containsKey(field.name)) {
-        final initial = profileValues[field.name] ?? '';
-        final controller = TextEditingController(text: initial);
-        controller.addListener(_syncFieldValues);
-        _controllers[field.name] = controller;
+        final initial = profileValues[field.name] ??
+            _defaultOverrides[field.name] ??
+            field.defaultValue ??
+            '';
+        _controllers[field.name] = TextEditingController(text: initial);
       }
     }
 
@@ -78,7 +101,6 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
 
     return inputsAsync.when(
       data: (fields) {
-        // Rebuild controllers when field list changes
         if (_fieldsChanged(fields)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -92,26 +114,38 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
           return const Center(child: Text('Kein Template ausgewählt.'));
         }
 
+        final visibleFields =
+            fields.where((f) => f.name != 'body' && f.name != 'date').toList();
+
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ...fields.map((field) => _buildFieldTile(field)),
+              // Date picker
+              _buildDateField(context),
+              const SizedBox(height: 12),
+              // Template fields
+              ...visibleFields.map((field) => _buildFieldTile(field)),
               const SizedBox(height: 16),
               const Text(
                 'Brieftext',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _bodyController,
-                maxLines: null,
-                minLines: 8,
-                keyboardType: TextInputType.multiline,
-                decoration: const InputDecoration(
-                  hintText: 'Brieftext eingeben...',
-                  border: OutlineInputBorder(),
+              Focus(
+                onFocusChange: (hasFocus) {
+                  if (!hasFocus) _syncBody();
+                },
+                child: TextField(
+                  controller: _bodyController,
+                  maxLines: null,
+                  minLines: 8,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(
+                    hintText: 'Brieftext eingeben...',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
             ],
@@ -131,22 +165,53 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
     return false;
   }
 
+  Widget _buildDateField(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: _selectedDate,
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+        );
+        if (picked != null) {
+          setState(() {
+            _selectedDate = picked;
+          });
+          _syncFieldValues();
+        }
+      },
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Datum',
+          border: OutlineInputBorder(),
+          suffixIcon: Icon(Icons.calendar_today),
+        ),
+        child: Text(_formatDate(_selectedDate)),
+      ),
+    );
+  }
+
   Widget _buildFieldTile(InputField field) {
     final controller = _controllers[field.name];
     if (controller == null) return const SizedBox.shrink();
 
-    final label = field.required
-        ? '${field.displayLabel} *'
-        : field.displayLabel;
+    final label =
+        field.required ? '${field.displayLabel} *' : field.displayLabel;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: field.defaultValue,
-          border: const OutlineInputBorder(),
+      child: Focus(
+        onFocusChange: (hasFocus) {
+          if (!hasFocus) _syncFieldValues();
+        },
+        child: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: field.defaultValue,
+            border: const OutlineInputBorder(),
+          ),
         ),
       ),
     );

@@ -13,6 +13,22 @@ class PdfPreviewWidget extends ConsumerWidget {
     return pdfAsync.when(
       data: (bytes) {
         if (bytes == null) {
+          final error = ref.watch(compileErrorProvider);
+          if (error != null) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(
+                  'Typst-Fehler:\n$error',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            );
+          }
           return const Center(child: Text('Bitte Felder ausfüllen.'));
         }
         return PdfPreview(
