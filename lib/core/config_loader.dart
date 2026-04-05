@@ -93,18 +93,112 @@ class ConfigLoader {
     File('$homePath/mdo_profiles.yaml').writeAsStringSync(buffer.toString());
   }
 
-  /// Download a .typ template from URL and save to templates dir.
-  Future<File> importTemplate(String url, {String? name}) async {
+  /// Import a template from a URL. Supports:
+  /// - Direct .typ URL → download file
+  /// - GitHub repo URL (github.com/user/repo) → download ZIP, extract .typ files
+  /// - typst.app/universe URL → extract package name for info
+  Future<List<File>> importTemplate(String url) async {
     final uri = Uri.parse(url);
+
+    if (_isGitHubRepo(uri)) {
+      return _importFromGitHub(uri);
+    } else if (url.endsWith('.typ')) {
+      final file = await _downloadFile(uri);
+      return [file];
+    } else {
+      // Try as direct download
+      final file = await _downloadFile(uri);
+      return [file];
+    }
+  }
+
+  bool _isGitHubRepo(Uri uri) {
+    return uri.host == 'github.com' && uri.pathSegments.length >= 2;
+  }
+
+  Future<List<File>> _importFromGitHub(Uri uri) async {
+    // github.com/user/repo → download ZIP of default branch
+    final user = uri.pathSegments[0];
+    final repo = uri.pathSegments[1];
+    final zipUrl = Uri.parse(
+      'https://github.com/$user/$repo/archive/refs/heads/main.zip',
+    );
+
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(zipUrl);
+      final response = await request.close();
+      final zipBytes = await response.fold<List<int>>(
+        [],
+        (prev, chunk) => prev..addAll(chunk),
+      );
+
+      // Save ZIP to temp, extract .typ files
+      final tempDir = Directory.systemTemp.createTempSync('mdo_import_');
+      final zipFile = File('${tempDir.path}/repo.zip');
+      zipFile.writeAsBytesSync(zipBytes);
+
+      // Extract using unzip
+      final result = Process.runSync('unzip', [
+        '-q',
+        zipFile.path,
+        '-d',
+        tempDir.path,
+      ]);
+
+      if (result.exitCode != 0) {
+        tempDir.deleteSync(recursive: true);
+        throw Exception('ZIP-Extraktion fehlgeschlagen: ${result.stderr}');
+      }
+
+      // Find all .typ files
+      final extractedFiles = <File>[];
+      final templateDir = Directory('$homePath/templates');
+      if (!templateDir.existsSync()) templateDir.createSync(recursive: true);
+
+      for (final entity in tempDir.listSync(recursive: true)) {
+        if (entity is File && entity.path.endsWith('.typ')) {
+          final fileName = entity.uri.pathSegments.last;
+          final dest = File('${templateDir.path}/$fileName');
+          dest.writeAsBytesSync(entity.readAsBytesSync());
+          extractedFiles.add(dest);
+        }
+      }
+
+      tempDir.deleteSync(recursive: true);
+
+      if (extractedFiles.isEmpty) {
+        throw Exception('Keine .typ-Dateien im Repository gefunden.');
+      }
+
+      return extractedFiles;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<File> _downloadFile(Uri uri) async {
     final client = HttpClient();
     try {
       final request = await client.getUrl(uri);
       final response = await request.close();
+
       final bytes = await response.fold<List<int>>(
         [],
         (prev, chunk) => prev..addAll(chunk),
       );
-      final fileName = name ?? uri.pathSegments.last;
+
+      // Sanity check: if it starts with <!DOCTYPE or <html, it's not a .typ file
+      final preview = String.fromCharCodes(bytes.take(50));
+      if (preview.trimLeft().startsWith('<!') ||
+          preview.trimLeft().startsWith('<html')) {
+        throw Exception(
+          'URL liefert HTML statt Typst. '
+          'Bei GitHub die Raw-URL verwenden oder die Repo-URL (github.com/user/repo).',
+        );
+      }
+
+      final fileName = uri.pathSegments.last;
       final templateName =
           fileName.endsWith('.typ') ? fileName : '$fileName.typ';
       final dir = Directory('$homePath/templates');

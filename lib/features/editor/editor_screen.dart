@@ -193,11 +193,12 @@ Future<void> _importTemplate(WidgetRef ref, BuildContext context) async {
 
   try {
     final loader = ref.read(configLoaderProvider);
-    await loader.importTemplate(url);
+    final files = await loader.importTemplate(url);
     ref.invalidate(templateListProvider);
     if (context.mounted) {
+      final names = files.map((f) => f.uri.pathSegments.last).join(', ');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Template importiert!')),
+        SnackBar(content: Text('Importiert: $names')),
       );
     }
   } catch (e) {
