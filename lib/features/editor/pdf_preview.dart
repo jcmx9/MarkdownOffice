@@ -36,8 +36,8 @@ class PdfPreviewWidget extends ConsumerWidget {
           canChangeOrientation: false,
           canChangePageFormat: false,
           canDebug: false,
-          allowPrinting: true,
-          allowSharing: true,
+          allowPrinting: false,
+          allowSharing: false,
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),

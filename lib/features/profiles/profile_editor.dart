@@ -19,7 +19,7 @@ class _ProfileEditorState extends ConsumerState<ProfileEditor> {
     super.initState();
     if (widget.profileName != null) {
       _nameController.text = widget.profileName!;
-      final profile = ref.read(profilesProvider)[widget.profileName];
+      final profile = ref.read(templateProfilesProvider)[widget.profileName];
       if (profile != null) {
         for (final entry in profile.values.entries) {
           _controllers[entry.key] = TextEditingController(text: entry.value);

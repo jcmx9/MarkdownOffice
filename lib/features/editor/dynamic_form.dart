@@ -114,8 +114,22 @@ class _DynamicFormState extends ConsumerState<DynamicForm> {
           return const Center(child: Text('Kein Template ausgewählt.'));
         }
 
-        final visibleFields =
+        // Sort fields: profile order first, then remaining
+        final allVisible =
             fields.where((f) => f.name != 'body' && f.name != 'date').toList();
+        final profileOrder = activeProfile?.fieldsOrder ?? [];
+        final visibleFields = <InputField>[];
+        // Add fields in profile order
+        for (final name in profileOrder) {
+          final field = allVisible.where((f) => f.name == name).firstOrNull;
+          if (field != null) visibleFields.add(field);
+        }
+        // Add remaining fields not in profile order
+        for (final field in allVisible) {
+          if (!profileOrder.contains(field.name)) {
+            visibleFields.add(field);
+          }
+        }
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),

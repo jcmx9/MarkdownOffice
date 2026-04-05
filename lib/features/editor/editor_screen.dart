@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:printing/printing.dart';
 import '../../core/config_loader.dart';
+import '../../providers/config_provider.dart';
 import '../../models/profile.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/template_provider.dart';
@@ -19,7 +20,7 @@ class EditorScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final templates = ref.watch(templateListProvider);
     final selectedTemplate = ref.watch(selectedTemplateProvider);
-    final profiles = ref.watch(profilesProvider);
+    final profiles = ref.watch(templateProfilesProvider);
     final selectedProfile = ref.watch(selectedProfileProvider);
     final width = MediaQuery.of(context).size.width;
     final isWide = width > 800;
@@ -84,6 +85,14 @@ class EditorScreen extends ConsumerWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const ProfilesScreen()),
               );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.download),
+            title: const Text('Template importieren'),
+            onTap: () {
+              Navigator.of(context).pop();
+              _importTemplate(ref, context);
             },
           ),
         ],
@@ -151,6 +160,53 @@ Future<void> _printPdf(WidgetRef ref, BuildContext context) async {
   final bytes = await ref.read(pdfBytesProvider.future);
   if (bytes == null) return;
   await Printing.layoutPdf(onLayout: (_) async => bytes);
+}
+
+Future<void> _importTemplate(WidgetRef ref, BuildContext context) async {
+  final controller = TextEditingController();
+  final url = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Template importieren'),
+      content: TextField(
+        controller: controller,
+        decoration: const InputDecoration(
+          labelText: 'URL zur .typ-Datei',
+          hintText: 'https://raw.githubusercontent.com/.../template.typ',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Abbrechen'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx, controller.text),
+          child: const Text('Importieren'),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  if (url == null || url.isEmpty) return;
+
+  try {
+    final loader = ref.read(configLoaderProvider);
+    await loader.importTemplate(url);
+    ref.invalidate(templateListProvider);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Template importiert!')),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler: $e')),
+      );
+    }
+  }
 }
 
 class _TemplateDropdown extends StatelessWidget {
