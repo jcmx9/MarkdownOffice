@@ -1,0 +1,30 @@
+# Go
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Generated (templ)
+*_templ.go
+
+# Secrets / config
+.env
+*.pem
+
+# Runtime data volume
+/data/
+
+# Dependencies (vendored, if ever used)
+/vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
