@@ -104,6 +104,25 @@ Body
 	}
 }
 
+func TestRenderMarkdownDropsSignatureWhenUnresolvable(t *testing.T) {
+	const mdWithSig = "---\nname: A\nstreet: S\nzip: 1\ncity: C\nsignature: unterschrift.svg\nrecipient:\n  - R\n---\n\nBody\n"
+	fr := &fakeRunner{}
+	svc := New("26.4.35", fr) // no signature resolver configured
+
+	if _, err := svc.RenderMarkdown(context.Background(), mdWithSig); err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	// Without a resolver the letter must render *without* a signature — the
+	// generated brief.json must not reference a file that was never written,
+	// otherwise Typst's read() aborts the compile.
+	if strings.Contains(fr.files["brief.json"], "unterschrift.svg") {
+		t.Errorf("brief.json references an unprovided signature file:\n%s", fr.files["brief.json"])
+	}
+	if _, ok := fr.files["unterschrift.svg"]; ok {
+		t.Errorf("a signature file was written although none was resolvable")
+	}
+}
+
 // TestRenderMarkdownEndToEnd runs the real Typst binary against vendored assets.
 // Skipped unless MDO_TESTDATA points at a dir with pkgs/, cache/ and fonts/.
 func TestRenderMarkdownEndToEnd(t *testing.T) {

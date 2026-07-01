@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mdo-service — DIN-5008-Brief</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header>
+    <h1>mdo-service</h1>
+    <p>DIN-5008-Geschäftsbrief aus Markdown → PDF/A-3b</p>
+  </header>
+  <main>
+    <section class="pane">
+      <div id="editor" aria-label="Markdown-Editor"></div>
+      <div id="error" role="alert" hidden></div>
+      <div class="toolbar">
+        <button id="download" type="button" disabled>PDF herunterladen</button>
+        <span id="status" aria-live="polite"></span>
+      </div>
+    </section>
+    <section class="pane">
+      <iframe id="preview" title="PDF-Vorschau"></iframe>
+    </section>
+  </main>
+  <textarea id="default-letter" hidden>{{ .DefaultLetter }}</textarea>
+  <script src="/static/vendor/codemirror.js"></script>
+  <script src="/static/editor.js"></script>
+</body>
+</html>

@@ -55,12 +55,18 @@ func (s *Service) RenderMarkdown(ctx context.Context, source string) ([]byte, er
 		Body:   parsed.Body,
 		Source: parsed.Source,
 	}
-	if parsed.Letter.Signature != "" && s.sig != nil {
-		data, err := s.sig(parsed.Letter.Signature)
-		if err != nil {
-			return nil, fmt.Errorf("Signatur %q konnte nicht geladen werden: %w", parsed.Letter.Signature, err)
+	if parsed.Letter.Signature != "" {
+		if s.sig == nil {
+			// No way to resolve the referenced file → render without a signature
+			// rather than letting Typst's read() fail on a missing file.
+			in.Letter.Signature = ""
+		} else {
+			data, err := s.sig(parsed.Letter.Signature)
+			if err != nil {
+				return nil, fmt.Errorf("Signatur %q konnte nicht geladen werden: %w", parsed.Letter.Signature, err)
+			}
+			in.SignatureData = data
 		}
-		in.SignatureData = data
 	}
 
 	pdf, err := pipeline.Compile(ctx, s.runner, in, pipeline.Options{Din5008aVersion: s.din5008aVersion})
