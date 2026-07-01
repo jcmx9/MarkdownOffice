@@ -18,14 +18,26 @@ import (
 //go:embed templates/*.html static
 var assets embed.FS
 
-// DefaultLetter seeds the editor on first load.
+// DefaultLetter seeds the editor on first load. It shows the full frontmatter
+// field set so users can see every option at a glance.
 const DefaultLetter = `---
+# Absender
 name: Dr. Anna Weber
 street: Lindenallee 12
 zip: 80331
 city: München
+phone: 089 1234567
 email: anna.weber@example.de
-accent: "#1F6FEB"
+# Bankverbindung (optional, erscheint in der Fußzeile)
+iban: DE91 7002 0500 0009 8765 43
+bic: BFSWDE33MUE
+bank: Bank für Sozialwirtschaft
+# Optik & Extras
+accent: "#C2185B"          # Akzentfarbe als Hex (#RRGGBB) — Rubinrosa
+qr_code: true              # vCard-QR im Info-Block
+# signature: unterschrift.svg   # (Signatur-Upload folgt in einer späteren Version)
+# Brief
+date: null                 # null = heute; sonst z. B. "5. April 2026"
 subject: Ihr Angebot vom 1. Juli
 recipient:
   - Sonnenschein Verlag GmbH
@@ -33,15 +45,22 @@ recipient:
   - Rosenstraße 5
   - 50667 Köln
 closing: Mit freundlichen Grüßen
+attachments:
+  - Angebotsvergleich (PDF)
+  - Referenzliste
 ---
 
 Sehr geehrte Frau Bergmann,
 
 vielen Dank für Ihr Angebot. Mit **Markdown** schreibt sich der Brief bequem:
-*kursiv*, Aufzählungen und Tabellen werden nach DIN 5008 gesetzt.
+*kursiv*, Aufzählungen, Tabellen und Links werden nach DIN 5008 gesetzt.
 
-- Erster Punkt
-- Zweiter Punkt
+## Beispiel-Tabelle
+
+| Leistung        | Preis    |
+| --------------- | -------- |
+| Grundpaket      | 1.200 €  |
+| Support (1 J.)  |   300 €  |
 
 Über eine Rückmeldung freue ich mich.
 `
