@@ -88,8 +88,8 @@ func TestParseDefaultsDateToToday(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if got.Letter.Date != "05. April 2026" {
-		t.Errorf("date = %q, want today formatted German", got.Letter.Date)
+	if got.Letter.Date != "5. April 2026" {
+		t.Errorf("date = %q, want today German without leading zero", got.Letter.Date)
 	}
 	if got.Letter.Closing != "Mit freundlichem Gruß" {
 		t.Errorf("closing default = %q", got.Letter.Closing)

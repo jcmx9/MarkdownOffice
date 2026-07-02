@@ -191,5 +191,6 @@ func splitFrontmatter(source string) (frontmatter, body string, err error) {
 }
 
 func formatGermanDate(t time.Time) string {
-	return fmt.Sprintf("%02d. %s %d", t.Day(), germanMonths[t.Month()-1], t.Year())
+	// Day without leading zero, e.g. "2. Juli 2026".
+	return fmt.Sprintf("%d. %s %d", t.Day(), germanMonths[t.Month()-1], t.Year())
 }
