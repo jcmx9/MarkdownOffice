@@ -52,6 +52,7 @@ func TestBuildWrapperEmbedsPinnedImportsAndConformantAttach(t *testing.T) {
 	for _, want := range []string{
 		`#import "@local/zero:0.6.1"`,
 		`decimal-separator: ","`,
+		`math: false`,
 		`format-table`,
 	} {
 		if !strings.Contains(w.Typ, want) {

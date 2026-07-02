@@ -126,7 +126,8 @@ func BuildWrapper(l Letter, din5008aVersion string) (Wrapper, error) {
 // Numbers in tables: German decimal comma, DIN-5008 thin-space grouping (zero's
 // default, kicks in at 5 digits), decimal-aligned. Numeric cells are auto-detected;
 // text cells (headers etc.) are left untouched. Input uses a dot decimal (1200.50).
-#zero.set-num(decimal-separator: ",")
+// math: false keeps numbers in the table's (monospace) text font, not the math font.
+#zero.set-num(decimal-separator: ",", math: false)
 #show table: zero.format-table(..((auto,) * 16))
 
 // Body: Markdown rendered to Typst via cmarker, styled by din5008a.
