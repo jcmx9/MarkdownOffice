@@ -12,6 +12,9 @@ import (
 // cmarkerVersion is the pinned cmarker (Markdown→Typst) package version.
 const cmarkerVersion = "0.1.9"
 
+// zeroVersion is the pinned zero (number formatting / decimal alignment) version.
+const zeroVersion = "0.6.1"
+
 // Sender is the writer's letterhead and return-address data.
 type Sender struct {
 	Name   string `json:"name,omitempty"`
@@ -99,6 +102,7 @@ func BuildWrapper(l Letter, din5008aVersion string) (Wrapper, error) {
 
 	typ := fmt.Sprintf(`#import "@local/din5008a:%s": din5008a, bullet
 #import "@local/cmarker:%s"
+#import "@local/zero:%s" as zero
 
 #let data = json("brief.json")
 #let sig = if data.at("signature", default: none) != none { read(data.signature) } else { none }
@@ -119,9 +123,15 @@ func BuildWrapper(l Letter, din5008aVersion string) (Wrapper, error) {
   mime-type: "text/markdown",
   description: "Markdown-Quelle des Briefs")
 
+// Numbers in tables: German decimal comma, DIN-5008 thin-space grouping (zero's
+// default, kicks in at 5 digits), decimal-aligned. Numeric cells are auto-detected;
+// text cells (headers etc.) are left untouched. Input uses a dot decimal (1200.50).
+#zero.set-num(decimal-separator: ",")
+#show table: zero.format-table(..((auto,) * 16))
+
 // Body: Markdown rendered to Typst via cmarker, styled by din5008a.
 #cmarker.render(read("body.md"))
-`, din5008aVersion, cmarkerVersion, accentArg(l.Accent))
+`, din5008aVersion, cmarkerVersion, zeroVersion, accentArg(l.Accent))
 
 	return Wrapper{Typ: typ, JSON: string(jsonBytes)}, nil
 }

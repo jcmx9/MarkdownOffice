@@ -57,10 +57,14 @@ vielen Dank für Ihr Angebot. Mit **Markdown** schreibt sich der Brief bequem:
 
 ## Beispiel-Tabelle
 
-| Leistung        | Preis    |
-| --------------- | -------- |
-| Grundpaket      | 1.200 €  |
-| Support (1 J.)  |   300 €  |
+Zahlen mit **Punkt** als Dezimaltrenner eingeben (z. B. ` + "`1200.50`" + `); in der Ausgabe
+erscheinen sie deutsch (Komma) und **rechtsbündig am Komma ausgerichtet**.
+
+| Leistung   | Menge | Preis    |
+| ---------- | ----- | -------- |
+| Grundpaket | 1     | 1200.50  |
+| Support    | 12    | 300      |
+| Gesamt     |       | 12345.75 |
 
 Über eine Rückmeldung freue ich mich.
 `

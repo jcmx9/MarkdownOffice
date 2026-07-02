@@ -48,6 +48,17 @@ func TestBuildWrapperEmbedsPinnedImportsAndConformantAttach(t *testing.T) {
 		t.Errorf("wrapper does not render body via cmarker:\n%s", w.Typ)
 	}
 
+	// Table numbers are decimal-aligned at the German comma via the zero package.
+	for _, want := range []string{
+		`#import "@local/zero:0.6.1"`,
+		`decimal-separator: ","`,
+		`format-table`,
+	} {
+		if !strings.Contains(w.Typ, want) {
+			t.Errorf("wrapper missing table-alignment piece %q", want)
+		}
+	}
+
 	// brief.json carries the structured sender data and accent colour.
 	var data map[string]any
 	if err := json.Unmarshal([]byte(w.JSON), &data); err != nil {
