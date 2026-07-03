@@ -1,4 +1,4 @@
-.PHONY: build test fmt vet web-assets
+.PHONY: build test fmt vet web-assets assets
 
 build:
 	go build ./cmd/mdo-service
@@ -25,3 +25,7 @@ web-assets:
 	npx esbuild entry.js --bundle --format=iife --global-name=MDO --minify --outfile="$(CURDIR)/internal/web/static/vendor/codemirror.js" && \
 	rm -rf $$tmp && \
 	echo "vendored internal/web/static/vendor/codemirror.js"
+
+# Fetch embedded runtime assets (Typst + fonts + packages) for the host target.
+assets:
+	./scripts/fetch-assets.sh

@@ -31,3 +31,6 @@ Thumbs.db
 
 # Lokale Dev-Assets (Typst-Pakete/Fonts) — nicht committen
 .dev-assets/
+
+# Eingebettete Runtime-Assets (fetch-at-build)
+internal/assets/dist/

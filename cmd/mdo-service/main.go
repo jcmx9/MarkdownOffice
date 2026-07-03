@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jcmx9/mdo-service/internal/assets"
+	"github.com/jcmx9/mdo-service/internal/bootstrap"
 	"github.com/jcmx9/mdo-service/internal/pipeline"
 	"github.com/jcmx9/mdo-service/internal/service"
 	"github.com/jcmx9/mdo-service/internal/web"
@@ -55,13 +57,31 @@ func run(args []string) error {
 	}
 }
 
-// newTypstRunner builds the Typst runner from MDO_* environment variables.
-func newTypstRunner() pipeline.Runner {
+// newTypstRunner builds the Typst runner. With embedded assets it extracts them
+// into the user data dir and uses those; otherwise it falls back to a system
+// Typst located via MDO_* environment variables.
+func newTypstRunner() (pipeline.Runner, error) {
+	if assets.Available() {
+		base, err := os.UserConfigDir()
+		if err != nil {
+			return nil, fmt.Errorf("Datenverzeichnis nicht bestimmbar: %w", err)
+		}
+		root := filepath.Join(base, "mdo-service", "runtime")
+		rt, err := bootstrap.Extract(root, assets.TypstVersion, assets.TypstBinary(), assets.SupportFS())
+		if err != nil {
+			return nil, fmt.Errorf("eingebettete Assets konnten nicht entpackt werden: %w", err)
+		}
+		return pipeline.NewTypstRunner(rt.TypstBin, pipeline.TypstEnv{
+			PackagePath:      rt.PackagePath,
+			PackageCachePath: rt.CachePath,
+			FontPath:         rt.FontPath,
+		}), nil
+	}
 	return pipeline.NewTypstRunner(env("MDO_TYPST_BIN", "typst"), pipeline.TypstEnv{
 		PackagePath:      os.Getenv("MDO_PACKAGE_PATH"),
 		PackageCachePath: os.Getenv("MDO_PACKAGE_CACHE_PATH"),
 		FontPath:         os.Getenv("MDO_FONT_PATH"),
-	})
+	}), nil
 }
 
 func runRender(args []string) error {
@@ -96,9 +116,13 @@ func runRender(args []string) error {
 		outPath = strings.TrimSuffix(inPath, filepath.Ext(inPath)) + ".pdf"
 	}
 
+	runner, err := newTypstRunner()
+	if err != nil {
+		return err
+	}
 	// Signatures are resolved relative to the letter file's directory.
 	dir := filepath.Dir(inPath)
-	svc := service.New(din5008aVersion, newTypstRunner(), service.WithSignatureResolver(
+	svc := service.New(din5008aVersion, runner, service.WithSignatureResolver(
 		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(dir, name)) },
 	))
 
@@ -121,7 +145,11 @@ func runServe(args []string) error {
 		return err
 	}
 
-	srv, err := web.NewServer(service.New(din5008aVersion, newTypstRunner()))
+	runner, err := newTypstRunner()
+	if err != nil {
+		return err
+	}
+	srv, err := web.NewServer(service.New(din5008aVersion, runner))
 	if err != nil {
 		return err
 	}
