@@ -1,8 +1,9 @@
 // Command mdo-service renders DIN 5008 letters from Markdown to PDF/A-3b, either
 // one-shot (`render`) or via a local browser UI (`serve`).
 //
-// For now it shells out to a system Typst and locates the vendored packages and
-// fonts via environment variables; embedding those assets is a later step.
+// With the embed_assets build tag it runs self-contained (bundled Typst, fonts
+// and packages). Without it, it shells out to a system Typst located via the
+// MDO_* environment variables.
 package main
 
 import (
@@ -27,8 +28,8 @@ import (
 	"github.com/jcmx9/mdo-service/internal/web"
 )
 
-// din5008aVersion is the pinned template version. It will be derived from the
-// embedded assets once bootstrapping (1b-ii) lands.
+// din5008aVersion is the pinned din5008a template version, matched by the
+// vendored/embedded package tree (see scripts/fetch-assets.sh).
 const din5008aVersion = "26.4.35"
 
 func main() {
@@ -203,7 +204,7 @@ Befehle:
   render <datei.md> [-o out.pdf]   Brief nach PDF/A-3b erzeugen
   serve [--addr 127.0.0.1:8765] [--no-open]   Browser-Editor mit Live-Vorschau
 
-Umgebungsvariablen (bis Assets eingebettet sind):
+Umgebungsvariablen (nur ohne eingebettete Assets):
   MDO_TYPST_BIN, MDO_PACKAGE_PATH, MDO_PACKAGE_CACHE_PATH, MDO_FONT_PATH
 `)
 }
