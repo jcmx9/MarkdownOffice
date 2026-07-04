@@ -1,6 +1,8 @@
 # Go
 /bin/
 /dist/
+/mdo-service
+/mdo-service.exe
 *.exe
 *.test
 *.out
