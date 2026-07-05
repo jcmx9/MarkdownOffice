@@ -77,6 +77,7 @@ MDO_FONT_PATH=<dir>/fonts \
 | `serve` | Start the browser editor with a live preview |
 | `--addr <host:port>` | Address (loopback only; default `127.0.0.1:8765`) |
 | `--no-open` | Do not open the browser automatically |
+| `--version`, `-V` | Show version and exit |
 
 ### Environment variables (only without embedded assets)
 
@@ -157,7 +158,20 @@ scripts/             – fetch-assets.sh
 
 ## Versioning
 
-[CalVer](https://calver.org/) in the format `YY.M.MICRO`.
+[CalVer](https://calver.org/) in the format `YY.M.MICRO`. Release binaries carry the version via
+build-time ldflags; a source build reports `dev`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+Please do **not** report security vulnerabilities via public issues — see [SECURITY.md](SECURITY.md).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
