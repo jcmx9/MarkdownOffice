@@ -21,11 +21,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jcmx9/mdo-service/internal/assets"
-	"github.com/jcmx9/mdo-service/internal/bootstrap"
-	"github.com/jcmx9/mdo-service/internal/pipeline"
-	"github.com/jcmx9/mdo-service/internal/service"
-	"github.com/jcmx9/mdo-service/internal/web"
+	"github.com/jcmx9/MarkdownOffice/internal/assets"
+	"github.com/jcmx9/MarkdownOffice/internal/bootstrap"
+	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
+	"github.com/jcmx9/MarkdownOffice/internal/service"
+	"github.com/jcmx9/MarkdownOffice/internal/web"
 )
 
 // din5008aVersion is the pinned din5008a template version, matched by the

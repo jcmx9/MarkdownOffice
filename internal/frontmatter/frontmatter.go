@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jcmx9/mdo-service/internal/pipeline"
+	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
 	"gopkg.in/yaml.v3"
 )
 

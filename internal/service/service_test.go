@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jcmx9/mdo-service/internal/frontmatter"
-	"github.com/jcmx9/mdo-service/internal/pipeline"
+	"github.com/jcmx9/MarkdownOffice/internal/frontmatter"
+	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
 )
 
 // fakeRunner captures the compile-directory contents and writes a stub PDF.

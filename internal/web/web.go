@@ -12,7 +12,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/jcmx9/mdo-service/internal/frontmatter"
+	"github.com/jcmx9/MarkdownOffice/internal/frontmatter"
 )
 
 //go:embed templates/*.html static

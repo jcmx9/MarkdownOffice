@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to `mdo-service`. This guide describes the workflow.
+Thanks for your interest in contributing to **MarkdownOffice**. This guide describes the workflow.
 
 ## Prerequisites
 
@@ -13,8 +13,8 @@ Thanks for your interest in contributing to `mdo-service`. This guide describes 
 ## Setting Up
 
 ```bash
-git clone git@github.com:jcmx9/mdo-service.git
-cd mdo-service
+git clone git@github.com:jcmx9/MarkdownOffice.git
+cd MarkdownOffice
 make build
 make test
 ```

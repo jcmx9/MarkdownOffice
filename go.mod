@@ -1,4 +1,4 @@
-module github.com/jcmx9/mdo-service
+module github.com/jcmx9/MarkdownOffice
 
 go 1.26.4
 

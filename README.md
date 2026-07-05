@@ -1,15 +1,15 @@
-# mdo-service
+# MarkdownOffice
 
 > DIN-5008-Form-A-Geschäftsbriefe aus Markdown nach PDF/A-3b erzeugen — lokal, offline, self-contained.
 
-[![CI](https://github.com/jcmx9/mdo-service/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/mdo-service/actions/workflows/ci.yml)
+[![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 *Read this in [English](README.en.md).*
 
 ## Beschreibung
 
-`mdo-service` setzt einen in **Markdown** geschriebenen Geschäftsbrief nach **DIN 5008 Form A**
+**MarkdownOffice** setzt einen in **Markdown** geschriebenen Geschäftsbrief nach **DIN 5008 Form A**
 und erzeugt daraus ein archivtaugliches **PDF/A-3b** — mit der Markdown-Quelle **eingebettet** in
 der PDF (via `pdf.attach`, `relationship: source`). So bleibt der Brief maschinen- wie
 menschenlesbar und langzeitarchivierbar in einer Datei.
@@ -41,10 +41,10 @@ Schriften und alle Typst-Pakete eingebettet mit.
 ## Installation
 
 ```bash
-go install github.com/jcmx9/mdo-service/cmd/mdo-service@latest
+go install github.com/jcmx9/MarkdownOffice/cmd/mdo-service@latest
 ```
 
-Alternativ eine self-contained Release-Binary (siehe [Releases](https://github.com/jcmx9/mdo-service/releases)).
+Alternativ eine self-contained Release-Binary (siehe [Releases](https://github.com/jcmx9/MarkdownOffice/releases)).
 
 ## Nutzung
 
@@ -129,8 +129,8 @@ einer **laienfreundlichen deutschen Meldung** quittiert — ohne Stacktrace.
 ## Entwicklung
 
 ```bash
-git clone git@github.com:jcmx9/mdo-service.git
-cd mdo-service
+git clone git@github.com:jcmx9/MarkdownOffice.git
+cd MarkdownOffice
 
 make build          # Binary bauen
 make test           # alle Tests

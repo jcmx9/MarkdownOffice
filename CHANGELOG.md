@@ -20,4 +20,9 @@ adheres to [CalVer](https://calver.org/) (`YY.M.MICRO`).
 - Project governance: MIT license, README (German + English), CI workflow, `SECURITY.md`,
   `CONTRIBUTING.md`, this changelog, Dependabot and CODEOWNERS.
 
-[Unreleased]: https://github.com/jcmx9/mdo-service/commits/main
+### Changed
+
+- Renamed the project and Go module to **MarkdownOffice**
+  (`github.com/jcmx9/MarkdownOffice`). The CLI binary is still `mdo-service` for now.
+
+[Unreleased]: https://github.com/jcmx9/MarkdownOffice/commits/main

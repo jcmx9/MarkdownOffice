@@ -1,15 +1,15 @@
-# mdo-service
+# MarkdownOffice
 
 > Turn Markdown into DIN 5008 Form A business letters as PDF/A-3b — local, offline, self-contained.
 
-[![CI](https://github.com/jcmx9/mdo-service/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/mdo-service/actions/workflows/ci.yml)
+[![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 *Auf Deutsch lesen: [README.md](README.md).*
 
 ## Description
 
-`mdo-service` typesets a business letter written in **Markdown** according to **DIN 5008 Form A**
+**MarkdownOffice** typesets a business letter written in **Markdown** according to **DIN 5008 Form A**
 and produces an archival **PDF/A-3b** — with the Markdown source **embedded** in the PDF (via
 `pdf.attach`, `relationship: source`). The letter stays both machine- and human-readable and
 long-term archivable in a single file.
@@ -41,10 +41,10 @@ embedded.
 ## Installation
 
 ```bash
-go install github.com/jcmx9/mdo-service/cmd/mdo-service@latest
+go install github.com/jcmx9/MarkdownOffice/cmd/mdo-service@latest
 ```
 
-Alternatively, grab a self-contained release binary (see [Releases](https://github.com/jcmx9/mdo-service/releases)).
+Alternatively, grab a self-contained release binary (see [Releases](https://github.com/jcmx9/MarkdownOffice/releases)).
 
 ## Usage
 
@@ -128,8 +128,8 @@ with a **plain-language German message** — no stack trace.
 ## Development
 
 ```bash
-git clone git@github.com:jcmx9/mdo-service.git
-cd mdo-service
+git clone git@github.com:jcmx9/MarkdownOffice.git
+cd MarkdownOffice
 
 make build          # build the binary
 make test           # run all tests
