@@ -32,6 +32,12 @@ import (
 // vendored/embedded package tree (see scripts/fetch-assets.sh).
 const din5008aVersion = "26.4.35"
 
+// version is the tool version. A source build reports "dev"; release builds set
+// it via -ldflags "-X main.version=<CalVer>".
+var version = "dev"
+
+func versionLine() string { return "mdo-service " + version }
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "Fehler: "+err.Error())
@@ -49,6 +55,9 @@ func run(args []string) error {
 		return runRender(args[1:])
 	case "serve":
 		return runServe(args[1:])
+	case "-V", "--version", "version":
+		fmt.Println(versionLine())
+		return nil
 	case "-h", "--help", "help":
 		usage()
 		return nil
@@ -198,15 +207,16 @@ func openBrowser(url string) {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `mdo-service — DIN-5008-Geschäftsbriefe aus Markdown (PDF/A-3b)
+	fmt.Fprintf(os.Stderr, `%s — DIN-5008-Geschäftsbriefe aus Markdown (PDF/A-3b)
 
 Befehle:
   render <datei.md> [-o out.pdf]   Brief nach PDF/A-3b erzeugen
   serve [--addr 127.0.0.1:8765] [--no-open]   Browser-Editor mit Live-Vorschau
+  --version, -V                    Version anzeigen
 
 Umgebungsvariablen (nur ohne eingebettete Assets):
   MDO_TYPST_BIN, MDO_PACKAGE_PATH, MDO_PACKAGE_CACHE_PATH, MDO_FONT_PATH
-`)
+`, versionLine())
 }
 
 func env(key, def string) string {
