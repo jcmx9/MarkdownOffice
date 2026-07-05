@@ -47,7 +47,7 @@ func Compile(ctx context.Context, r Runner, in Input, opts Options) ([]byte, err
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	files := map[string]string{
 		"brief.typ":  w.Typ,
