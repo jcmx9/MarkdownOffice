@@ -7,8 +7,8 @@ import (
 
 func TestVersionLine(t *testing.T) {
 	got := versionLine()
-	if !strings.HasPrefix(got, "mdo-service ") {
-		t.Fatalf("versionLine() = %q, want prefix %q", got, "mdo-service ")
+	if !strings.HasPrefix(got, "markdownoffice ") {
+		t.Fatalf("versionLine() = %q, want prefix %q", got, "markdownoffice ")
 	}
 	if !strings.Contains(got, version) {
 		t.Fatalf("versionLine() = %q, want it to contain version %q", got, version)

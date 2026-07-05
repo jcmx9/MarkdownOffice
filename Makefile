@@ -1,7 +1,7 @@
 .PHONY: build test fmt vet web-assets assets
 
 build:
-	go build ./cmd/mdo-service
+	go build ./cmd/markdownoffice
 
 test:
 	go test ./...

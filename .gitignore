@@ -1,8 +1,8 @@
 # Go
 /bin/
 /dist/
-/mdo-service
-/mdo-service.exe
+/markdownoffice
+/markdownoffice.exe
 *.exe
 *.test
 *.out

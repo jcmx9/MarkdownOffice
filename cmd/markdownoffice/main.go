@@ -1,4 +1,4 @@
-// Command mdo-service renders DIN 5008 letters from Markdown to PDF/A-3b, either
+// Command markdownoffice renders DIN 5008 letters from Markdown to PDF/A-3b, either
 // one-shot (`render`) or via a local browser UI (`serve`).
 //
 // With the embed_assets build tag it runs self-contained (bundled Typst, fonts
@@ -36,7 +36,7 @@ const din5008aVersion = "26.4.35"
 // it via -ldflags "-X main.version=<CalVer>".
 var version = "dev"
 
-func versionLine() string { return "mdo-service " + version }
+func versionLine() string { return "markdownoffice " + version }
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -76,7 +76,7 @@ func newTypstRunner() (pipeline.Runner, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Datenverzeichnis nicht bestimmbar: %w", err)
 		}
-		root := filepath.Join(base, "mdo-service", "runtime")
+		root := filepath.Join(base, "markdownoffice", "runtime")
 		rt, err := bootstrap.Extract(root, assets.TypstVersion, assets.TypstBinary(), assets.SupportFS())
 		if err != nil {
 			return nil, fmt.Errorf("eingebettete Assets konnten nicht entpackt werden: %w", err)
@@ -112,7 +112,7 @@ func runRender(args []string) error {
 		rest = fs.Args()[1:]
 	}
 	if len(positional) != 1 {
-		return fmt.Errorf("Aufruf: mdo-service render <datei.md> [-o out.pdf]")
+		return fmt.Errorf("Aufruf: markdownoffice render <datei.md> [-o out.pdf]")
 	}
 	inPath := positional[0]
 
@@ -171,7 +171,7 @@ func runServe(args []string) error {
 	url := "http://" + ln.Addr().String()
 	httpSrv := &http.Server{Handler: srv, ReadHeaderTimeout: 5 * time.Second}
 
-	fmt.Printf("mdo-service läuft auf %s  (Strg-C zum Beenden)\n", url)
+	fmt.Printf("markdownoffice läuft auf %s  (Strg-C zum Beenden)\n", url)
 	if !*noOpen {
 		openBrowser(url)
 	}

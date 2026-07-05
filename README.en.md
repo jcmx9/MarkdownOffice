@@ -41,7 +41,7 @@ embedded.
 ## Installation
 
 ```bash
-go install github.com/jcmx9/MarkdownOffice/cmd/mdo-service@latest
+go install github.com/jcmx9/MarkdownOffice/cmd/markdownoffice@latest
 ```
 
 Alternatively, grab a self-contained release binary (see [Releases](https://github.com/jcmx9/MarkdownOffice/releases)).
@@ -50,12 +50,12 @@ Alternatively, grab a self-contained release binary (see [Releases](https://gith
 
 ```bash
 # Render a letter to PDF/A-3b once
-mdo-service render brief.md              # writes brief.pdf
-mdo-service render brief.md -o out.pdf
+markdownoffice render brief.md              # writes brief.pdf
+markdownoffice render brief.md -o out.pdf
 
 # Start the browser editor with a live PDF preview (loopback only)
-mdo-service serve                        # opens http://127.0.0.1:8765
-mdo-service serve --addr 127.0.0.1:9000 --no-open
+markdownoffice serve                        # opens http://127.0.0.1:8765
+markdownoffice serve --addr 127.0.0.1:9000 --no-open
 ```
 
 Without embedded assets (a build without `embed_assets`), a system Typst is located via environment
@@ -65,7 +65,7 @@ variables:
 MDO_PACKAGE_PATH=<dir>/pkgs \
 MDO_PACKAGE_CACHE_PATH=<dir>/cache \
 MDO_FONT_PATH=<dir>/fonts \
-  mdo-service render brief.md
+  markdownoffice render brief.md
 ```
 
 ## Options
@@ -138,7 +138,7 @@ golangci-lint run   # linting
 
 # Self-contained binary (embedded assets)
 make assets                                    # fetch Typst + fonts + packages into internal/assets/dist
-go build -tags embed_assets ./cmd/mdo-service  # runs without a system Typst
+go build -tags embed_assets ./cmd/markdownoffice  # runs without a system Typst
 
 make web-assets     # re-vendor the editor's CodeMirror bundle (node/npm)
 ```
@@ -146,7 +146,7 @@ make web-assets     # re-vendor the editor's CodeMirror bundle (node/npm)
 ## Project structure
 
 ```
-cmd/mdo-service/     – CLI (render, serve)
+cmd/markdownoffice/     – CLI (render, serve)
 internal/frontmatter/– YAML frontmatter → Letter, Body, Source
 internal/pipeline/   – Typst wrapper + compile (Runner → Typst → PDF/A-3b)
 internal/service/    – RenderMarkdown (Parse + Compile)

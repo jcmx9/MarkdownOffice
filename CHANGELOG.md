@@ -22,7 +22,7 @@ adheres to [CalVer](https://calver.org/) (`YY.M.MICRO`).
 
 ### Changed
 
-- Renamed the project and Go module to **MarkdownOffice**
-  (`github.com/jcmx9/MarkdownOffice`). The CLI binary is still `mdo-service` for now.
+- Renamed the project, Go module and CLI binary to **MarkdownOffice**
+  (module `github.com/jcmx9/MarkdownOffice`, command `markdownoffice`).
 
 [Unreleased]: https://github.com/jcmx9/MarkdownOffice/commits/main

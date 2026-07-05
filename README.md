@@ -41,7 +41,7 @@ Schriften und alle Typst-Pakete eingebettet mit.
 ## Installation
 
 ```bash
-go install github.com/jcmx9/MarkdownOffice/cmd/mdo-service@latest
+go install github.com/jcmx9/MarkdownOffice/cmd/markdownoffice@latest
 ```
 
 Alternativ eine self-contained Release-Binary (siehe [Releases](https://github.com/jcmx9/MarkdownOffice/releases)).
@@ -50,12 +50,12 @@ Alternativ eine self-contained Release-Binary (siehe [Releases](https://github.c
 
 ```bash
 # Einen Brief einmalig nach PDF/A-3b rendern
-mdo-service render brief.md              # schreibt brief.pdf
-mdo-service render brief.md -o out.pdf
+markdownoffice render brief.md              # schreibt brief.pdf
+markdownoffice render brief.md -o out.pdf
 
 # Browser-Editor mit Live-PDF-Vorschau starten (nur Loopback)
-mdo-service serve                        # öffnet http://127.0.0.1:8765
-mdo-service serve --addr 127.0.0.1:9000 --no-open
+markdownoffice serve                        # öffnet http://127.0.0.1:8765
+markdownoffice serve --addr 127.0.0.1:9000 --no-open
 ```
 
 Ohne eingebettete Assets (Build ohne `embed_assets`) wird ein System-Typst über Umgebungsvariablen
@@ -65,7 +65,7 @@ gefunden:
 MDO_PACKAGE_PATH=<dir>/pkgs \
 MDO_PACKAGE_CACHE_PATH=<dir>/cache \
 MDO_FONT_PATH=<dir>/fonts \
-  mdo-service render brief.md
+  markdownoffice render brief.md
 ```
 
 ## Optionen
@@ -139,7 +139,7 @@ golangci-lint run   # Linting
 
 # Self-contained Binary (eingebettete Assets)
 make assets                                    # Typst + Fonts + Pakete nach internal/assets/dist holen
-go build -tags embed_assets ./cmd/mdo-service  # läuft ohne System-Typst
+go build -tags embed_assets ./cmd/markdownoffice  # läuft ohne System-Typst
 
 make web-assets     # CodeMirror-Bundle für den Editor neu vendern (node/npm)
 ```
@@ -147,7 +147,7 @@ make web-assets     # CodeMirror-Bundle für den Editor neu vendern (node/npm)
 ## Projektstruktur
 
 ```
-cmd/mdo-service/     – CLI (render, serve)
+cmd/markdownoffice/     – CLI (render, serve)
 internal/frontmatter/– YAML-Frontmatter → Letter, Body, Source
 internal/pipeline/   – Typst-Wrapper + Compile (Runner → Typst → PDF/A-3b)
 internal/service/    – RenderMarkdown (Parse + Compile)
