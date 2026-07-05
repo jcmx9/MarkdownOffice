@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  exclusions:
+    rules:
+      # User-facing error messages are intentionally German and sentence-cased
+      # (project convention: plain-language German messages). ST1005 enforces the
+      # English lowercase convention, which does not apply here.
+      - linters:
+          - staticcheck
+        text: "ST1005"
