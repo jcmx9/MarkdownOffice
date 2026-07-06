@@ -26,25 +26,25 @@ var (
 
 // Bank holds the account details shown in the letter footer.
 type Bank struct {
-	Holder   string
-	IBAN     string
-	BIC      string
-	BankName string
+	Holder   string `json:"holder"`
+	IBAN     string `json:"iban"`
+	BIC      string `json:"bic"`
+	BankName string `json:"bank_name"`
 }
 
 // Profile is a sender's stored master data.
 type Profile struct {
-	Name            string // required
-	Street          string // required
-	Zip             string // required (a bare YAML number is coerced to string)
-	City            string // required
-	Phone           string
-	Email           string
-	Bank            *Bank
-	Signature       string  // signature filename, e.g. "signature.svg"
-	SignatureHeight float64 // mm; default 15.0
-	PrintQR         bool    // default true
-	Accent          string  // "#RRGGBB"; "" = template default colour
+	Name            string  `json:"name"`   // required
+	Street          string  `json:"street"` // required
+	Zip             string  `json:"zip"`    // required (a bare YAML number is coerced to string)
+	City            string  `json:"city"`   // required
+	Phone           string  `json:"phone"`
+	Email           string  `json:"email"`
+	Bank            *Bank   `json:"bank,omitempty"`
+	Signature       string  `json:"signature"`        // signature filename, e.g. "signature.svg"
+	SignatureHeight float64 `json:"signature_height"` // mm; default 15.0
+	PrintQR         bool    `json:"print_qr"`         // default true
+	Accent          string  `json:"accent"`           // "#RRGGBB"; "" = template default colour
 }
 
 // ProfileError is a user-facing failure with a German, layperson-friendly message.

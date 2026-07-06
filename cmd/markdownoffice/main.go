@@ -105,6 +105,29 @@ func newProfileStore() (*profiles.Store, error) {
 	return profiles.NewStore("profiles", filepath.Join(base, "markdownoffice", "profiles")), nil
 }
 
+// seedDefaultProfile creates an example "default" profile on first run, so the
+// seeded letter renders immediately. It is best-effort — failures are ignored.
+func seedDefaultProfile(store *profiles.Store) {
+	if names, err := store.List(); err != nil || len(names) > 0 {
+		return
+	}
+	_ = store.Save("default", &profiles.Profile{
+		Name:   "Dr. Anna Weber",
+		Street: "Lindenallee 12",
+		Zip:    "80331",
+		City:   "München",
+		Phone:  "089 1234567",
+		Email:  "anna.weber@example.de",
+		Bank: &profiles.Bank{
+			Holder: "Dr. Anna Weber", IBAN: "DE91 7002 0500 0009 8765 43",
+			BIC: "BFSWDE33MUE", BankName: "Bank für Sozialwirtschaft",
+		},
+		SignatureHeight: 15.0,
+		PrintQR:         true,
+		Accent:          "#C2185B",
+	})
+}
+
 func runRender(args []string) error {
 	fs := flag.NewFlagSet("render", flag.ContinueOnError)
 	out := fs.String("o", "", "Ausgabedatei (Standard: <datei>.pdf)")
@@ -174,7 +197,9 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, err := web.NewServer(service.New(din5008aVersion, runner, service.WithProfiles(store)))
+	seedDefaultProfile(store)
+	svc := service.New(din5008aVersion, runner, service.WithProfiles(store))
+	srv, err := web.NewServer(svc, store)
 	if err != nil {
 		return err
 	}

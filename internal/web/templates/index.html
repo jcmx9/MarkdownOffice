@@ -8,9 +8,19 @@
 </head>
 <body>
   <header>
-    <h1>MarkdownOffice</h1>
-    <p>DIN-5008-Geschäftsbrief aus Markdown → PDF/A-3b</p>
+    <div class="brand">
+      <h1>MarkdownOffice</h1>
+      <p>DIN-5008-Geschäftsbrief aus Markdown → PDF/A-3b</p>
+    </div>
+    <div class="actions">
+      <label class="pick">Profil
+        <select id="profile" aria-label="Absender-Profil"></select>
+      </label>
+      <button id="new-letter" type="button">Neuer Brief</button>
+      <button id="manage" type="button" class="secondary">Profile verwalten…</button>
+    </div>
   </header>
+
   <main>
     <section class="pane">
       <div id="editor" aria-label="Markdown-Editor"></div>
@@ -24,6 +34,46 @@
       <iframe id="preview" title="PDF-Vorschau"></iframe>
     </section>
   </main>
+
+  <dialog id="profile-dialog">
+    <form id="profile-form">
+      <h2>Absender-Profil</h2>
+      <div class="grid">
+        <label>Kurzname <small>(a–z, 0–9, - _)</small>
+          <input name="slug" pattern="[a-z0-9_-]+" required autocomplete="off">
+        </label>
+        <label>Name <input name="name" required></label>
+        <label>Straße <input name="street" required></label>
+        <label>PLZ <input name="zip" required></label>
+        <label>Ort <input name="city" required></label>
+        <label>Telefon <input name="phone" autocomplete="off"></label>
+        <label>E-Mail <input name="email" type="email" autocomplete="off"></label>
+        <label>Akzentfarbe <input name="accent" placeholder="#C2185B" autocomplete="off"></label>
+      </div>
+      <fieldset>
+        <legend>Bankverbindung (optional)</legend>
+        <div class="grid">
+          <label>Kontoinhaber <input name="holder" autocomplete="off"></label>
+          <label>IBAN <input name="iban" autocomplete="off"></label>
+          <label>BIC <input name="bic" autocomplete="off"></label>
+          <label>Bank <input name="bank_name" autocomplete="off"></label>
+        </div>
+      </fieldset>
+      <div class="grid">
+        <label class="checkbox"><input type="checkbox" name="print_qr"> vCard-QR-Code anzeigen</label>
+        <label>Signatur (SVG) <input type="file" id="signature-file" accept=".svg,image/svg+xml"></label>
+      </div>
+      <div id="dialog-error" class="dialog-error" role="alert" hidden></div>
+      <menu>
+        <button type="button" id="profile-new" class="secondary">Neu</button>
+        <button type="button" id="profile-delete" class="danger">Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" id="profile-close" class="secondary">Schließen</button>
+        <button type="submit" id="profile-save">Speichern</button>
+      </menu>
+    </form>
+  </dialog>
+
   <textarea id="default-letter" hidden>{{ .DefaultLetter }}</textarea>
   <script src="/static/vendor/codemirror.js"></script>
   <script src="/static/editor.js"></script>

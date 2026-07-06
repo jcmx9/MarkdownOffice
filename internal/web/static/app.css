@@ -3,6 +3,7 @@
   --border: #d8dee4;
   --fg: #1f2328;
   --muted: #656d76;
+  --danger: #cf222e;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -13,11 +14,43 @@ body {
   color: var(--fg);
 }
 header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
   padding: 0.6rem 1rem;
   border-bottom: 1px solid var(--border);
 }
-header h1 { margin: 0; font-size: 1.1rem; color: var(--accent); }
-header p { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.brand h1 { margin: 0; font-size: 1.1rem; color: var(--accent); }
+.brand p { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+.actions .pick { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); }
+.actions select {
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+button {
+  font: inherit;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.secondary { background: #fff; color: var(--fg); border: 1px solid var(--border); }
+button.danger { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
 main {
   flex: 1;
   display: grid;
@@ -31,11 +64,7 @@ main {
   border-right: 1px solid var(--border);
 }
 .pane:last-child { border-right: none; }
-#editor {
-  flex: 1;
-  overflow: auto;
-  min-height: 0;
-}
+#editor { flex: 1; overflow: auto; min-height: 0; }
 #editor .cm-editor { height: 100%; }
 #preview {
   flex: 1;
@@ -50,24 +79,79 @@ main {
   padding: 0.5rem 0.75rem;
   border-top: 1px solid var(--border);
 }
-.toolbar button {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.4rem 0.9rem;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-.toolbar button:disabled { opacity: 0.5; cursor: default; }
 #status { font-size: 0.85rem; color: var(--muted); }
 #error {
   margin: 0.5rem 0.75rem;
   padding: 0.6rem 0.8rem;
-  border: 1px solid #cf222e;
+  border: 1px solid var(--danger);
   background: #fff5f5;
   color: #a40e26;
   border-radius: 6px;
   font-size: 0.9rem;
   white-space: pre-wrap;
 }
+
+/* Profile dialog */
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem;
+  width: min(640px, 92vw);
+  color: var(--fg);
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+dialog h2 { margin: 0 0 0.8rem; font-size: 1.05rem; }
+#profile-form .grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 0.9rem;
+}
+#profile-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: var(--muted);
+  gap: 0.2rem;
+}
+#profile-form label small { color: var(--muted); font-weight: normal; }
+#profile-form input[type="text"],
+#profile-form input:not([type]),
+#profile-form input[type="email"],
+#profile-form input[type="file"] {
+  font: inherit;
+  color: var(--fg);
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+#profile-form fieldset {
+  margin: 0.9rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem 0.8rem;
+}
+#profile-form legend { font-size: 0.8rem; color: var(--muted); padding: 0 0.3rem; }
+#profile-form label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg);
+}
+.dialog-error {
+  margin-top: 0.8rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--danger);
+  background: #fff5f5;
+  color: #a40e26;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+#profile-form menu {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+#profile-form menu .spacer { flex: 1; }

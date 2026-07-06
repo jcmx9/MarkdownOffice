@@ -71,7 +71,7 @@ func (s *Service) RenderMarkdown(ctx context.Context, source string) ([]byte, er
 		Source: parsed.Source,
 	}
 
-	if parsed.Letter.Sign && prof.Signature != "" {
+	if parsed.Letter.Sign {
 		data, ext, err := s.profiles.Signature(name)
 		if err != nil {
 			return nil, fmt.Errorf("Signatur konnte nicht geladen werden: %w", err)
