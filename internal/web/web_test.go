@@ -35,6 +35,12 @@ type fakeStore struct {
 	sigName   string
 	sigExt    string
 	sigData   []byte
+
+	letters       []profiles.LetterMeta
+	letterProfile string
+	letterSource  string
+	letterBody    string
+	deletedLetter string
 }
 
 func (f *fakeStore) List() ([]string, error) { return f.names, nil }
@@ -52,6 +58,17 @@ func (f *fakeStore) Delete(name string) error                 { f.deleted = name
 func (f *fakeStore) Signature(string) ([]byte, string, error) { return nil, "", nil }
 func (f *fakeStore) SaveSignature(name, ext string, data []byte) error {
 	f.sigName, f.sigExt, f.sigData = name, ext, data
+	return nil
+}
+
+func (f *fakeStore) SaveLetter(profile, source string) (string, error) {
+	f.letterProfile, f.letterSource = profile, source
+	return "2026-07-06-test", nil
+}
+func (f *fakeStore) ListLetters(string) ([]profiles.LetterMeta, error) { return f.letters, nil }
+func (f *fakeStore) LoadLetter(string, string) (string, error)         { return f.letterBody, nil }
+func (f *fakeStore) DeleteLetter(profile, id string) error {
+	f.deletedLetter = profile + "/" + id
 	return nil
 }
 
@@ -219,6 +236,82 @@ func TestUploadSignatureRejectsNonSVG(t *testing.T) {
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestSaveLetter(t *testing.T) {
+	store := &fakeStore{}
+	srv := newTestServer(t, &fakeRenderer{}, store)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/letters/eltern", strings.NewReader("source=hallo"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if store.letterProfile != "eltern" || store.letterSource != "hallo" {
+		t.Errorf("SaveLetter got (%q, %q)", store.letterProfile, store.letterSource)
+	}
+	if !strings.Contains(rec.Body.String(), `"id":"2026-07-06-test"`) {
+		t.Errorf("response missing id: %s", rec.Body.String())
+	}
+}
+
+func TestSaveLetterEmpty(t *testing.T) {
+	srv := newTestServer(t, &fakeRenderer{}, &fakeStore{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/letters/eltern", strings.NewReader("source="))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for an empty letter", rec.Code)
+	}
+}
+
+func TestListLetters(t *testing.T) {
+	store := &fakeStore{letters: []profiles.LetterMeta{{ID: "2026-07-06-x", Subject: "Test", Recipient: "Amt"}}}
+	srv := newTestServer(t, &fakeRenderer{}, store)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/letters/eltern", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var got []profiles.LetterMeta
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Subject != "Test" {
+		t.Errorf("letters = %+v", got)
+	}
+}
+
+func TestGetLetter(t *testing.T) {
+	store := &fakeStore{letterBody: "---\nprofile: eltern\n---\n\nBody"}
+	srv := newTestServer(t, &fakeRenderer{}, store)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/letters/eltern/2026-07-06-x", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if rec.Body.String() != store.letterBody {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestDeleteLetter(t *testing.T) {
+	store := &fakeStore{}
+	srv := newTestServer(t, &fakeRenderer{}, store)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/letters/eltern/2026-07-06-x", nil))
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
+	if store.deletedLetter != "eltern/2026-07-06-x" {
+		t.Errorf("deleted = %q", store.deletedLetter)
 	}
 }
 

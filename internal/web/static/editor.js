@@ -13,6 +13,9 @@
   var dialog = document.getElementById("profile-dialog");
   var form = document.getElementById("profile-form");
   var dialogError = document.getElementById("dialog-error");
+  var archiveDialog = document.getElementById("archive-dialog");
+  var archiveTitle = document.getElementById("archive-title");
+  var lettersList = document.getElementById("letters");
   var lastURL = null;
   var timer = null;
   var view = null;
@@ -225,6 +228,93 @@
       dialogShowError("Netzwerkfehler: " + e.message);
     }
   }
+
+  // --- Archive (saved letters) ----------------------------------------------
+
+  function letterProfile(source) {
+    var m = source.match(/^\s*profile:\s*(.+?)\s*$/m);
+    return m ? m[1].trim() : (profileSel.value || "default");
+  }
+
+  async function saveLetter() {
+    var source = view.state.doc.toString();
+    var profile = letterProfile(source);
+    statusEl.textContent = "Speichere…";
+    try {
+      var res = await fetch("/letters/" + encodeURIComponent(profile), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "source=" + encodeURIComponent(source),
+      });
+      if (!res.ok) {
+        statusEl.textContent = "";
+        showError(await res.text());
+        return;
+      }
+      var data = await res.json();
+      statusEl.textContent = "Gespeichert: " + data.id;
+    } catch (e) {
+      statusEl.textContent = "";
+      showError("Netzwerkfehler: " + e.message);
+    }
+  }
+
+  function letterItem(profile, m) {
+    var li = document.createElement("li");
+    var open = document.createElement("button");
+    open.type = "button";
+    open.className = "letter-open";
+    open.textContent = m.subject || "(ohne Betreff)";
+    if (m.recipient) open.textContent += " — " + m.recipient;
+    var id = document.createElement("small");
+    id.textContent = m.id;
+    open.appendChild(document.createElement("br"));
+    open.appendChild(id);
+    open.addEventListener("click", async function () {
+      try {
+        var r = await fetch("/letters/" + encodeURIComponent(profile) + "/" + encodeURIComponent(m.id));
+        if (r.ok) {
+          setDoc(await r.text());
+          archiveDialog.close();
+        }
+      } catch (e) { /* ignore */ }
+    });
+    var del = document.createElement("button");
+    del.type = "button";
+    del.className = "danger letter-del";
+    del.textContent = "×";
+    del.title = "Brief löschen";
+    del.addEventListener("click", async function () {
+      await fetch("/letters/" + encodeURIComponent(profile) + "/" + encodeURIComponent(m.id), { method: "DELETE" });
+      openArchive();
+    });
+    li.appendChild(open);
+    li.appendChild(del);
+    return li;
+  }
+
+  async function openArchive() {
+    var profile = profileSel.value || "default";
+    archiveTitle.textContent = "Briefe – Profil „" + profile + "“";
+    lettersList.innerHTML = "";
+    try {
+      var res = await fetch("/letters/" + encodeURIComponent(profile));
+      var metas = res.ok ? await res.json() : [];
+      if (!metas.length) {
+        var empty = document.createElement("li");
+        empty.className = "empty";
+        empty.textContent = "Noch keine gespeicherten Briefe.";
+        lettersList.appendChild(empty);
+      } else {
+        metas.forEach(function (m) { lettersList.appendChild(letterItem(profile, m)); });
+      }
+    } catch (e) { /* non-fatal */ }
+    if (!archiveDialog.open) archiveDialog.showModal();
+  }
+
+  document.getElementById("save").addEventListener("click", saveLetter);
+  document.getElementById("archive").addEventListener("click", openArchive);
+  document.getElementById("archive-close").addEventListener("click", function () { archiveDialog.close(); });
 
   document.getElementById("manage").addEventListener("click", openDialog);
   document.getElementById("profile-new").addEventListener("click", function () {

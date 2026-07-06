@@ -71,7 +71,7 @@ type Renderer interface {
 	RenderMarkdown(ctx context.Context, source string) ([]byte, error)
 }
 
-// ProfileStore is the profile-management surface the web layer needs.
+// ProfileStore is the profile- and letter-management surface the web layer needs.
 type ProfileStore interface {
 	List() ([]string, error)
 	Load(name string) (*profiles.Profile, error)
@@ -79,6 +79,10 @@ type ProfileStore interface {
 	Delete(name string) error
 	Signature(name string) (data []byte, ext string, err error)
 	SaveSignature(name, ext string, data []byte) error
+	SaveLetter(profile, source string) (id string, err error)
+	ListLetters(profile string) ([]profiles.LetterMeta, error)
+	LoadLetter(profile, id string) (source string, err error)
+	DeleteLetter(profile, id string) error
 }
 
 // Server is the loopback HTTP handler for the editor UI.
@@ -112,6 +116,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /profiles/{name}", s.handleSaveProfile)
 	s.mux.HandleFunc("DELETE /profiles/{name}", s.handleDeleteProfile)
 	s.mux.HandleFunc("POST /profiles/{name}/signature", s.handleUploadSignature)
+	s.mux.HandleFunc("POST /letters/{profile}", s.handleSaveLetter)
+	s.mux.HandleFunc("GET /letters/{profile}", s.handleListLetters)
+	s.mux.HandleFunc("GET /letters/{profile}/{id}", s.handleGetLetter)
+	s.mux.HandleFunc("DELETE /letters/{profile}/{id}", s.handleDeleteLetter)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +215,47 @@ func (s *Server) handleUploadSignature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.SaveSignature(r.PathValue("name"), ext, data); err != nil {
+		writeProfileError(w, err, http.StatusUnprocessableEntity)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleSaveLetter(w http.ResponseWriter, r *http.Request) {
+	source := r.FormValue("source")
+	if strings.TrimSpace(source) == "" {
+		http.Error(w, "Der Brief ist leer.", http.StatusBadRequest)
+		return
+	}
+	id, err := s.store.SaveLetter(r.PathValue("profile"), source)
+	if err != nil {
+		writeProfileError(w, err, http.StatusUnprocessableEntity)
+		return
+	}
+	writeJSON(w, map[string]string{"id": id})
+}
+
+func (s *Server) handleListLetters(w http.ResponseWriter, r *http.Request) {
+	metas, err := s.store.ListLetters(r.PathValue("profile"))
+	if err != nil {
+		writeProfileError(w, err, http.StatusNotFound)
+		return
+	}
+	writeJSON(w, metas)
+}
+
+func (s *Server) handleGetLetter(w http.ResponseWriter, r *http.Request) {
+	source, err := s.store.LoadLetter(r.PathValue("profile"), r.PathValue("id"))
+	if err != nil {
+		writeProfileError(w, err, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte(source))
+}
+
+func (s *Server) handleDeleteLetter(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteLetter(r.PathValue("profile"), r.PathValue("id")); err != nil {
 		writeProfileError(w, err, http.StatusUnprocessableEntity)
 		return
 	}

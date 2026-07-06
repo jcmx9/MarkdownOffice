@@ -17,6 +17,7 @@
         <select id="profile" aria-label="Absender-Profil"></select>
       </label>
       <button id="new-letter" type="button">Neuer Brief</button>
+      <button id="archive" type="button" class="secondary">Briefe…</button>
       <button id="manage" type="button" class="secondary">Profile verwalten…</button>
     </div>
   </header>
@@ -26,6 +27,7 @@
       <div id="editor" aria-label="Markdown-Editor"></div>
       <div id="error" role="alert" hidden></div>
       <div class="toolbar">
+        <button id="save" type="button">Speichern</button>
         <button id="download" type="button" disabled>PDF herunterladen</button>
         <span id="status" aria-live="polite"></span>
       </div>
@@ -72,6 +74,14 @@
         <button type="submit" id="profile-save">Speichern</button>
       </menu>
     </form>
+  </dialog>
+
+  <dialog id="archive-dialog">
+    <h2 id="archive-title">Briefe</h2>
+    <ul id="letters" class="letters"></ul>
+    <menu>
+      <button type="button" id="archive-close" class="secondary">Schließen</button>
+    </menu>
   </dialog>
 
   <textarea id="default-letter" hidden>{{ .DefaultLetter }}</textarea>
