@@ -2,120 +2,142 @@ package frontmatter
 
 import (
 	"errors"
-	"strings"
+	"fmt"
 	"testing"
 	"time"
 )
 
-const sampleMD = `---
-name: Dr. Anna Weber
-street: Lindenallee 12
-zip: 80331
-city: München
-email: anna.weber@example.de
-qr_code: true
-closing: Mit herzlichen Grüßen
-date: 5. April 2026
-subject: Manuskript-Einreichung
+const validLetter = `---
+profile: eltern
 recipient:
-  - Sonnenschein Verlag GmbH
-  - 50667 Köln
-accent: "#1F6FEB"
+  name: Sonnenschein Verlag GmbH
+  extra: Frau Lisa Bergmann
+  street: Rosenstraße 5
+  zip: 50667
+  city: Köln
+subject: Ihr Angebot vom 1. Juli
+date: 5. April 2026
+closing: Mit besten Grüßen
+sign: true
 attachments:
-  - Anlage eins
+  - Angebotsvergleich (PDF)
+  - Referenzliste
 ---
 
 Sehr geehrte Frau Bergmann,
 
-dies ist der **Body**.
+vielen Dank für Ihr **Angebot**.
 `
 
-func TestParseMapsFieldsBodyAndSource(t *testing.T) {
-	got, err := Parse(sampleMD)
-	if err != nil {
-		t.Fatalf("Parse returned error: %v", err)
-	}
-	l := got.Letter
+func fixedNow() time.Time { return time.Date(2026, time.July, 2, 10, 0, 0, 0, time.UTC) }
 
-	if l.Sender.Name != "Dr. Anna Weber" {
-		t.Errorf("sender.Name = %q", l.Sender.Name)
-	}
-	if l.Sender.Street != "Lindenallee 12" {
-		t.Errorf("sender.Street = %q", l.Sender.Street)
-	}
-	// zip (parsed as int by YAML) + city are combined into "PLZ Ort".
-	if l.Sender.City != "80331 München" {
-		t.Errorf("sender.City = %q, want %q", l.Sender.City, "80331 München")
-	}
-	if !l.Sender.QR {
-		t.Errorf("qr_code not mapped to Sender.QR")
-	}
-	if l.Subject != "Manuskript-Einreichung" {
-		t.Errorf("subject = %q", l.Subject)
-	}
-	if l.Closing != "Mit herzlichen Grüßen" {
-		t.Errorf("closing = %q", l.Closing)
-	}
-	if l.Accent != "#1F6FEB" {
-		t.Errorf("accent = %q", l.Accent)
-	}
-	if len(l.Recipient) != 2 || l.Recipient[0] != "Sonnenschein Verlag GmbH" {
-		t.Errorf("recipient = %v", l.Recipient)
-	}
-	if l.Date != "5. April 2026" {
-		t.Errorf("date = %q (explicit value should pass through)", l.Date)
-	}
-
-	// Body is the text after the frontmatter, not the YAML.
-	if !strings.Contains(got.Body, "dies ist der **Body**") {
-		t.Errorf("body missing content:\n%s", got.Body)
-	}
-	if strings.Contains(got.Body, "name:") {
-		t.Errorf("body must not contain frontmatter:\n%s", got.Body)
-	}
-	// Source is the full original document, verbatim (embedded later as attachment).
-	if got.Source != sampleMD {
-		t.Errorf("Source is not the verbatim original")
-	}
-}
-
-func TestParseDefaultsDateToToday(t *testing.T) {
-	fixed := time.Date(2026, time.April, 5, 0, 0, 0, 0, time.UTC)
-	p := Parser{Now: func() time.Time { return fixed }}
-
-	src := "---\nname: A\nstreet: S\nzip: 1\ncity: C\nrecipient:\n  - R\n---\n\nBody\n"
-	got, err := p.Parse(src)
+func TestParseMapsFields(t *testing.T) {
+	p, err := Parse(validLetter)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if got.Letter.Date != "5. April 2026" {
-		t.Errorf("date = %q, want today German without leading zero", got.Letter.Date)
+	l := p.Letter
+	if l.Profile != "eltern" {
+		t.Errorf("Profile = %q, want eltern", l.Profile)
 	}
-	if got.Letter.Closing != "Mit freundlichem Gruß" {
-		t.Errorf("closing default = %q", got.Letter.Closing)
+	want := Recipient{Name: "Sonnenschein Verlag GmbH", Extra: "Frau Lisa Bergmann", Street: "Rosenstraße 5", Zip: "50667", City: "Köln"}
+	if l.Recipient != want {
+		t.Errorf("Recipient = %+v, want %+v", l.Recipient, want)
+	}
+	if l.Subject != "Ihr Angebot vom 1. Juli" || l.Date != "5. April 2026" || l.Closing != "Mit besten Grüßen" {
+		t.Errorf("subject/date/closing wrong: %+v", l)
+	}
+	if !l.Sign {
+		t.Error("Sign = false, want true")
+	}
+	if len(l.Attachments) != 2 || l.Attachments[0] != "Angebotsvergleich (PDF)" {
+		t.Errorf("Attachments = %v", l.Attachments)
+	}
+	if p.Source != validLetter {
+		t.Error("Source is not the verbatim original")
+	}
+	if want := "Sehr geehrte Frau Bergmann,"; len(p.Body) < len(want) || p.Body[:len(want)] != want {
+		t.Errorf("Body should start with the greeting, got %q", p.Body)
 	}
 }
 
-func TestParseErrors(t *testing.T) {
-	cases := map[string]string{
-		"no frontmatter":  "Sehr geehrte Damen und Herren,\n",
-		"empty recipient": "---\nname: A\nstreet: S\nzip: 1\ncity: C\nrecipient: []\n---\n\nBody\n",
-		"missing name":    "---\nstreet: S\nzip: 1\ncity: C\nrecipient:\n  - R\n---\n\nBody\n",
-		"bad accent":      "---\nname: A\nstreet: S\nzip: 1\ncity: C\nrecipient:\n  - R\naccent: blau\n---\n\nBody\n",
-		"broken yaml":     "---\nname: [unterminated\n---\n\nBody\n",
+func TestParseZipCoercion(t *testing.T) {
+	src := "---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 50667\n  city: C\nsubject: S\n---\n\nBody\n"
+	p, err := Parse(src)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for name, src := range cases {
+	if p.Letter.Recipient.Zip != "50667" { // int in YAML → string
+		t.Errorf("zip = %q, want 50667", p.Letter.Recipient.Zip)
+	}
+}
+
+func TestParseDateDefaultAndOverride(t *testing.T) {
+	base := "---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n%s---\n\nBody\n"
+	// No date → today (fixed clock).
+	noDate, err := (Parser{Now: fixedNow}).Parse(fmt.Sprintf(base, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if noDate.Letter.Date != "2. Juli 2026" {
+		t.Errorf("default date = %q, want 2. Juli 2026", noDate.Letter.Date)
+	}
+	// Explicit date passes through.
+	withDate, err := (Parser{Now: fixedNow}).Parse(fmt.Sprintf(base, "date: 1. Januar 2027\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withDate.Letter.Date != "1. Januar 2027" {
+		t.Errorf("explicit date = %q", withDate.Letter.Date)
+	}
+}
+
+func TestParseClosingDefault(t *testing.T) {
+	src := "---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n---\n\nBody\n"
+	p, err := Parse(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Letter.Closing != "Mit freundlichen Grüßen" {
+		t.Errorf("default closing = %q", p.Letter.Closing)
+	}
+}
+
+func TestParseProfileOptional(t *testing.T) {
+	// A missing profile is allowed here; the service defaults it to "default".
+	src := "---\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n---\n\nBody\n"
+	p, err := Parse(src)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if p.Letter.Profile != "" {
+		t.Errorf("Profile = %q, want empty", p.Letter.Profile)
+	}
+}
+
+func TestParseMissingRequired(t *testing.T) {
+	cases := map[string]struct{ src, field string }{
+		"no recipient": {"---\nprofile: x\nsubject: S\n---\n\nB\n", "recipient.name"},
+		"no street":    {"---\nprofile: x\nrecipient:\n  name: N\n  zip: 1\n  city: C\nsubject: S\n---\n\nB\n", "recipient.street"},
+		"no subject":   {"---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\n---\n\nB\n", "subject"},
+	}
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := Parse(src)
-			if err == nil {
-				t.Fatalf("expected an error for %q", name)
-			}
+			_, err := Parse(tc.src)
 			var pe *ParseError
 			if !errors.As(err, &pe) {
-				t.Errorf("error is not *ParseError: %T", err)
-			} else if strings.TrimSpace(pe.Message) == "" {
-				t.Errorf("ParseError has no human message")
+				t.Fatalf("err = %v, want *ParseError", err)
+			}
+			if pe.Field != tc.field {
+				t.Errorf("Field = %q, want %q", pe.Field, tc.field)
 			}
 		})
+	}
+}
+
+func TestParseNoFrontmatter(t *testing.T) {
+	_, err := Parse("kein frontmatter hier\n")
+	if !errors.As(err, new(*ParseError)) {
+		t.Errorf("err = %v, want *ParseError", err)
 	}
 }

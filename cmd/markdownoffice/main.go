@@ -24,6 +24,7 @@ import (
 	"github.com/jcmx9/MarkdownOffice/internal/assets"
 	"github.com/jcmx9/MarkdownOffice/internal/bootstrap"
 	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
+	"github.com/jcmx9/MarkdownOffice/internal/profiles"
 	"github.com/jcmx9/MarkdownOffice/internal/service"
 	"github.com/jcmx9/MarkdownOffice/internal/web"
 )
@@ -94,6 +95,16 @@ func newTypstRunner() (pipeline.Runner, error) {
 	}), nil
 }
 
+// newProfileStore builds the sender-profile store: ./profiles in the working
+// directory shadows the global <UserConfigDir>/markdownoffice/profiles.
+func newProfileStore() (*profiles.Store, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("Datenverzeichnis nicht bestimmbar: %w", err)
+	}
+	return profiles.NewStore("profiles", filepath.Join(base, "markdownoffice", "profiles")), nil
+}
+
 func runRender(args []string) error {
 	fs := flag.NewFlagSet("render", flag.ContinueOnError)
 	out := fs.String("o", "", "Ausgabedatei (Standard: <datei>.pdf)")
@@ -130,11 +141,11 @@ func runRender(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Signatures are resolved relative to the letter file's directory.
-	dir := filepath.Dir(inPath)
-	svc := service.New(din5008aVersion, runner, service.WithSignatureResolver(
-		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(dir, name)) },
-	))
+	store, err := newProfileStore()
+	if err != nil {
+		return err
+	}
+	svc := service.New(din5008aVersion, runner, service.WithProfiles(store))
 
 	pdf, err := svc.RenderMarkdown(context.Background(), string(source))
 	if err != nil {
@@ -159,7 +170,11 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, err := web.NewServer(service.New(din5008aVersion, runner))
+	store, err := newProfileStore()
+	if err != nil {
+		return err
+	}
+	srv, err := web.NewServer(service.New(din5008aVersion, runner, service.WithProfiles(store)))
 	if err != nil {
 		return err
 	}

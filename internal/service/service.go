@@ -1,38 +1,41 @@
-// Package service composes the frontmatter parser and the Typst pipeline into a
-// single "Markdown source in → PDF/A-3b out" operation, independent of transport
-// (CLI or web).
+// Package service composes frontmatter parsing, sender-profile lookup and the
+// Typst pipeline into a single "Markdown in, PDF/A out" call.
 package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jcmx9/MarkdownOffice/internal/frontmatter"
 	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
+	"github.com/jcmx9/MarkdownOffice/internal/profiles"
 )
 
-// SignatureResolver loads a signature image by the filename referenced in the
-// letter frontmatter. It is optional; when nil, letters render without a
-// signature image.
-type SignatureResolver func(name string) ([]byte, error)
+// Profiles resolves sender profiles and their signature images by name.
+type Profiles interface {
+	Load(name string) (*profiles.Profile, error)
+	Signature(name string) (data []byte, ext string, err error)
+}
 
-// Service renders letter sources to PDF/A-3b.
+// Service renders letters. It is safe to construct without a profile store, but
+// RenderMarkdown then fails fast — every letter needs a sender profile.
 type Service struct {
 	din5008aVersion string
 	runner          pipeline.Runner
-	sig             SignatureResolver
+	profiles        Profiles
 }
 
 // Option configures a Service.
 type Option func(*Service)
 
-// WithSignatureResolver sets how signature images are located.
-func WithSignatureResolver(r SignatureResolver) Option {
-	return func(s *Service) { s.sig = r }
+// WithProfiles wires the sender-profile store used to resolve the letter's sender.
+func WithProfiles(p Profiles) Option {
+	return func(s *Service) { s.profiles = p }
 }
 
-// New returns a Service that pins the given din5008a template version and uses
-// runner to invoke Typst.
+// New builds a Service.
 func New(din5008aVersion string, runner pipeline.Runner, opts ...Option) *Service {
 	s := &Service{din5008aVersion: din5008aVersion, runner: runner}
 	for _, o := range opts {
@@ -41,30 +44,40 @@ func New(din5008aVersion string, runner pipeline.Runner, opts ...Option) *Servic
 	return s
 }
 
-// RenderMarkdown parses a letter source and compiles it to PDF/A-3b. Parse
-// failures are returned as *frontmatter.ParseError (already user-friendly);
-// compile failures are wrapped with a German message while preserving detail.
+// RenderMarkdown parses the letter, resolves its sender profile, maps both onto
+// the pipeline letter and compiles a PDF/A-3b. A *frontmatter.ParseError or
+// *profiles.ProfileError is propagated verbatim for a friendly message upstream.
 func (s *Service) RenderMarkdown(ctx context.Context, source string) ([]byte, error) {
 	parsed, err := frontmatter.Parse(source)
 	if err != nil {
 		return nil, err
 	}
+	if s.profiles == nil {
+		return nil, errors.New("Kein Profilspeicher konfiguriert.")
+	}
+
+	name := parsed.Letter.Profile
+	if name == "" {
+		name = "default"
+	}
+	prof, err := s.profiles.Load(name)
+	if err != nil {
+		return nil, err
+	}
 
 	in := pipeline.Input{
-		Letter: parsed.Letter,
+		Letter: mapToLetter(prof, parsed.Letter),
 		Body:   parsed.Body,
 		Source: parsed.Source,
 	}
-	if parsed.Letter.Signature != "" {
-		if s.sig == nil {
-			// No way to resolve the referenced file → render without a signature
-			// rather than letting Typst's read() fail on a missing file.
-			in.Letter.Signature = ""
-		} else {
-			data, err := s.sig(parsed.Letter.Signature)
-			if err != nil {
-				return nil, fmt.Errorf("Signatur %q konnte nicht geladen werden: %w", parsed.Letter.Signature, err)
-			}
+
+	if parsed.Letter.Sign && prof.Signature != "" {
+		data, ext, err := s.profiles.Signature(name)
+		if err != nil {
+			return nil, fmt.Errorf("Signatur konnte nicht geladen werden: %w", err)
+		}
+		if data != nil {
+			in.Letter.Signature = "signature" + ext
 			in.SignatureData = data
 		}
 	}
@@ -74,4 +87,39 @@ func (s *Service) RenderMarkdown(ctx context.Context, source string) ([]byte, er
 		return nil, fmt.Errorf("PDF-Erzeugung fehlgeschlagen: %w", err)
 	}
 	return pdf, nil
+}
+
+// mapToLetter combines a sender profile and the parsed letter into the pipeline
+// letter. The sender comes entirely from the profile; the recipient block is
+// flattened into the address lines din5008a expects.
+func mapToLetter(p *profiles.Profile, ld frontmatter.LetterData) pipeline.Letter {
+	sender := pipeline.Sender{
+		Name:   p.Name,
+		Street: p.Street,
+		City:   strings.TrimSpace(p.Zip + " " + p.City), // din5008a expects "PLZ Ort"
+		Phone:  p.Phone,
+		Email:  p.Email,
+		QR:     p.PrintQR,
+	}
+	if p.Bank != nil {
+		sender.IBAN, sender.BIC, sender.Bank = p.Bank.IBAN, p.Bank.BIC, p.Bank.BankName
+	}
+	return pipeline.Letter{
+		Sender:      sender,
+		Recipient:   recipientLines(ld.Recipient),
+		Date:        ld.Date,
+		Subject:     ld.Subject,
+		Closing:     ld.Closing,
+		Accent:      p.Accent,
+		Attachments: ld.Attachments,
+	}
+}
+
+// recipientLines turns the structured recipient into DIN 5008 address lines.
+func recipientLines(r frontmatter.Recipient) []string {
+	lines := []string{r.Name}
+	if r.Extra != "" {
+		lines = append(lines, r.Extra)
+	}
+	return append(lines, r.Street, strings.TrimSpace(r.Zip+" "+r.City))
 }

@@ -1,26 +1,23 @@
 // Package frontmatter parses a DIN 5008 letter source (YAML frontmatter plus a
-// Markdown body) into the structured form the pipeline consumes. Parse errors
+// Markdown body) into structured letter data. The sender is not part of the
+// letter — it is referenced by profile name and resolved elsewhere. Parse errors
 // are translated into layperson-friendly German messages.
 package frontmatter
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
-	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
 	"gopkg.in/yaml.v3"
 )
 
-const defaultClosing = "Mit freundlichem Gruß"
+const defaultClosing = "Mit freundlichen Grüßen"
 
 var germanMonths = [...]string{
 	"Januar", "Februar", "März", "April", "Mai", "Juni",
 	"Juli", "August", "September", "Oktober", "November", "Dezember",
 }
-
-var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // ParseError is a user-facing parse failure with a German, layperson-friendly
 // message. It wraps the underlying error for debugging via errors.Unwrap.
@@ -39,9 +36,30 @@ func (e *ParseError) Error() string {
 
 func (e *ParseError) Unwrap() error { return e.Err }
 
+// Recipient is the addressee block of a letter.
+type Recipient struct {
+	Name   string
+	Extra  string // optional second line, e.g. a department
+	Street string
+	Zip    string
+	City   string
+}
+
+// LetterData is the letter metadata parsed from the frontmatter. The sender
+// comes from the referenced profile, not from here.
+type LetterData struct {
+	Profile     string // profile name; empty means the default profile
+	Recipient   Recipient
+	Subject     string
+	Date        string // resolved German date
+	Closing     string
+	Sign        bool
+	Attachments []string
+}
+
 // Parsed is the result of parsing a letter source.
 type Parsed struct {
-	Letter pipeline.Letter
+	Letter LetterData
 	Body   string // Markdown body without frontmatter (rendered via cmarker)
 	Source string // full original document, verbatim (embedded as PDF/A attachment)
 }
@@ -69,41 +87,26 @@ func (f *flexScalar) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-// sigValue accepts the signature field as either a filename string or a bool.
-type sigValue struct{ Filename string }
-
-func (s *sigValue) UnmarshalYAML(n *yaml.Node) error {
-	if n.Tag == "!!bool" {
-		// true = auto-detect a signature file (deferred: needs storage context);
-		// false = none. Either way, no explicit filename here.
-		return nil
-	}
-	return n.Decode(&s.Filename)
+type recipientYAML struct {
+	Name   string     `yaml:"name"`
+	Extra  string     `yaml:"extra"`
+	Street string     `yaml:"street"`
+	Zip    flexScalar `yaml:"zip"`
+	City   string     `yaml:"city"`
 }
 
 type frontmatterYAML struct {
-	Name           string      `yaml:"name"`
-	Street         string      `yaml:"street"`
-	Zip            flexScalar  `yaml:"zip"`
-	City           string      `yaml:"city"`
-	Phone          string      `yaml:"phone"`
-	Email          string      `yaml:"email"`
-	IBAN           string      `yaml:"iban"`
-	BIC            string      `yaml:"bic"`
-	Bank           string      `yaml:"bank"`
-	QRCode         bool        `yaml:"qr_code"`
-	Signature      *sigValue   `yaml:"signature"`
-	SignatureWidth int         `yaml:"signature_width"`
-	Closing        string      `yaml:"closing"`
-	Date           *flexScalar `yaml:"date"`
-	Subject        string      `yaml:"subject"`
-	Recipient      []string    `yaml:"recipient"`
-	Accent         string      `yaml:"accent"`
-	Attachments    []string    `yaml:"attachments"`
+	Profile     string        `yaml:"profile"`
+	Recipient   recipientYAML `yaml:"recipient"`
+	Subject     string        `yaml:"subject"`
+	Date        *flexScalar   `yaml:"date"`
+	Closing     string        `yaml:"closing"`
+	Sign        bool          `yaml:"sign"`
+	Attachments []string      `yaml:"attachments"`
 }
 
 // Parse splits the frontmatter from the body, validates required fields, and
-// maps everything onto a pipeline.Letter.
+// maps everything onto LetterData.
 func (p Parser) Parse(source string) (Parsed, error) {
 	now := p.Now
 	if now == nil {
@@ -121,22 +124,14 @@ func (p Parser) Parse(source string) (Parsed, error) {
 	}
 
 	for _, req := range []struct{ value, name string }{
-		{fm.Name, "name"}, {fm.Street, "street"}, {string(fm.Zip), "zip"}, {fm.City, "city"},
+		{fm.Recipient.Name, "recipient.name"},
+		{fm.Recipient.Street, "recipient.street"},
+		{string(fm.Recipient.Zip), "recipient.zip"},
+		{fm.Recipient.City, "recipient.city"},
+		{fm.Subject, "subject"},
 	} {
 		if strings.TrimSpace(req.value) == "" {
 			return Parsed{}, &ParseError{Message: "Ein Pflichtfeld fehlt oder ist leer.", Field: req.name}
-		}
-	}
-	if len(fm.Recipient) == 0 {
-		return Parsed{}, &ParseError{
-			Message: "Der Empfänger braucht mindestens eine Adresszeile.",
-			Field:   "recipient",
-		}
-	}
-	if fm.Accent != "" && !hexColor.MatchString(fm.Accent) {
-		return Parsed{}, &ParseError{
-			Message: fmt.Sprintf("Die Akzentfarbe muss ein Hex-Wert wie #B03060 sein, war %q.", fm.Accent),
-			Field:   "accent",
 		}
 	}
 
@@ -150,29 +145,19 @@ func (p Parser) Parse(source string) (Parsed, error) {
 		date = string(*fm.Date)
 	}
 
-	signature := ""
-	if fm.Signature != nil {
-		signature = fm.Signature.Filename
-	}
-
-	letter := pipeline.Letter{
-		Sender: pipeline.Sender{
-			Name:   fm.Name,
-			Street: fm.Street,
-			City:   strings.TrimSpace(string(fm.Zip) + " " + fm.City),
-			Phone:  fm.Phone,
-			Email:  fm.Email,
-			IBAN:   fm.IBAN,
-			BIC:    fm.BIC,
-			Bank:   fm.Bank,
-			QR:     fm.QRCode,
+	letter := LetterData{
+		Profile: fm.Profile,
+		Recipient: Recipient{
+			Name:   fm.Recipient.Name,
+			Extra:  fm.Recipient.Extra,
+			Street: fm.Recipient.Street,
+			Zip:    string(fm.Recipient.Zip),
+			City:   fm.Recipient.City,
 		},
-		Recipient:   fm.Recipient,
-		Date:        date,
 		Subject:     fm.Subject,
+		Date:        date,
 		Closing:     closing,
-		Signature:   signature,
-		Accent:      fm.Accent,
+		Sign:        fm.Sign,
 		Attachments: fm.Attachments,
 	}
 

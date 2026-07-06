@@ -10,6 +10,7 @@ import (
 
 	"github.com/jcmx9/MarkdownOffice/internal/frontmatter"
 	"github.com/jcmx9/MarkdownOffice/internal/pipeline"
+	"github.com/jcmx9/MarkdownOffice/internal/profiles"
 )
 
 // fakeRunner captures the compile-directory contents and writes a stub PDF.
@@ -25,13 +26,40 @@ func (f *fakeRunner) Compile(_ context.Context, workdir, entrypoint, outPath str
 	return os.WriteFile(outPath, []byte("%PDF-svc"), 0o644)
 }
 
+// fakeProfiles is an in-memory Profiles for handler tests.
+type fakeProfiles struct {
+	prof     *profiles.Profile
+	sig      []byte
+	sigExt   string
+	loadErr  error
+	askedFor string
+}
+
+func (f *fakeProfiles) Load(name string) (*profiles.Profile, error) {
+	f.askedFor = name
+	if f.loadErr != nil {
+		return nil, f.loadErr
+	}
+	return f.prof, nil
+}
+
+func (f *fakeProfiles) Signature(string) ([]byte, string, error) { return f.sig, f.sigExt, nil }
+
+func sampleProfile() *profiles.Profile {
+	return &profiles.Profile{
+		Name: "Musterfirma", Street: "Musterstraße 1", Zip: "10115", City: "Berlin",
+		Email: "info@muster.de", Bank: &profiles.Bank{IBAN: "DE1", BIC: "BIC", BankName: "Bank"},
+		PrintQR: true, Accent: "#103C78",
+	}
+}
+
 const validMD = `---
-name: Musterfirma
-street: Musterstraße 1
-zip: 12345
-city: Musterstadt
+profile: default
 recipient:
-  - Firma GmbH
+  name: Firma GmbH
+  street: Weg 1
+  zip: 12345
+  city: Musterstadt
 subject: Hallo
 ---
 
@@ -40,86 +68,100 @@ Sehr geehrte Damen und Herren,
 Hallo **Welt**.
 `
 
-func TestRenderMarkdownReturnsPDFAndPassesParsedInput(t *testing.T) {
+func TestRenderMapsProfileAndRecipient(t *testing.T) {
 	fr := &fakeRunner{}
-	svc := New("26.4.35", fr)
+	fp := &fakeProfiles{prof: sampleProfile()}
+	svc := New("26.4.35", fr, WithProfiles(fp))
 
 	pdf, err := svc.RenderMarkdown(context.Background(), validMD)
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
 	if string(pdf) != "%PDF-svc" {
-		t.Errorf("returned %q, want the runner's PDF", pdf)
+		t.Errorf("returned %q", pdf)
 	}
-	// The full source is embedded verbatim; the body (not the frontmatter) feeds cmarker.
+	bj := fr.files["brief.json"]
+	for _, want := range []string{"Musterfirma", "10115 Berlin", "Firma GmbH", "12345 Musterstadt", "#103C78", "DE1"} {
+		if !strings.Contains(bj, want) {
+			t.Errorf("brief.json missing %q:\n%s", want, bj)
+		}
+	}
 	if fr.files["brief.md"] != validMD {
-		t.Errorf("brief.md is not the verbatim source")
-	}
-	if !strings.Contains(fr.files["body.md"], "Hallo **Welt**") || strings.Contains(fr.files["body.md"], "name:") {
-		t.Errorf("body.md wrong: %q", fr.files["body.md"])
+		t.Error("brief.md is not the verbatim source")
 	}
 }
 
-func TestRenderMarkdownPropagatesParseError(t *testing.T) {
-	svc := New("26.4.35", &fakeRunner{})
-	_, err := svc.RenderMarkdown(context.Background(), "kein frontmatter hier\n")
-	if err == nil {
-		t.Fatal("expected an error")
+func TestRenderDefaultsProfileName(t *testing.T) {
+	fp := &fakeProfiles{prof: sampleProfile()}
+	svc := New("26.4.35", &fakeRunner{}, WithProfiles(fp))
+	// Frontmatter without a profile → the service asks for "default".
+	src := "---\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n---\n\nB\n"
+	if _, err := svc.RenderMarkdown(context.Background(), src); err != nil {
+		t.Fatal(err)
 	}
-	var pe *frontmatter.ParseError
-	if !errors.As(err, &pe) {
+	if fp.askedFor != "default" {
+		t.Errorf("asked for %q, want default", fp.askedFor)
+	}
+}
+
+func TestRenderPropagatesParseError(t *testing.T) {
+	svc := New("26.4.35", &fakeRunner{}, WithProfiles(&fakeProfiles{prof: sampleProfile()}))
+	_, err := svc.RenderMarkdown(context.Background(), "kein frontmatter\n")
+	if !errors.As(err, new(*frontmatter.ParseError)) {
 		t.Errorf("want *frontmatter.ParseError, got %T", err)
 	}
 }
 
-func TestRenderMarkdownResolvesSignature(t *testing.T) {
-	const mdWithSig = `---
-name: A
-street: S
-zip: 1
-city: C
-signature: unterschrift.svg
-recipient:
-  - R
----
-
-Body
-`
-	fr := &fakeRunner{}
-	var askedFor string
-	resolver := func(name string) ([]byte, error) {
-		askedFor = name
-		return []byte("<svg/>"), nil
-	}
-	svc := New("26.4.35", fr, WithSignatureResolver(resolver))
-
-	if _, err := svc.RenderMarkdown(context.Background(), mdWithSig); err != nil {
-		t.Fatalf("RenderMarkdown: %v", err)
-	}
-	if askedFor != "unterschrift.svg" {
-		t.Errorf("resolver asked for %q, want unterschrift.svg", askedFor)
-	}
-	if fr.files["unterschrift.svg"] != "<svg/>" {
-		t.Errorf("signature bytes not written into the compile dir")
+func TestRenderPropagatesProfileError(t *testing.T) {
+	fp := &fakeProfiles{loadErr: &profiles.ProfileError{Message: "Profil wurde nicht gefunden.", Name: "default"}}
+	svc := New("26.4.35", &fakeRunner{}, WithProfiles(fp))
+	_, err := svc.RenderMarkdown(context.Background(), validMD)
+	if !errors.As(err, new(*profiles.ProfileError)) {
+		t.Errorf("want *profiles.ProfileError, got %T (%v)", err, err)
 	}
 }
 
-func TestRenderMarkdownDropsSignatureWhenUnresolvable(t *testing.T) {
-	const mdWithSig = "---\nname: A\nstreet: S\nzip: 1\ncity: C\nsignature: unterschrift.svg\nrecipient:\n  - R\n---\n\nBody\n"
-	fr := &fakeRunner{}
-	svc := New("26.4.35", fr) // no signature resolver configured
+func TestRenderNoStore(t *testing.T) {
+	svc := New("26.4.35", &fakeRunner{}) // no WithProfiles
+	if _, err := svc.RenderMarkdown(context.Background(), validMD); err == nil {
+		t.Error("expected an error without a profile store")
+	}
+}
 
-	if _, err := svc.RenderMarkdown(context.Background(), mdWithSig); err != nil {
-		t.Fatalf("RenderMarkdown: %v", err)
+func TestRenderSignatureWhenSigning(t *testing.T) {
+	prof := sampleProfile()
+	prof.Signature = "signature.svg"
+	fr := &fakeRunner{}
+	fp := &fakeProfiles{prof: prof, sig: []byte("<svg/>"), sigExt: ".svg"}
+	svc := New("26.4.35", fr, WithProfiles(fp))
+
+	src := strings.Replace(validMD, "subject: Hallo\n", "subject: Hallo\nsign: true\n", 1)
+	if _, err := svc.RenderMarkdown(context.Background(), src); err != nil {
+		t.Fatal(err)
 	}
-	// Without a resolver the letter must render *without* a signature — the
-	// generated brief.json must not reference a file that was never written,
-	// otherwise Typst's read() aborts the compile.
-	if strings.Contains(fr.files["brief.json"], "unterschrift.svg") {
-		t.Errorf("brief.json references an unprovided signature file:\n%s", fr.files["brief.json"])
+	if fr.files["signature.svg"] != "<svg/>" {
+		t.Error("signature bytes not written into the compile dir")
 	}
-	if _, ok := fr.files["unterschrift.svg"]; ok {
-		t.Errorf("a signature file was written although none was resolvable")
+	if !strings.Contains(fr.files["brief.json"], "signature.svg") {
+		t.Errorf("brief.json does not reference the signature:\n%s", fr.files["brief.json"])
+	}
+}
+
+func TestRenderNoSignatureWhenNotSigning(t *testing.T) {
+	prof := sampleProfile()
+	prof.Signature = "signature.svg" // profile has one, but the letter does not sign
+	fr := &fakeRunner{}
+	fp := &fakeProfiles{prof: prof, sig: []byte("<svg/>"), sigExt: ".svg"}
+	svc := New("26.4.35", fr, WithProfiles(fp))
+
+	if _, err := svc.RenderMarkdown(context.Background(), validMD); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fr.files["signature.svg"]; ok {
+		t.Error("a signature was written although sign is false")
+	}
+	if strings.Contains(fr.files["brief.json"], "signature.svg") {
+		t.Error("brief.json references a signature although sign is false")
 	}
 }
 
@@ -130,12 +172,22 @@ func TestRenderMarkdownEndToEnd(t *testing.T) {
 	if td == "" {
 		t.Skip("set MDO_TESTDATA to run the end-to-end test")
 	}
+	profDir := t.TempDir()
+	dir := filepath.Join(profDir, "default")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "profile.yaml"),
+		[]byte("name: Muster GmbH\nstreet: Weg 1\nzip: 12345\ncity: Stadt\nprint_qr: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := profiles.NewStore("", profDir)
 	runner := pipeline.NewTypstRunner("typst", pipeline.TypstEnv{
 		PackagePath:      filepath.Join(td, "pkgs"),
 		PackageCachePath: filepath.Join(td, "cache"),
 		FontPath:         filepath.Join(td, "fonts"),
 	})
-	svc := New("26.4.35", runner)
+	svc := New("26.4.35", runner, WithProfiles(store))
 	pdf, err := svc.RenderMarkdown(context.Background(), validMD)
 	if err != nil {
 		t.Fatalf("end-to-end RenderMarkdown: %v", err)
