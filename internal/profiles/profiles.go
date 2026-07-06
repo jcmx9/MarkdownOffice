@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -72,13 +73,14 @@ func (e *ProfileError) Unwrap() error { return e.Err }
 // contains one subdirectory per profile. Reads try local first; writes always
 // target the global directory.
 type Store struct {
-	localDir  string // checked first for reads; "" disables it
-	globalDir string // fallback for reads, target for writes
+	localDir  string           // checked first for reads; "" disables it
+	globalDir string           // fallback for reads, target for writes
+	now       func() time.Time // clock for letter IDs; injectable for tests
 }
 
 // NewStore builds a Store over the given profile base directories.
 func NewStore(localDir, globalDir string) *Store {
-	return &Store{localDir: localDir, globalDir: globalDir}
+	return &Store{localDir: localDir, globalDir: globalDir, now: time.Now}
 }
 
 // validateName rejects anything that is not a single safe slug segment, so a
