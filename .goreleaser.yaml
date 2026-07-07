@@ -1,0 +1,83 @@
+# GoReleaser config — builds self-contained MarkdownOffice binaries (Typst,
+# fonts and Typst packages embedded) for macOS, Linux and Windows and publishes
+# a GitHub release plus a Homebrew tap. See docs/github-release.md.
+#
+# Verify without publishing:  goreleaser check  &&  goreleaser build --snapshot --clean
+version: 2
+
+project_name: markdownoffice
+
+# Platform-independent assets (fonts + Typst packages) are fetched once; each
+# build then fetches only its target's Typst binary (see scripts/fetch-assets.sh).
+before:
+  hooks:
+    - ./scripts/fetch-assets.sh shared
+
+builds:
+  - id: markdownoffice
+    main: ./cmd/markdownoffice
+    binary: markdownoffice
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -tags=embed_assets
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    hooks:
+      pre:
+        - cmd: ./scripts/fetch-assets.sh typst
+          env:
+            - GOOS={{ .Os }}
+            - GOARCH={{ .Arch }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - README.en.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+homebrew_casks:
+  - name: markdownoffice
+    binaries:
+      - markdownoffice
+    repository:
+      owner: jcmx9
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}" # PAT with write access to the tap repo
+    homepage: "https://github.com/jcmx9/MarkdownOffice"
+    description: "DIN 5008 Form A business letters from Markdown to PDF/A-3b — local, offline, self-contained"
+    license: MIT
+    # Casks strip the macOS quarantine flag on install (our binary is ad-hoc signed,
+    # not notarized). Skipped automatically for snapshot/prerelease builds.
+
+release:
+  github:
+    owner: jcmx9
+    name: MarkdownOffice
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
