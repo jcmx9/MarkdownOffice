@@ -32,11 +32,10 @@ const maxSignatureBytes = 512 << 10 // 512 KiB
 const DefaultLetter = `---
 profile: default
 recipient:
-  name: Sonnenschein Verlag GmbH
-  extra: Frau Lisa Bergmann
-  street: Rosenstraße 5
-  zip: 50667
-  city: Köln
+  - Sonnenschein Verlag GmbH
+  - Frau Lisa Bergmann
+  - Rosenstraße 5
+  - 50667 Köln
 subject: Ihr Angebot vom 1. Juli
 date: null                 # null = heute; sonst z. B. "5. April 2026"
 closing: Mit freundlichen Grüßen

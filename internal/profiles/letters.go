@@ -73,7 +73,11 @@ func (s *Store) ListLetters(profile string) ([]LetterMeta, error) {
 			continue
 		}
 		m := parseLetterMeta(string(raw))
-		metas = append(metas, LetterMeta{ID: e.Name(), Subject: m.Subject, Recipient: m.Recipient.Name, Date: m.Date})
+		recipient := ""
+		if len(m.Recipient) > 0 {
+			recipient = m.Recipient[0]
+		}
+		metas = append(metas, LetterMeta{ID: e.Name(), Subject: m.Subject, Recipient: recipient, Date: m.Date})
 	}
 	// IDs are date-prefixed, so a descending string sort is newest-first.
 	sort.Slice(metas, func(i, j int) bool { return metas[i].ID > metas[j].ID })
@@ -122,11 +126,9 @@ func saveLetterErr(profile string, err error) error {
 }
 
 type letterMetaYAML struct {
-	Subject   string `yaml:"subject"`
-	Date      string `yaml:"date"`
-	Recipient struct {
-		Name string `yaml:"name"`
-	} `yaml:"recipient"`
+	Subject   string   `yaml:"subject"`
+	Date      string   `yaml:"date"`
+	Recipient []string `yaml:"recipient"`
 }
 
 // parseLetterMeta extracts the listing fields from a letter's frontmatter. It

@@ -3,6 +3,7 @@ package frontmatter
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -10,11 +11,10 @@ import (
 const validLetter = `---
 profile: eltern
 recipient:
-  name: Sonnenschein Verlag GmbH
-  extra: Frau Lisa Bergmann
-  street: Rosenstraße 5
-  zip: 50667
-  city: Köln
+  - Sonnenschein Verlag GmbH
+  - Frau Lisa Bergmann
+  - Rosenstraße 5
+  - 50667 Köln
 subject: Ihr Angebot vom 1. Juli
 date: 5. April 2026
 closing: Mit besten Grüßen
@@ -40,8 +40,8 @@ func TestParseMapsFields(t *testing.T) {
 	if l.Profile != "eltern" {
 		t.Errorf("Profile = %q, want eltern", l.Profile)
 	}
-	want := Recipient{Name: "Sonnenschein Verlag GmbH", Extra: "Frau Lisa Bergmann", Street: "Rosenstraße 5", Zip: "50667", City: "Köln"}
-	if l.Recipient != want {
+	want := []string{"Sonnenschein Verlag GmbH", "Frau Lisa Bergmann", "Rosenstraße 5", "50667 Köln"}
+	if !reflect.DeepEqual(l.Recipient, want) {
 		t.Errorf("Recipient = %+v, want %+v", l.Recipient, want)
 	}
 	if l.Subject != "Ihr Angebot vom 1. Juli" || l.Date != "5. April 2026" || l.Closing != "Mit besten Grüßen" {
@@ -61,19 +61,8 @@ func TestParseMapsFields(t *testing.T) {
 	}
 }
 
-func TestParseZipCoercion(t *testing.T) {
-	src := "---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 50667\n  city: C\nsubject: S\n---\n\nBody\n"
-	p, err := Parse(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Letter.Recipient.Zip != "50667" { // int in YAML → string
-		t.Errorf("zip = %q, want 50667", p.Letter.Recipient.Zip)
-	}
-}
-
 func TestParseDateDefaultAndOverride(t *testing.T) {
-	base := "---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n%s---\n\nBody\n"
+	base := "---\nprofile: x\nrecipient:\n  - Empf\nsubject: S\n%s---\n\nBody\n"
 	// No date → today (fixed clock).
 	noDate, err := (Parser{Now: fixedNow}).Parse(fmt.Sprintf(base, ""))
 	if err != nil {
@@ -93,7 +82,7 @@ func TestParseDateDefaultAndOverride(t *testing.T) {
 }
 
 func TestParseClosingDefault(t *testing.T) {
-	src := "---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n---\n\nBody\n"
+	src := "---\nprofile: x\nrecipient:\n  - Empf\nsubject: S\n---\n\nBody\n"
 	p, err := Parse(src)
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +94,7 @@ func TestParseClosingDefault(t *testing.T) {
 
 func TestParseProfileOptional(t *testing.T) {
 	// A missing profile is allowed here; the service defaults it to "default".
-	src := "---\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n---\n\nBody\n"
+	src := "---\nrecipient:\n  - Empf\nsubject: S\n---\n\nBody\n"
 	p, err := Parse(src)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -117,9 +106,9 @@ func TestParseProfileOptional(t *testing.T) {
 
 func TestParseMissingRequired(t *testing.T) {
 	cases := map[string]struct{ src, field string }{
-		"no recipient": {"---\nprofile: x\nsubject: S\n---\n\nB\n", "recipient.name"},
-		"no street":    {"---\nprofile: x\nrecipient:\n  name: N\n  zip: 1\n  city: C\nsubject: S\n---\n\nB\n", "recipient.street"},
-		"no subject":   {"---\nprofile: x\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\n---\n\nB\n", "subject"},
+		"no recipient":    {"---\nprofile: x\nsubject: S\n---\n\nB\n", "recipient"},
+		"empty recipient": {"---\nprofile: x\nrecipient: []\nsubject: S\n---\n\nB\n", "recipient"},
+		"no subject":      {"---\nprofile: x\nrecipient:\n  - Empf\n---\n\nB\n", "subject"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

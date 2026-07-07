@@ -56,10 +56,9 @@ func sampleProfile() *profiles.Profile {
 const validMD = `---
 profile: default
 recipient:
-  name: Firma GmbH
-  street: Weg 1
-  zip: 12345
-  city: Musterstadt
+  - Firma GmbH
+  - Weg 1
+  - 12345 Musterstadt
 subject: Hallo
 ---
 
@@ -95,7 +94,7 @@ func TestRenderDefaultsProfileName(t *testing.T) {
 	fp := &fakeProfiles{prof: sampleProfile()}
 	svc := New("26.4.35", &fakeRunner{}, WithProfiles(fp))
 	// Frontmatter without a profile → the service asks for "default".
-	src := "---\nrecipient:\n  name: N\n  street: S\n  zip: 1\n  city: C\nsubject: S\n---\n\nB\n"
+	src := "---\nrecipient:\n  - Empf\nsubject: S\n---\n\nB\n"
 	if _, err := svc.RenderMarkdown(context.Background(), src); err != nil {
 		t.Fatal(err)
 	}

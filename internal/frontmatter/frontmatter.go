@@ -36,20 +36,11 @@ func (e *ParseError) Error() string {
 
 func (e *ParseError) Unwrap() error { return e.Err }
 
-// Recipient is the addressee block of a letter.
-type Recipient struct {
-	Name   string
-	Extra  string // optional second line, e.g. a department
-	Street string
-	Zip    string
-	City   string
-}
-
 // LetterData is the letter metadata parsed from the frontmatter. The sender
 // comes from the referenced profile, not from here.
 type LetterData struct {
-	Profile     string // profile name; empty means the default profile
-	Recipient   Recipient
+	Profile     string   // profile name; empty means the default profile
+	Recipient   []string // free-form address lines (DIN 5008 recipient block)
 	Subject     string
 	Date        string // resolved German date
 	Closing     string
@@ -87,22 +78,14 @@ func (f *flexScalar) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-type recipientYAML struct {
-	Name   string     `yaml:"name"`
-	Extra  string     `yaml:"extra"`
-	Street string     `yaml:"street"`
-	Zip    flexScalar `yaml:"zip"`
-	City   string     `yaml:"city"`
-}
-
 type frontmatterYAML struct {
-	Profile     string        `yaml:"profile"`
-	Recipient   recipientYAML `yaml:"recipient"`
-	Subject     string        `yaml:"subject"`
-	Date        *flexScalar   `yaml:"date"`
-	Closing     string        `yaml:"closing"`
-	Sign        bool          `yaml:"sign"`
-	Attachments []string      `yaml:"attachments"`
+	Profile     string      `yaml:"profile"`
+	Recipient   []string    `yaml:"recipient"`
+	Subject     string      `yaml:"subject"`
+	Date        *flexScalar `yaml:"date"`
+	Closing     string      `yaml:"closing"`
+	Sign        bool        `yaml:"sign"`
+	Attachments []string    `yaml:"attachments"`
 }
 
 // Parse splits the frontmatter from the body, validates required fields, and
@@ -123,16 +106,14 @@ func (p Parser) Parse(source string) (Parsed, error) {
 		return Parsed{}, &ParseError{Message: "Das YAML-Frontmatter ist ungültig.", Err: err}
 	}
 
-	for _, req := range []struct{ value, name string }{
-		{fm.Recipient.Name, "recipient.name"},
-		{fm.Recipient.Street, "recipient.street"},
-		{string(fm.Recipient.Zip), "recipient.zip"},
-		{fm.Recipient.City, "recipient.city"},
-		{fm.Subject, "subject"},
-	} {
-		if strings.TrimSpace(req.value) == "" {
-			return Parsed{}, &ParseError{Message: "Ein Pflichtfeld fehlt oder ist leer.", Field: req.name}
+	if len(fm.Recipient) == 0 {
+		return Parsed{}, &ParseError{
+			Message: "Der Empfänger braucht mindestens eine Adresszeile.",
+			Field:   "recipient",
 		}
+	}
+	if strings.TrimSpace(fm.Subject) == "" {
+		return Parsed{}, &ParseError{Message: "Ein Pflichtfeld fehlt oder ist leer.", Field: "subject"}
 	}
 
 	closing := fm.Closing
@@ -146,14 +127,8 @@ func (p Parser) Parse(source string) (Parsed, error) {
 	}
 
 	letter := LetterData{
-		Profile: fm.Profile,
-		Recipient: Recipient{
-			Name:   fm.Recipient.Name,
-			Extra:  fm.Recipient.Extra,
-			Street: fm.Recipient.Street,
-			Zip:    string(fm.Recipient.Zip),
-			City:   fm.Recipient.City,
-		},
+		Profile:     fm.Profile,
+		Recipient:   fm.Recipient,
 		Subject:     fm.Subject,
 		Date:        date,
 		Closing:     closing,

@@ -8,10 +8,9 @@ import (
 const letterSource = `---
 profile: eltern
 recipient:
-  name: Amt Musterstadt
-  street: Weg 1
-  zip: 12345
-  city: Stadt
+  - Amt Musterstadt
+  - Weg 1
+  - 12345 Stadt
 subject: Kündigung Vertrag
 date: null
 ---
@@ -64,7 +63,7 @@ func TestListLettersNewestFirst(t *testing.T) {
 	writeProfile(t, dir, "eltern", "name: X\nstreet: Y\nzip: 1\ncity: Z\n")
 	mk := func(day int, subject string) {
 		s.now = func() time.Time { return time.Date(2026, 7, day, 0, 0, 0, 0, time.UTC) }
-		src := "---\nprofile: eltern\nrecipient:\n  name: Empf\n  street: S\n  zip: 1\n  city: C\nsubject: " + subject + "\n---\n\nBody\n"
+		src := "---\nprofile: eltern\nrecipient:\n  - Empf\nsubject: " + subject + "\n---\n\nBody\n"
 		if _, err := s.SaveLetter("eltern", src); err != nil {
 			t.Fatal(err)
 		}

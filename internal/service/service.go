@@ -106,20 +106,11 @@ func mapToLetter(p *profiles.Profile, ld frontmatter.LetterData) pipeline.Letter
 	}
 	return pipeline.Letter{
 		Sender:      sender,
-		Recipient:   recipientLines(ld.Recipient),
+		Recipient:   ld.Recipient,
 		Date:        ld.Date,
 		Subject:     ld.Subject,
 		Closing:     ld.Closing,
 		Accent:      p.Accent,
 		Attachments: ld.Attachments,
 	}
-}
-
-// recipientLines turns the structured recipient into DIN 5008 address lines.
-func recipientLines(r frontmatter.Recipient) []string {
-	lines := []string{r.Name}
-	if r.Extra != "" {
-		lines = append(lines, r.Extra)
-	}
-	return append(lines, r.Street, strings.TrimSpace(r.Zip+" "+r.City))
 }
