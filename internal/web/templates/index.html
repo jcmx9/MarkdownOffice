@@ -50,7 +50,12 @@
         <label>Ort <input name="city" required></label>
         <label>Telefon <input name="phone" autocomplete="off"></label>
         <label>E-Mail <input name="email" type="email" autocomplete="off"></label>
-        <label>Akzentfarbe <input name="accent" placeholder="#C2185B" autocomplete="off"></label>
+        <label>Akzentfarbe
+          <span class="accent-row">
+            <input type="color" id="accent-picker" aria-label="Akzentfarbe wählen" value="#1f6feb">
+            <input name="accent" id="accent-hex" placeholder="#C2185B — leer = Standard" autocomplete="off">
+          </span>
+        </label>
       </div>
       <fieldset>
         <legend>Bankverbindung (optional)</legend>
@@ -63,7 +68,13 @@
       </fieldset>
       <div class="grid">
         <label class="checkbox"><input type="checkbox" name="print_qr"> vCard-QR-Code anzeigen</label>
-        <label>Signatur (SVG) <input type="file" id="signature-file" accept=".svg,image/svg+xml"></label>
+        <label>Signatur (SVG)
+          <input type="file" id="signature-file" accept=".svg,image/svg+xml">
+          <span class="sig-status">
+            <span id="sig-state">keine hinterlegt</span>
+            <button type="button" id="sig-remove" class="danger" hidden>Entfernen</button>
+          </span>
+        </label>
       </div>
       <div id="dialog-error" class="dialog-error" role="alert" hidden></div>
       <menu>

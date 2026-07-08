@@ -116,6 +116,26 @@
   function dialogShowError(msg) { dialogError.textContent = msg; dialogError.hidden = false; }
   function dialogClearError() { dialogError.hidden = true; dialogError.textContent = ""; }
 
+  // Accent colour picker <-> hex field. The hex field stays the source of truth
+  // (empty = template default); the picker mirrors it and offers a preview.
+  var accentPicker = document.getElementById("accent-picker");
+  var accentHex = document.getElementById("accent-hex");
+  var sigState = document.getElementById("sig-state");
+  var sigRemove = document.getElementById("sig-remove");
+
+  function syncPickerFromHex() {
+    if (/^#[0-9a-fA-F]{6}$/.test(accentHex.value.trim())) {
+      accentPicker.value = accentHex.value.trim();
+    }
+  }
+  accentPicker.addEventListener("input", function () { accentHex.value = accentPicker.value; });
+  accentHex.addEventListener("input", syncPickerFromHex);
+
+  function setSignatureState(present) {
+    sigState.textContent = present ? "Signatur hinterlegt" : "keine hinterlegt";
+    sigRemove.hidden = !present;
+  }
+
   function fillForm(slug, p) {
     p = p || {};
     var bank = p.bank || {};
@@ -133,6 +153,8 @@
     form.bank_name.value = bank.bank_name || "";
     form.print_qr.checked = slug ? !!p.print_qr : true;
     document.getElementById("signature-file").value = "";
+    syncPickerFromHex();
+    setSignatureState(!!p.signature);
   }
 
   async function openDialog() {
@@ -323,6 +345,21 @@
   });
   document.getElementById("profile-delete").addEventListener("click", deleteProfile);
   document.getElementById("profile-close").addEventListener("click", function () { dialog.close(); });
+  sigRemove.addEventListener("click", async function () {
+    var slug = form.slug.value.trim();
+    if (!slug) { setSignatureState(false); return; }
+    try {
+      var res = await fetch("/profiles/" + encodeURIComponent(slug) + "/signature", { method: "DELETE" });
+      if (res.ok) {
+        setSignatureState(false);
+        document.getElementById("signature-file").value = "";
+      } else {
+        dialogShowError(await res.text());
+      }
+    } catch (e) {
+      dialogShowError("Netzwerkfehler: " + e.message);
+    }
+  });
   form.addEventListener("submit", function (e) { e.preventDefault(); saveProfile(); });
 
   loadProfiles();

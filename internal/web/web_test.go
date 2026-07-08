@@ -26,15 +26,16 @@ func (f *fakeRenderer) RenderMarkdown(_ context.Context, source string) ([]byte,
 }
 
 type fakeStore struct {
-	names     []string
-	prof      *profiles.Profile
-	loadErr   error
-	savedName string
-	saved     *profiles.Profile
-	deleted   string
-	sigName   string
-	sigExt    string
-	sigData   []byte
+	names      []string
+	prof       *profiles.Profile
+	loadErr    error
+	savedName  string
+	saved      *profiles.Profile
+	deleted    string
+	sigName    string
+	sigExt     string
+	sigData    []byte
+	sigDeleted string
 
 	letters       []profiles.LetterMeta
 	letterProfile string
@@ -60,6 +61,7 @@ func (f *fakeStore) SaveSignature(name, ext string, data []byte) error {
 	f.sigName, f.sigExt, f.sigData = name, ext, data
 	return nil
 }
+func (f *fakeStore) DeleteSignature(name string) error { f.sigDeleted = name; return nil }
 
 func (f *fakeStore) SaveLetter(profile, source string) (string, error) {
 	f.letterProfile, f.letterSource = profile, source
@@ -223,6 +225,19 @@ func TestUploadSignature(t *testing.T) {
 	}
 	if store.sigName != "anna" || store.sigExt != ".svg" || string(store.sigData) != "<svg/>" {
 		t.Errorf("SaveSignature got (%q, %q, %q)", store.sigName, store.sigExt, store.sigData)
+	}
+}
+
+func TestDeleteSignatureRoute(t *testing.T) {
+	store := &fakeStore{}
+	srv := newTestServer(t, &fakeRenderer{}, store)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/profiles/anna/signature", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
+	if store.sigDeleted != "anna" {
+		t.Errorf("sigDeleted = %q", store.sigDeleted)
 	}
 }
 

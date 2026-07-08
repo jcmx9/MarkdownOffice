@@ -137,6 +137,27 @@ dialog h2 { margin: 0 0 0.8rem; font-size: 1.05rem; }
   gap: 0.4rem;
   color: var(--fg);
 }
+.accent-row { display: flex; align-items: center; gap: 0.4rem; }
+.accent-row input[type="color"] {
+  width: 2.2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+.accent-row #accent-hex { flex: 1; }
+.sig-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.sig-status .danger { padding: 0.2rem 0.55rem; font-size: 0.8rem; }
 .dialog-error {
   margin-top: 0.8rem;
   padding: 0.5rem 0.7rem;

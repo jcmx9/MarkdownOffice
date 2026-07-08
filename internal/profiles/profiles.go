@@ -310,6 +310,20 @@ func (s *Store) SaveSignature(name, ext string, data []byte) error {
 	return nil
 }
 
+// DeleteSignature removes any signature image from the global profile directory.
+func (s *Store) DeleteSignature(name string) error {
+	dir, err := s.writeDir(name)
+	if err != nil {
+		return err
+	}
+	for _, ext := range []string{".svg", ".png"} {
+		if err := os.Remove(filepath.Join(dir, "signature"+ext)); err != nil && !os.IsNotExist(err) {
+			return &ProfileError{Message: "Die Signatur konnte nicht entfernt werden.", Name: name, Err: err}
+		}
+	}
+	return nil
+}
+
 // Delete removes the named profile from the global directory.
 func (s *Store) Delete(name string) error {
 	if err := validateName(name); err != nil {

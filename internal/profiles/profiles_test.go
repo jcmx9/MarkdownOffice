@@ -265,3 +265,24 @@ func TestSaveSignature(t *testing.T) {
 		t.Errorf("after SaveSignature, Signature = (%q, %q, %v)", data, ext, err)
 	}
 }
+
+func TestDeleteSignature(t *testing.T) {
+	global := t.TempDir()
+	s := NewStore("", global)
+	if err := s.Save("anna", &Profile{Name: "A", Street: "S", Zip: "1", City: "C", SignatureHeight: 15, PrintQR: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveSignature("anna", ".svg", []byte("<svg/>")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteSignature("anna"); err != nil {
+		t.Fatalf("DeleteSignature: %v", err)
+	}
+	if data, _, _ := s.Signature("anna"); data != nil {
+		t.Error("signature still resolves after DeleteSignature")
+	}
+	// Deleting when there is nothing to delete is a no-op, not an error.
+	if err := s.DeleteSignature("anna"); err != nil {
+		t.Errorf("second DeleteSignature errored: %v", err)
+	}
+}
