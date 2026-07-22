@@ -36,3 +36,53 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  smoke:
+    # Build the self-contained binary and render a letter end-to-end, asserting a
+    # PDF/A-3b is produced — guards against pipeline/embedding regressions.
+    # (Full veraPDF conformance is validated locally and at release time.)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Fetch embedded assets
+        run: ./scripts/fetch-assets.sh
+
+      - name: Build self-contained binary
+        run: go build -tags embed_assets -o markdownoffice ./cmd/markdownoffice
+
+      - name: Render a sample letter
+        run: |
+          mkdir -p profiles/default
+          cat > profiles/default/profile.yaml <<'EOF'
+          name: Muster GmbH
+          street: Musterweg 1
+          zip: 12345
+          city: Musterstadt
+          print_qr: false
+          EOF
+          cat > brief.md <<'EOF'
+          ---
+          profile: default
+          recipient:
+            - Sonnenschein Verlag GmbH
+            - Rosenstraße 5
+            - 50667 Köln
+          subject: CI-Smoke-Test
+          ---
+
+          Sehr geehrte Damen und Herren, dies ist ein **Test** mit einer Tabelle.
+
+          | Posten | Preis   |
+          | ------ | ------- |
+          | A      | 1200.50 |
+          EOF
+          ./markdownoffice render brief.md -o out.pdf
+          head -c 8 out.pdf | grep -q '%PDF' || { echo "not a PDF"; exit 1; }
+          grep -qa 'pdfaid:part' out.pdf || { echo "missing PDF/A identification"; exit 1; }
+          echo "rendered $(wc -c < out.pdf) bytes, PDF/A identified"
