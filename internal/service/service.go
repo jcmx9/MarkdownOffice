@@ -105,12 +105,13 @@ func mapToLetter(p *profiles.Profile, ld frontmatter.LetterData) pipeline.Letter
 		sender.IBAN, sender.BIC, sender.Bank = p.Bank.IBAN, p.Bank.BIC, p.Bank.BankName
 	}
 	return pipeline.Letter{
-		Sender:      sender,
-		Recipient:   ld.Recipient,
-		Date:        ld.Date,
-		Subject:     ld.Subject,
-		Closing:     ld.Closing,
-		Accent:      p.Accent,
-		Attachments: ld.Attachments,
+		Sender:         sender,
+		Recipient:      ld.Recipient,
+		Date:           ld.Date,
+		Subject:        ld.Subject,
+		Closing:        ld.Closing,
+		Accent:         p.Accent,
+		SignatureWidth: p.SignatureWidth,
+		Attachments:    ld.Attachments,
 	}
 }

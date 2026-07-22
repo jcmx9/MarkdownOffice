@@ -76,3 +76,27 @@ func TestBuildWrapperEmbedsPinnedImportsAndConformantAttach(t *testing.T) {
 		t.Errorf("accent = %v, want %q", data["accent"], "#1F6FEB")
 	}
 }
+
+func TestBuildWrapperSignatureWidth(t *testing.T) {
+	base := Letter{Recipient: []string{"R"}, Subject: "S"}
+
+	// Width set → emitted as a signature-width argument in mm.
+	withW := base
+	withW.SignatureWidth = 30.5
+	w, err := BuildWrapper(withW, "26.4.35")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(w.Typ, "signature-width: 30.5mm,") {
+		t.Errorf("wrapper missing signature-width line:\n%s", w.Typ)
+	}
+
+	// Width unset → no signature-width line (template default applies).
+	w, err = BuildWrapper(base, "26.4.35")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(w.Typ, "signature-width:") {
+		t.Errorf("wrapper should omit signature-width when unset:\n%s", w.Typ)
+	}
+}

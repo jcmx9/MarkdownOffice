@@ -35,17 +35,17 @@ type Bank struct {
 
 // Profile is a sender's stored master data.
 type Profile struct {
-	Name            string  `json:"name"`   // required
-	Street          string  `json:"street"` // required
-	Zip             string  `json:"zip"`    // required (a bare YAML number is coerced to string)
-	City            string  `json:"city"`   // required
-	Phone           string  `json:"phone"`
-	Email           string  `json:"email"`
-	Bank            *Bank   `json:"bank,omitempty"`
-	Signature       string  `json:"signature"`        // signature filename, e.g. "signature.svg"
-	SignatureHeight float64 `json:"signature_height"` // mm; default 15.0
-	PrintQR         bool    `json:"print_qr"`         // default true
-	Accent          string  `json:"accent"`           // "#RRGGBB"; "" = template default colour
+	Name           string  `json:"name"`   // required
+	Street         string  `json:"street"` // required
+	Zip            string  `json:"zip"`    // required (a bare YAML number is coerced to string)
+	City           string  `json:"city"`   // required
+	Phone          string  `json:"phone"`
+	Email          string  `json:"email"`
+	Bank           *Bank   `json:"bank,omitempty"`
+	Signature      string  `json:"signature"`       // signature filename, e.g. "signature.svg"
+	SignatureWidth float64 `json:"signature_width"` // mm; default 40.0 (din5008a template default)
+	PrintQR        bool    `json:"print_qr"`        // default true
+	Accent         string  `json:"accent"`          // "#RRGGBB"; "" = template default colour
 }
 
 // ProfileError is a user-facing failure with a German, layperson-friendly message.
@@ -148,17 +148,17 @@ type yamlBank struct {
 }
 
 type yamlProfile struct {
-	Name            string     `yaml:"name"`
-	Street          string     `yaml:"street"`
-	Zip             flexScalar `yaml:"zip"`
-	City            string     `yaml:"city"`
-	Phone           string     `yaml:"phone,omitempty"`
-	Email           string     `yaml:"email,omitempty"`
-	Bank            *yamlBank  `yaml:"bank,omitempty"`
-	Signature       string     `yaml:"signature,omitempty"`
-	SignatureHeight *mmFloat   `yaml:"signature_height,omitempty"`
-	PrintQR         *bool      `yaml:"print_qr,omitempty"`
-	Accent          string     `yaml:"accent,omitempty"`
+	Name           string     `yaml:"name"`
+	Street         string     `yaml:"street"`
+	Zip            flexScalar `yaml:"zip"`
+	City           string     `yaml:"city"`
+	Phone          string     `yaml:"phone,omitempty"`
+	Email          string     `yaml:"email,omitempty"`
+	Bank           *yamlBank  `yaml:"bank,omitempty"`
+	Signature      string     `yaml:"signature,omitempty"`
+	SignatureWidth *mmFloat   `yaml:"signature_width,omitempty"`
+	PrintQR        *bool      `yaml:"print_qr,omitempty"`
+	Accent         string     `yaml:"accent,omitempty"`
 }
 
 // Load reads and validates the named profile.
@@ -177,22 +177,22 @@ func (s *Store) Load(name string) (*Profile, error) {
 	}
 
 	p := &Profile{
-		Name:            y.Name,
-		Street:          y.Street,
-		Zip:             string(y.Zip),
-		City:            y.City,
-		Phone:           y.Phone,
-		Email:           y.Email,
-		Signature:       y.Signature,
-		Accent:          y.Accent,
-		SignatureHeight: 15.0,
-		PrintQR:         true,
+		Name:           y.Name,
+		Street:         y.Street,
+		Zip:            string(y.Zip),
+		City:           y.City,
+		Phone:          y.Phone,
+		Email:          y.Email,
+		Signature:      y.Signature,
+		Accent:         y.Accent,
+		SignatureWidth: 40.0,
+		PrintQR:        true,
 	}
 	if y.Bank != nil {
 		p.Bank = &Bank{Holder: y.Bank.Holder, IBAN: y.Bank.IBAN, BIC: y.Bank.BIC, BankName: y.Bank.BankName}
 	}
-	if y.SignatureHeight != nil {
-		p.SignatureHeight = float64(*y.SignatureHeight)
+	if y.SignatureWidth != nil {
+		p.SignatureWidth = float64(*y.SignatureWidth)
 	}
 	if y.PrintQR != nil {
 		p.PrintQR = *y.PrintQR
@@ -277,12 +277,12 @@ func (s *Store) Save(name string, p *Profile) error {
 	if err != nil {
 		return err
 	}
-	sh := mmFloat(p.SignatureHeight)
+	sh := mmFloat(p.SignatureWidth)
 	qr := p.PrintQR
 	y := yamlProfile{
 		Name: p.Name, Street: p.Street, Zip: flexScalar(p.Zip), City: p.City,
 		Phone: p.Phone, Email: p.Email, Signature: p.Signature, Accent: p.Accent,
-		SignatureHeight: &sh, PrintQR: &qr,
+		SignatureWidth: &sh, PrintQR: &qr,
 	}
 	if p.Bank != nil {
 		y.Bank = &yamlBank{Holder: p.Bank.Holder, IBAN: p.Bank.IBAN, BIC: p.Bank.BIC, BankName: p.Bank.BankName}

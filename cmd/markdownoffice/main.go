@@ -122,9 +122,9 @@ func seedDefaultProfile(store *profiles.Store) {
 			Holder: "Dr. Anna Weber", IBAN: "DE91 7002 0500 0009 8765 43",
 			BIC: "BFSWDE33MUE", BankName: "Bank für Sozialwirtschaft",
 		},
-		SignatureHeight: 15.0,
-		PrintQR:         true,
-		Accent:          "#C2185B",
+		SignatureWidth: 40.0,
+		PrintQR:        true,
+		Accent:         "#C2185B",
 	})
 }
 

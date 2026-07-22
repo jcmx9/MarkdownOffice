@@ -31,14 +31,15 @@ type Sender struct {
 // Letter is a single DIN 5008 Form A business letter, independent of how it is
 // stored or transported.
 type Letter struct {
-	Sender      Sender
-	Recipient   []string
-	Date        string
-	Subject     string
-	Closing     string
-	Signature   string // signature image filename relative to the compile root, or "" for none
-	Accent      string // hex colour like "#1F6FEB", or "" for the template default
-	Attachments []string
+	Sender         Sender
+	Recipient      []string
+	Date           string
+	Subject        string
+	Closing        string
+	Signature      string  // signature image filename relative to the compile root, or "" for none
+	SignatureWidth float64 // signature width in mm, or 0 for the template default
+	Accent         string  // hex colour like "#1F6FEB", or "" for the template default
+	Attachments    []string
 }
 
 // Wrapper holds the generated Typst entrypoint and its JSON side-car, ready to
@@ -114,7 +115,7 @@ func BuildWrapper(l Letter, din5008aVersion string) (Wrapper, error) {
   subject: data.at("subject", default: none),
   closing: data.at("closing", default: none),
   signature: sig,
-  %sattachments: data.at("attachments", default: ()),
+  %s%sattachments: data.at("attachments", default: ()),
 )
 
 // Original Markdown source embedded as PDF/A-3 attachment (AFRelationship=Source).
@@ -132,7 +133,7 @@ func BuildWrapper(l Letter, din5008aVersion string) (Wrapper, error) {
 
 // Body: Markdown rendered to Typst via cmarker, styled by din5008a.
 #cmarker.render(read("body.md"))
-`, din5008aVersion, cmarkerVersion, zeroVersion, accentArg(l.Accent))
+`, din5008aVersion, cmarkerVersion, zeroVersion, sigWidthArg(l.SignatureWidth), accentArg(l.Accent))
 
 	return Wrapper{Typ: typ, JSON: string(jsonBytes)}, nil
 }
@@ -144,4 +145,13 @@ func accentArg(accent string) string {
 		return ""
 	}
 	return "accent: rgb(data.accent),\n  "
+}
+
+// sigWidthArg returns the din5008a signature-width argument line when a width is
+// set, or an empty string to fall back to the template default (40mm).
+func sigWidthArg(mm float64) string {
+	if mm <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("signature-width: %gmm,\n  ", mm)
 }

@@ -152,6 +152,7 @@
     form.bic.value = bank.bic || "";
     form.bank_name.value = bank.bank_name || "";
     form.print_qr.checked = slug ? !!p.print_qr : true;
+    form.signature_width.value = p.signature_width || "";
     document.getElementById("signature-file").value = "";
     syncPickerFromHex();
     setSignatureState(!!p.signature);
@@ -183,7 +184,7 @@
       email: form.email.value,
       accent: form.accent.value,
       print_qr: form.print_qr.checked,
-      signature_height: 15,
+      signature_width: parseFloat(form.signature_width.value) || 0,
     };
     if (form.iban.value || form.bic.value || form.bank_name.value || form.holder.value) {
       p.bank = {

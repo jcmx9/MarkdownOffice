@@ -32,7 +32,7 @@ bank:
   bic: BFSWDE33MUE
   bank_name: Bank für Sozialwirtschaft
 signature: signature.svg
-signature_height: 15mm
+signature_width: 15mm
 print_qr: false
 accent: "#C2185B"
 `
@@ -73,8 +73,8 @@ func TestLoadFull(t *testing.T) {
 	if p.Signature != "signature.svg" {
 		t.Errorf("signature = %q", p.Signature)
 	}
-	if p.SignatureHeight != 15.0 {
-		t.Errorf("signature_height = %v, want 15", p.SignatureHeight)
+	if p.SignatureWidth != 15.0 {
+		t.Errorf("signature_width = %v, want 15", p.SignatureWidth)
 	}
 	if p.PrintQR != false { // explicit false must be respected
 		t.Errorf("print_qr = %v, want false", p.PrintQR)
@@ -93,8 +93,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if p.SignatureHeight != 15.0 {
-		t.Errorf("default signature_height = %v, want 15", p.SignatureHeight)
+	if p.SignatureWidth != 40.0 {
+		t.Errorf("default signature_width = %v, want 40", p.SignatureWidth)
 	}
 	if p.PrintQR != true { // absent → true
 		t.Errorf("default print_qr = %v, want true", p.PrintQR)
@@ -131,17 +131,17 @@ func TestLoadInvalidAccent(t *testing.T) {
 	}
 }
 
-func TestSignatureHeightFormats(t *testing.T) {
+func TestSignatureWidthFormats(t *testing.T) {
 	dir := t.TempDir()
-	writeProfile(t, dir, "a", "name: X\nstreet: Y\nzip: 1\ncity: Z\nsignature_height: 12.5\n")
-	writeProfile(t, dir, "b", "name: X\nstreet: Y\nzip: 1\ncity: Z\nsignature_height: 20mm\n")
+	writeProfile(t, dir, "a", "name: X\nstreet: Y\nzip: 1\ncity: Z\nsignature_width: 12.5\n")
+	writeProfile(t, dir, "b", "name: X\nstreet: Y\nzip: 1\ncity: Z\nsignature_width: 20mm\n")
 	s := NewStore("", dir)
 
-	if p, _ := s.Load("a"); p.SignatureHeight != 12.5 {
-		t.Errorf("a = %v, want 12.5", p.SignatureHeight)
+	if p, _ := s.Load("a"); p.SignatureWidth != 12.5 {
+		t.Errorf("a = %v, want 12.5", p.SignatureWidth)
 	}
-	if p, _ := s.Load("b"); p.SignatureHeight != 20.0 {
-		t.Errorf("b = %v, want 20", p.SignatureHeight)
+	if p, _ := s.Load("b"); p.SignatureWidth != 20.0 {
+		t.Errorf("b = %v, want 20", p.SignatureWidth)
 	}
 }
 
@@ -214,7 +214,7 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 	p := &Profile{
 		Name: "Anna", Street: "Weg 1", Zip: "12345", City: "Ort",
 		Email: "a@b.de", Bank: &Bank{IBAN: "DE1", BIC: "BIC", BankName: "Bank"},
-		SignatureHeight: 15.0, PrintQR: true, Accent: "#103C78",
+		SignatureWidth: 15.0, PrintQR: true, Accent: "#103C78",
 	}
 	if err := s.Save("anna", p); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -253,7 +253,7 @@ func TestDeleteAndBadSlug(t *testing.T) {
 func TestSaveSignature(t *testing.T) {
 	global := t.TempDir()
 	s := NewStore("", global)
-	if err := s.Save("anna", &Profile{Name: "A", Street: "S", Zip: "1", City: "C", SignatureHeight: 15, PrintQR: true}); err != nil {
+	if err := s.Save("anna", &Profile{Name: "A", Street: "S", Zip: "1", City: "C", SignatureWidth: 15, PrintQR: true}); err != nil {
 		t.Fatal(err)
 	}
 	svg := []byte(`<svg/>`)
@@ -269,7 +269,7 @@ func TestSaveSignature(t *testing.T) {
 func TestDeleteSignature(t *testing.T) {
 	global := t.TempDir()
 	s := NewStore("", global)
-	if err := s.Save("anna", &Profile{Name: "A", Street: "S", Zip: "1", City: "C", SignatureHeight: 15, PrintQR: true}); err != nil {
+	if err := s.Save("anna", &Profile{Name: "A", Street: "S", Zip: "1", City: "C", SignatureWidth: 15, PrintQR: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SaveSignature("anna", ".svg", []byte("<svg/>")); err != nil {
