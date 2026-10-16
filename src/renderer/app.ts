@@ -1,0 +1,1044 @@
+import { closeCompletion } from '@codemirror/autocomplete'
+import { redo, selectAll, undo } from '@codemirror/commands'
+import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
+import type { EditorState, TransactionSpec } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import type {
+  ExportResult,
+  ExternalChange,
+  MenuCommand,
+  Mode,
+  NoteFile,
+  Settings,
+  View,
+} from '../shared/types'
+import { AutosaveScheduler } from './editor/autosave'
+import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
+import { insertHeader } from './editor/insert-header'
+import { modeCompartment, modeExtensions } from './editor/mode'
+import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
+import { insertPageBreak } from './editor/pagebreak'
+import { foldAllSections } from './editor/sections'
+import {
+  createState,
+  freezeSpec,
+  isFrozen,
+  serializeDoc,
+  viewCompartment,
+  viewExtensions,
+} from './editor/setup'
+import { snippetRegistry } from './editor/snippets'
+import { type Tab, TabStore } from './tabs/tab-store'
+import { allowedWithDialog, editTarget } from './ui/edit-target'
+import { InfoLine } from './ui/infoline'
+import { Notices } from './ui/notices'
+import { Outline } from './ui/outline'
+import { askText } from './ui/prompt'
+import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
+import { type SaveState, StatusLine, saveText } from './ui/statusline'
+import { TabBar } from './ui/tabbar'
+import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
+import { closeWindow } from './util/close-guard'
+import { fileName } from './util/path'
+import { LatestToggle, SerialQueue } from './util/serial'
+
+const CONFLICT_ERROR = 'Externe Änderung – bitte im Hinweis entscheiden'
+const UNREADABLE_ERROR = 'Externe Fassung nicht lesbar – bitte im Hinweis entscheiden'
+const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheiden'
+
+const MAX_SAVE_ROUNDS = 3
+
+/** One conflict banner per tab: a tab keeps its banner when its path changes (case-only rename). */
+const bannerKey = (tabId: number): string => `tab:${tabId}`
+
+const isMac = navigator.userAgent.includes('Mac')
+
+export interface AppRoot {
+  tabbar: HTMLElement
+  editor: HTMLElement
+  empty: HTMLElement
+  status: HTMLElement
+  infoline: HTMLElement
+  outline: HTMLElement
+  notices: HTMLElement
+}
+
+export class App {
+  private readonly mdo = window.mdo
+  private readonly store = new TabStore()
+  private readonly autosave = new AutosaveScheduler(() => this.saveAll())
+  private readonly editor: EditorView
+  private readonly tabBar: TabBar
+  private readonly status: StatusLine
+  private readonly notices: Notices
+  private readonly infoLine: InfoLine
+  private readonly outline: OutlineSync
+  /** Outline sidebar on/off per mode (persisted in the session). */
+  private outlineOn = { edit: false, present: false }
+  private view: View = 'preview'
+  private mode: Mode = 'edit'
+  private zoom = { edit: 1, present: 1 }
+  private presentFactor = 1.6
+  private settings: Settings | null = null
+  private settingsOpen = false
+  /**
+   * Serializes fullscreen requests so fast toggles reach main in order. Main owns the
+   * fullscreen decision: it only leaves a fullscreen the app started (a user's own
+   * fullscreen survives Present) and never reports its own leave as an OS leave.
+   */
+  private readonly fullScreenOps = new SerialQueue()
+  /**
+   * Toggle-present while a fullscreen request is in flight (main settles an enter only once
+   * the window is fullscreen or the OS refused it) is remembered, not dropped: last intent wins.
+   */
+  private readonly presentToggle = new LatestToggle(
+    () => this.mode === 'present',
+    (on) => (on ? this.enterPresent() : this.exitPresent()),
+  )
+  private shownId: number | null = null
+  private readonly saveErrors = new Map<number, string>()
+  /** Tabs held after an external change: no saving until the user answers the banner. */
+  private readonly conflicts = new Set<number>()
+  /** Tabs whose content is not on disk although clean (file deleted or made unreadable outside). */
+  private readonly unwritten = new Set<number>()
+  /** Status warning of a tab held because its file was deleted or became unreadable. */
+  private readonly holdWarnings = new Map<number, string>()
+  /** Hash of the bytes each tab last loaded or saved, to recognise our own content on disk. */
+  private readonly savedHashes = new Map<number, string>()
+  /**
+   * Tabs whose next write may replace whatever is on disk: the user chose to keep or save their
+   * version over an external change, a deletion or unreadable bytes. Cleared by the next
+   * successful write and by every new external change.
+   */
+  private readonly overwrite = new Set<number>()
+  private readonly saving = new Map<number, Promise<boolean>>()
+  private sessionTimer: ReturnType<typeof setTimeout> | null = null
+  /** The running window close; input into every tab is frozen while it is set. */
+  private closing: Promise<boolean> | null = null
+
+  constructor(private readonly root: AppRoot) {
+    this.editor = new EditorView({
+      parent: root.editor,
+      state: createState('', '\n', this.view),
+      dispatchTransactions: (trs, view) => {
+        view.update(trs)
+        // Route to the tab actually shown, not store.active (which can run ahead of show()).
+        const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+        if (!tab) return
+        this.store.updateState(tab.id, view.state)
+        this.outline.update(trs)
+        if (trs.some((tr) => tr.docChanged)) {
+          this.autosave.touch()
+          this.refresh()
+        }
+      },
+    })
+    this.tabBar = new TabBar(root.tabbar, {
+      select: (i) => this.activate(i),
+      close: (id) => void this.closeTab(id),
+      menu: (i) => void this.noteMenu(i),
+    })
+    this.status = new StatusLine(root.status, {
+      noteMenu: () => void this.noteMenu(),
+      setMode: (mode) => {
+        if (mode !== this.mode) void this.presentToggle.toggle()
+      },
+      setView: (view) => this.setView(view),
+    })
+    this.notices = new Notices(root.notices)
+    this.infoLine = new InfoLine(root.infoline, {
+      selectTab: (i) => this.activate(i),
+      exitPresent: () => void this.exitPresent(),
+      // Through command(): the same guards as Mod+Shift+M (closing window, open dialog).
+      showCode: () => void this.command('toggle-view'),
+      zoomIn: () => this.setZoom(zoomIn(this.zoom[this.mode])),
+      zoomOut: () => this.setZoom(zoomOut(this.zoom[this.mode])),
+    })
+    this.outline = new OutlineSync(
+      new Outline(root.outline, {
+        jump: (e) => jumpToEntry(this.editor, e),
+        toggle: (e) => toggleEntryFold(this.editor, e),
+      }),
+      () => (this.shownId === null ? null : this.editor.state),
+    )
+    this.mdo.onFullScreenLeft(() => {
+      if (this.mode === 'present') void this.exitPresent(false)
+    })
+    this.mdo.onFullScreenRefused(() => {
+      // A meeting must not lose Present because the OS refused fullscreen. No notice when a
+      // toggle during the refused enter already asked to leave Present (it ends right after).
+      if (this.mode === 'present' && this.presentToggle.pendingWant !== false)
+        this.notices.toast('Vollbild nicht verfügbar – Präsentation im Fenster')
+    })
+    root.empty
+      .querySelector('[data-action=new]')
+      ?.addEventListener('click', () => void this.newNote())
+    root.empty
+      .querySelector('[data-action=open]')
+      ?.addEventListener('click', () => void this.open())
+    this.mdo.onMenu((cmd) => void this.command(cmd))
+    this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
+    this.mdo.onExternalChange((change) => this.externalChange(change))
+    this.mdo.onBeforeClose(() => this.beforeClose())
+    window.addEventListener('keydown', (e) => this.globalKeys(e))
+    window.addEventListener('blur', () => void this.autosave.flush())
+    window.addEventListener('focus', () => void this.reloadSnippets())
+  }
+
+  private async reloadSnippets(): Promise<void> {
+    try {
+      snippetRegistry.setUser(await this.mdo.listSnippets())
+    } catch (err) {
+      console.error('Markdown Office: Snippets konnten nicht geladen werden', err)
+    }
+  }
+
+  async start(): Promise<void> {
+    const startup = await this.mdo.startup()
+    this.view = startup.session.view
+    this.zoom = { ...startup.session.zoom }
+    this.outlineOn = { ...startup.session.outline }
+    this.settings = startup.settings
+    this.presentFactor = startup.settings.presentFontFactor
+    this.applyZoom()
+    for (const t of startup.session.tabs) await this.openPath(t.path, t.headerHidden)
+    const activePath = startup.session.tabs[startup.session.activeIndex]?.path
+    const activeTab = activePath === undefined ? undefined : this.store.findByPath(activePath)
+    if (activeTab) this.store.activate(this.store.all.indexOf(activeTab))
+    for (const p of startup.openPaths) await this.openPath(p)
+    if (this.store.all.length === 0) await this.newNote()
+    else this.show()
+    void this.reloadSnippets()
+  }
+
+  // ── commands ────────────────────────────────────────────────────────────
+
+  private async command(cmd: MenuCommand): Promise<void> {
+    // While the window closes nothing may change a document, a path or the tab list.
+    if (this.closing) return
+    // Behind a modal dialog only the edit commands run (they serve its text fields).
+    if (!allowedWithDialog(cmd, document.querySelector('dialog[open]') !== null)) return
+    if (
+      this.mode === 'present' &&
+      (cmd === 'export' || cmd === 'toggle-header' || cmd === 'insert-header' || cmd === 'settings')
+    ) {
+      this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
+      return
+    }
+    switch (cmd) {
+      case 'new':
+        return this.newNote()
+      case 'open':
+        return this.open()
+      case 'rename':
+        return this.rename()
+      case 'close-tab': {
+        const tab = this.store.active
+        if (tab) await this.closeTab(tab.id)
+        return
+      }
+      case 'export':
+        return this.exportPdf()
+      case 'next-tab':
+        await this.autosave.flush()
+        this.store.next()
+        return this.show()
+      case 'prev-tab':
+        await this.autosave.flush()
+        this.store.prev()
+        return this.show()
+      case 'undo':
+        return this.editCommand('undo', undo)
+      case 'redo':
+        return this.editCommand('redo', redo)
+      case 'select-all':
+        return this.editCommand('selectAll', selectAll)
+      case 'insert-pagebreak':
+        return this.editCommand('insertPageBreak', insertPageBreak)
+      case 'insert-header':
+        return this.insertHeaderTemplate()
+      case 'toggle-view':
+        if (this.mode === 'present') return this.presentToCode()
+        return this.setView(this.view === 'code' ? 'preview' : 'code')
+      case 'toggle-header':
+        return this.toggleHeader()
+      case 'toggle-outline':
+        return this.toggleOutline()
+      case 'fold':
+        foldCode(this.editor)
+        this.editor.focus()
+        return
+      case 'unfold':
+        unfoldCode(this.editor)
+        this.editor.focus()
+        return
+      case 'fold-all':
+        foldAllSections(this.editor)
+        this.editor.focus()
+        return
+      case 'unfold-all':
+        unfoldAll(this.editor)
+        this.editor.focus()
+        return
+      case 'zoom-in':
+        return this.setZoom(zoomIn(this.zoom[this.mode]))
+      case 'zoom-out':
+        return this.setZoom(zoomOut(this.zoom[this.mode]))
+      case 'zoom-reset':
+        return this.setZoom(1)
+      case 'toggle-present':
+        return this.presentToggle.toggle()
+      case 'settings':
+        return this.editSettings()
+    }
+  }
+
+  private async editSettings(): Promise<void> {
+    const current = this.settings
+    if (!current || this.settingsOpen || document.querySelector('dialog[open]')) return
+    this.settingsOpen = true
+    try {
+      const patch = await openSettings({
+        settings: current,
+        status: withTimeout(this.mdo.getSettingsStatus(), STATUS_TIMEOUT_MS),
+        choose: (kind, path) => this.mdo.choosePath(kind, path),
+      })
+      if (!patch || Object.keys(patch).length === 0) return
+      const next = await this.mdo.updateSettings(patch)
+      this.settings = next
+      const dropped = droppedFields(patch, next)
+      if (dropped.length > 0)
+        this.notices.panel(
+          'Nicht alle Einstellungen übernommen',
+          `${dropped.join('\n')}\nFür diese Felder gilt weiter der bisherige Wert.`,
+        )
+      if (next.presentFontFactor !== this.presentFactor) {
+        this.presentFactor = next.presentFontFactor
+        this.applyZoom()
+        this.refresh()
+      }
+      if (next.snippetFolder !== current.snippetFolder) await this.reloadSnippets()
+    } catch (e) {
+      this.notices.panel(
+        'Einstellungen nicht gespeichert',
+        e instanceof Error ? e.message : String(e),
+      )
+    } finally {
+      this.settingsOpen = false
+      if (this.shownId !== null) this.editor.focus()
+    }
+  }
+
+  /** Header state of a tab opened without a session entry (Einstellungen → YAML-Header). */
+  private headerDefaultHidden(): boolean {
+    return this.settings?.headerDefault === 'titleblock'
+  }
+
+  /** Edit commands go to CodeMirror unless another text field (dialog, panel) has focus. */
+  private editCommand(
+    name: 'undo' | 'redo' | 'selectAll' | 'insertPageBreak',
+    run: (v: EditorView) => unknown,
+  ): void {
+    const target = editTarget(
+      document.activeElement,
+      this.editor.dom,
+      document.querySelector('dialog[open]') !== null,
+    )
+    if (target === 'blocked') return
+    if (target === 'field') {
+      // A page break only makes sense in the document; other fields ignore the shortcut.
+      if (name !== 'insertPageBreak') document.execCommand(name)
+      return
+    }
+    run(this.editor)
+    this.editor.focus()
+  }
+
+  private globalKeys(e: KeyboardEvent): void {
+    if (
+      this.mode === 'present' &&
+      e.key === 'Escape' &&
+      !e.defaultPrevented &&
+      !document.querySelector('dialog[open]')
+    ) {
+      e.preventDefault()
+      void this.exitPresent()
+      return
+    }
+    const zoomed = handleZoomKey(e, isMac, (action) => {
+      const z = this.zoom[this.mode]
+      this.setZoom(action === 'in' ? zoomIn(z) : action === 'out' ? zoomOut(z) : 1)
+    })
+    if (zoomed) return
+    const mod = isMac ? e.metaKey : e.ctrlKey
+    if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+      e.preventDefault()
+      this.activate(Number(e.key) - 1)
+    }
+  }
+
+  private setZoom(next: number): void {
+    this.zoom[this.mode] = Math.min(3, Math.max(0.5, next))
+    this.applyZoom()
+    this.refresh()
+    this.syncMain()
+  }
+
+  /** Scales the editor via CSS custom properties (never Electron page zoom). */
+  private applyZoom(): void {
+    const { body, code } = editorSizes(this.mode, this.zoom[this.mode], this.presentFactor)
+    this.root.editor.style.setProperty('--mdo-body-size', body)
+    this.root.editor.style.setProperty('--mdo-code-size', code)
+    // The outline follows the zoom of the mode, not Present's larger text factor.
+    this.root.outline.style.setProperty('--mdo-ol-zoom', String(this.zoom[this.mode]))
+    this.editor.requestMeasure()
+  }
+
+  private activate(index: number): void {
+    void this.autosave.flush()
+    this.store.activate(index)
+    this.show()
+  }
+
+  private async newNote(): Promise<void> {
+    if (this.closing) return
+    const path = await this.mdo.newNotePath()
+    const hideHeader = this.headerDefaultHidden()
+    this.store.add({
+      path,
+      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode),
+      bom: false,
+      eol: '\n',
+      onDisk: false,
+      headerHidden: hideHeader,
+    })
+    this.show()
+  }
+
+  private async open(): Promise<void> {
+    await this.openPaths(await this.mdo.showOpenDialog())
+  }
+
+  private async openPaths(paths: readonly string[]): Promise<void> {
+    for (const p of paths) await this.openPath(p)
+    this.show()
+  }
+
+  /** hideHeader: from the session entry; without one the header default applies. */
+  private async openPath(path: string, hideHeader = this.headerDefaultHidden()): Promise<boolean> {
+    const open = this.store.findByPath(path)
+    if (open) {
+      this.store.activate(this.store.all.indexOf(open))
+      return true
+    }
+    const res = await this.mdo.readNote(path)
+    if ('error' in res) {
+      this.notices.panel('Nicht geöffnet', `${path}\n\n${res.error}`)
+      return false
+    }
+    const tab = this.store.add({
+      path,
+      state: createState(res.text, res.eol, this.effectiveView(), hideHeader, this.mode),
+      bom: res.bom,
+      eol: res.eol,
+      onDisk: true,
+      headerHidden: hideHeader,
+    })
+    this.savedHashes.set(tab.id, res.hash)
+    return true
+  }
+
+  /** Present always shows Preview; the per-tab Code/Preview choice is kept in this.view. */
+  private effectiveView(): View {
+    return this.mode === 'present' ? 'preview' : this.view
+  }
+
+  /** Code <-> Preview for every tab; the documents are never touched. */
+  private setView(view: View): void {
+    if (view === this.view) return
+    this.view = view
+    this.reconfigureAll()
+    this.outline.refresh()
+    this.refresh()
+    this.syncMain()
+    this.editor.focus()
+  }
+
+  /**
+   * Code chosen while presenting: Present ends the normal way (fullscreen included, through
+   * presentToggle so it coalesces with toggles in flight), then the Code view shows. The view is
+   * set first: while Present lasts effectiveView() stays Preview, and exitPresent's reconfigure
+   * applies Code however long the fullscreen request takes.
+   */
+  private async presentToCode(): Promise<void> {
+    this.setView('code')
+    await this.presentToggle.set(false)
+  }
+
+  /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
+  private reconfigureAll(): void {
+    const effects = [
+      viewCompartment.reconfigure(viewExtensions(this.effectiveView())),
+      modeCompartment.reconfigure(modeExtensions(this.mode)),
+    ]
+    const collapses = (state: EditorState) =>
+      this.mode === 'present' || (this.effectiveView() === 'preview' && state.field(headerHidden))
+    for (const tab of this.store.all) {
+      const shown = tab.id === this.shownId
+      const state = shown ? this.editor.state : tab.state
+      const spec: TransactionSpec = { ...(collapses(state) ? moveOutOfHeader(state) : {}), effects }
+      if (shown) this.editor.dispatch(spec)
+      else this.store.updateState(tab.id, state.update(spec).state)
+    }
+  }
+
+  private async enterPresent(): Promise<void> {
+    if (this.mode === 'present' || this.shownId === null) return
+    this.mode = 'present'
+    this.reconfigureAll()
+    document.body.classList.add('mdo-mode-present')
+    this.root.tabbar.hidden = true
+    this.root.status.hidden = true
+    this.root.infoline.hidden = false
+    this.infoLine.start()
+    this.applyZoom()
+    this.applyOutline()
+    this.refresh()
+    this.editor.focus()
+    await this.fullScreenOps.run(async () => {
+      try {
+        await this.mdo.setFullScreen(true)
+      } catch (e) {
+        console.error('setFullScreen(true) failed', e)
+        this.notices.toast('Vollbild nicht verfügbar')
+      }
+    })
+  }
+
+  /** fullScreen=false when the OS already left fullscreen (avoid a second toggle). */
+  private async exitPresent(fullScreen = true): Promise<void> {
+    if (this.mode !== 'present') return
+    this.mode = 'edit'
+    this.reconfigureAll()
+    document.body.classList.remove('mdo-mode-present')
+    this.root.tabbar.hidden = false
+    this.root.status.hidden = false
+    this.root.infoline.hidden = true
+    this.infoLine.stop()
+    this.applyZoom()
+    this.applyOutline()
+    this.refresh()
+    this.editor.focus()
+    await this.fullScreenOps.run(async () => {
+      // Sent even for a user's own fullscreen: main keeps that and only restores the menu bar.
+      if (!fullScreen) return
+      try {
+        await this.mdo.setFullScreen(false)
+      } catch (e) {
+        console.error('setFullScreen(false) failed', e)
+      }
+    })
+  }
+
+  /** Interim until template sets reach the editor: the memo set's header at the top. */
+  private async insertHeaderTemplate(): Promise<void> {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab) return
+    const template = await this.mdo.readHeaderTemplate()
+    // The user may have switched tabs or started closing while main read the file.
+    if (this.closing || this.shownId !== tab.id) return
+    if (template === null) {
+      this.notices.toast('Vorlage memo.header.md nicht gefunden.')
+      return
+    }
+    const state = this.editor.state
+    const res = insertHeader(state, template)
+    if ('refused' in res) {
+      this.notices.toast('Die Notiz hat schon einen YAML-Header.')
+      return
+    }
+    // The cursor lands in the header: a collapsed header is shown, never hiding the cursor.
+    const show = state.field(headerHidden) ? headerToggleSpec(state, false).effects : undefined
+    this.editor.dispatch({ ...res.spec, effects: show })
+    if (show) {
+      tab.headerHidden = false
+      this.syncMain()
+    }
+    this.editor.focus()
+  }
+
+  private toggleHeader(): void {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab) return
+    if (this.view !== 'preview') {
+      this.notices.toast('Der YAML-Header lässt sich nur in der Preview ausblenden.')
+      return
+    }
+    const hide = !this.editor.state.field(headerHidden)
+    this.editor.dispatch(headerToggleSpec(this.editor.state, hide))
+    tab.headerHidden = hide
+    this.syncMain()
+    this.editor.focus()
+  }
+
+  /** Outline on/off for the current mode; allowed in Present too. */
+  private toggleOutline(): void {
+    this.outlineOn[this.mode] = !this.outlineOn[this.mode]
+    this.applyOutline()
+    this.mdo
+      .saveSession({ outline: { ...this.outlineOn } })
+      .catch((e: unknown) => console.error('saveSession(outline) failed', e))
+    this.editor.focus()
+  }
+
+  /** Shown when enabled for the current mode and a tab is shown. */
+  private applyOutline(): void {
+    this.outline.setVisible(this.outlineOn[this.mode] && this.shownId !== null)
+    this.outline.refresh()
+  }
+
+  /** discard: the user already chose to drop unsaved content (no save, no prompt). */
+  private async closeTab(id: number, discard = false): Promise<void> {
+    const tab = this.store.get(id)
+    if (!tab) return
+    // A banner's „Tab schließen“ (discard) is the user's explicit choice and stays allowed.
+    if (this.closing && !discard) return
+    if (!discard) {
+      let saved = true
+      for (let i = 0; i < MAX_SAVE_ROUNDS && this.unsaved(tab); i++) {
+        saved = await this.saveTab(tab)
+        if (!saved) break
+      }
+      if (!saved || this.unsaved(tab)) {
+        if (!(await this.mdo.confirmDiscard([fileName(tab.path)]))) return
+      }
+    }
+    if (!tab.onDisk) {
+      try {
+        await this.mdo.releasePath(tab.path)
+      } catch {
+        // closing must not be blocked by a failed release
+      }
+    }
+    this.store.close(id)
+    this.notices.dismiss(bannerKey(id))
+    this.saveErrors.delete(id)
+    this.conflicts.delete(id)
+    this.unwritten.delete(id)
+    this.holdWarnings.delete(id)
+    this.savedHashes.delete(id)
+    this.overwrite.delete(id)
+    this.saving.delete(id)
+    // Present never shows the empty state.
+    if (this.mode === 'present' && this.store.all.length === 0) await this.exitPresent()
+    this.show()
+  }
+
+  private async rename(): Promise<void> {
+    const tab = this.store.active
+    if (!tab) return
+    const name = await askText('Umbenennen', 'Neuer Dateiname', fileName(tab.path))
+    // A dialog answered after the window started closing must not move the file under it.
+    if (!name || this.closing) return
+    if (!(await this.saveTab(tab, true))) {
+      this.notices.panel(
+        'Umbenennen nicht möglich',
+        `Die Notiz konnte nicht gespeichert werden:\n${this.saveErrors.get(tab.id) ?? ''}`,
+      )
+      return
+    }
+    // Inside the tab's save chain, so an autosave cannot interleave with the rename.
+    const prev = this.saving.get(tab.id) ?? Promise.resolve(true)
+    const renamed = prev.then(async () => {
+      try {
+        const r = await this.mdo.renameNote(tab.path, name)
+        // Switch the path inside the chain: queued saves must target the new file.
+        if (r.ok) this.store.setPath(tab.id, r.path)
+        return r
+      } catch (e) {
+        return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
+      }
+    })
+    this.saving.set(
+      tab.id,
+      renamed.then(() => true),
+    )
+    const res = await renamed
+    if (!res.ok) {
+      this.notices.panel('Umbenennen nicht möglich', res.error)
+      return
+    }
+    this.show()
+  }
+
+  /** Context menu of a note; a right click on another tab selects that tab first. */
+  private async noteMenu(index?: number): Promise<void> {
+    if (this.closing) return
+    if (index !== undefined && index !== this.store.activeIndex) this.activate(index)
+    if (!this.store.active) return
+    await this.mdo.showNoteMenu()
+  }
+
+  private async exportPdf(): Promise<void> {
+    const tab = this.store.active
+    if (!tab || this.status.exporting) return
+    this.status.setExporting(true)
+    try {
+      if (!(await this.saveTab(tab, true))) {
+        this.notices.panel(
+          'Export abgebrochen',
+          `Die Notiz konnte nicht gespeichert werden:\n${this.saveErrors.get(tab.id) ?? ''}`,
+        )
+        return
+      }
+      this.showExport(await this.mdo.exportPdf(tab.path))
+    } catch (e) {
+      this.notices.panel('Export fehlgeschlagen', e instanceof Error ? e.message : String(e))
+    } finally {
+      this.status.setExporting(false)
+    }
+  }
+
+  private showExport(r: ExportResult): void {
+    if (r.kind === 'ok') this.notices.toast(r.message)
+    else this.notices.panel('Export fehlgeschlagen', r.stderr)
+  }
+
+  // ── saving ──────────────────────────────────────────────────────────────
+
+  /** force: also create a new note's file when it is still empty (rename, export). */
+  private saveTab(tab: Tab, force = false): Promise<boolean> {
+    // Chain per tab so forced saves never overlap an autosave of the same tab.
+    const prev = this.saving.get(tab.id) ?? Promise.resolve(true)
+    const next = prev.then(() => this.writeTab(tab, force))
+    this.saving.set(
+      tab.id,
+      next.catch(() => false),
+    )
+    return next
+  }
+
+  private async writeTab(tab: Tab, force: boolean): Promise<boolean> {
+    if (!this.unsaved(tab) && (tab.onDisk || !force)) return true
+    if (this.conflicts.has(tab.id)) {
+      if (!this.saveErrors.has(tab.id)) this.saveErrors.set(tab.id, CONFLICT_ERROR)
+      this.refresh()
+      return false
+    }
+    const doc = tab.state.doc
+    let res: Awaited<ReturnType<typeof this.mdo.saveNote>>
+    try {
+      // Main writes only over the base (or our own newer write) unless the user chose to
+      // overwrite: an external change inside the watcher's debounce is never replaced silently.
+      res = await this.mdo.saveNote(
+        tab.path,
+        serializeDoc(doc, tab.eol),
+        tab.bom,
+        this.savedHashes.get(tab.id) ?? null,
+        this.overwrite.has(tab.id),
+      )
+    } catch (e) {
+      res = { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+    if (!res.ok) {
+      if ('conflict' in res) {
+        // Follow a case-only rename outside first, so the conflict finds this tab.
+        if (res.path !== undefined && res.path !== tab.path) {
+          this.store.setPath(tab.id, res.path)
+          this.syncMain()
+        }
+        this.externalChange(res.conflict)
+      } else this.saveErrors.set(tab.id, res.error)
+      this.refresh()
+      return false
+    }
+    // A case-only rename outside (a.md → A.md): the tab follows the file's new spelling.
+    const moved = res.path !== undefined && res.path !== tab.path
+    if (moved && res.path) this.store.setPath(tab.id, res.path)
+    const firstSave = !tab.onDisk
+    this.store.markSaved(tab.id, doc)
+    this.savedHashes.set(tab.id, res.hash)
+    this.overwrite.delete(tab.id)
+    this.unwritten.delete(tab.id)
+    this.saveErrors.delete(tab.id)
+    if (firstSave || moved) this.syncMain()
+    this.refresh()
+    return true
+  }
+
+  private async saveAll(): Promise<boolean> {
+    let ok = true
+    for (const tab of [...this.store.all]) {
+      if (!(await this.saveTab(tab))) ok = false
+    }
+    return ok
+  }
+
+  /**
+   * Input is frozen first, so saving converges: every keystroke is on disk or the user agreed
+   * to discard it. A held tab cannot be saved and always reaches the prompt. A second close
+   * request while one runs gets the same answer.
+   */
+  private beforeClose(): Promise<boolean> {
+    if (this.closing) return this.closing
+    const run = closeWindow({
+      freeze: () => this.freezeInput(true),
+      unfreeze: () => this.freezeInput(false),
+      flush: () => this.autosave.flush(),
+      saveAll: () => this.saveAll(),
+      pending: () => this.store.all.filter((t) => this.unsaved(t)).map((t) => fileName(t.path)),
+      persist: () => this.persistSession(),
+      confirmDiscard: (names) => this.mdo.confirmDiscard(names),
+    })
+    this.closing = run
+    // The window stays open after a cancel or an error: accept input and closes again.
+    run.then(
+      (ok) => {
+        if (!ok) this.closing = null
+      },
+      () => {
+        this.closing = null
+      },
+    )
+    return run
+  }
+
+  /**
+   * Freezes or thaws input in every tab: the shown view and the stored states.
+   * IME: text an input method is still composing at the freeze is saved as CodeMirror already
+   * mirrored it into the state (possibly the unconverted pre-edit text); the later commit and
+   * any keystroke whose DOM change was not read yet are dropped. Both stay "up to the freeze".
+   */
+  private freezeInput(frozen: boolean): void {
+    if (frozen) closeCompletion(this.editor)
+    const spec = freezeSpec(frozen)
+    for (const tab of this.store.all) {
+      if (tab.id === this.shownId) this.editor.dispatch(spec)
+      else this.store.updateState(tab.id, tab.state.update(spec).state)
+    }
+    if (!frozen && this.shownId !== null) this.editor.focus()
+  }
+
+  /** A state shown while closing (new tab, reload) is frozen like the others. */
+  private closingState(state: EditorState): EditorState {
+    return this.closing && !isFrozen(state) ? state.update(freezeSpec(true)).state : state
+  }
+
+  // ── external changes ────────────────────────────────────────────────────
+
+  /** Dirty, or clean but its content is no longer on disk. */
+  private unsaved(tab: Tab): boolean {
+    return this.store.isDirty(tab) || this.unwritten.has(tab.id)
+  }
+
+  private externalChange(change: ExternalChange): void {
+    const changed = this.store.findByPath(
+      change.kind === 'changed' ? change.note.path : change.path,
+    )
+    // A new external state needs a new decision before anything overwrites it.
+    if (changed) this.overwrite.delete(changed.id)
+    if (change.kind !== 'changed') {
+      this.holdUnloadable(change)
+      return
+    }
+    const note = change.note
+    const tab = this.store.findByPath(note.path)
+    if (!tab) return
+    if (note.hash === this.savedHashes.get(tab.id)) {
+      // Our own last saved bytes are back (after a deletion or a read error): nothing changed
+      // externally, so only lift the hold; unsaved typing is autosaved as usual.
+      if (this.unwritten.delete(tab.id)) {
+        this.clearConflict(tab.id)
+        this.notices.dismiss(bannerKey(tab.id))
+        this.refresh()
+        this.autosave.touch()
+      }
+      return
+    }
+    // Readable content is back on disk: the normal conflict/reload logic replaces any hold.
+    this.unwritten.delete(tab.id)
+    this.holdWarnings.delete(tab.id)
+    if (!this.store.isDirty(tab)) {
+      this.notices.dismiss(bannerKey(tab.id))
+      this.clearConflict(tab.id)
+      this.reload(tab, note)
+      return
+    }
+    this.conflicts.add(tab.id)
+    this.saveErrors.set(tab.id, CONFLICT_ERROR)
+    this.refresh()
+    this.notices.banner(
+      `„${fileName(note.path)}“ wurde außerhalb von Markdown Office geändert.`,
+      [
+        {
+          label: 'Neu laden (meine Änderungen verwerfen)',
+          run: () => void this.reloadFromDisk(tab),
+        },
+        {
+          label: 'Meine behalten',
+          run: () => {
+            this.clearConflict(tab.id)
+            this.overwrite.add(tab.id)
+            // The disk holds the outside version: write this tab even if it is clean again
+            // (e.g. undone back to the last saved text).
+            this.unwritten.add(tab.id)
+            this.refresh()
+            this.autosave.touch()
+          },
+        },
+      ],
+      bannerKey(tab.id),
+    )
+  }
+
+  /** Holds the tab like a conflict, dirty or not: autosave must not write over this state. */
+  private holdUnloadable(change: Exclude<ExternalChange, { kind: 'changed' }>): void {
+    const tab = this.store.findByPath(change.path)
+    if (!tab) return
+    const name = fileName(change.path)
+    let message: string
+    let saveLabel: string
+    if (change.kind === 'deleted') {
+      message = `„${name}“ wurde außerhalb gelöscht.`
+      saveLabel = 'Erneut speichern'
+    } else {
+      if (change.reason === 'encoding') {
+        message = `„${name}“ wurde außerhalb geändert und ist kein gültiges UTF-8. Markdown Office speichert nicht darüber.`
+      } else {
+        message = `„${name}“ kann nicht mehr gelesen werden. Markdown Office speichert nicht darüber.`
+        console.error(`${change.path}: ${change.message}`)
+      }
+      saveLabel = 'Meine Fassung speichern (überschreiben)'
+    }
+    this.conflicts.add(tab.id)
+    this.unwritten.add(tab.id)
+    const warning = change.kind === 'deleted' ? DELETED_ERROR : UNREADABLE_ERROR
+    this.holdWarnings.set(tab.id, warning)
+    this.saveErrors.set(tab.id, warning)
+    this.refresh()
+    this.notices.banner(
+      message,
+      [
+        {
+          label: saveLabel,
+          run: () => {
+            this.clearConflict(tab.id)
+            this.overwrite.add(tab.id)
+            this.refresh()
+            void this.saveTab(tab)
+          },
+        },
+        { label: 'Tab schließen', run: () => void this.closeTab(tab.id, true) },
+      ],
+      bannerKey(tab.id),
+      change.kind === 'unreadable' && change.reason === 'error' ? change.message : undefined,
+    )
+  }
+
+  private clearConflict(id: number): void {
+    this.holdWarnings.delete(id)
+    this.conflicts.delete(id)
+    this.saveErrors.delete(id)
+  }
+
+  private async reloadFromDisk(tab: Tab): Promise<void> {
+    const res = await this.mdo.readNote(tab.path)
+    if ('error' in res) {
+      this.notices.panel('Neu laden nicht möglich', `${tab.path}\n\n${res.error}`)
+      return
+    }
+    this.clearConflict(tab.id)
+    this.reload(tab, res)
+  }
+
+  private reload(tab: Tab, note: NoteFile): void {
+    const state = this.closingState(
+      createState(note.text, note.eol, this.effectiveView(), tab.headerHidden, this.mode),
+    )
+    const wasOnDisk = tab.onDisk
+    tab.bom = note.bom
+    tab.eol = note.eol
+    this.savedHashes.set(tab.id, note.hash)
+    this.unwritten.delete(tab.id)
+    this.store.updateState(tab.id, state)
+    this.store.markSaved(tab.id, state.doc)
+    if (this.shownId === tab.id) {
+      this.editor.setState(state)
+      this.outline.invalidate()
+    }
+    // A new note whose path a file took meanwhile (refused first save) is now watched.
+    if (!wasOnDisk) this.syncMain()
+    this.refresh()
+  }
+
+  // ── rendering ───────────────────────────────────────────────────────────
+
+  private show(): void {
+    const tab = this.store.active
+    this.root.empty.hidden = tab !== null
+    this.root.editor.hidden = tab === null
+    if (tab && tab.id !== this.shownId) {
+      // Close an open snippet list in the tab being left (routed to shownId), so it does not
+      // reappear there later and a stray Enter inserts a snippet typed long ago.
+      if (this.shownId !== null) closeCompletion(this.editor)
+      const state = this.closingState(tab.state)
+      if (state !== tab.state) this.store.updateState(tab.id, state)
+      this.editor.setState(state)
+      this.editor.focus()
+      this.outline.invalidate()
+    }
+    this.shownId = tab?.id ?? null
+    this.applyOutline()
+    this.refresh()
+    this.syncMain()
+  }
+
+  private refresh(): void {
+    const tab = this.store.active
+    this.tabBar.render(this.store.all, this.store.activeIndex, (t) => this.unsaved(t))
+    const hold = tab ? (this.holdWarnings.get(tab.id) ?? null) : null
+    const error = hold ?? (tab ? (this.saveErrors.get(tab.id) ?? null) : null)
+    let state: SaveState = 'saved'
+    if (hold) state = 'held'
+    else if (error) state = 'error'
+    else if (tab && this.store.isDirty(tab)) state = 'dirty'
+    else if (tab && !tab.onDisk) state = 'new'
+    this.status.render(tab ? fileName(tab.path) : null, state, error, this.view)
+    document.title = tab
+      ? `${fileName(tab.path)}${state === 'dirty' ? ' •' : ''} – Markdown Office`
+      : 'Markdown Office'
+    if (this.mode === 'present') {
+      this.infoLine.render(
+        this.store.all.map((t) => ({ name: fileName(t.path), dirty: this.unsaved(t) })),
+        this.store.activeIndex,
+        saveText(state, error),
+        this.zoom.present,
+      )
+    }
+  }
+
+  /** Tells main which files to watch and schedules a session write. */
+  private syncMain(): void {
+    void this.mdo.watch(this.store.all.filter((t) => t.onDisk).map((t) => t.path))
+    if (this.sessionTimer) clearTimeout(this.sessionTimer)
+    this.sessionTimer = setTimeout(() => void this.persistSession(), 300)
+  }
+
+  private async persistSession(): Promise<void> {
+    if (this.sessionTimer) clearTimeout(this.sessionTimer)
+    this.sessionTimer = null
+    const tabs = this.store.toSession()
+    const activePath = this.store.active?.path
+    const activeIndex = Math.max(
+      0,
+      tabs.findIndex((t) => t.path === activePath),
+    )
+    await this.mdo.saveSession({
+      tabs,
+      activeIndex,
+      view: this.view,
+      zoom: this.zoom,
+      outline: { ...this.outlineOn },
+    })
+  }
+}

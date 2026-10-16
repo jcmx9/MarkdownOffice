@@ -1,0 +1,292 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The memo set is not published with a checksum yet: fetch-pipeline-assets takes it from
+      # this checkout (`git archive v26.10.0`, so the tag must be present) via MDO_SET_MEMO_DIR.
+      - name: Check out the memo set
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jcmx9/MarkdownOffice-set-memo
+          ref: v26.10.0
+          path: build/set-memo
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - name: Lint shell scripts (shellcheck)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+          shellcheck pipeline/*.sh pipeline/tests/*.sh scripts/*.sh
+      - name: Release script tests (dry run, local fake origin)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          scripts/test-release.sh
+          scripts/release.sh dev --dry-run
+          # prod starts from a -dev.N version; a release commit (main) has none.
+          if grep -q '"version": ".*-dev\.' package.json; then scripts/release.sh prod --dry-run; fi
+      - name: CHANGELOG history (released sections unchanged)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*'
+          scripts/check-changelog.sh
+      - run: npm run typecheck
+
+      # Before the unit tests: the :header snippet test reads the memo set from the assets,
+      # and npm run assets also builds the dev layout the e2e exports use.
+      - name: Cache pipeline assets
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/pipeline-assets
+          key: pipeline-assets-${{ runner.os }}-${{ hashFiles('scripts/pipeline-assets.json') }}
+      - name: Fetch pipeline assets
+        run: npm run assets
+        env:
+          MDO_SET_MEMO_DIR: ${{ github.workspace }}/build/set-memo
+
+      - run: npm run test:coverage
+      - run: npm run build
+
+      - name: Prepare Electron on Linux
+        if: runner.os == 'Linux'
+        run: |
+          # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64
+
+      - name: End-to-end tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npx playwright test
+
+      - name: End-to-end tests (macOS)
+        if: runner.os == 'macOS'
+        run: npx playwright test
+
+      # The checkout (and with it the pipeline's Typst root) is on D:, the default %TEMP% on C:.
+      # Notes in RUNNER_TEMP (D:) keep the e2e exports on the pipeline's drive; the cross-drive
+      # case (the pipeline's fallback stage) is covered by test-windows.ps1.
+      - name: End-to-end tests (Windows)
+        if: runner.os == 'Windows'
+        run: npx playwright test
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+
+      # Pipeline tests against the dev layout (build/pipeline-dev, built by npm run assets).
+      - name: Install PDF tools (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: brew install poppler mupdf
+
+      - name: Install PDF tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y poppler-utils mupdf-tools
+
+      - name: Pipeline tests (test-pdf.sh)
+        if: runner.os != 'Windows'
+        run: bash pipeline/tests/test-pdf.sh
+
+      # The reference PDFs were extracted with Homebrew's poppler on macOS; other poppler builds
+      # lay text out slightly differently.
+      - name: Pipeline equivalence (set memo against the references)
+        if: runner.os == 'macOS'
+        run: bash pipeline/tests/test-equivalence.sh
+
+      - name: Pipeline tests (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\pipeline\tests\test-windows.ps1
+
+      - name: Package (electron-builder)
+        run: npm run dist
+        env:
+          # Ad-hoc signing needs no secrets; electron-builder skips all signing on PRs otherwise.
+          CSC_FOR_PULL_REQUEST: 'true'
+          MDO_SET_MEMO_DIR: ${{ github.workspace }}/build/set-memo
+
+      # The packaged app's CLI entry (app binary as Node + resources/pipeline/cli.js, exactly what
+      # the markdown-office command runs): --version with the pinned Typst, and a PDF from a note
+      # in a folder with spaces. Unpacked into a folder with spaces, too.
+      - name: Smoke-test the packaged app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          typst_version="$(node -p "require('./scripts/pipeline-assets.json').typst.version")"
+          arch="$(uname -m)"; [ "${arch}" = "x86_64" ] && arch="x64"
+          zip="dist/markdown-office-${version}-mac-${arch}.zip"
+          dest="${RUNNER_TEMP}/mdo smoke"
+          rm -rf "${dest}" && mkdir -p "${dest}"
+          ditto -x -k "${zip}" "${dest}"
+          app="${dest}/Markdown Office.app"
+          codesign --verify --deep --strict "${app}"
+          codesign -dv "${app}" 2>&1 | grep -q '^Signature=adhoc$'
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "${app}/Contents/Info.plist")" = "Markdown Office" ]
+          # The bundled Typst is nested foreign code: it must carry its own valid signature and run.
+          typst="${app}/Contents/Resources/pipeline/bin/typst"
+          codesign --verify --strict "${typst}"
+          codesign -dv "${typst}" 2>&1 | grep -q '^Signature=adhoc$'
+          "${typst}" --version | tee /dev/stderr | grep -q "^typst ${typst_version} "
+          out="$("${app}/Contents/MacOS/Markdown Office" --version)"
+          echo "${out}"
+          [ "${out}" = "Markdown Office ${version}" ]
+          bash scripts/smoke-cli.sh "${app}/Contents/MacOS/Markdown Office" "${app}/Contents/Resources/pipeline/cli.js"
+
+      - name: Smoke-test the packaged app (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          image="dist/markdown-office-${version}-linux-x86_64.AppImage"
+          # Like the bootstrap: extract once (no FUSE; APPIMAGE_EXTRACT_AND_RUN would print
+          # the file list to stdout), then run the executable directly.
+          dest="${RUNNER_TEMP}/mdo appimage"
+          rm -rf "${dest}" && mkdir -p "${dest}"
+          cp "${image}" "${dest}/markdown-office.AppImage"
+          chmod +x "${dest}/markdown-office.AppImage"
+          (cd "${dest}" && ./markdown-office.AppImage --appimage-extract >/dev/null)
+          app="${dest}/squashfs-root"
+          export LD_LIBRARY_PATH="${app}/usr/lib"
+          out="$(xvfb-run -a "${app}/markdown-office" --version)"
+          echo "${out}"
+          [ "${out}" = "Markdown Office ${version}" ]
+          # The CLI runs as Node: no display needed.
+          bash scripts/smoke-cli.sh "${app}/markdown-office" "${app}/resources/pipeline/cli.js"
+
+      - name: Smoke-test the packaged app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = node -p "require('./package.json').version"
+          $typstVersion = node -p "require('./scripts/pipeline-assets.json').typst.version"
+          $zip = "dist/markdown-office-$version-win-x64.zip"
+          if (-not (Test-Path $zip)) { throw "missing $zip" }
+          $app = Join-Path $env:RUNNER_TEMP 'mdo smoke'
+          if (Test-Path $app) { Remove-Item -Recurse -Force $app }
+          Expand-Archive -LiteralPath $zip -DestinationPath $app
+          $exe = Join-Path $app 'Markdown Office.exe'
+          $cli = Join-Path $app 'resources\pipeline\cli.js'
+          # The app is a GUI program: its output reaches a pipe, so collect it with Out-String.
+          $out = (& $exe --version | Out-String).Trim()
+          Write-Output $out
+          if ($out -ne "Markdown Office $version") { throw "unexpected --version output: '$out'" }
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $env:MDO_NO_OPEN = '1'
+          $lines = @(& $exe $cli --version | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+          if ($LASTEXITCODE -ne 0) { throw "cli.js --version exited $LASTEXITCODE" }
+          $lines | Write-Output
+          if ($lines[0] -ne "markdown-office $version") { throw "unexpected first line: '$($lines[0])'" }
+          if (-not ($lines | Where-Object { $_ -like "typst $typstVersion *" })) { throw "no 'typst $typstVersion' line" }
+          $notes = Join-Path $env:RUNNER_TEMP 'Ordner mit Leerzeichen'
+          New-Item -ItemType Directory -Force -Path $notes | Out-Null
+          $note = Join-Path $notes 'Notiz mit Leerzeichen.md'
+          $pdf = Join-Path $notes 'Ergebnis mit Leerzeichen.pdf'
+          Set-Content -LiteralPath $note -Value @('---', 'title: Smoke', '---', '', '# Hallo', '', 'Text.') -Encoding ascii
+          # Piped: PowerShell does not wait for a GUI-subsystem program whose output is not consumed.
+          & $exe $cli --no-source --template memo $note $pdf | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw "cli.js exited $LASTEXITCODE" }
+          if (-not (Test-Path -LiteralPath $pdf)) { throw "no PDF: $pdf" }
+          $head = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pdf), 0, 5)
+          if ($head -ne '%PDF-') { throw "not a PDF: $head" }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: e2e-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  # Installs the freshly packaged app with scripts/bootstrap.{sh,ps1} (MDO_ARCHIVE) into an
+  # isolated temp profile, checks the installed markdown-office command (PDF from a note in a
+  # folder with spaces, --app; on Windows the .cmd shim's argument passing and the detached
+  # editor start), update, refusal of unmarked folders and uninstall. The download path is covered on macOS/Linux with a fake GitHub. On Windows
+  # the documented one-liners (irm | iex, script block with -Uninstall) run from the local file.
+  bootstrap:
+    name: bootstrap (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The memo set is not published with a checksum yet: fetch-pipeline-assets takes it from
+      # this checkout (`git archive v26.10.0`, so the tag must be present) via MDO_SET_MEMO_DIR.
+      - name: Check out the memo set
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jcmx9/MarkdownOffice-set-memo
+          ref: v26.10.0
+          path: build/set-memo
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Package (electron-builder)
+        run: npm run dist
+        env:
+          CSC_FOR_PULL_REQUEST: 'true'
+          MDO_SET_MEMO_DIR: ${{ github.workspace }}/build/set-memo
+
+      - name: Bootstrap install / update / uninstall (macOS)
+        if: runner.os == 'macOS'
+        run: bash scripts/test-bootstrap.sh
+
+      - name: Prepare Electron on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64
+
+      - name: Bootstrap install / update / uninstall (Linux)
+        if: runner.os == 'Linux'
+        # The bootstrap extracts the AppImage (no FUSE); --app --version needs a display.
+        run: xvfb-run -a bash scripts/test-bootstrap.sh
+
+      - name: Bootstrap install / update / uninstall (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\scripts\test-bootstrap.ps1

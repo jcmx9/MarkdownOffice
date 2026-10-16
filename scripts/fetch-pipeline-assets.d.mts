@@ -1,0 +1,28 @@
+export type Manifest = {
+  typst: {
+    version: string
+    /** Licence files next to the binary in the release archive (LICENSE, NOTICE). */
+    licenses: string[]
+    targets: Record<string, { url: string; sha256: string; bin: string }>
+  }
+  fonts: {
+    url: string
+    sha256: string
+    extract?: string[]
+    file?: string
+    /** `extract`: path (suffix) inside the font archive; else a pinned `url` + `sha256`. */
+    license: { file: string; extract?: string; url?: string; sha256?: string }
+  }[]
+  packages: { name: string; version: string; sha256: string; license: string }[]
+  sets: { name: string; repo: string; tag: string; sha256: string }[]
+}
+export function folderName(target: string): string
+export function hostTarget(): string
+export function fetchAssets(o: {
+  manifest: Manifest
+  target: string | string[]
+  outDir: string
+  download?: (url: string) => Promise<Uint8Array>
+  log?: (message: string) => void
+  env?: Record<string, string | undefined>
+}): Promise<void>

@@ -1,0 +1,472 @@
+:root {
+  color-scheme: light;
+  --chrome-bg: #f4f4f2;
+  --chrome-fg: #333;
+  --chrome-muted: #888;
+  --accent: #1f6f6a;
+  --danger: #a4262c;
+  --surface: #fff;
+  --on-accent: #fff;
+  --line: #ccc;
+  --line-soft: #ddd;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--surface);
+  color: #222;
+}
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: author display rules such as #empty must not override [hidden] */
+  display: none !important;
+}
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+#tabbar {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px 0;
+  background: var(--chrome-bg);
+  overflow-x: auto;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px 6px 0 0;
+  color: var(--chrome-muted);
+  white-space: nowrap;
+  cursor: default;
+}
+.tab.active {
+  background: var(--surface);
+  color: var(--chrome-fg);
+}
+.tab.dirty .tab-label::after {
+  content: " •";
+  color: var(--accent);
+}
+.tab-close {
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0;
+}
+.tab:hover .tab-close,
+.tab-close:focus-visible {
+  opacity: 1;
+}
+:where(#status, #empty, .panel, .banner, dialog.prompt, #infoline) button,
+button.tab-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--chrome-fg);
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+:where(#status, #empty, .panel, .banner, dialog.prompt, #infoline) button:hover,
+button.tab-close:hover {
+  background: color-mix(in srgb, var(--chrome-fg) 8%, transparent);
+}
+:where(#status, #empty, .panel, .banner, dialog.prompt, #infoline) button:active,
+button.tab-close:active {
+  background: color-mix(in srgb, var(--chrome-fg) 14%, transparent);
+}
+:where(#status, #empty, .panel, .banner, dialog.prompt, #infoline) button:focus-visible,
+button.tab-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+:where(#status, #empty, .panel, .banner, dialog.prompt, #infoline) button:disabled,
+button.tab-close:disabled {
+  opacity: 0.5;
+  cursor: default;
+  background: transparent;
+}
+#empty [data-action="new"],
+dialog.prompt button[type="submit"] {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+#empty [data-action="new"]:hover:not(:disabled),
+dialog.prompt button[type="submit"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+}
+#empty [data-action="new"]:active:not(:disabled),
+dialog.prompt button[type="submit"]:active:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+dialog.prompt input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+}
+dialog.prompt input:focus,
+dialog.prompt input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+#empty button {
+  min-width: 12em;
+}
+#workspace {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+#infoline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--chrome-muted);
+  background: var(--mdo-bg, var(--surface));
+}
+#infoline button {
+  padding: 2px 6px;
+  /* Muted like the info line; only the active tab is lifted. */
+  color: inherit;
+}
+#infoline .mdo-il-tab.active {
+  color: var(--chrome-fg);
+  font-weight: 600;
+}
+#infoline .mdo-il-tab.dirty::after {
+  content: " •";
+  color: var(--accent);
+}
+#infoline .mdo-il-spacer {
+  flex: 1;
+}
+#editor,
+#editor .cm-editor {
+  height: 100%;
+}
+#editor {
+  flex: 1;
+  min-width: 0;
+}
+#outline {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 14em;
+  max-width: 33vw;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* A classic (Windows/Linux) scrollbar keeps its room, so the bar does not change width
+     when the outline starts to scroll. */
+  scrollbar-gutter: stable;
+  border-left: 1px solid var(--line);
+  padding: 8px 4px;
+  background: var(--chrome-bg);
+  color: var(--chrome-muted);
+  /* Chrome size, scaled with the editor zoom of the current mode (--mdo-ol-zoom). */
+  font-size: calc(13px * var(--mdo-ol-zoom, 1));
+}
+#outline .mdo-ol-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#outline .mdo-ol-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+#outline .mdo-ol-item > .mdo-ol-list {
+  flex-basis: 100%;
+}
+#outline button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: calc(2px * var(--mdo-ol-zoom, 1)) calc(4px * var(--mdo-ol-zoom, 1));
+  cursor: pointer;
+}
+#outline button:hover,
+#outline .mdo-ol-h2 > .mdo-ol-label:hover {
+  color: var(--chrome-fg);
+}
+#outline button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+#outline .mdo-ol-label {
+  flex: 1;
+  padding-inline: calc(6px * var(--mdo-ol-zoom, 1)) calc(4px * var(--mdo-ol-zoom, 1));
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#outline .mdo-ol-label.active,
+#outline .mdo-ol-h1 > .mdo-ol-label.active,
+#outline .mdo-ol-h2 > .mdo-ol-label.active {
+  color: var(--accent);
+  box-shadow: inset 2px 0 var(--accent);
+}
+/* Hierarchy: H1 in the heading serif, H2 hanging from tree lines (├─ └─). */
+#outline .mdo-ol-list > .mdo-ol-h1 + .mdo-ol-h1 {
+  margin-top: calc(6px * var(--mdo-ol-zoom, 1));
+}
+#outline .mdo-ol-h1 > .mdo-ol-label {
+  font-family: var(--mdo-font-serif);
+  font-size: calc(14px * var(--mdo-ol-zoom, 1));
+  font-weight: 560;
+  color: var(--mdo-heading);
+}
+#outline .mdo-ol-h1 > .mdo-ol-list {
+  /* The trunk runs below the centre of the H1 chevron slot (18px wide). */
+  margin: 0 0 calc(2px * var(--mdo-ol-zoom, 1)) calc(8.5px * var(--mdo-ol-zoom, 1));
+}
+#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item {
+  /* Half the height of an H2 row: where the branch meets the label. */
+  --mdo-ol-mid: calc(10px * var(--mdo-ol-zoom, 1));
+  position: relative;
+  padding-left: calc(10px * var(--mdo-ol-zoom, 1));
+}
+/* Trunk: through every H2 row, ending at the branch of the last one (└─). */
+#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--line);
+}
+#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item:last-child::before {
+  bottom: auto;
+  height: var(--mdo-ol-mid);
+}
+/* Branch: from the trunk to the H2 row. */
+#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--mdo-ol-mid);
+  width: calc(9px * var(--mdo-ol-zoom, 1));
+  border-top: 1px solid var(--line);
+}
+#outline .mdo-ol-h2 > .mdo-ol-label {
+  font-size: calc(12.5px * var(--mdo-ol-zoom, 1));
+  color: var(--chrome-muted);
+}
+#outline .mdo-ol-chevron,
+#outline .mdo-ol-spacer {
+  flex: none;
+  width: calc(18px * var(--mdo-ol-zoom, 1));
+  text-align: center;
+  padding-inline: 0;
+}
+#outline .mdo-ol-chevron {
+  font-size: calc(11px * var(--mdo-ol-zoom, 1));
+  color: var(--mdo-faint);
+}
+#outline .mdo-ol-chevron:hover {
+  color: var(--chrome-fg);
+}
+#outline .mdo-ol-chevron.expanded {
+  transform: rotate(90deg);
+}
+#outline .mdo-ol-empty {
+  margin: 0;
+  padding: 2px 4px;
+}
+#empty {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  height: 100%;
+}
+#status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px;
+  background: var(--chrome-bg);
+  color: var(--chrome-muted);
+}
+#status .state.error {
+  color: var(--danger);
+  font-weight: 600;
+}
+#status .exporting {
+  margin-left: auto;
+  color: var(--accent);
+}
+#status .file {
+  cursor: context-menu;
+}
+/* Mode and view switches: flat like info text, the active side lifted, no frame. */
+.mdo-switches {
+  display: inline-flex;
+  gap: 12px;
+}
+.mdo-sw {
+  display: inline-flex;
+  align-items: baseline;
+}
+.mdo-sw-bar {
+  color: var(--line);
+  padding: 0 1px;
+}
+:is(#status, #infoline) .mdo-switches button {
+  padding: 0 4px;
+  color: inherit;
+}
+:is(#status, #infoline) .mdo-switches button:hover:not(:disabled),
+:is(#status, #infoline) .mdo-switches button:active:not(:disabled) {
+  background: transparent;
+  color: var(--chrome-fg);
+}
+:is(#status, #infoline) .mdo-switches button.active {
+  color: var(--chrome-fg);
+  font-weight: 600;
+  cursor: default;
+}
+:is(#status, #infoline) .mdo-switches button:disabled.active {
+  opacity: 1;
+}
+#notices {
+  position: fixed;
+  top: 40px;
+  right: 12px;
+  display: grid;
+  gap: 8px;
+  max-width: min(560px, 90vw);
+  z-index: 10;
+}
+.toast,
+.panel,
+.banner {
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+.panel h2,
+dialog.prompt h2 {
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+.panel pre {
+  white-space: pre-wrap;
+  max-height: 40vh;
+  overflow: auto;
+  user-select: text;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+dialog.prompt {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 320px;
+}
+dialog.prompt label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+dialog.prompt.settings {
+  width: min(560px, calc(100vw - 48px));
+}
+dialog.settings .settings-path {
+  display: flex;
+  gap: 6px;
+}
+dialog.settings .settings-path input {
+  flex: 1;
+  min-width: 0;
+}
+dialog.settings input[type="number"] {
+  width: 6em;
+}
+dialog.settings fieldset {
+  border: 0;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+dialog.settings legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+dialog.settings label.settings-radio {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+}
+dialog.settings .settings-status {
+  color: var(--chrome-muted);
+  user-select: text;
+  overflow-wrap: anywhere;
+  margin-bottom: 8px;
+}
+dialog.settings h3 {
+  font-size: 12px;
+  margin: 8px 0 4px;
+}
+dialog.settings .settings-error {
+  color: var(--danger);
+  margin: 0 0 8px;
+}
+
+/* Snippet completion: calm, flat, chrome font (rem, so Present's body zoom does not scale it). */
+.cm-tooltip.cm-tooltip-autocomplete {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: none;
+  font-family: system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.4;
+  overflow: hidden;
+}
+.cm-tooltip-autocomplete > ul {
+  font-family: inherit;
+}
+.cm-tooltip-autocomplete > ul > li {
+  padding: 3px 10px;
+  color: var(--chrome-fg);
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cm-tooltip-autocomplete .cm-completionDetail {
+  margin-left: 1em;
+  color: var(--chrome-muted);
+  font-style: normal;
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
+  color: inherit;
+}

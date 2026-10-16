@@ -1,0 +1,20 @@
+Absolute Pfade
+
+
+                                         Absolute Pfade
+
+Bilder
+
+
+
+
+                                     Abbildung 1: Absolut über Variable
+
+[Bild fehlt: bilder/gibt-es-nicht.png]
+Text nach den Bildern.
+
+
+
+
+absolute-paths.pdf                                                        Seite 1 / 1
+

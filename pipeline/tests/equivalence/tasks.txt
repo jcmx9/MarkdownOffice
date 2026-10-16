@@ -1,0 +1,31 @@
+Aufgaben
+
+
+                                            Aufgaben
+
+Aufgaben
+
+             Aufgabe                    Wer          Bis     Status
+
+ Sitemap-Entwurf erstellen          jcmx9           17.10.
+
+ Zugänge bereitstellen              Ben Probe       15.10.
+
+ Termin festlegen                   Anna Beispiel              ✓
+
+
+ Offener Punkt ohne Zuständigkeit
+
+
+
+Gemischt
+
+    Ein normaler Punkt
+✓   Erledigte Aufgabe – bleibt Liste
+    Offene Aufgabe
+
+
+
+
+tasks.pdf                                                             Seite 1 / 1
+

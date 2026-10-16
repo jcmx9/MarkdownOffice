@@ -1,0 +1,66 @@
+# Packaging for `npm run dist` (current OS only). Release flow: docs/github-release.md.
+appId: io.github.jcmx9.markdownoffice
+productName: Markdown Office
+directories:
+  output: dist
+  buildResources: build
+# Only the electron-vite output ships; scripts/ (dev-only postinstall), tests/ and sources stay out.
+files:
+  - "out/**"
+  - "package.json"
+  - "!**/*.map"
+# Pipeline: scripts/lib from pipeline/, the rest from build/pipeline-assets (npm run assets).
+# ${os}-${arch} expands to mac|win|linux and x64|arm64, matching the folder names there.
+extraResources:
+  - from: "build/pipeline-assets/${os}-${arch}"
+    to: pipeline/bin
+  - from: build/pipeline-assets/fonts
+    to: pipeline/fonts
+  - from: build/pipeline-assets/vendor
+    to: pipeline/vendor
+  - from: build/pipeline-assets/licenses
+    to: pipeline/licenses
+  - from: build/pipeline-assets/sets
+    to: sets
+  # Allowlist: the entry (cli.js), both pipeline scripts, the Typst building blocks (lib/), the
+  # fallback logo build.sh/convert.ps1 look up in the pipeline folder, and the example note.
+  - from: pipeline
+    to: pipeline
+    filter:
+      - build.sh
+      - convert.ps1
+      - cli.js
+      - "lib/**/*"
+      - logo.svg
+      - example.md
+# Fails the build when the packed app lacks Typst, fonts, vendor, licences or the memo set.
+afterPack: ./scripts/after-pack.mjs
+artifactName: "markdown-office-${version}-${os}-${arch}.${ext}"
+# One 1024px PNG (source: resources/icon/icon.svg); electron-builder derives .icns and .ico.
+icon: resources/icon/icon.png
+mac:
+  target:
+    - target: zip
+      arch: [arm64, x64]
+  # Ad-hoc signature: unsigned in the MVP, but Apple Silicon refuses to run unsigned code.
+  identity: "-"
+  # electron-builder matches "-" against keychain identity names; the hook forces a true ad-hoc
+  # signature for the whole bundle on every machine.
+  sign: ./scripts/adhoc-sign.mjs
+  # Hardened runtime enforces library validation, and ad-hoc signatures carry no team ID, so the
+  # Electron Framework would fail to load ("different Team IDs"). It only matters for notarization.
+  hardenedRuntime: false
+  category: public.app-category.productivity
+win:
+  target:
+    - target: zip
+      arch: [x64]
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Office
+fileAssociations:
+  - ext: md
+    name: Markdown
+    role: Editor

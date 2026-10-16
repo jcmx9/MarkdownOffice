@@ -1,0 +1,30 @@
+node_modules/
+out/
+dist/
+coverage/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+Thumbs.db
+.env
+.vscode/
+.idea/
+
+# Internal working documents (never published)
+PROMPT.md
+docs/superpowers/
+
+# Markdown Office
+CLAUDE.md
+.superpowers/
+.claude/
+build/pipeline-assets/
+pipeline/fonts/
+pipeline/vendor/
+pipeline/**/*.pdf
+
+# Pipeline dev layout (pipeline/tests/dev-layout.sh), test leftovers, CI checkout of the set
+build/pipeline-dev/
+build/tmp/
+build/set-memo/

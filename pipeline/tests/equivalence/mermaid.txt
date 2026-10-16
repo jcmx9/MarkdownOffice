@@ -1,0 +1,38 @@
+Diagramm
+
+
+                                   Diagramm
+
+
+
+              Kick-off               Konzept ok?             Design
+                                                      ja
+
+                            nein
+
+
+
+
+                          Kunde                    Agentur
+
+
+
+                                     Briefing
+
+
+                                     Angebot
+
+
+
+
+                          Kunde                    Agentur
+
+
+
+Text nach dem Diagramm.
+
+
+
+
+mermaid.pdf                                                           Seite 1 / 1
+

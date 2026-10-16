@@ -1,0 +1,465 @@
+Tabellen-Sammlung
+
+
+                                                         Tabellen-Sammlung
+                                                       Zahlen, Text und Grenzfälle
+
+Inhalt
+Zahlen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠1
+   Angebot mit Summe . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠1
+   Quartalszahlen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠2
+   Monatswerte (viele schmale Spalten) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠2
+   Technische Werte . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠2
+Text . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠2
+   Zeitplan . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠2
+   Anforderungen (zwei textreiche Spalten) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠3
+   Glossar (Schlüssel und Wert) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠3
+Mischformen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠3
+   Auszeichnung, Code und Symbole . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠3
+   Ausrichtung aus der Trennzeile . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠3
+   Leere Zellen und einzelne Spalte . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠4
+   Lange Wörter und Adressen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠4
+Aufgaben . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠4
+   Vollständig (Wer und Bis) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠4
+   Nur Zuständigkeit . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠4
+   Nur Termin (englische Schlüsselwörter) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠5
+   Checkliste ohne Namen und Termine . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠5
+   Lose Liste mit Leerzeilen . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠5
+   Lange Aufgabentexte . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠5
+   Gedankenstrich-Varianten . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠5
+   Gemischte Liste (bleibt eine Liste) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠6
+   Viele Aufgaben . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠6
+Lange Tabelle . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ⁠6
+
+
+Zahlen
+
+
+Angebot mit Summe
+Beträge, Mengen mit Einheiten, Prozentwerte und eine fette Summenzeile.
+
+  Pos.                      Leistung                         Menge           Einzelpreis            Rabatt           Gesamt
+
+       1     Konzeption und Workshop                            8 Std.            120,00 €               0%            960,00 €
+
+       2     Gestaltung Startseite                            12 Std.             110,00 €               5%         1.254,00 €
+
+       3     Unterseiten (Vorlage)                              6 Stk.            240,00 €             10 %         1.296,00 €
+
+       4     Lizenz Bildmaterial                                      1             89,90 €              0%              89,90 €
+
+       5     Projektmanagement                                  4 Std.              95,00 €              0%            380,00 €
+
+             Summe netto                                                                                           3.979,90 €
+
+             zzgl. 19 % USt.                                                                                           756,18 €
+
+             Gesamt brutto                                                                                         4.736,08 €
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…                                           Seite 1 / 7                                                             13. Oktober 2026
+Zahlen
+
+
+Quartalszahlen
+Viele Zahlenspalten nebeneinander, große und negative Werte.
+
+   Kennzahl            Q1 2026            Q2 2026         Q3 2026             Q4 2026                 Jahr         Δ Vorjahr
+
+ Umsatz               1.245.300 €        1.389.750 €     1.198.400 €          1.702.950 €           5.536.400 €         +8,4 %
+
+ Kosten                −987.200 €       −1.012.480 €      −955.300 €         −1.120.000 €          −4.074.980 €         +3,1 %
+
+ Ergebnis               258.100 €           377.270 €      243.100 €           582.950 €            1.461.420 €        +27,9 %
+
+ Mitarbeitende                   42               44                45                  47                   47             +4
+
+ Marge                    20,7 %              27,1 %             20,3 %              34,2 %             26,4 %         +4,6 Pkt.
+
+
+Monatswerte (viele schmale Spalten)
+
+   Wert         Jan       Feb         Mär      Apr       Mai       Jun         Jul       Aug          Sep     Okt          Nov     Dez
+
+ Besuche      1.204      1.180        1.355   1.402     1.511      1.498      1.302     1.150        1.620   1.745       1.801     1.420
+
+ Anfragen         34        29          41       45        52        48          37           31        55        61        64       40
+
+ Quote        2,8 %      2,5 %        3,0 %   3,2 %     3,4 %      3,2 %      2,8 %     2,7 %        3,4 %   3,5 %       3,6 %     2,8 %
+
+
+Technische Werte
+Einheiten mit geschützten Leerzeichen, Dezimalstellen, kleine Zahlen.
+
+    Bauteil            Breite           Höhe         Gewicht       Toleranz      Auflösung
+
+ Plakat A1             594 mm           841 mm          180 g      ±0,5 mm            300 dpi
+
+ Flyer DIN lang          99 mm          210 mm           4,2 g     ±0,2 mm            300 dpi
+
+ Banner               3.000 mm        1.000 mm          1,8 kg       ±2 mm            150 dpi
+
+ Visitenkarte            85 mm           55 mm           1,1 g     ±0,1 mm            600 dpi
+
+
+
+Text
+
+
+Zeitplan
+
+     Datum               Uhrzeit                     Thema                        Verantwortlich                            Ort
+
+ Mo, 19.10.2026        09:00–10:30       Kick-off mit allen                  Anna Beispiel                        Besprechungsraum 2
+                                         Beteiligten
+
+ Mi, 21.10.2026        14:00–15:00       Review Sitemap                      Ben Probe                            online
+
+ Fr, 23.10.2026        10:00–12:00       Workshop Gestaltung                 Anna Beispiel, Ben Probe             Agentur
+
+ Di, 03.11.2026           16:00          Abnahme                             Kundin                               vor Ort
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…                       Seite 2 / 7                                              13. Oktober 2026
+Text
+
+
+Anforderungen (zwei textreiche Spalten)
+
+  ID                          Anforderung                                        Begründung                  Priorität
+
+ A-01     Die Startseite zeigt die drei wichtigsten              Besucher sollen in wenigen Sekunden           hoch
+          Leistungen mit je einem Bild und einem                 erkennen, was angeboten wird, ohne
+          kurzen Text.                                           scrollen zu müssen.
+
+ A-02     Alle Formulare funktionieren ohne                      Barrierefreiheit und Robustheit; manche       hoch
+          JavaScript und melden Fehler direkt am                 Firmennetze blockieren Skripte.
+          Feld.
+
+ A-03     Ein Newsletter-Anmeldefeld im Fuß.                     Wunsch aus dem Kick-off.                     mittel
+
+ A-04     Mehrsprachigkeit (de/en) ab Version 2.                 Vorbereitung für internationale Kunden,      niedrig
+                                                                 aktuell nicht im Budget.
+
+
+Glossar (Schlüssel und Wert)
+
+       Begriff                                                     Bedeutung
+
+ PDF/A-3b                Archivformat nach ISO 19005-3; erlaubt eingebettete Dateien wie die Markdown-Quelle.
+
+ CalVer                  Kalenderbasierte Versionsnummer im Format JJ.M.MICRO, z. B. 26.10.8.
+
+ Mediävalziffern         Ziffern mit Ober- und Unterlängen, die sich in den Fließtext einfügen.
+
+ Versalziffern           Ziffern in Großbuchstabenhöhe und gleicher Breite – ideal für Tabellen.
+
+
+
+Mischformen
+
+
+Auszeichnung, Code und Symbole
+
+       Schalter               Wert                                         Wirkung                           Status
+
+ toc                     auto            Inhaltsverzeichnis ab mehr als fünf Überschriften                     ✓
+
+ hard_breaks             true            Zeilenumbrüche bleiben erhalten; false für umbrochenen Text           ✓
+
+ embed_source            true            Quelle als Anhang; für Kunden-PDFs abschalten                         ⚠
+
+ watermark               "ENTWURF"       diagonales Wasserzeichen                                              ✗
+
+ Projektseite            Link            Verweise funktionieren auch in Zellen                                 🔗
+
+
+Ausrichtung aus der Trennzeile
+
+     links        zentriert     rechts   ohne Angabe (Text)        ohne Angabe (Zahl)
+
+ A                   B               C   Text bleibt links                           1.234
+
+ lang links        mittig       99,5 %   noch ein Text                               56,78
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…                     Seite 3 / 7                               13. Oktober 2026
+Mischformen
+
+
+Leere Zellen und einzelne Spalte
+
+     Punkt                    Notiz          Erledigt
+
+ Logo liefern                                ja
+
+                    nur Notiz, kein Punkt
+
+ Texte freigeben    Termin offen
+
+
+                Offene Fragen
+
+ Wer liefert die Bilder?
+
+ Gibt es ein Corporate-Design-Handbuch?
+
+
+Lange Wörter und Adressen
+
+     Feld                                                         Inhalt
+
+ Langes Wort      Donaudampfschifffahrtsgesellschaftskapitänsmützenhalterung
+
+ Adresse          https://www.example.com/ein/sehr/langer/pfad/zu/einer/unterseite?mit=parametern&und=
+                  noch=mehr
+
+ E-Mail           projektleitung.relaunch-2026@beispiel-agentur.example
+
+
+
+Aufgaben
+
+Listen, die nur aus Aufgaben bestehen, werden zu Tabellen. Wer und bis wann stehen hinter einem
+Gedankenstrich: Aufgabe – Name, bis Datum.
+
+Vollständig (Wer und Bis)
+Verschiedene Datumsformen, erledigte und offene Aufgaben, Auszeichnung im Aufgabentext.
+
+                           Aufgabe                                Wer          Bis       Status
+
+ Kick-off-Protokoll verschicken                             Anna Beispiel   19.10.         ✓
+
+
+ Sitemap-Entwurf mit allen Unterseiten erstellen            Ben Probe       24.10.2026
+
+ Zugänge für staging.example.com bereitstellen              IT-Abteilung    KW 44
+
+ Bildrechte klären (siehe Projektseite)                     Anna Beispiel   Freitag
+
+ Budget freigeben                                           Kundin          30.10.         ✓
+
+
+
+
+Nur Zuständigkeit
+                Aufgabe                     Wer          Status
+
+ Logo in allen Formaten liefern       Kundin
+
+ Farbwerte prüfen                     Ben Probe             ✓
+
+
+ Texte für die Startseite schreiben   Anna Beispiel
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…                Seite 4 / 7                               13. Oktober 2026
+Aufgaben
+
+
+Nur Termin (englische Schlüsselwörter)
+Ohne Namen, aber mit Termin – due und by funktionieren wie bis.
+
+     Aufgabe            Bis      Status
+
+ Draft the sitemap     17 Oct
+
+ Share the access      Friday
+
+ Send the minutes      12 Oct        ✓
+
+
+
+
+Checkliste ohne Namen und Termine
+           Aufgabe                   Status
+
+ Impressum aktualisieren
+
+ Datenschutzerklärung prüfen             ✓
+
+
+ Cookie-Banner testen
+
+ Favicon austauschen                     ✓
+
+
+
+
+Lose Liste mit Leerzeilen
+    Aufgabe              Wer              Bis       Status
+
+ Erste Aufgabe       Anna Beispiel       02.11.
+
+ Zweite Aufgabe      Ben Probe           03.11.        ✓
+
+
+ Dritte Aufgabe      Kundin              04.11.
+
+
+Lange Aufgabentexte
+                                     Aufgabe                                              Wer          Bis      Status
+
+ Alle Bestandsseiten inventarisieren, nach Seitenaufrufen der letzten zwölf
+ Monate sortieren und für jede Seite entscheiden, ob sie übernommen,                  Ben Probe       06.11.
+ zusammengelegt oder gelöscht wird
+
+ Weiterleitungen für entfallende Adressen anlegen, damit Suchmaschinen
+                                                                                      IT-Abteilung    Go-live
+ und Lesezeichen weiter funktionieren
+
+ Kurzbriefing                                                                         Anna Beispiel   20.10.      ✓
+
+
+
+
+Gedankenstrich-Varianten
+Halbgeviertstrich, Geviertstrich und Bindestrich trennen gleichermaßen – jeweils der letzte zählt.
+
+                  Aufgabe                             Wer             Bis    Status
+
+ Halbgeviertstrich                                Anna Beispiel     10.11.
+
+ Geviertstrich                                    Ben Probe         11.11.
+
+ Bindestrich                                      Kundin            12.11.
+
+ Ein Gedankenstrich – im Aufgabentext             Anna Beispiel     13.11.
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…                     Seite 5 / 7                              13. Oktober 2026
+Aufgaben
+
+
+Gemischte Liste (bleibt eine Liste)
+Sobald ein normaler Punkt dabei ist, bleibt es eine Liste; die Kästchen stehen bündig mit den Punkten.
+     Ergebnis des Workshops
+✓    Farbwelt festgelegt
+     Schriftwahl offen – Anna Beispiel, bis 09.11.
+     Nächster Termin folgt
+
+Viele Aufgaben
+    Aufgabe            Wer           Bis   Status
+
+ Aufgabe 1        Anna Beispiel   01.10.        ✓
+
+
+ Aufgabe 2        Ben Probe       02.10.        ✓
+
+
+ Aufgabe 3        Kundin          05.10.        ✓
+
+
+ Aufgabe 4        Anna Beispiel   06.10.        ✓
+
+
+ Aufgabe 5        Ben Probe       07.10.
+
+ Aufgabe 6        IT-Abteilung    08.10.
+
+ Aufgabe 7        Anna Beispiel   09.10.
+
+ Aufgabe 8        Kundin          12.10.
+
+ Aufgabe 9        Ben Probe       13.10.
+
+ Aufgabe 10       Anna Beispiel   14.10.
+
+ Aufgabe 11       IT-Abteilung    15.10.
+
+ Aufgabe 12       Kundin          16.10.
+
+
+
+Lange Tabelle
+
+Über eine Seite hinaus; die Kopfzeile wiederholt sich auf der Folgeseite.
+
+    Nr.            Artikel                 Kategorie                 Lager   Bestand    Wert
+
+     1    Plakat A1, matt             Druck                    Halle 1           250    312,50 €
+
+     2    Plakat A2, glänzend         Druck                    Halle 1           400    280,00 €
+
+     3    Flyer DIN lang              Druck                    Halle 2         5.000    450,00 €
+
+     4    Visitenkarten, 350 g        Druck                    Halle 2         2.500     95,00 €
+
+     5    Roll-up 85 × 200 cm         Display                  Halle 3           12    1.068,00 €
+
+     6    Banner 3 × 1 m              Display                  Halle 3            6     534,00 €
+
+     7    Messewand, gerade           Display                  Außenlager         2    2.380,00 €
+
+     8    Kugelschreiber, bedruckt    Werbemittel              Halle 2         1.200    384,00 €
+
+     9    Notizblock A5               Werbemittel              Halle 2           800   1.120,00 €
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…               Seite 6 / 7                             13. Oktober 2026
+Lange Tabelle
+
+
+ Nr.            Artikel              Kategorie                 Lager   Bestand      Wert
+
+ 10    Stofftasche, Baumwolle   Werbemittel              Halle 1           300      735,00 €
+
+ 11    USB-Stick 16 GB          Werbemittel              Halle 1           150      675,00 €
+
+ 12    Aufkleber rund, 5 cm     Druck                    Halle 2        10.000      290,00 €
+
+ 13    Briefpapier              Geschäftsausstattung     Halle 2         3.000      420,00 €
+
+ 14    Kuverts DIN lang         Geschäftsausstattung     Halle 2         3.000      210,00 €
+
+ 15    Mappe mit Tasche         Geschäftsausstattung     Halle 1           500      900,00 €
+
+ 16    Plakat A0, Outdoor       Druck                    Außenlager        40       248,00 €
+
+ 17    Fahne 1 × 3 m            Display                  Außenlager         4       596,00 €
+
+ 18    Tischaufsteller          Display                  Halle 3           25       187,50 €
+
+ 19    Lanyard, bedruckt        Werbemittel              Halle 1           600      540,00 €
+
+ 20    Kalender 2027            Druck                    Halle 2           350    1.225,00 €
+
+ 21    Postkarte A6             Druck                    Halle 2         4.000      360,00 €
+
+ 22    Stempel, Firmenlogo      Geschäftsausstattung     Büro               3        87,00 €
+
+ 23    Klebeband, bedruckt      Werbemittel              Halle 1           120      216,00 €
+
+ 24    Präsentationsmappe       Geschäftsausstattung     Halle 1           200      640,00 €
+
+ 25    Schild Eingang           Display                  Büro               1       349,00 €
+
+ 26    Aufsteller A-Board       Display                  Außenlager         3       447,00 €
+
+ 27    Broschüre 16 Seiten      Druck                    Halle 2         1.500    2.175,00 €
+
+ 28    Tasse, Keramik           Werbemittel              Halle 1           144      590,40 €
+
+ 29    Feuerzeug                Werbemittel              Halle 1           500      225,00 €
+
+ 30    Schreibtischunterlage    Werbemittel              Halle 1           80       312,00 €
+
+       Summe                                                            34.987   20.271,90 €
+
+
+
+
+Tabellen-Sammlung · Zahlen, Text und Gr…         Seite 7 / 7                               13. Oktober 2026
+

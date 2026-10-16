@@ -1,0 +1,37 @@
+Hinweisboxen
+
+
+                                       Hinweisboxen
+   INFO
+   Ergänzende Information mit Auszeichnung.
+
+
+   TIPP
+   Ein Tipp.
+
+
+   WICHTIG
+   Wichtig.
+
+
+   HINWEIS
+   Ruhiges Orange.
+
+
+   ACHTUNG
+   Vorsicht.
+
+
+   HINWEIS
+   Deutsches Schlüsselwort mit Text in derselben Zeile.
+     Liste in der Box
+      zweiter Punkt
+
+
+     Ein normales Zitat bleibt ein Zitat.
+
+
+
+
+alerts.pdf                                                Seite 1 / 1
+

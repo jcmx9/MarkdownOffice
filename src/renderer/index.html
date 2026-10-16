@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' mdo-font:; img-src 'self' data:"
+    />
+    <title>Markdown Office</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="tabbar" role="tablist"></div>
+      <main id="workspace">
+        <div id="editor"></div>
+        <nav id="outline" aria-label="Gliederung" hidden></nav>
+        <div id="empty" hidden>
+          <p>Keine Notiz geöffnet.</p>
+          <button type="button" data-action="new">Neue Notiz</button>
+          <button type="button" data-action="open">Öffnen …</button>
+        </div>
+      </main>
+      <footer id="status"></footer>
+      <footer id="infoline" hidden></footer>
+    </div>
+    <div id="notices" aria-live="polite"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

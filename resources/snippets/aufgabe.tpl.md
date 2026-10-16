@@ -1,0 +1,1 @@
+- [ ] ${1:Aufgabe} – ${2:Name}, bis ${3:Datum}$0

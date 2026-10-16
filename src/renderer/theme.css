@@ -1,0 +1,427 @@
+/*
+ * Markdown Office editor theme. Every value mirrors the PDF of the document
+ * set (memo.typ), from which this stylesheet was originally derived.
+ * Weights are nominal (400/500/600): Chromium draws the variable Source
+ * fonts lighter than PDF viewers, the set sets its PDF slightly below.
+ */
+
+:root {
+  --mdo-font-sans:
+    "mdo Sans", "mdo Emoji", "mdo Symbols", "Source Sans 3", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --mdo-font-serif: "mdo Serif", "mdo Emoji", "mdo Symbols", "Source Serif 4", Georgia, serif;
+  --mdo-font-code:
+    "mdo Code", "mdo Emoji", "Source Code Pro", ui-monospace, Menlo, Consolas, monospace;
+
+  --mdo-bg: #fff;
+  --mdo-text: #212121;
+  --mdo-heading: #141414;
+  --mdo-chrome: #333;
+  --mdo-task-border: #595959;
+  --mdo-hairline: #999;
+  --mdo-faint: #9e9e9e;
+  --mdo-code-bg: #f5f5f5;
+  --mdo-table-stripe: #f5f5f5;
+  --mdo-table-rule: #ccc;
+  --mdo-table-head-rule: #737373;
+  --mdo-selection: #dcdcdc;
+
+  --mdo-alert-note: #2f6aa8;
+  --mdo-alert-tip: #3b7d3a;
+  --mdo-alert-important: #7a4fb0;
+  --mdo-alert-warning: #b05a1a;
+  --mdo-alert-caution: #b5452b;
+
+  --mdo-syntax-comment: #8a8a8a;
+  --mdo-syntax-string: #298e0d;
+  --mdo-syntax-keyword: #d73a49;
+  --mdo-syntax-function: #4b69c6;
+  --mdo-syntax-number: #b60157;
+
+  /* template.typ: body 10pt; Plan 3 scales this for zoom/Present */
+  --mdo-body-size: 10pt;
+  /* A4 text width 145mm at 10pt ≈ 41em */
+  --mdo-measure: 41em;
+}
+
+/* ── shared editor chrome ─────────────────────────────────────────────── */
+
+.cm-editor {
+  background: var(--mdo-bg);
+  color: var(--mdo-text);
+}
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: var(--mdo-selection);
+}
+.cm-editor .cm-foldGutter .cm-gutterElement {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cm-editor .cm-gutters:hover .cm-foldGutter .cm-gutterElement {
+  opacity: 1;
+}
+.cm-editor .cm-gutters {
+  background: var(--mdo-bg);
+  border: none;
+  color: var(--mdo-faint);
+}
+
+/* ── Code view: the raw source ────────────────────────────────────────── */
+
+.mdo-code .cm-scroller {
+  font-family: var(--mdo-font-code);
+  font-size: var(--mdo-code-size, 9pt);
+  line-height: 1.5;
+}
+.mdo-code .mdo-tok-heading {
+  font-weight: 600;
+  color: var(--mdo-heading);
+}
+.mdo-code .mdo-tok-strong {
+  font-weight: 600;
+}
+.mdo-code .mdo-tok-em {
+  font-style: italic;
+}
+.mdo-code .mdo-tok-link {
+  text-decoration: underline dotted var(--mdo-faint);
+}
+.mdo-code .mdo-tok-mark,
+.mdo-code .mdo-tok-meta {
+  color: var(--mdo-faint);
+}
+
+/* ── Preview: the PDF look ─────────────────────────────────────────────── */
+
+.mdo-preview .cm-scroller {
+  font-family: var(--mdo-font-sans);
+  font-size: var(--mdo-body-size);
+  line-height: 1.5;
+  font-weight: 400;
+  font-variant-numeric: oldstyle-nums proportional-nums;
+}
+.mdo-preview .cm-content {
+  max-width: var(--mdo-measure);
+  margin: 0 auto;
+  padding: 2em 1.5em 40vh;
+}
+/* memo set: par(justify: true). Typst hyphenates in the PDF; the editor never does. */
+.mdo-preview .cm-line {
+  text-align: justify;
+  hyphens: manual;
+}
+
+/* Headings: serif, flush-left */
+.mdo-preview .cm-line:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
+  font-family: var(--mdo-font-serif);
+  color: var(--mdo-heading);
+  font-weight: 560;
+  text-align: left;
+  hyphens: manual;
+}
+.mdo-preview .cm-line.mdo-h1 {
+  font-size: 1.4em;
+  padding-bottom: 0.1em;
+  border-bottom: 0.6pt solid var(--mdo-hairline);
+}
+.mdo-preview .cm-line.mdo-h2 {
+  font-size: 1.2em;
+}
+.mdo-preview .cm-line.mdo-h3 {
+  font-weight: 400;
+  text-decoration: underline;
+  text-decoration-thickness: 0.5pt;
+  text-underline-offset: 2pt;
+}
+.mdo-preview .cm-line:is(.mdo-h4, .mdo-h5, .mdo-h6) {
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* Spacing like the PDF: blank lines carry the paragraph/heading gaps */
+.mdo-preview .cm-line:has(> br:only-child) {
+  line-height: 1.1em;
+}
+.mdo-preview .cm-line:has(> br:only-child):has(+ .mdo-h1) {
+  line-height: 2em;
+}
+.mdo-preview .cm-line:has(> br:only-child):has(+ .mdo-h2) {
+  line-height: 1.5em;
+}
+.mdo-preview .cm-line:has(> br:only-child):has(+ :is(.mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6)) {
+  line-height: 1.25em;
+}
+.mdo-preview
+  .cm-line:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6)
+  + .cm-line:has(> br:only-child) {
+  line-height: 0.6em;
+}
+
+/* Marks recede; inline styles as in the PDF */
+.mdo-preview .mdo-mark {
+  color: var(--mdo-faint);
+}
+.mdo-preview .mdo-strong {
+  font-weight: 600;
+}
+.mdo-preview .mdo-em {
+  font-style: italic;
+}
+.mdo-preview .mdo-strike {
+  text-decoration: line-through;
+}
+.mdo-preview .mdo-link {
+  text-decoration: underline dotted var(--mdo-faint);
+}
+.mdo-preview .mdo-code-inline {
+  font-family: var(--mdo-font-code);
+  font-size: 0.9em;
+  font-variant-numeric: normal;
+}
+.mdo-preview .mdo-comment {
+  color: var(--mdo-faint);
+  font-family: var(--mdo-font-code);
+  font-size: 0.9em;
+}
+
+/* Lists: the memo set's small square */
+.mdo-preview .mdo-bullet,
+.mdo-preview .mdo-list-mark {
+  /* the memo set's marker-slot: bullet square and task box share one 0.72em field */
+  display: inline-block;
+  width: 0.72em;
+  /* + the visible space ≈ the memo set's body-indent 0.4em */
+  margin-right: 0.15em;
+  text-align: center;
+}
+.mdo-preview .mdo-bullet::before {
+  display: inline-block;
+  width: 0.32em;
+  height: 0.32em;
+  background: var(--mdo-chrome);
+  vertical-align: 0.2em;
+  content: "";
+}
+.mdo-preview .mdo-task {
+  appearance: none;
+  position: relative;
+  /* inputs do not inherit the font: the em sizes must refer to the text */
+  font: inherit;
+  width: 0.72em;
+  height: 0.72em;
+  margin: 0 0.15em 0 0;
+  border: 0.7pt solid var(--mdo-task-border);
+  border-radius: 1.5pt;
+  background: transparent;
+  vertical-align: -0.1em;
+  cursor: pointer;
+}
+.mdo-preview .mdo-task:checked {
+  border-color: var(--mdo-chrome);
+  background: var(--mdo-chrome);
+}
+.mdo-preview .mdo-task:checked::after {
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  font-size: 0.62em;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  content: "\2713";
+}
+
+/* Quotes: italic, indented both sides */
+.mdo-preview .cm-line.mdo-quote {
+  padding-left: 2em;
+  padding-right: 2em;
+  font-style: italic;
+}
+
+/* Alerts: 2.5pt bar left, tinted background, small spaced caps title */
+.mdo-preview .cm-line.mdo-alert {
+  padding-left: 1em;
+  padding-right: 0.8em;
+  border-left: 2.5pt solid var(--mdo-alert-color);
+  background: color-mix(in srgb, var(--mdo-alert-color) 7%, var(--mdo-bg));
+  font-style: normal;
+}
+.mdo-preview .mdo-alert-note {
+  --mdo-alert-color: var(--mdo-alert-note);
+}
+.mdo-preview .mdo-alert-tip {
+  --mdo-alert-color: var(--mdo-alert-tip);
+}
+.mdo-preview .mdo-alert-important {
+  --mdo-alert-color: var(--mdo-alert-important);
+}
+.mdo-preview .mdo-alert-warning {
+  --mdo-alert-color: var(--mdo-alert-warning);
+}
+.mdo-preview .mdo-alert-caution {
+  --mdo-alert-color: var(--mdo-alert-caution);
+}
+.mdo-preview .mdo-alert-title {
+  color: var(--mdo-alert-color);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Tables: 9pt medium, lining tabular figures, stripes, rule under head */
+.mdo-preview .cm-line:is(.mdo-table-head, .mdo-table-row, .mdo-table-delim) {
+  font-size: 0.9em;
+  font-weight: 500;
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: left;
+  hyphens: manual;
+}
+.mdo-preview .cm-line.mdo-table-head {
+  font-weight: 600;
+  border-bottom: 0.7pt solid var(--mdo-table-head-rule);
+}
+.mdo-preview .cm-line.mdo-table-delim {
+  color: var(--mdo-faint);
+  font-size: 0.7em;
+  line-height: 1;
+}
+.mdo-preview .cm-line.mdo-table-stripe {
+  background: var(--mdo-table-stripe);
+}
+
+/* Table widget (cursor elsewhere): like the memo set's #show table */
+.mdo-preview .mdo-table-wrap {
+  padding: 1.2em 0 1.4em;
+  overflow-x: auto;
+  cursor: text;
+}
+.mdo-preview table.mdo-table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: left;
+  hyphens: manual;
+}
+.mdo-preview table.mdo-table :is(th, td) {
+  padding: 7pt 5pt;
+  vertical-align: top;
+}
+.mdo-preview table.mdo-table :is(th, td) + :is(th, td) {
+  border-left: 0.4pt solid var(--mdo-table-rule);
+}
+.mdo-preview table.mdo-table th {
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 0.7pt solid var(--mdo-table-head-rule);
+}
+.mdo-preview table.mdo-table tr.mdo-table-stripe td {
+  background: var(--mdo-table-stripe);
+}
+.mdo-preview table.mdo-table .mdo-al-left {
+  text-align: left;
+}
+.mdo-preview table.mdo-table .mdo-al-center {
+  text-align: center;
+}
+.mdo-preview table.mdo-table .mdo-al-right {
+  text-align: right;
+}
+.mdo-preview table.mdo-table code {
+  font-family: var(--mdo-font-code);
+  font-size: 0.94em;
+  font-weight: 400;
+}
+
+/* Code blocks: 9pt code font on light grey, Typst syntax colours */
+.mdo-preview .cm-line:is(.mdo-codeblock, .mdo-codefence) {
+  font-family: var(--mdo-font-code);
+  font-size: 0.9em;
+  font-variant-numeric: normal;
+  background: var(--mdo-code-bg);
+  text-align: left;
+  hyphens: manual;
+}
+.mdo-preview .cm-line.mdo-codefence {
+  color: var(--mdo-faint);
+}
+.cm-editor .mdo-tok-keyword {
+  color: var(--mdo-syntax-keyword);
+}
+.cm-editor .mdo-tok-string {
+  color: var(--mdo-syntax-string);
+}
+.cm-editor .mdo-tok-number {
+  color: var(--mdo-syntax-number);
+}
+.cm-editor .mdo-tok-comment {
+  color: var(--mdo-syntax-comment);
+}
+.cm-editor .mdo-tok-function {
+  color: var(--mdo-syntax-function);
+}
+
+/* Rule, front matter */
+.mdo-preview .cm-line.mdo-hr {
+  border-bottom: 0.6pt solid var(--mdo-hairline);
+  line-height: 0.75em;
+}
+.mdo-preview .cm-line.mdo-frontmatter {
+  font-family: var(--mdo-font-code);
+  font-size: 0.85em;
+  color: var(--mdo-faint);
+  text-align: left;
+  hyphens: manual;
+}
+.mdo-preview .mdo-titleblock {
+  padding: 0.2em 0 1.6em;
+  text-align: center;
+  cursor: default;
+}
+.mdo-preview .mdo-tb-client {
+  margin-bottom: 1.11em;
+  font-size: 0.9em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mdo-chrome);
+}
+.mdo-preview .mdo-tb-title {
+  margin-bottom: 0.56em;
+  font-family: var(--mdo-font-serif);
+  font-size: 1.6em;
+  font-weight: 560;
+  line-height: 1.2;
+  color: var(--mdo-heading);
+}
+.mdo-preview .mdo-tb-subtitle {
+  margin-bottom: 0.92em;
+  font-family: var(--mdo-font-serif);
+  font-size: 1.2em;
+  color: var(--mdo-chrome);
+}
+.mdo-preview .mdo-tb-meta {
+  font-size: 0.9em;
+  color: var(--mdo-chrome);
+}
+.mdo-preview .mdo-titleblock-none {
+  margin: 0;
+}
+.mdo-preview .mdo-titleblock-empty {
+  margin: 0;
+  text-align: left;
+  font-size: 0.85em;
+  color: var(--mdo-faint);
+}
+
+/* Present: larger text in a calm, centred column; no gutters */
+.mdo-present .cm-content {
+  max-width: 70ch;
+  padding-top: 3em;
+}
+.mdo-present .cm-gutters {
+  display: none;
+}
