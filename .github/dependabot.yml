@@ -10,6 +10,10 @@ updates:
     labels: ["dependencies", "automated"]
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # Typings follow the Node major in use (Node 24), not the newest Node.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       codemirror:
         patterns: ["@codemirror/*", "@lezer/*"]
