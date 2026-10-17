@@ -50,7 +50,7 @@ npm ci
 
 ## Pipeline assets
 
-`npm run assets` downloads the pinned pipeline assets (Typst, fonts, Typst packages, template sets) into `build/pipeline-assets/`, checks every download against `scripts/pipeline-assets.json` and then builds the development layout `build/pipeline-dev/` (the packaged layout, used by `npm run dev`, the e2e tests and the pipeline tests); `npm run dist` runs the download first. The `memo` set is not published yet and has no checksum, so point the script at a local checkout of `MarkdownOffice-set-memo` (tag `v26.10.0`; only tracked files are copied): `MDO_SET_MEMO_DIR=~/GitHub/MarkdownOffice-set-memo npm run assets`. Without the variable and without a checksum the script refuses to run.
+`npm run assets` downloads the pinned pipeline assets (Typst, fonts, Typst packages, template sets) into `build/pipeline-assets/`, checks every download against `scripts/pipeline-assets.json` and then builds the development layout `build/pipeline-dev/` (the packaged layout, used by `npm run dev`, the e2e tests and the pipeline tests); `npm run dist` runs the download first. To try an unpublished change to the `memo` set, point the script at a local checkout of `MarkdownOffice-set-memo` (the manifest's tag is archived; only tracked files are copied): `MDO_SET_MEMO_DIR=~/GitHub/MarkdownOffice-set-memo npm run assets`.
 
 ## PR Checklist
 

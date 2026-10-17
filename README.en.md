@@ -310,7 +310,7 @@ npm run dist                      # package for the current system into dist/
 bash scripts/test-bootstrap.sh    # install, update, uninstall with the package from dist/
 ```
 
-`npm run assets` downloads the pinned pipeline assets into `build/pipeline-assets/`, verifies every file against its SHA-256 checksum from `scripts/pipeline-assets.json` and builds the development layout `build/pipeline-dev/`, which matches the app's packaged layout. As long as the set `memo` has no checksum yet, it comes from a local checkout: `MDO_SET_MEMO_DIR=~/GitHub/MarkdownOffice-set-memo npm run assets` (see [CONTRIBUTING.md](CONTRIBUTING.md)). On Windows, `pipeline/tests/test-windows.ps1` checks the pipeline (Windows PowerShell 5.1).
+`npm run assets` downloads the pinned pipeline assets into `build/pipeline-assets/`, verifies every file against its SHA-256 checksum from `scripts/pipeline-assets.json` and builds the development layout `build/pipeline-dev/`, which matches the app's packaged layout. On Windows, `pipeline/tests/test-windows.ps1` checks the pipeline (Windows PowerShell 5.1).
 
 In development the app uses its own app data folder `Markdown Office Dev` next to `Markdown Office`, so an installed app and the development build never share settings, session or the single-instance lock. `MDO_USER_DATA` (tests) overrides the folder.
 

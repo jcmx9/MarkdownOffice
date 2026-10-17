@@ -27,4 +27,3 @@ pipeline/**/*.pdf
 # Pipeline dev layout (pipeline/tests/dev-layout.sh), test leftovers, CI checkout of the set
 build/pipeline-dev/
 build/tmp/
-build/set-memo/

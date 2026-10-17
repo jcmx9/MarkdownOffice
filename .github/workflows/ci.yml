@@ -21,18 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The memo set is not published with a checksum yet: fetch-pipeline-assets takes it from
-      # this checkout (`git archive v26.10.0`, so the tag must be present) via MDO_SET_MEMO_DIR.
-      - name: Check out the memo set
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: jcmx9/MarkdownOffice-set-memo
-          ref: v26.10.0
-          path: build/set-memo
-          fetch-depth: 0
-          fetch-tags: true
-          persist-credentials: false
-
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -74,8 +62,6 @@ jobs:
           key: pipeline-assets-${{ runner.os }}-${{ hashFiles('scripts/pipeline-assets.json') }}
       - name: Fetch pipeline assets
         run: npm run assets
-        env:
-          MDO_SET_MEMO_DIR: ${{ github.workspace }}/build/set-memo
 
       - run: npm run test:coverage
       - run: npm run build
@@ -137,7 +123,6 @@ jobs:
         env:
           # Ad-hoc signing needs no secrets; electron-builder skips all signing on PRs otherwise.
           CSC_FOR_PULL_REQUEST: 'true'
-          MDO_SET_MEMO_DIR: ${{ github.workspace }}/build/set-memo
 
       # The packaged app's CLI entry (app binary as Node + resources/pipeline/cli.js, exactly what
       # the markdown-office command runs): --version with the pinned Typst, and a PDF from a note
@@ -248,18 +233,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The memo set is not published with a checksum yet: fetch-pipeline-assets takes it from
-      # this checkout (`git archive v26.10.0`, so the tag must be present) via MDO_SET_MEMO_DIR.
-      - name: Check out the memo set
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: jcmx9/MarkdownOffice-set-memo
-          ref: v26.10.0
-          path: build/set-memo
-          fetch-depth: 0
-          fetch-tags: true
-          persist-credentials: false
-
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -271,7 +244,6 @@ jobs:
         run: npm run dist
         env:
           CSC_FOR_PULL_REQUEST: 'true'
-          MDO_SET_MEMO_DIR: ${{ github.workspace }}/build/set-memo
 
       - name: Bootstrap install / update / uninstall (macOS)
         if: runner.os == 'macOS'
