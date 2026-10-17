@@ -38,6 +38,11 @@ die() {
   exit 1
 }
 
+# grep, das die Eingabe ganz liest: `cmd | grep -q` beendet sich beim ersten
+# Treffer, cmd bekommt SIGPIPE (macOS strings: "failed to flush output") und
+# pipefail macht daraus einen zufälligen Fehler.
+quiet_grep() { grep "$@" >/dev/null; }
+
 pdf_text() {
   if command -v pdftotext >/dev/null 2>&1; then
     pdftotext -layout "$1" -
@@ -61,7 +66,7 @@ render() {
   (cd "${fixtures}" && bash "${build}" "$@" "${name}" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
     die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
   [[ -s "${pdf}" ]] || die "${name}: leeres PDF"
-  strings "${pdf}" | grep -q 'part>3</pdfaid:part' || die "${name}: kein PDF/A-3"
+  strings "${pdf}" | quiet_grep 'part>3</pdfaid:part' || die "${name}: kein PDF/A-3"
   pdf_text "${pdf}"
 }
 
@@ -181,7 +186,7 @@ test_fixtures() {
   # Ohne title: kein Titel – "#" bleibt ein Kapitel; PDF-Titel = Dateiname.
   text="$(render h1-chapter.md)"
   expect h1-chapter.md "${text}" "Kapitel ohne Titel" "Abschnitt" "h1-chapter.pdf"
-  pdfinfo "${out_dir}/h1-chapter.pdf" | grep -q '^Title: *h1-chapter$' ||
+  pdfinfo "${out_dir}/h1-chapter.pdf" | quiet_grep '^Title: *h1-chapter$' ||
     die "h1-chapter.md: PDF-Titel ist nicht der Dateiname"
   ok h1-chapter.md
 
@@ -234,7 +239,7 @@ test_fixtures() {
   expect_line text-features.md "${text}" "18. Oktober 2026" "19. Okt. 2026" "1. Dez. 2026"
   # shellcheck disable=SC1111
   reject text-features.md "${text}" "==markiert==" "pagebreak" '"gerade"' '“gerade”' '3--5' 'Moment...'
-  pdfinfo "${out_dir}/text-features.pdf" | grep -q '^Pages: *3$' ||
+  pdfinfo "${out_dir}/text-features.pdf" | quiet_grep '^Pages: *3$' ||
     die "text-features.md: Seitenumbrüche fehlen (erwartet 3 Seiten)"
   ok text-features.md
 
@@ -308,10 +313,10 @@ test_fixtures() {
   expect table-intro.md "${text}" "Die folgende Übersicht zeigt alle Posten:" "Posten 15"
   if command -v pdftotext >/dev/null 2>&1; then
     local tpdf="${out_dir}/table-intro.pdf"
-    if pdftotext -f 1 -l 1 "${tpdf}" - | grep -q "Übersicht zeigt"; then
+    if pdftotext -f 1 -l 1 "${tpdf}" - | quiet_grep "Übersicht zeigt"; then
       die "table-intro.md: Einleitung allein auf Seite 1"
     fi
-    pdftotext -f 2 -l 2 "${tpdf}" - | grep -q "Übersicht zeigt" ||
+    pdftotext -f 2 -l 2 "${tpdf}" - | quiet_grep "Übersicht zeigt" ||
       die "table-intro.md: Einleitung nicht bei der Tabelle auf Seite 2"
   fi
   ok table-intro.md
@@ -510,7 +515,7 @@ test_interface() {
   text="$(pdf_text "${out_dir}/basis.pdf")"
   reject "MDO_BASE_DIR" "${text}" "Bild fehlt"
   expect "MDO_BASE_DIR" "${text}" "basis.pdf"
-  pdfinfo "${out_dir}/basis.pdf" | grep -q '^Title: *edge-cases$' || die "MDO_BASE_DIR: PDF-Titel ist nicht der Notizname"
+  pdfinfo "${out_dir}/basis.pdf" | quiet_grep '^Title: *edge-cases$' || die "MDO_BASE_DIR: PDF-Titel ist nicht der Notizname"
   if command -v mutool >/dev/null 2>&1; then
     [[ "$(attachments "${out_dir}/basis.pdf")" == "edge-cases.md" ]] || die "MDO_BASE_DIR: Anhangsname falsch"
   fi
@@ -559,7 +564,7 @@ test_templates() {
   # Eigenes Set aus MDO_TEMPLATES über den Frontmatter-Schlüssel (mit Quotes und Kommentar).
   (cd / && MDO_TEMPLATES="${sets}" bash "${build}" "${note}" "${out_dir}/probe.pdf" \
     >/dev/null 2>"${out_dir}/probe.err") || die "Set probe: Export fehlgeschlagen: $(cat "${out_dir}/probe.err")"
-  strings "${out_dir}/probe.pdf" | grep -q 'part>3</pdfaid:part' || die "Set probe: kein PDF/A-3"
+  strings "${out_dir}/probe.pdf" | quiet_grep 'part>3</pdfaid:part' || die "Set probe: kein PDF/A-3"
   text="$(pdf_text "${out_dir}/probe.pdf")"
   # shellcheck disable=SC1111
   expect "Set probe" "${text}" "SET-PROBE Set-Test" "Kapitel" "„zitiert“"
@@ -632,8 +637,8 @@ test_templates() {
   code=0
   bash "${build}" --template >/dev/null 2>&1 || code=$?
   [[ "${code}" -eq 2 ]] || die "--template ohne Wert liefert Exit ${code}"
-  bash "${build}" --help | grep -q -- '--template' || die "--help nennt --template nicht"
-  bash "${build}" --help | grep -q -- 'markdown-office --app \[notiz.md' || die "--help nennt --app nicht"
+  bash "${build}" --help | quiet_grep -- '--template' || die "--help nennt --template nicht"
+  bash "${build}" --help | quiet_grep -- 'markdown-office --app \[notiz.md' || die "--help nennt --app nicht"
   ok "Fehlerfälle und --help"
 }
 

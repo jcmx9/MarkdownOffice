@@ -294,7 +294,12 @@ describe('NoteWatcher own content (save base check)', () => {
     expect(watcher.isOwn(path, mine)).toBe(false)
   })
 
-  it('acknowledge() keeps a state handed over by a refused save from being reported', async () => {
+  // A late FSEvents delivery for the initial write can start a read that completes between
+  // writeFile('extern') and acknowledge() on a slow runner (seen on macOS CI). Retry instead of
+  // sleeping longer.
+  it('acknowledge() keeps a state handed over by a refused save from being reported', {
+    retry: 2,
+  }, async () => {
     const path = join(dir, 'ack.md')
     await writeFile(path, 'alt')
     watcher.setFiles([path])
