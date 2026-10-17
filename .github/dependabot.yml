@@ -14,6 +14,9 @@ updates:
       # Typings follow the Node major in use (Node 24), not the newest Node.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # scripts/adhoc-sign.mjs signs with the osx-sign version electron-builder uses (v2 changed the API).
+      - dependency-name: "@electron/osx-sign"
+        update-types: ["version-update:semver-major"]
     groups:
       codemirror:
         patterns: ["@codemirror/*", "@lezer/*"]
