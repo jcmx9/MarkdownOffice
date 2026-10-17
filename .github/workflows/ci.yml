@@ -58,7 +58,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
-          git fetch --quiet --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*'
+          # A new repository has no release tags yet; then there is nothing to compare against.
+          if git ls-remote --exit-code --tags origin 'refs/tags/v*' >/dev/null; then
+            git fetch --quiet --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*'
+          fi
           scripts/check-changelog.sh
       - run: npm run typecheck
 

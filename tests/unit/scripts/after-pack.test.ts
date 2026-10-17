@@ -62,7 +62,8 @@ describe('checkPackedResources', () => {
     ).toThrow(`Paket unvollständig: ${join(dir, rel)} – erst npm run assets`)
   })
 
-  it('fails when typst is not executable', () => {
+  // Windows has no executable bit: chmod cannot make the file non-executable there.
+  it.skipIf(process.platform === 'win32')('fails when typst is not executable', () => {
     complete()
     chmodSync(join(dir, 'pipeline', 'bin', 'typst'), 0o644)
     expect(() =>

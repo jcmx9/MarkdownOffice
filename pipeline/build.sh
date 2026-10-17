@@ -245,6 +245,18 @@ env_lookup() {
 # Pfad aus einer Notiz aufbereiten: ~, ${VAR}, $VAR und %VAR% ersetzen,
 # %XX-Kodierung (z. B. %20) auflösen, Backslashes -> '/'. Ohne eval: es wird
 # nichts ausgeführt, nur Variablen eingesetzt.
+# Ersetzt das erste Vorkommen von <muster> (wörtlich) in <text>. bash 3.2 (macOS)
+# übernimmt Anführungszeichen im Ersatzteil von ${p/muster/"ersatz"} wörtlich,
+# bash 5.2 deutet & im ungequoteten Ersatz; Präfix/Suffix-Abschnitte sind in
+# beiden gleich.
+replace_first() {
+  local s="$1" pat="$2" rep="$3"
+  case "${s}" in
+    *"${pat}"*) printf '%s' "${s%%"${pat}"*}${rep}${s#*"${pat}"}" ;;
+    *) printf '%s' "${s}" ;;
+  esac
+}
+
 expand_path() {
   local p="$1" name hex guard=0
   # shellcheck disable=SC2088 # literales ~ am Pfadanfang erkennen, nicht expandieren
@@ -253,18 +265,18 @@ expand_path() {
   local re_brace='\$\{([A-Za-z_][A-Za-z0-9_]*)\}' re_plain='\$([A-Za-z_][A-Za-z0-9_]*)'
   local re_win='%([A-Za-z_][A-Za-z0-9_]*)%' re_hex='%([0-9A-Fa-f]{2})'
   while [[ "${p}" =~ ${re_brace} ]] && (( guard++ < 20 )); do
-    name="${BASH_REMATCH[1]}"; p="${p/"\${${name}}"/"$(env_lookup "${name}")"}"
+    name="${BASH_REMATCH[1]}"; p="$(replace_first "${p}" "\${${name}}" "$(env_lookup "${name}")")"
   done
   while [[ "${p}" =~ ${re_plain} ]] && (( guard++ < 40 )); do
-    name="${BASH_REMATCH[1]}"; p="${p/"\$${name}"/"$(env_lookup "${name}")"}"
+    name="${BASH_REMATCH[1]}"; p="$(replace_first "${p}" "\$${name}" "$(env_lookup "${name}")")"
   done
   while [[ "${p}" =~ ${re_win} ]] && (( guard++ < 60 )); do
-    name="${BASH_REMATCH[1]}"; p="${p/"%${name}%"/"$(env_lookup "${name}")"}"
+    name="${BASH_REMATCH[1]}"; p="$(replace_first "${p}" "%${name}%" "$(env_lookup "${name}")")"
   done
   while [[ "${p}" =~ ${re_hex} ]] && (( guard++ < 200 )); do
     hex="${BASH_REMATCH[1]}"
     # shellcheck disable=SC2059 # \xHH aus geprüften Hex-Ziffern
-    p="${p/"%${hex}"/"$(printf "\\x${hex}")"}"
+    p="$(replace_first "${p}" "%${hex}" "$(printf "\\x${hex}")")"
   done
   printf '%s' "${p//\\//}"
 }
