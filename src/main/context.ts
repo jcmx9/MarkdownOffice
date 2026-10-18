@@ -71,7 +71,8 @@ export class AppContext {
 
   constructor(
     private readonly userData: string,
-    documentsDir: string,
+    /** The OS documents folder: default note folder and the user's templates folder live there. */
+    readonly documentsDir: string,
     readonly pipeline: PipelineConfig = {
       paths: pipelinePaths(false, '', process.cwd()),
       version: 'dev',

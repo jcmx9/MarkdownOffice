@@ -88,6 +88,7 @@ export type ExportResult =
 
 export type MenuCommand =
   | 'new'
+  | 'new-from-template'
   | 'open'
   | 'rename'
   | 'close-tab'
@@ -160,8 +161,15 @@ export interface MdoApi {
   /** The OS did not enter the fullscreen the app requested; Present continues windowed. */
   onFullScreenRefused(cb: () => void): void
   listSnippets(): Promise<SnippetDef[]>
-  /** The memo set's header template (memo.header.md), or null when unavailable. */
-  readHeaderTemplate(): Promise<string | null>
+  /** Every template set the export can resolve (bundled and user sets, memo included). */
+  listSets(): Promise<SetInfo[]>
+  /**
+   * The header a new note of this set starts with (its `<name>.header.md`, else a minimal
+   * `template: <name>` header); null for an invalid name or a set that does not exist.
+   */
+  readSetHeader(name: string): Promise<string | null>
+  /** Profile names offered for this set (user profiles first in lookup, sorted); [] if none. */
+  listProfiles(name: string): Promise<string[]>
   /** Shows the shown note's context menu (rename, export, close) at the mouse. */
   showNoteMenu(): Promise<void>
   getSettingsStatus(): Promise<SettingsStatus>

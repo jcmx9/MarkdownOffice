@@ -32,6 +32,8 @@ describe('allowedWithDialog', () => {
     for (const cmd of [
       'toggle-present',
       'new',
+      'new-from-template',
+      'insert-header',
       'open',
       'close-tab',
       'export',

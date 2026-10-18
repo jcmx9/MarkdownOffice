@@ -31,6 +31,7 @@ const click = (item: MenuItemConstructorOptions | undefined) => {
 describe('buildMenuTemplate', () => {
   it.each([
     ['new', 'CmdOrCtrl+N'],
+    ['new-from-template', 'CmdOrCtrl+Shift+N'],
     ['open', 'CmdOrCtrl+O'],
     ['rename', 'CmdOrCtrl+Shift+R'],
     ['close-tab', 'CmdOrCtrl+W'],
@@ -146,6 +147,16 @@ describe('buildMenuTemplate', () => {
       expect(items.find((i) => i.id === 'unfold-all')?.accelerator).toBe('Alt+Shift+0')
       expect(items.some((i) => String(i.accelerator ?? '').startsWith('Ctrl+Alt+'))).toBe(false)
     }
+  })
+
+  it('puts "Neu aus Vorlage …" right below "Neu" and labels the header insert set-neutral', () => {
+    const file = buildMenuTemplate(deps()).find((m) => m.label === 'Datei')
+    const ids = ((file?.submenu ?? []) as { id?: string }[]).map((i) => i.id)
+    expect(ids.slice(0, 2)).toEqual(['new', 'new-from-template'])
+    expect(byId(buildMenuTemplate(deps()), 'new-from-template')?.label).toBe('Neu aus Vorlage …')
+    const header = byId(buildMenuTemplate(deps()), 'insert-header')
+    expect(header?.label).toBe('YAML-Header …')
+    click(header)
   })
 
   it('labels the outline toggle in German', () => {

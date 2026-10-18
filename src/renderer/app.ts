@@ -3,6 +3,7 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { DEFAULT_SET } from '../shared/sets'
 import type {
   ExportResult,
   ExternalChange,
@@ -644,7 +645,7 @@ export class App {
   private async insertHeaderTemplate(): Promise<void> {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
-    const template = await this.mdo.readHeaderTemplate()
+    const template = await this.mdo.readSetHeader(DEFAULT_SET)
     // The user may have switched tabs or started closing while main read the file.
     if (this.closing || this.shownId !== tab.id) return
     if (template === null) {
