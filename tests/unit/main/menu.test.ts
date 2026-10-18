@@ -5,6 +5,7 @@ import {
   type MenuDeps,
   noteMenuTemplate,
   PresentKeyGuard,
+  recentLabels,
 } from '../../../src/main/menu'
 
 const deps = (over: Partial<MenuDeps> = {}): MenuDeps => ({
@@ -116,13 +117,45 @@ describe('buildMenuTemplate', () => {
     expect(winItems.some((i) => i.role === 'quit')).toBe(true)
   })
 
-  it('lists recent files and can clear them', () => {
+  it('lists recent files by name with the full path as hover text and can clear them', () => {
     const d = deps({ recent: ['/n/a.md', '/n/b.md'] })
     const items = flatten(buildMenuTemplate(d))
-    click(items.find((i) => i.label === '/n/b.md'))
+    const b = items.find((i) => i.label === 'b.md')
+    expect(b?.toolTip).toBe('/n/b.md')
+    click(b)
     expect(d.openRecent).toHaveBeenCalledWith('/n/b.md')
     click(items.find((i) => i.label === 'Liste leeren'))
     expect(d.clearRecent).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['plain names stay alone', 'darwin', ['/a/x.md', '/b/y.md'], ['x.md', 'y.md']],
+    [
+      'equal names get their folder',
+      'linux',
+      ['/k/Kunden/Termin.md', '/k/Privat/Termin.md', '/k/z.md'],
+      ['Termin.md — Kunden', 'Termin.md — Privat', 'z.md'],
+    ],
+    [
+      'equal folder names get the whole folder',
+      'darwin',
+      ['/a/Notizen/T.md', '/b/Notizen/T.md'],
+      ['T.md — /a/Notizen', 'T.md — /b/Notizen'],
+    ],
+    [
+      'case-insensitive collisions on Windows, with Windows paths',
+      'win32',
+      ['C:\\N\\Kunden\\termin.md', 'C:\\N\\Privat\\Termin.md'],
+      ['termin.md — Kunden', 'Termin.md — Privat'],
+    ],
+    [
+      'case matters on Linux',
+      'linux',
+      ['/a/termin.md', '/b/Termin.md'],
+      ['termin.md', 'Termin.md'],
+    ],
+  ] as const)('recentLabels: %s', (_name, platform, paths, labels) => {
+    expect(recentLabels(paths, platform)).toEqual(labels)
   })
 
   it('shows a disabled placeholder without recent files', () => {
