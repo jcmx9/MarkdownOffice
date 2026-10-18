@@ -1,6 +1,6 @@
 /**
- * Width of the outline, set by dragging the grip on its left edge (Edit mode only; Present
- * always uses the default width). Widths are in em of the outline's own font size, so a
+ * Width of the outline, set by dragging the grip on its left edge (Edit and Present; Present starts
+ * at the default width each time). Widths are in em of the outline's own font size, so a
  * chosen width keeps its proportion when the zoom changes.
  */
 export const OUTLINE_MIN_EM = 10

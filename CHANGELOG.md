@@ -7,6 +7,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Set `memo` 26.10.2: external links are marked in the PDF with a fine underline and a small ↗ (text colour)
+- Set din5008a: DIN 5008 Form A letters with sender profiles, vCard QR and signature
+- Offline Typst package store (vendor/packages, cades 0.3.1 + jogs 0.2.4 for QR codes, with their licence and third-party notice texts); a template or set-folder file importing an unbundled @preview package is refused instead of downloading it, and Typst runs behind an unreachable proxy so no download can happen
+- Front matter profile: (sender profile file) for sets such as din5008a; looked up next to the note, in the templates folder and in the set folder
+- lib/markdown.typ: frontmatter(src) gives template sets the whole YAML front matter (lists, maps, x- keys)
+- Templates folder: a set may also be a folder <name>/<name>.typ (e.g. a cloned set repo)
+- Outline: entries read as a list; a chapter with sub-chapters keeps the fold arrow, an entry without sub-chapters shows a bullet (•) in the same slot; levels are relative, so a note with only `##` headings shows them in the top-level look
+- Outline: the width can be dragged in Present too; each Present starts at the default width and a dragged width is not persisted
 - Editor: status line toggles „Gliederung“ and „YAML“ right of `Code | Vorschau` (same behaviour as Mod+Shift+O / Mod+Shift+H; YAML disabled without a header and in Code)
 - Spell checking in the editor (switchable; never in Present, code blocks or the front matter); suggestions in the context menu; Windows/Linux: bundled de-DE/en-US dictionaries, verified updates and further languages from MarkdownOffice-dictionaries
 - First release of Markdown Office: the rf-write editor and the real-fast-document pipeline in one app; `markdown-office` CLI; set `memo`
@@ -29,6 +36,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Editor: external links (`http://`, `https://`, `mailto:`, also `<https://…>`) look like in the PDF of set `memo` 26.10.2: in the text colour, with a fine underline and a small ↗ after the link, in the Preview, Present and the table widget; the arrow is not part of the document. Internal links and the Code view are unchanged
 
 ### Fixed
+- Preview: heading spacing and the H1 hairline follow the `memo` PDF (baseline distances within 1pt) and no longer depend on blank lines in the source; blank lines next to a heading collapse until the cursor is on them
 - Spell checking: the „Wörterbuch fehlt – laden?“ notice comes back after leaving Present or switching spell checking on again (it stayed suppressed until restart); „Nicht mehr fragen“ still wins
 - Windows install/update: moving the freshly extracted app into place now retries for up to ~13 s (Defender may still scan the new files); the first move, which detects a running app, stays quick
 - Start screen without an open note: no redundant „Keine Notiz geöffnet.“ line; „Neue Notiz“ and „Öffnen …“ are two equal buttons

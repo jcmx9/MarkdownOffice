@@ -306,8 +306,56 @@ if ($r.Code -ne 0 -or -not (Test-PdfA $setPdf)) { Fail "Set probe: Exit $($r.Cod
 elseif (-not (Test-PdfMarker $setPdf 'SET-PROBE')) { Fail 'Set probe: Marker SET-PROBE fehlt, falsche Vorlage' }
 else { Ok 'Set aus MDO_TEMPLATES' }
 
+$folderPdf = Join-Path $outDir 'folder.pdf'
+$r = Invoke-Convert @('--template', 'folderset', $setNote, $folderPdf)
+if ($r.Code -ne 0 -or -not (Test-PdfA $folderPdf)) { Fail "Set-Ordner: Exit $($r.Code)`n$($r.Text)" }
+elseif (-not (Test-PdfMarker $folderPdf 'SET-FOLDER')) { Fail 'Set-Ordner: Marker SET-FOLDER fehlt' }
+else { Ok 'Set-Ordner <name>\<name>.typ im Benutzerordner' }
+
 $r = Invoke-Convert @('--template', 'gibt-es-nicht', $setNote, (Join-Path $outDir 'x.pdf'))
 if ($r.Code -ne 1 -or $r.Text -notmatch 'Vorlage nicht gefunden: gibt-es-nicht') { Fail "unbekanntes Set: Exit $($r.Code)`n$($r.Text)" } else { Ok 'unbekanntes Set: Exit 1' }
+
+# Offline-Paketablage: @preview/cades (mit jogs) aus vendor\packages, ohne Netz; ein nicht
+# mitgeliefertes Paket bricht vor Typst mit Exit 1 ab (spiegelt test-pdf.sh).
+$qrPdf = Join-Path $outDir 'qr.pdf'
+$r = Invoke-Convert @('--template', 'qr', $setNote, $qrPdf)
+if ($r.Code -ne 0 -or -not (Test-PdfMarker $qrPdf 'QR-TEST')) { Fail "QR-Paket: Exit $($r.Code)`n$($r.Text)" } else { Ok 'QR-Paket aus der Offline-Ablage' }
+$r = Invoke-Convert @('--template', 'netimport', $setNote, (Join-Path $outDir 'net.pdf'))
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0') { Fail "fremdes Paket: Exit $($r.Code)`n$($r.Text)" } else { Ok 'fremdes Paket: Exit 1' }
+# Fail closed: ungueltige Angabe (Grossbuchstaben, _) und ein Import in einer Hilfsdatei des Set-Ordners.
+$r = Invoke-Convert @('--template', 'netupper', $setNote, (Join-Path $outDir 'net.pdf'))
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/Gibts_Nicht:1.0.0') { Fail "ungueltige Paketangabe: Exit $($r.Code)`n$($r.Text)" } else { Ok 'ungueltige Paketangabe: Exit 1' }
+$r = Invoke-Convert @('--template', 'nethelper', $setNote, (Join-Path $outDir 'net.pdf'))
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0') { Fail "Import in Hilfsdatei: Exit $($r.Code)`n$($r.Text)" } else { Ok 'Import in Hilfsdatei: Exit 1' }
+# Verkettete Paketangabe (kein Textscan sieht sie): der gesperrte Proxy verhindert den Download,
+# die Paketablage bleibt unveraendert.
+$storeDir = Join-Path $env:MDO_PIPELINE_ROOT 'vendor\packages'
+$storeBefore = (Get-ChildItem -LiteralPath $storeDir -Recurse -Force | ForEach-Object { $_.FullName }) -join "`n"
+$concatPdf = Join-Path $outDir 'concat.pdf'
+$r = Invoke-Convert @('--template', 'netconcat', $setNote, $concatPdf)
+$storeAfter = (Get-ChildItem -LiteralPath $storeDir -Recurse -Force | ForEach-Object { $_.FullName }) -join "`n"
+if ($r.Code -eq 0 -or (Test-Path -LiteralPath $concatPdf)) { Fail "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)`n$($r.Text)" }
+elseif ($storeAfter -ne $storeBefore) { Fail 'verkettete Paketangabe: Paketablage veraendert' }
+else { Ok 'verkettete Paketangabe: kein Download, Ablage unveraendert' }
+# Der gesperrte Proxy gilt nur um die Typst-Aufrufe: convert.ps1 IM SELBEN PROZESS (&) aufrufen
+# (einmal erfolgreich, einmal mit Fehler) und pruefen, dass die Proxy-Variablen danach wieder
+# die vorherigen Werte haben (kein Erben durch den PDF-Betrachter oder den Aufrufer).
+$proxyVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY')
+$proxySaved = @{}
+foreach ($v in $proxyVars) { $proxySaved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+[Environment]::SetEnvironmentVariable('HTTPS_PROXY', 'http://sentinel.invalid:1', 'Process')
+[Environment]::SetEnvironmentVariable('HTTP_PROXY', $null, 'Process')
+[Environment]::SetEnvironmentVariable('NO_PROXY', 'sentinel.invalid', 'Process')
+$inProcPdf = Join-Path $outDir 'inproc.pdf'
+$null = & $Convert $setNote $inProcPdf *>&1
+$okRun = ($LASTEXITCODE -eq 0) -and (Test-PdfA $inProcPdf)
+$null = & $Convert '--template' 'netconcat' $setNote (Join-Path $outDir 'inproc-net.pdf') *>&1
+$after = @($env:HTTPS_PROXY, $env:HTTP_PROXY, $env:NO_PROXY)
+foreach ($v in $proxyVars) { [Environment]::SetEnvironmentVariable($v, $proxySaved[$v], 'Process') }
+if (-not $okRun) { Fail 'Proxy-Wiederherstellung: Build im selben Prozess fehlgeschlagen' }
+elseif ($after[0] -ne 'http://sentinel.invalid:1' -or $after[1] -or $after[2] -ne 'sentinel.invalid') {
+  Fail "Proxy-Variablen nach dem Build veraendert: HTTPS_PROXY=$($after[0]) HTTP_PROXY=$($after[1]) NO_PROXY=$($after[2])"
+} else { Ok 'Proxy-Variablen nach dem Build unveraendert (auch nach einem Fehler)' }
 
 $r = Invoke-Convert @('--template=memo', $setNote, (Join-Path $outDir 'cli.pdf'))
 if ($r.Code -ne 0) { Fail "--template=memo: Exit $($r.Code)`n$($r.Text)" }
@@ -339,6 +387,45 @@ $env:MDO_TEMPLATES = $EmptyTemplates
 if ($r.Code -ne 0) { Fail "eigenes memo: Exit $($r.Code)`n$($r.Text)" }
 elseif (-not (Test-PdfMarker (Join-Path $outDir 'schatten.pdf') 'SET-PROBE')) { Fail 'eigenes memo: Marker SET-PROBE fehlt, mitgeliefertes Set lief' }
 else { Ok 'Benutzerordner vor mitgelieferten Sets' }
+
+# Absender-Profil: Vorlagen-Ordner, Tippfehler -> Exit 1, Profil auf anderem Laufwerk.
+$profVorl = Join-Path $Work 'profil vorlagen'
+$profNote = Join-Path $Work 'profil notiz'
+New-Item -ItemType Directory -Force -Path (Join-Path $profVorl 'profiles'), (Join-Path $profNote 'profiles') | Out-Null
+Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\testprofil.yaml'), (Join-Path $Fixtures 'profiles\sig.svg') -Destination (Join-Path $profVorl 'profiles')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'templates\profile.typ') -Destination $profVorl
+$savedTemplates = $env:MDO_TEMPLATES
+$env:MDO_TEMPLATES = $profVorl
+$brief = Join-Path $profNote 'brief.md'
+[IO.File]::WriteAllText($brief, "---`ntemplate: profile`nprofile: testprofil`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+$p1 = Join-Path $outDir 'p1.pdf'
+$r = Invoke-Convert @($brief, $p1)
+if ($r.Code -ne 0) { Fail "profile: Vorlagen-Ordner: Exit $($r.Code)`n$($r.Text)" }
+elseif (-not (Test-PdfMarker $p1 'PROFILE-TEST')) { Fail 'profile: falsche Vorlage' }
+else { Ok 'profile: aus dem Vorlagen-Ordner' }
+[IO.File]::WriteAllText((Join-Path $profNote 'falsch.md'), "---`ntemplate: profile`nprofile: testprofli`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+$p5 = Join-Path $outDir 'p5.pdf'
+$r = Invoke-Convert @((Join-Path $profNote 'falsch.md'), $p5)
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Profil nicht gefunden: testprofli') { Fail "profile: Tippfehler: Exit $($r.Code)`n$($r.Text)" }
+elseif (Test-PdfA $p5) { Fail 'profile: Tippfehler erzeugt trotzdem ein PDF' }
+else { Ok 'profile: Tippfehler -> Exit 1' }
+if ($OtherTemp) {
+  # Notiz und Profil auf einem anderen Laufwerk: der Profil-Ordner wird komplett bereitgestellt.
+  $pdrv = Join-Path $OtherTemp ('mdo profil platte ' + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Force -Path (Join-Path $pdrv 'profiles') | Out-Null
+  Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\testprofil.yaml'), (Join-Path $Fixtures 'profiles\sig.svg') -Destination (Join-Path $pdrv 'profiles')
+  $pdrvNote = Join-Path $pdrv 'brief.md'
+  [IO.File]::WriteAllText($pdrvNote, "---`ntemplate: profile`nprofile: testprofil`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+  $pdrvPdf = Join-Path $pdrv 'brief.pdf'
+  $r = Invoke-Convert @($pdrvNote, $pdrvPdf)
+  if ($r.Code -ne 0) { Fail "profile: anderes Laufwerk: Exit $($r.Code)`n$($r.Text)" }
+  elseif (-not (Test-PdfA $pdrvPdf)) { Fail 'profile: anderes Laufwerk: PDF fehlt' }
+  else { Ok 'profile: Profil auf anderem Laufwerk (Unterschrift aus dem bereitgestellten Ordner)' }
+  Remove-Item -LiteralPath $pdrv -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+  Skip 'profile: anderes Laufwerk (kein Temp-Ordner auf einem anderen Laufwerk als das Repo)'
+}
+$env:MDO_TEMPLATES = $EmptyTemplates
 
 Set-Location $Repo
 Remove-Item -LiteralPath $EmptyTemplates -Recurse -Force -ErrorAction SilentlyContinue

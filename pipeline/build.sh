@@ -95,8 +95,8 @@ Options:
 
 Optionale YAML-Frontmatter-Schlüssel:
   title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
-  print_filename, lang, header, watermark, logo, logo-height, embed_source,
-  hard_breaks, template
+  print_filename, lang, header, watermark, logo, logo-height, profile,
+  embed_source, hard_breaks, template
 
 Exit-Code 0 nur bei Erfolg; Fehler und Warnungen gehen auf stderr.
 
@@ -104,8 +104,8 @@ Environment:
   MDO_NO_OPEN=1           Das PDF nach dem Build nicht öffnen (Batch/Cron)
   MDO_BASE_DIR=ordner     Relative Bild-/Logopfade gelten relativ zu diesem Ordner
                           statt zum Ordner der Quelle (temporäre Kopie)
-  MDO_TEMPLATES=ordner    Ordner mit eigenen Vorlagen-Sets (Standard:
-                          ~/Documents/Markdown Office/Vorlagen)
+  MDO_TEMPLATES=ordner    Ordner mit eigenen Vorlagen-Sets, <name>.typ oder <name>/<name>.typ
+                          (Standard: ~/Documents/Markdown Office/Vorlagen)
   MDO_PIPELINE_ROOT=ordner  Pipeline-Ordner mit lib/, vendor/, fonts/, bin/typst
                           (Standard: Ordner dieses Skripts)
   MDO_SETS_DIR=ordner     Mitgelieferte Vorlagen-Sets (Standard: ../sets)
@@ -305,6 +305,7 @@ fm_client=""
 fm_author=""
 fm_logo=""
 fm_logo_height=""
+fm_profile=""
 fm_embed="true"
 fm_breaks="true"
 fm_template=""
@@ -334,6 +335,7 @@ if [[ "$(head -n 1 "${src}" | tr -d '\r')" == "---" ]]; then
       author:*)          fm_author="$(yaml_str "${line#author:}")" ;;
       logo:*)            fm_logo="$(yaml_str "${line#logo:}")" ;;
       logo-height:*)     fm_logo_height="$(yaml_str "${line#logo-height:}")" ;;
+      profile:*)         fm_profile="$(yaml_str "${line#profile:}")" ;;
       print_filename:*)
         if b="$(fm_bool print_filename "${line#print_filename:}")"; then fm_showname="${b}"; fi
         ;;
@@ -385,7 +387,7 @@ else
   out="${src_dir}/${base}.pdf"
 fi
 
-# Vorlagen-Sets: <name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
+# Vorlagen-Sets: <name>.typ oder <name>/<name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
 # ~/Documents/Markdown Office/Vorlagen) vor den mitgelieferten Sets
 # (MDO_SETS_DIR/<name>/<name>.typ); der Ordner ist auch ein Logo-Suchort.
 user_templates="${MDO_TEMPLATES:-${HOME:-}/Documents/Markdown Office/Vorlagen}"
@@ -435,13 +437,16 @@ attach=""
 if [[ "${fm_embed}" != "false" ]]; then attach="${src_abs}"; fi
 
 # resolve_template <wert> <basisordner>: gibt den absoluten Pfad der .typ aus.
-# Leer -> memo. Ein Name (a-z, 0-9, _ und -) ist ein Set; ein Wert auf .typ
+# Leer -> memo. Ein Name (a-z, 0-9, _ und -) ist ein Set (<name>.typ oder Ordner
+# <name>/<name>.typ im Benutzerordner, dann mitgeliefert); ein Wert auf .typ
 # eine einzelne Datei (relativ zum Basisordner; ~ und $VAR wie bei Bildern).
 # Sonst oder nicht gefunden: Meldung auf stderr, Exit 1.
 resolve_template() {
   local v="${1:-memo}" base="$2" p
   if [[ "${v}" =~ ^[a-z0-9_-]+$ ]]; then
-    for p in "${user_templates}/${v}.typ" "${sets_dir}/${v}/${v}.typ"; do
+    # Benutzerordner zuerst: <name>.typ, dann ein Set-Ordner <name>/<name>.typ (geklontes
+    # oder aus dem Katalog installiertes Set-Repo), danach die mitgelieferten Sets.
+    for p in "${user_templates}/${v}.typ" "${user_templates}/${v}/${v}.typ" "${sets_dir}/${v}/${v}.typ"; do
       if [[ -f "${p}" ]]; then printf '%s' "${p}"; return 0; fi
     done
     echo "Error: Vorlage nicht gefunden: ${v} (gesucht in ${user_templates} und ${sets_dir})" >&2
@@ -465,6 +470,92 @@ else
   template_file="$(resolve_template "${fm_template}" "${base_dir}")" || exit 1
 fi
 
+# Offline-Paketablage: Typst-Pakete im Cache-Layout (preview/<name>/<version>), damit
+# #import "@preview/…" ohne Netz funktioniert (auch Importe zwischen Paketen: cades
+# importiert jogs). --package-path zeigt auf einen Ordner, der nicht mitgeliefert wird,
+# damit nie lokale Pakete des Rechners (@local) einfließen.
+pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path "${pipeline_root}/vendor/local-packages")
+
+# Kein Netz, nie (1/2): jeder @preview-Import, der nicht in der Ablage liegt, würde Typst
+# einen Download in die Ablage versuchen lassen. Abbruch mit Meldung, bevor Typst läuft.
+# Fail closed: JEDES Vorkommen von @preview/ bis zum Anführungszeichen oder Leerraum zählt,
+# auch in Kommentaren, und alles, was kein vorhandener Ablage-Ordner <name>/<version> ist
+# (auch ungültige Angaben mit Großbuchstaben oder _), wird abgewiesen. Geprüft wird die
+# Vorlage; ist sie ein Set-Ordner <name>/<name>.typ, jede .typ darin (auch Unterordner),
+# weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen .typ nur diese, weil ihre
+# Nachbarn andere Sets sein können. Steht hinter der Vorlagen-Auflösung (endgültige Datei).
+# find -H folgt einem verlinkten Set-Ordner (z. B. ein geklontes Set-Repo, als Symlink im
+# Vorlagen-Ordner); die Vorlage selbst steht immer in der Liste, was find auch liefert.
+# Fail closed: scheitert find oder grep (z. B. unlesbare Datei), wird die Vorlage abgewiesen.
+template_dir="$(dirname "${template_file}")"
+scan_files=("${template_file}")
+if [[ "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
+  if ! found="$(find -H "${template_dir}" -type f -name '*.typ')"; then
+    echo "Error: Vorlage nicht prüfbar (Set-Ordner nicht lesbar): ${template_dir}" >&2
+    exit 1
+  fi
+  while IFS= read -r f; do
+    if [[ -n "${f}" ]]; then scan_files+=("${f}"); fi
+  done <<<"${found}"
+fi
+scan_rc=0
+specs="$(grep -ohE '@preview/[^"[:space:]]*' -- "${scan_files[@]}")" || scan_rc=$?
+if (( scan_rc > 1 )); then
+  echo "Error: Vorlage nicht prüfbar (Datei nicht lesbar): ${template_file}" >&2
+  exit 1
+fi
+while IFS= read -r spec; do
+  [[ -n "${spec}" ]] || continue
+  pkg_name="${spec%%:*}"; pkg_ver="${spec#*:}"
+  if [[ ! "${spec}" =~ ^[a-z0-9-]+:[0-9]+\.[0-9]+\.[0-9]+$ ||
+        ! -d "${pipeline_root}/vendor/packages/preview/${pkg_name}/${pkg_ver}" ]]; then
+    echo "Error: Paket nicht mitgeliefert: @preview/${spec} (Vorlage ${template_file})" >&2
+    exit 1
+  fi
+done < <(printf '%s\n' "${specs}" | sed 's#^@preview/##' | sort -u)
+
+# Kein Netz, nie (2/2): was kein Textscan sieht (z. B. eine per Verkettung gebaute
+# Paketangabe), stoppt ein unerreichbarer Proxy für beide Typst-Aufrufe; ein Download
+# scheitert, bevor etwas in die Ablage geschrieben wird. NO_PROXY leer: keine Ausnahmen.
+no_net=(env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9
+  https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 NO_PROXY= no_proxy=)
+
+# Absender-Profil (profile:). Typst kann nicht prüfen, ob eine Datei existiert; daher sucht
+# das Skript, wie beim Logo, und übergibt den Pfad als Eingabe profile. Das Set liest die
+# YAML-Datei und Dateien daneben (z. B. die Unterschrift). Ein Name (a-z, 0-9, _ und -)
+# sucht profiles/<name>.yaml im Ordner der Notiz (bzw. MDO_BASE_DIR), dann im
+# Vorlagen-Ordner, dann im Ordner des Sets (Beispielprofile); ein Wert auf .yaml/.yml ist
+# ein Pfad (relativ zur Notiz, ~ und $VAR wie bei Bildern). Nicht gefunden -> Exit 1: ein
+# Brief ohne Absender wäre schlimmer als keiner.
+profile=""
+if [[ -n "${fm_profile}" ]]; then
+  if [[ "${fm_profile}" =~ ^[a-z0-9_-]+$ ]]; then
+    set_dir="$(dirname "${template_file}")"
+    for dir in "${base_dir}/profiles" "${user_templates}/profiles" "${set_dir}/profiles"; do
+      if [[ -f "${dir}/${fm_profile}.yaml" ]]; then profile="${dir}/${fm_profile}.yaml"; break; fi
+    done
+    if [[ -z "${profile}" ]]; then
+      echo "Error: Profil nicht gefunden: ${fm_profile} (gesucht in ${base_dir}/profiles, ${user_templates}/profiles und ${set_dir}/profiles)" >&2
+      exit 1
+    fi
+  else
+    case "$(printf '%s' "${fm_profile}" | tr '[:upper:]' '[:lower:]')" in
+      *.yaml|*.yml)
+        p="$(expand_path "${fm_profile}")"
+        case "${p}" in /*) ;; *) p="${base_dir}/${p}" ;; esac
+        if [[ ! -f "${p}" ]]; then echo "Error: Profil nicht gefunden: ${fm_profile}" >&2; exit 1; fi
+        # Anders als convert.ps1 (Staging auf andere Laufwerke) wird hier nichts kopiert:
+        # --root / macht jeden absoluten Pfad lesbar, auch /absender.yaml. Keine Sperre nötig.
+        profile="$(cd "$(dirname "${p}")" && pwd)/$(basename "${p}")"
+        ;;
+      *)
+        echo "Error: ungültiges Profil: ${fm_profile} (erlaubt: Name aus a-z, 0-9, _ und - oder eine .yaml-Datei)" >&2
+        exit 1
+        ;;
+    esac
+  fi
+fi
+
 # Laufzeit-Eingaben fürs Template. --root / : Typst behandelt absolute Pfade
 # projektwurzel-relativ und sperrt Lesezugriffe außerhalb; für Quelle, Bilder
 # und Logo (die überall liegen können) muss die Wurzel den absoluten Pfad umfassen.
@@ -478,6 +569,7 @@ typst_inputs=(
   --input "author=${fm_author}"
   --input "logo=${logo}"
   --input "logo_height=${fm_logo_height}"
+  --input "profile=${profile}"
   --input "source=${src_abs}"
   --input "attach=${attach}"
   --input "docdir=${base_dir}"
@@ -552,8 +644,8 @@ json_escape() {
 }
 
 probe_expr='str(query(<mdo-remote-skip>).len()) + "\n" + query(<mdo-image>).map(m => m.value + "\n").dedup().sum(default: "")'
-probe="$("${typst_bin}" eval --in "${template_file}" "${probe_expr}" \
-  "${font_arg[@]}" --root / "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
+probe="$("${no_net[@]}" "${typst_bin}" eval --in "${template_file}" "${probe_expr}" \
+  "${font_arg[@]}" "${pkg_arg[@]}" --root / "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
 stripped=0
 image_entries=""
 first=1
@@ -575,8 +667,9 @@ printf '{%s}\n' "${image_entries}" > "${images_json}"
 typst_inputs+=(--input "images=${images_json}")
 
 # Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle).
-"${typst_bin}" compile "${template_file}" "${out}" \
+"${no_net[@]}" "${typst_bin}" compile "${template_file}" "${out}" \
   "${font_arg[@]}" \
+  "${pkg_arg[@]}" \
   --root / \
   --pdf-standard "${standard}" \
   "${typst_inputs[@]}"

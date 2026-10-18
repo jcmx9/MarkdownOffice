@@ -94,6 +94,20 @@
       "version": "0.2.2",
       "sha256": "e87b54e8a8b269a23996204191b209ba677b096ac20c893c639a36dd5f98cc86",
       "license": "LICENSE"
+    },
+    {
+      "name": "cades",
+      "version": "0.3.1",
+      "sha256": "b6dbb30248ab4978425c62652ee8ce0921a799c99d51c67791d48a61e31ea441",
+      "license": ["LICENSE", "NOTICE"],
+      "store": true
+    },
+    {
+      "name": "jogs",
+      "version": "0.2.4",
+      "sha256": "b653a1874492a6ffebb5ff894d0ca06d3523a1b8721eea2bc32034d8562ecb45",
+      "license": ["LICENSE", "license.html"],
+      "store": true
     }
   ],
   "sets": [
@@ -102,6 +116,12 @@
       "repo": "jcmx9/MarkdownOffice-set-memo",
       "tag": "v26.10.2",
       "sha256": "ba5f0c31d394d4f392c0915d55849e24450632aa4d020294bc43d804b1e56dd9"
+    },
+    {
+      "name": "din5008a",
+      "repo": "jcmx9/MarkdownOffice-set-din5008a",
+      "tag": "v26.10.0",
+      "sha256": "3466bd2ae5aac9ad86580a0bae5e57a8acae031ddf3ac78d4709e83f10a30e99"
     }
   ],
   "dictionaries": [

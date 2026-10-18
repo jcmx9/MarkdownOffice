@@ -24,6 +24,38 @@ describe('headings', () => {
   })
 })
 
+describe('blank lines next to headings', () => {
+  const gaps = (d: string[]) => d.filter((x) => x.startsWith('line:mdo-heading-gap'))
+  it('collapses every blank line directly before and after a heading', () => {
+    // "Text" 0-4, blank 5, blank 6, "## H" 7-11, blank 12, "Mehr" 13-17
+    expect(gaps(rf('Text\n\n\n## H\n\nMehr'))).toEqual([
+      'line:mdo-heading-gap@5-5',
+      'line:mdo-heading-gap@6-6',
+      'line:mdo-heading-gap@12-12',
+    ])
+  })
+  it('leaves blank lines between paragraphs alone', () => {
+    expect(gaps(rf('Eins\n\nZwei'))).toEqual([])
+  })
+  it('collapses a blank line between two headings once', () => {
+    // rf() appends "\n\nende": the blank line after "## B" (10) collapses too
+    expect(gaps(rf('# A\n\n## B'))).toEqual([
+      'line:mdo-heading-gap@4-4',
+      'line:mdo-heading-gap@10-10',
+    ])
+  })
+  it('collapses whitespace-only lines and the blank lines around setext headings', () => {
+    // "Text" 0-4, "  " 5-7, "Titel" 8-13, "===" 14-17, blank 18
+    expect(gaps(rf('Text\n  \nTitel\n===\n\nMehr'))).toEqual([
+      'line:mdo-heading-gap@5-5',
+      'line:mdo-heading-gap@18-18',
+    ])
+  })
+  it('keeps the blank line holding the cursor at full height', () => {
+    expect(gaps(rf('Text\n\n## H\n\nMehr', 5))).toEqual(['line:mdo-heading-gap@11-11'])
+  })
+})
+
 describe('inline elements', () => {
   it('strong: style and hide **', () => {
     expect(rf('**fett**')).toEqual(

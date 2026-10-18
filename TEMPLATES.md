@@ -24,7 +24,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 | Bundled sets | `<MDO_SETS_DIR>/<name>/<name>.typ` | default `<pipeline>/../sets`; the app ships `<resources>/sets/memo/` |
 | Set repository | `<name>.typ`, `<name>.css`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
 
-Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`, see §4). On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
+Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`) and the bundled store packages (`@preview/…`), see §4. On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
 
 ## 2. How the pipeline finds and runs a set
 
@@ -33,7 +33,8 @@ Keep the set in **one self-contained `.typ` file**. Only import from the pipelin
 1. Value: `--template VALUE` on the command line wins; otherwise the front-matter key `template:`; otherwise `memo`.
 2. A **name** is looked up in this order, first hit wins:
    1. `${MDO_TEMPLATES:-~/Documents/Markdown Office/Vorlagen}/<name>.typ`
-   2. `${MDO_SETS_DIR:-<pipeline>/../sets}/<name>/<name>.typ`
+   2. `${MDO_TEMPLATES:-~/Documents/Markdown Office/Vorlagen}/<name>/<name>.typ` (a set folder, so that a cloned or catalog-installed set repo works as is)
+   3. `${MDO_SETS_DIR:-<pipeline>/../sets}/<name>/<name>.typ`
 3. A **`.typ` value**: `~`, `$VAR`, `${VAR}`, `%VAR%` and `%XX` are expanded; a relative path counts from the caller's working directory (`--template`) or from the note's folder / `MDO_BASE_DIR` (`template:`).
 4. Not found or invalid: message on stderr, exit 1. No fallback to `memo`.
 
@@ -44,9 +45,11 @@ Both scripts run Typst ≥ 0.15 twice on the resolved `.typ`:
 ```bash
 # 1. probe: collect image sources (see §5.1); errors are ignored
 typst eval --in <set>.typ '<query expression>' --font-path <pipeline>/fonts --ignore-system-fonts \
+  --package-cache-path <pipeline>/vendor/packages --package-path <pipeline>/vendor/local-packages \
   --root / <all --input …> --input probe=true
 # 2. real build
 typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-fonts \
+  --package-cache-path <pipeline>/vendor/packages --package-path <pipeline>/vendor/local-packages \
   --root / --pdf-standard a-3b <all --input …> --input images=<map.json>
 ```
 
@@ -63,6 +66,17 @@ typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-f
 ### Logo lookup (decided by the script)
 
 Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote values (`http(s)://`, `//`, `data:`) are refused. Absolute (after `~`/variable expansion) → exactly that file. Relative → first existing of `<note folder or MDO_BASE_DIR>/`, `~/` (Windows `%USERPROFILE%`), the templates folder (`MDO_TEMPLATES`, default `~/Documents/Markdown Office/Vorlagen/`), `<pipeline>/`. Nothing found → `logo` input is empty, with a notice. The template never searches.
+
+### Profiles (decided by the script)
+
+A set that needs a sender (a letter) reads a profile: a YAML file plus the files next to it (signature, logo). The note names it with `profile:`; the script finds it and passes the absolute path as input `profile` (`""` without `profile:`). A set reads it with `yaml(sys.inputs.profile)` and further files relative to the profile's folder, e.g. `read(dir + "/" + data.signature)` with `dir` = the path up to the last `/`.
+
+| Value of `profile:` | Looked up |
+|---|---|
+| a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `profiles/<name>.yaml` 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 3. in the folder of the resolved set (its example profiles) – the first existing file wins |
+| a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
+
+A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. On Windows only the files directly in the profile's folder (no subfolders) are copied to the staging folder when it is on another drive than Typst's root, so a signature (or logo) must sit **directly next to the profile**, not in a subfolder; a profile directly in a drive root is refused there ("Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen") so no export copies a whole drive.
 
 ## 3. Inputs (`sys.inputs`)
 
@@ -86,6 +100,7 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `hard_breaks` | Front matter `hard_breaks:`; `--hard-breaks` / `--soft-breaks` win | `true` / `false` | `true` |
 | `logo` | Resolved logo file (see §2) | absolute path | `""` = no logo |
 | `logo_height` | Front matter `logo-height:`, **raw**; the template validates it | e.g. `13mm`, `1.5cm`, `40pt` | `""` |
+| `profile` | Resolved sender profile (front matter `profile:`, see "Profiles" in §2); files next to it (signature, logo) are readable; on Windows forward slashes | absolute path | `""` = no `profile:` |
 | `source` | The Markdown source to render | absolute path | always set |
 | `attach` | File to embed as PDF attachment; `embed_source: false` or `--no-source` empties it | absolute path (= `source`) | `""` = do not embed |
 | `docdir` | Base folder for relative image paths: `MDO_BASE_DIR` or the source's folder | absolute path | always set |
@@ -111,15 +126,21 @@ The pipeline passes `--font-path <pipeline>/fonts --ignore-system-fonts`: **syst
 
 Use a font list with the Noto fallbacks, e.g. `("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2")`. Variable weights work with numeric `weight:` values.
 
-Bundled Typst packages live in `<mdo>/vendor/` (versions pinned in `scripts/pipeline-assets.json`):
+Bundled Typst packages live in `<mdo>/vendor/` (versions pinned in `scripts/pipeline-assets.json`; licence texts, including bundled third-party notices such as cades' `NOTICE` and jogs' `license.html`, in `<pipeline>/licenses/packages/<name>/`):
 
 | Package | Version | Import | Purpose |
 |---------|---------|--------|---------|
 | cmarker | 0.1.10 | `#import mdo + "/vendor/cmarker/lib.typ" as cmarker` | Markdown → Typst |
 | mitex | 0.2.7 | `#import mdo + "/vendor/mitex/lib.typ": mitex` | LaTeX math for `$…$`, `$$…$$` (pass as `math: mitex`) |
 | mmdr | 0.2.2 | `#import mdo + "/vendor/mmdr/lib.typ": mermaid-svg` | Mermaid → SVG, offline (memo: `show raw.where(lang: "mermaid", block: true)`) |
+| cades | 0.3.1 | `#import "@preview/cades:0.3.1": qr-code` | QR codes (e.g. a vCard); store package |
+| jogs | 0.2.4 | (imported by cades) | QuickJS runtime that cades runs on; store package |
 
-Pipeline library: `#import mdo + "/lib/markdown.typ": preprocess`. Use `#let mdo = sys.inputs.at("mdo", default: ".")` and import by path; `@preview/…` imports do not work offline.
+Pipeline library: `#import mdo + "/lib/markdown.typ": preprocess`. Use `#let mdo = sys.inputs.at("mdo", default: ".")` and import cmarker, mitex and mmdr by path.
+
+**Offline package store.** Packages marked "store package" are unpacked in Typst's package-cache layout, `<pipeline>/vendor/packages/preview/<name>/<version>/`, and both scripts pass `--package-cache-path <pipeline>/vendor/packages` (and `--package-path` to a folder that does not exist, so no `@local` packages of the machine leak in). That is how `#import "@preview/<name>:<version>"` resolves without network, including imports between packages (cades imports `@preview/jogs`). Your user package cache is never consulted.
+
+**Only bundled packages.** The pipeline never downloads anything. Before Typst runs, the scripts scan for every `@preview/` occurrence (up to the next quote or whitespace): in the set's `.typ`, and for a set folder `<name>/<name>.typ` in every `.typ` of that folder and its subfolders (helper files count). Anything that is not an existing store folder `<name>/<version>`, including malformed specs (uppercase, `_`) and imports in **comments** (the scan does not parse Typst, so it errs on the safe side), stops the build with `Paket nicht mitgeliefert: @preview/<spec>` (exit 1). Do not write `@preview/` in comments except for real imports. The exact pinned version is required. A package your set needs must be added to the store (manifest entry with `"store": true`, SHA-256 and every licence file) first. As a second line of defence, both Typst calls run behind an unreachable proxy (`HTTPS_PROXY`/`HTTP_PROXY` = `http://127.0.0.1:9`, `NO_PROXY` empty), so a spec the scan cannot see (e.g. built by string concatenation) fails with a download error instead of reaching the network.
 
 ## 5. Preprocessing contract
 
@@ -180,6 +201,16 @@ Hook it in via `scope: (image: safe-image)` in `cmarker.render`. The probe must 
 ## 6. Front matter and the header template
 
 The scripts read a leading `---` … `---` (or `...`) block line by line as `key: value`. Values: surrounding quotes removed, `# comment` after a value removed, inline list `[A, "B"]` → `A, B`; booleans accept `true/false/yes/no/on/off/y/n` in any case (invalid → warning, default kept); empty values are ignored. The full key list with defaults is in the README section *Front matter*.
+
+Sets get the whole block as Typst data, with real YAML (lists, maps, typed values):
+
+```typst
+#import sys.inputs.mdo + "/lib/markdown.typ": frontmatter
+#let fm = frontmatter(read(sys.inputs.source))
+#fm.at("x-to", default: ())   // e.g. an address list
+```
+
+`frontmatter(src: str) -> dictionary` returns `(:)` without front matter or with an empty or unclosed block. Convention: pipeline keys have no prefix, keys that only a set reads start with `x-`. The shell parsers only read keys at column 0 and ignore indented lines (nested values) and unknown keys such as `x-…`, so a nested `title:` or `date:` never changes the pipeline's values.
 
 `<name>.header.md` is the set's front-matter template, inserted at the top of a note. Rules:
 
@@ -366,7 +397,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 ## 13. Checklist
 
 - [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`.
-- [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"` and `mdo + "/vendor/…"`.
+- [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"`, `mdo + "/vendor/…"` and bundled store packages (`@preview/<name>:<version>` with the exact pinned version, section 4); no `@preview/` in comments.
 - [ ] Every input is read with `sys.inputs.at(key, default: …)`; booleans compared as strings.
 - [ ] Body rendered with `cmarker.render(preprocess(read(source), hard-breaks: …, lang: …), …)`, `smart-punctuation: false`, `math: mitex`.
 - [ ] `html:` handles `mdo-alert`, `mdo-tasks`, `mdo-task`, `mdo-keep`.

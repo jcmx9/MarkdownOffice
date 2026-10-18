@@ -52,7 +52,7 @@ const down = (b: Element, button = 0) => {
 }
 
 describe('Outline rendering', () => {
-  it('renders one ul with H1/H2 items, chevrons and spacers', () => {
+  it('renders one ul with H1/H2 items, chevrons and markers', () => {
     outline.render(tree(), null)
     expect(el.querySelectorAll(':scope > ul').length).toBe(1)
     expect(labels().map((l) => l.textContent)).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta'])
@@ -61,9 +61,9 @@ describe('Outline rendering', () => {
     const chev = el.querySelector('.mdo-ol-chevron') as HTMLElement
     expect(chev.getAttribute('aria-expanded')).toBe('true')
     expect(chev.getAttribute('aria-label')).toBe('Abschnitt einklappen')
-    // Only Alpha has children: Beta (folds, but no children), Gamma and Delta get a spacer.
+    // Only Alpha has children: Beta (folds, but no children), Gamma and Delta get a marker.
     expect(el.querySelectorAll('.mdo-ol-chevron').length).toBe(1)
-    expect(el.querySelectorAll('.mdo-ol-spacer').length).toBe(3)
+    expect(el.querySelectorAll('.mdo-ol-marker').length).toBe(3)
   })
   it('hides the children of a folded H1', () => {
     outline.render(tree(true), null)
@@ -115,7 +115,7 @@ describe('Outline rendering', () => {
     expect(tip.hidden).toBe(false)
     expect(tip.textContent).toBe('<b>Lang</b> und abgeschnitten')
     expect(tip.querySelector('b')).toBeNull()
-    expect(tip.classList.contains('mdo-ol-tip-h1')).toBe(true)
+    expect(tip.classList.contains('mdo-ol-tip-top')).toBe(true)
     expect(tip.style.top).toBe('40px')
     expect(tip.style.right).toBe(`${window.innerWidth - 500}px`)
     label.dispatchEvent(new MouseEvent('mouseleave'))
@@ -204,20 +204,48 @@ describe('Outline in-place updates', () => {
   it('no chevron without children, even when the section folds', () => {
     outline.render([entry(1, 'Alpha', 0), entry(2, 'Vorab', 20)], null)
     expect(el.querySelector('.mdo-ol-chevron')).toBeNull()
-    expect(el.querySelectorAll('.mdo-ol-spacer').length).toBe(2)
+    expect(el.querySelectorAll('.mdo-ol-marker').length).toBe(2)
   })
-  it('swaps chevron and spacer in place when a section gains or loses its children', () => {
+  it('swaps chevron and marker in place when a section gains or loses its children', () => {
     outline.render([entry(1, 'Alpha', 0)], null)
     const li = el.querySelector('li') as HTMLElement
     expect(li.querySelector('.mdo-ol-chevron')).toBeNull()
-    expect(li.firstElementChild?.className).toBe('mdo-ol-spacer')
+    expect(li.firstElementChild?.className).toBe('mdo-ol-marker')
     outline.render([entry(1, 'Alpha', 0, { children: [entry(2, 'Beta', 20)] })], null)
     expect(el.querySelector('li')).toBe(li)
-    expect(li.querySelector(':scope > .mdo-ol-spacer')).toBeNull()
+    expect(li.querySelector(':scope > .mdo-ol-marker')).toBeNull()
     expect(li.firstElementChild?.className).toContain('mdo-ol-chevron')
     outline.render([entry(1, 'Alpha', 0)], null)
     expect(li.querySelector('.mdo-ol-chevron')).toBeNull()
-    expect(li.firstElementChild?.className).toBe('mdo-ol-spacer')
+    expect(li.firstElementChild?.className).toBe('mdo-ol-marker')
+  })
+  it('shows a bullet marker, not clickable, in the slot of the arrow', () => {
+    outline.render(tree(), null)
+    const markers = [...el.querySelectorAll('.mdo-ol-marker')]
+    expect(markers.map((m) => m.textContent)).toEqual(['\u2022', '\u2022', '\u2022'])
+    expect(markers.every((m) => m.tagName === 'SPAN')).toBe(true)
+    expect(el.querySelector('li.mdo-ol-top > .mdo-ol-chevron')).not.toBeNull()
+    handlers.jump.mockClear()
+    markers[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(handlers.jump).not.toHaveBeenCalled()
+    expect(handlers.toggle).not.toHaveBeenCalled()
+  })
+  it('levels are relative: with only H2 headings they are the top-level look', () => {
+    outline.render([entry(2, 'Eins', 0, { fold: false }), entry(2, 'Zwei', 20)], null)
+    expect(el.querySelectorAll('li.mdo-ol-top').length).toBe(2)
+    expect(el.querySelector('li.mdo-ol-sub')).toBeNull()
+    expect(el.querySelectorAll('.mdo-ol-marker').length).toBe(2)
+  })
+  it('with H1 present, an H2 before the first H1 keeps the child look; the look follows edits', () => {
+    outline.render([entry(2, 'Vorab', 0), entry(1, 'Alpha', 20)], null)
+    const vorab = el.querySelector('li') as HTMLElement
+    expect(vorab.classList.contains('mdo-ol-sub')).toBe(true)
+    expect(el.querySelectorAll('li.mdo-ol-top').length).toBe(1)
+    // The last H1 goes away: the same row turns into a top-level entry.
+    outline.render([entry(2, 'Vorab', 0)], null)
+    expect(el.querySelector('li')).toBe(vorab)
+    expect(vorab.classList.contains('mdo-ol-top')).toBe(true)
+    expect(vorab.classList.contains('mdo-ol-sub')).toBe(false)
   })
   it('removes rows of deleted headings', () => {
     outline.render(tree(), null)

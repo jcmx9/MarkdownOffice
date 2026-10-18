@@ -240,3 +240,74 @@ test('external links get an underline and a ↗ that is not document text', asyn
   expect((await readFile(note)).toString()).toBe(source)
   await app.close()
 })
+
+test('heading gaps match the memo PDF, the same with or without blank lines', async () => {
+  const body = [
+    'Absatz oben.',
+    '# Kapitel',
+    'Absatz eins.',
+    '## Mitte',
+    'Absatz zwei.',
+    '### Klein',
+    'Absatz Ende.',
+  ]
+  // Baseline-to-baseline distances in pt at body 10pt, measured in the memo set's PDF of
+  // this note: [above, below] per heading (H1 below includes its hairline).
+  const pdf: Array<[string, number, number]> = [
+    ['.mdo-h1', 37.4, 33.0],
+    ['.mdo-h2', 26.0, 15.0],
+    ['.mdo-h3', 19.2, 12.1],
+  ]
+  const measure = async (sep: string, name: string) => {
+    const dirs = await makeDirs()
+    const note = join(dirs.notes, `${name}.md`)
+    await writeFile(note, `${body.join(sep)}\n`)
+    const { app, page } = await launch({ dirs, args: [note] })
+    await page.locator('.cm-editor.mdo-preview').waitFor()
+    await expect(page.locator('.cm-line.mdo-h3')).toHaveCount(1)
+    await page.evaluate(() => document.fonts.ready)
+    const dists = await page.evaluate(
+      (sels) => {
+        // Text box bottom = baseline + descent (hhea): Source Serif 0.335em, Source Sans 0.326em.
+        const baseline = (el: Element, descent: number) => {
+          const r = document.createRange()
+          r.selectNodeContents(el)
+          return (
+            r.getBoundingClientRect().bottom - descent * parseFloat(getComputedStyle(el).fontSize)
+          )
+        }
+        const para = (t: string) => {
+          const el = [...document.querySelectorAll('.cm-line')].find((l) => l.textContent === t)
+          if (!el) throw new Error(`line ${t} missing`)
+          return { el, y: baseline(el, 0.326) }
+        }
+        // Normalise to body 10pt whatever the zoom: px per pt of the body text.
+        const unit = parseFloat(getComputedStyle(para('Absatz oben.').el).fontSize) / 10
+        const order = ['Absatz oben.', 'Absatz eins.', 'Absatz zwei.', 'Absatz Ende.']
+        return sels.map((sel, i) => {
+          const h = baseline(document.querySelector(`.cm-line${sel}`) as Element, 0.335)
+          return {
+            above: (h - para(order[i] as string).y) / unit,
+            below: (para(order[i + 1] as string).y - h) / unit,
+          }
+        })
+      },
+      pdf.map(([sel]) => sel),
+    )
+    await shot(page, `heading-spacing-${name}`)
+    await app.close()
+    return dists
+  }
+  const tight = await measure('\n', 'tight')
+  const blank = await measure('\n\n', 'blank')
+  for (const [i, [, above, below]] of pdf.entries()) {
+    const t = tight[i] as (typeof tight)[number]
+    const b = blank[i] as (typeof blank)[number]
+    // Blank lines next to a heading do not change the layout.
+    expect(Math.abs(t.above - b.above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(t.below - b.below)).toBeLessThanOrEqual(1)
+    // Within 1pt of the PDF.
+    expect(Math.abs(t.above - above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(t.below - below)).toBeLessThanOrEqual(1)
+  }
+})

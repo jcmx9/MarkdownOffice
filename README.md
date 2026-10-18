@@ -118,7 +118,7 @@ Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet
 
 ### Gliederung
 
-Eine Seitenleiste rechts listet die Überschriften H1 und H2 der Notiz. Der Pfeil vor einem Kapitel mit Unterkapiteln klappt den Abschnitt im Text und in der Gliederung gleichzeitig ein oder aus; „Alle ein-/ausklappen“ wirkt ebenso auf beide. Ein Seitenumbruch oder Kommentar am Ende eines Abschnitts gehört zur nächsten Überschrift. Ein Klick auf einen Eintrag springt im Text zur Überschrift, der Fokus bleibt im Editor. Lange Überschriften enden mit „…“; mit der Maus darüber erscheint der volle Text. Die Breite lässt sich im Editor am linken Rand der Gliederung mit der Maus ziehen (Doppelklick: Standardbreite) und wird gemerkt; in der Präsentation gilt immer die Standardbreite. Mod+Shift+O blendet die Gliederung ein oder aus; die Einstellung wird getrennt für Editor und Präsentation gemerkt.
+Eine Seitenleiste rechts listet die Überschriften H1 und H2 der Notiz. Die Einträge lesen sich als Liste: ein Kapitel mit Unterkapiteln zeigt einen Pfeil, ein Eintrag ohne Unterkapitel einen Aufzählungspunkt. Die höchste Überschriftenebene der Notiz bekommt die Optik der obersten Ebene; eine Notiz nur mit H2-Überschriften zeigt diese also als oberste Einträge. Der Pfeil klappt den Abschnitt im Text und in der Gliederung gleichzeitig ein oder aus; „Alle ein-/ausklappen“ wirkt ebenso auf beide. Ein Seitenumbruch oder Kommentar am Ende eines Abschnitts gehört zur nächsten Überschrift. Ein Klick auf einen Eintrag springt im Text zur Überschrift, der Fokus bleibt im Editor. Lange Überschriften enden mit „…“; mit der Maus darüber erscheint der volle Text. Die Breite lässt sich am linken Rand der Gliederung mit der Maus ziehen (Doppelklick: Standardbreite). Im Editor wird sie gemerkt; in der Präsentation startet die Gliederung jedes Mal mit der Standardbreite, eine gezogene Breite gilt nur bis zum Ende der Präsentation. Mod+Shift+O blendet die Gliederung ein oder aus; die Einstellung wird getrennt für Editor und Präsentation gemerkt.
 
 ### Snippets
 
@@ -231,6 +231,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `watermark` | Text | — | Diagonales, hellgraues Wasserzeichen unter allem. |
 | `logo` | Datei `.svg`/`.png`/`.jpg`/`.jpeg` | kein Logo | Logo im Kopf, nur wenn gesetzt; siehe [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximale Logohöhe (höchstens 25 mm); das Logo bleibt proportional und höchstens 60 mm breit. |
+| `profile` | Name oder `.yaml`-Pfad | kein Profil | Absender-Profil: ein Name sucht `profiles/<name>.yaml` neben der Notiz, im Vorlagen-Ordner und im Set; ein Pfad auf eine `.yaml`-Datei gilt relativ zur Notiz. Nur für Sets, die Profile nutzen (z. B. din5008a); nicht gefunden: Fehler, kein PDF. |
 | `embed_source` | `true` / `false` | `true` | Markdown-Quelle als Anhang ins PDF einbetten. |
 | `hard_breaks` | `true` / `false` | `true` | Jeder Zeilenumbruch bleibt einer (wie im Editor getippt), auch ohne Eintrag. Nur `false` setzt CommonMark: Ein einzelner Umbruch wird zum Leerzeichen. |
 
@@ -272,7 +273,7 @@ Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu dre
 | `name.header.md` | Frontmatter-Vorlage mit allen Schlüsseln; enthält `template: name` | nein |
 | `name.css` | Aussehen im Editor (reserviert; der Editor liest es noch nicht) | nein |
 
-Mitgeliefert ist das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout. Eigene Sets liegen als `name.typ` im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
+Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
 
 Eine Notiz wählt ihr Set mit `template: name` im Frontmatter; ohne Schlüssel gilt `memo`. `template: ./angebot.typ` nimmt eine einzelne Vorlage relativ zur Notiz. `--template` überschreibt den Schlüssel. Ein unbekanntes Set bricht den Build mit einer Meldung ab.
 
@@ -289,6 +290,30 @@ Eine eigene Vorlage bekommt dieselben Eingaben (`sys.inputs`) wie `memo.typ`, da
 Bilder behandelt `memo.typ` mit einer eigenen Funktion (`safe-image`); eine eigene Vorlage ohne sie bricht bei einem fehlenden Bild ab.
 
 Wie man ein eigenes Set schreibt (alle Eingaben, die zu rendernden Elemente, PDF/A-Anforderungen, ein lauffähiges Grundgerüst), beschreibt [TEMPLATES.md](TEMPLATES.md) (Englisch).
+
+## Briefe (din5008a)
+
+Das Set `din5008a` setzt Briefe nach DIN 5008 Form A mit Absender-Profil, vCard-QR-Code und Unterschrift. Eine minimale Notiz:
+
+```markdown
+---
+template: din5008a
+profile: beispiel
+x-to:
+  - Beispiel GmbH
+  - Frau Muster
+  - Musterstraße 1
+  - 12345 Musterstadt
+x-subject: Anfrage zum Angebot
+x-closing: Mit freundlichen Grüßen
+---
+
+Sehr geehrte Frau Muster,
+
+vielen Dank für Ihr Angebot.
+```
+
+Eigene Absender-Profile liegen als `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\profiles\<name>.yaml`). Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
 
 ## PDF/A, Quelle und Metadaten
 

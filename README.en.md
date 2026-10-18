@@ -118,7 +118,7 @@ Right-clicking a tab or the file name in the status line opens a menu with renam
 
 ### Outline
 
-A sidebar on the right lists the note's H1 and H2 headings. The arrow in front of a chapter with sub-chapters folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. In the editor, the width can be dragged with the mouse at the outline's left edge (double-click: default width) and is remembered; Present always uses the default width. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
+A sidebar on the right lists the note's H1 and H2 headings. Entries read as a list: a chapter with sub-chapters shows an arrow, an entry without sub-chapters a bullet. The highest heading level in the note gets the top-level look, so a note with only H2 headings shows them as top-level entries. The arrow folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. The width can be dragged with the mouse at the outline's left edge (double-click: default width). In the editor it is remembered; in Present the outline starts at the default width every time and a dragged width lasts only until Present ends. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
 
 ### Snippets
 
@@ -231,6 +231,7 @@ hard_breaks: false           # line breaks become spaces
 | `watermark` | text | — | Diagonal light-grey watermark beneath everything. |
 | `logo` | file `.svg`/`.png`/`.jpg`/`.jpeg` | no logo | Logo in the header, only when set; see [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximum logo height (at most 25 mm); the logo keeps its proportions and is at most 60 mm wide. |
+| `profile` | name or `.yaml` path | no profile | Sender profile: a name looks for `profiles/<name>.yaml` next to the note, in the templates folder and in the set; a path to a `.yaml` file is relative to the note. Only for sets that use profiles (e.g. din5008a); not found: error, no PDF. |
 | `embed_source` | `true` / `false` | `true` | Embed the Markdown source as an attachment. |
 | `hard_breaks` | `true` / `false` | `true` | Every line break stays one (as typed in the editor), even without an entry. Only `false` switches to CommonMark: a single break becomes a space. |
 
@@ -272,7 +273,7 @@ A template set defines how a document looks. It consists of up to three files sh
 | `name.header.md` | Front-matter template with all keys; contains `template: name` | no |
 | `name.css` | Look in the editor (reserved; the editor does not read it yet) | no |
 
-The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, ships with the app. Your own sets live as `name.typ` in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
+The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 
@@ -289,6 +290,30 @@ Your own template gets the same inputs (`sys.inputs`) as `memo.typ`, among them 
 `memo.typ` handles images with its own function (`safe-image`); a template without it stops at a missing image.
 
 How to write your own set (all inputs, the elements to render, PDF/A requirements, a working skeleton) is described in [TEMPLATES.md](TEMPLATES.md).
+
+## Letters (din5008a)
+
+The set `din5008a` sets letters to DIN 5008 Form A with a sender profile, vCard QR code and signature. A minimal note:
+
+```markdown
+---
+template: din5008a
+profile: beispiel
+x-to:
+  - Beispiel GmbH
+  - Frau Muster
+  - Musterstraße 1
+  - 12345 Musterstadt
+x-subject: Anfrage zum Angebot
+x-closing: Mit freundlichen Grüßen
+---
+
+Sehr geehrte Frau Muster,
+
+vielen Dank für Ihr Angebot.
+```
+
+Your own sender profiles live as `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\profiles\<name>.yaml`). All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
 
 ## PDF/A, source and metadata
 
