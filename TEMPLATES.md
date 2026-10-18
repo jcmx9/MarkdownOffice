@@ -414,7 +414,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
-- [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away.
+- [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
 - [ ] Repo `MarkdownOffice-set-<name>`, CalVer tag `vYY.M.MICRO`; for bundling, manifest entry with the archive's SHA-256.
 - [ ] For the catalog: only freely licensed fonts with licence texts; no hard-coded links; `read()` only on pipeline inputs (section 12).

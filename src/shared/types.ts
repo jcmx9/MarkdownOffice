@@ -81,6 +81,8 @@ export type SaveResult =
   | { ok: false; error: string }
   /** Refused without writing: the file changed outside since the tab's base (path: see ok). */
   | { ok: false; conflict: ExternalChange; path?: string }
+/** „Profil anlegen …“: path is the new profile YAML's canonical path (allowed for the renderer). */
+export type CreateProfileResult = { ok: true; path: string } | { ok: false; error: string }
 export type RenameResult = { ok: true; path: string } | { ok: false; error: string }
 export type ExportResult =
   | { kind: 'ok'; message: string }
@@ -89,6 +91,7 @@ export type ExportResult =
 export type MenuCommand =
   | 'new'
   | 'new-from-template'
+  | 'create-profile'
   | 'open'
   | 'rename'
   | 'close-tab'
@@ -170,6 +173,11 @@ export interface MdoApi {
   readSetHeader(name: string): Promise<string | null>
   /** Profile names offered for this set (user profiles first in lookup, sorted); [] if none. */
   listProfiles(name: string): Promise<string[]>
+  /**
+   * Copies the set's example profile (and its companion files) to
+   * `Vorlagen/<set>/profiles/<name>.yaml`; never overwrites. Main validates both names.
+   */
+  createProfile(set: string, name: string): Promise<CreateProfileResult>
   /** Shows the shown note's context menu (rename, export, close) at the mouse. */
   showNoteMenu(): Promise<void>
   getSettingsStatus(): Promise<SettingsStatus>

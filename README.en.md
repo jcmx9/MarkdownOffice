@@ -320,6 +320,8 @@ vielen Dank für Ihr Angebot.
 
 Your own sender profiles live per set as `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); the folder `Vorlagen/din5008a/` needs no `din5008a.typ` for this and does not shadow the bundled set. Profiles in `Vorlagen/profiles/` still apply to all sets. On export the first profile found wins: `profiles/` next to the note, then `Vorlagen/<set>/profiles/`, then `Vorlagen/profiles/`, then the set's example profiles. All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
 
+**Datei → Profil anlegen …** creates your own profile: in a note with `template: din5008a` (or another set with an example profile) the editor asks for a name (`a–z`, `0–9`, `-`, `_`), copies the set's example profile with its companion files to `Vorlagen/<set>/profiles/<name>.yaml` (`beispiel-unterschrift.svg` becomes `<name>-unterschrift.svg`, `signature:` points to the copy), sets `profile: <name>` in the note and opens the YAML file as a tab for editing (Code view, no spell checking, no PDF export). Existing files are never overwritten: if the name is taken, the editor says so and changes nothing.
+
 ## PDF/A, source and metadata
 
 - **PDF/A-3b**, all fonts embedded.

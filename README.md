@@ -320,6 +320,8 @@ Einen Brief beginnt **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit dem Set 
 
 Eigene Absender-Profile liegen je Set als `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); der Ordner `Vorlagen/din5008a/` braucht dafür keine `din5008a.typ` und verdeckt das mitgelieferte Set nicht. Profile in `Vorlagen/profiles/` gelten weiterhin für alle Sets. Beim Export gewinnt das erste gefundene Profil: `profiles/` neben der Notiz, dann `Vorlagen/<set>/profiles/`, dann `Vorlagen/profiles/`, dann die Beispielprofile des Sets. Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
 
+Ein eigenes Profil legt **Datei → Profil anlegen …** an: In einer Notiz mit `template: din5008a` (oder einem anderen Set mit Beispielprofil) fragt der Editor nach einem Namen (`a–z`, `0–9`, `-`, `_`), kopiert das Beispielprofil des Sets samt Begleitdateien nach `Vorlagen/<set>/profiles/<name>.yaml` (aus `beispiel-unterschrift.svg` wird `<name>-unterschrift.svg`, `signature:` zeigt auf die Kopie), setzt `profile: <name>` in der Notiz und öffnet die YAML-Datei als Tab zum Bearbeiten (Code-Ansicht, ohne Rechtschreibprüfung, kein PDF-Export). Vorhandene Dateien werden nie überschrieben: Gibt es den Namen schon, meldet der Editor das und ändert nichts.
+
 ## PDF/A, Quelle und Metadaten
 
 - **PDF/A-3b**, alle Schriften eingebettet.

@@ -41,6 +41,7 @@ const api: MdoApi = {
   listSets: () => ipcRenderer.invoke(Ch.listSets),
   readSetHeader: (name) => ipcRenderer.invoke(Ch.readSetHeader, name),
   listProfiles: (name) => ipcRenderer.invoke(Ch.listProfiles, name),
+  createProfile: (set, name) => ipcRenderer.invoke(Ch.createProfile, set, name),
   showNoteMenu: () => ipcRenderer.invoke(Ch.noteMenu),
   getSettingsStatus: () => ipcRenderer.invoke(Ch.settingsStatus),
   updateSettings: (patch) => ipcRenderer.invoke(Ch.updateSettings, patch),

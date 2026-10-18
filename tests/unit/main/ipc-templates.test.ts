@@ -103,6 +103,34 @@ describe('template IPC', () => {
     expect(await invoke(Ch.listProfiles, 'fehlt')).toEqual([])
   })
 
+  it('creates a profile and allows exactly its YAML for the renderer', async () => {
+    const user = join(root, 'Vorlagen-Test')
+    process.env.MDO_TEMPLATES = user
+    await writeFile(
+      join(sets, 'memo', 'memo.header.md'),
+      '---\ntemplate: memo\nprofile: beispiel\n---\n',
+    )
+    const res = (await invoke(Ch.createProfile, 'memo', 'kanzlei')) as { ok: boolean; path: string }
+    const yaml = join(user, 'memo', 'profiles', 'kanzlei.yaml')
+    expect(res).toEqual({ ok: true, path: yaml })
+    // The renderer may read the new file (allowed), as for a note it opened.
+    expect(await invoke(Ch.readNote, yaml)).toMatchObject({ path: yaml, text: 'name: x\n' })
+    expect(await invoke(Ch.createProfile, 'memo', 'kanzlei')).toEqual({
+      ok: false,
+      error: 'Profil kanzlei gibt es schon.',
+    })
+  })
+
+  it.each([
+    ['../memo', 'k'],
+    ['memo', '../k'],
+    ['memo', 'K'],
+    [42, 'k'],
+    ['memo', null],
+  ])('refuses createProfile(%j, %j)', async (set, name) => {
+    expect(await invoke(Ch.createProfile, set, name)).toMatchObject({ ok: false })
+  })
+
   it('no longer offers the old memo-only channel', () => {
     expect(handlers.has('mdo:read-header-template')).toBe(false)
   })

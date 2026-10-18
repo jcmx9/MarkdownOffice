@@ -2,7 +2,13 @@ import { isAbsolute } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { Ch } from '../shared/ipc'
 import { SET_NAME_RE } from '../shared/sets'
-import type { NoteFile, RenameResult, SaveResult, SessionPatch } from '../shared/types'
+import type {
+  CreateProfileResult,
+  NoteFile,
+  RenameResult,
+  SaveResult,
+  SessionPatch,
+} from '../shared/types'
 import { type AppContext, logSessionError } from './context'
 import {
   canonicalPath,
@@ -18,6 +24,7 @@ import {
 } from './files'
 import { setWindowFullScreen } from './fullscreen'
 import { noteMenuTemplate } from './menu'
+import { createProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
 import { CODE_RE } from './spellcheck/languages'
 import { listProfiles, listSets, readSetHeader, userTemplatesDir } from './templates'
@@ -53,6 +60,26 @@ export function registerIpc(ctx: AppContext): void {
   )
   ipcMain.handle(Ch.listProfiles, (_e, name: unknown) =>
     setName(name) ? listProfiles(setsDir(), userDir(), name) : [],
+  )
+  // „Profil anlegen …“: both names are checked here (createProfile checks again); the renderer
+  // may only open the new YAML because main allows exactly that one created path.
+  ipcMain.handle(
+    Ch.createProfile,
+    async (_e, set: unknown, name: unknown): Promise<CreateProfileResult> => {
+      if (!setName(set)) return { ok: false, error: 'Ungültiger Set-Name.' }
+      if (!setName(name))
+        return {
+          ok: false,
+          error: `„${String(name).slice(0, 64)}“ ist kein gültiger Profilname: nur a–z, 0–9, - und _.`,
+        }
+      try {
+        const res = await createProfile(setsDir(), userDir(), set, name)
+        if (res.ok) ctx.allow([res.path])
+        return res
+      } catch (err) {
+        return { ok: false, error: `Profil ${name} konnte nicht angelegt werden: ${message(err)}` }
+      }
+    },
   )
   // Arguments come from the renderer: only short strings / plain language codes (CODE_RE) pass.
   ipcMain.handle(Ch.spellLanguage, (_e, lang: unknown) =>
@@ -235,7 +262,10 @@ export function registerIpc(ctx: AppContext): void {
     const options: Electron.OpenDialogOptions = {
       properties: ['openFile', 'multiSelections'],
       defaultPath: ctx.settings.defaultFolder,
-      filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+      // YAML too: a profile („Profil anlegen …“) is edited in a tab like a note (Code view).
+      filters: [
+        { name: 'Markdown und Profile', extensions: ['md', 'markdown', 'txt', 'yaml', 'yml'] },
+      ],
     }
     const result = win
       ? await dialog.showOpenDialog(win, options)

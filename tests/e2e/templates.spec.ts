@@ -1,7 +1,7 @@
-import { mkdir, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, type Page } from '@playwright/test'
-import { clickMenu, launch, makeDirs, shot, test, waitForFile } from './helpers'
+import { clickMenu, launch, makeDirs, shot, test, typeInEditor, waitForFile } from './helpers'
 
 const tabs = (page: Page) => page.locator('[data-testid=tab]')
 const picker = (page: Page) => page.getByTestId('tpl-dialog')
@@ -153,5 +153,68 @@ test('Einfügen → YAML-Header …: the chosen set goes on top, a second insert
   await clickMenu(app, 'insert-header')
   await expect(page.locator('.toast')).toContainText('schon einen YAML-Header')
   await expect(picker(page)).toHaveCount(0)
+  await app.close()
+})
+
+test('Profil anlegen …: copies the din5008a example, sets profile: and opens the YAML', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Brief.md')
+  await writeFile(note, '---\ntemplate: din5008a\nprofile: beispiel   # Absender\n---\n\nText\n')
+  const { app, page } = await launch({ dirs, args: [note] })
+  await expect(tabs(page)).toHaveCount(1)
+
+  await clickMenu(app, 'create-profile')
+  await page.locator('dialog.prompt input').fill('kanzlei')
+  await page.keyboard.press('Enter')
+
+  const dir = join(dirs.templates, 'din5008a', 'profiles')
+  const yaml = join(dir, 'kanzlei.yaml')
+  const copied = (await waitForFile(yaml)).toString('utf8')
+  expect(copied).toMatch(/^signature: kanzlei-unterschrift\.svg$/m)
+  expect((await readdir(dir)).sort()).toEqual(['kanzlei-unterschrift.svg', 'kanzlei.yaml'])
+  // The YAML opens as its own tab, in the Code view (no rendered preview, no spellcheck).
+  await expect(tabs(page)).toHaveCount(2)
+  await expect(page.locator('[data-testid=tab].active .tab-label')).toHaveText('kanzlei.yaml')
+  await expect(page.locator('.cm-editor')).toHaveClass(/mdo-code/)
+  await expect(page.locator('.cm-content')).toHaveAttribute('spellcheck', 'false')
+  await shot(page, 'create-profile')
+  // The note got the new profile, keeping its comment column; autosaved like any edit.
+  await waitForFile(note, (b) => /^profile: kanzlei +# Absender$/m.test(b.toString('utf8')))
+
+  // Edits in the YAML tab are saved like a note's.
+  await typeInEditor(page, 'phone: "0"\n')
+  await waitForFile(yaml, (b) => b.toString('utf8').endsWith('phone: "0"\n'))
+  // A profile is no note: export is refused with a hint, nothing runs.
+  await clickMenu(app, 'export')
+  await expect(page.locator('.toast')).toContainText('Nur Markdown-Notizen')
+
+  // The same name again: refused, nothing overwritten.
+  await tabs(page).first().click()
+  await clickMenu(app, 'create-profile')
+  await page.locator('dialog.prompt input').fill('kanzlei')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.toast').last()).toContainText('Profil kanzlei gibt es schon.')
+  expect((await readFile(yaml, 'utf8')).endsWith('phone: "0"\n')).toBe(true)
+  await expect(tabs(page)).toHaveCount(2)
+
+  // The picker offers the new profile for din5008a.
+  await clickMenu(app, 'new-from-template')
+  await page.getByTestId('tpl-set-din5008a').check()
+  await expect(page.getByTestId('tpl-profile').locator('option')).toHaveText([
+    'beispiel',
+    'kanzlei',
+  ])
+  await page.getByTestId('tpl-cancel').click()
+  await app.close()
+})
+
+test('Profil anlegen … is refused for a note without template:', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Notiz.md')
+  await writeFile(note, '# Notiz\n')
+  const { app, page } = await launch({ dirs, args: [note] })
+  await clickMenu(app, 'create-profile')
+  await expect(page.locator('.toast')).toContainText('kein Vorlagen-Set')
+  await expect(page.locator('dialog.prompt')).toHaveCount(0)
   await app.close()
 })
