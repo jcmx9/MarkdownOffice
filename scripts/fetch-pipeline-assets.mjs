@@ -1,12 +1,13 @@
-// Fetches the pinned pipeline assets (Typst per target, fonts, Typst packages, template sets)
-// into build/pipeline-assets/ and verifies every download against its SHA-256 pin from
+// Fetches the pinned pipeline assets (Typst per target, fonts, Typst packages, template sets,
+// Hunspell dictionaries for the Windows/Linux spellchecker) into build/pipeline-assets/ and verifies every download against its SHA-256 pin from
 // scripts/pipeline-assets.json. electron-builder maps the result into the packaged app
 // (electron-builder.yml `extraResources`). Not shipped: `files` only packs out/.
 //
 // The licence texts of everything redistributed land in build/pipeline-assets/licenses/
 // (shipped as <resources>/pipeline/licenses/): typst/ (LICENSE and NOTICE from the release
 // archive), fonts/ (from the font archive, or a separately pinned download for fonts without
-// one) and packages/<name>/ (from the package archive).
+// one), packages/<name>/ (from the package archive) and dictionaries/ (a separately pinned
+// download each).
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
@@ -33,9 +34,17 @@ import { fileURLToPath } from 'node:url'
  *   license: FontLicense }} FontEntry
  * @typedef {{ name: string, version: string, sha256: string, license: string }} PackageEntry
  * @typedef {{ name: string, repo: string, tag: string, sha256: string }} SetEntry
+ * @typedef {{ file: string, url: string, sha256: string, encoding?: 'base64' }} DictLicense
+ *   `encoding: 'base64'`: the server sends the text base64-encoded (Gitiles `?format=TEXT`);
+ *   `sha256` pins the decoded text, i.e. the file that ships
+ * @typedef {{ code: string, file: string, url: string, sha256: string,
+ *   license: DictLicense | DictLicense[] }} DictionaryEntry
+ *   `license`: one licence file, or several (e.g. the README naming the LGPL plus its text)
+ *   `file`: the canonical name Chromium expects in <userData>/Dictionaries (e.g. de-DE-3-0.bdic)
  * @typedef {{
  *   typst: { version: string, licenses: string[], targets: Record<string, TypstTarget> },
- *   fonts: FontEntry[], packages: PackageEntry[], sets: SetEntry[]
+ *   fonts: FontEntry[], packages: PackageEntry[], sets: SetEntry[],
+ *   dictionaries?: DictionaryEntry[]
  * }} Manifest
  */
 
@@ -85,6 +94,29 @@ async function fetchVerified(download, url, expected) {
   }
   if (sha256(bytes) !== expected) throw new Error(`Prüfsumme falsch: ${url}`)
   return bytes
+}
+
+/**
+ * Downloads a dictionary licence text; a base64-encoded answer is decoded before the check,
+ * so the pin always matches the shipped file.
+ * @param {(url: string) => Promise<Uint8Array>} download
+ * @param {DictLicense} license
+ * @returns {Promise<Uint8Array>}
+ */
+async function fetchLicenseText(download, license) {
+  if (license.encoding !== 'base64') return fetchVerified(download, license.url, license.sha256)
+  const decode = async (/** @type {string} */ url) =>
+    new Uint8Array(Buffer.from(Buffer.from(await download(url)).toString('latin1'), 'base64'))
+  return fetchVerified(decode, license.url, license.sha256)
+}
+
+/**
+ * The licence files of a dictionary entry: a single object and an array are both accepted.
+ * @param {DictionaryEntry} dict
+ * @returns {DictLicense[]}
+ */
+export function dictLicenses(dict) {
+  return Array.isArray(dict.license) ? dict.license : [dict.license]
 }
 
 /**
@@ -320,6 +352,38 @@ export async function fetchAssets(o) {
           return [`vendor/${pkg.name}/typst.toml`, licenseRel]
         },
         `${pkg.name} ${pkg.version}`,
+      )
+    }
+
+    // Dictionaries: shipped on Windows/Linux only (electron-builder.yml), but fetched on every
+    // host so the licence check and the pinned files stay the same everywhere.
+    const dictDir = join(outDir, 'dictionaries')
+    for (const dict of manifest.dictionaries ?? []) {
+      const licenses = dictLicenses(dict)
+      if (!licenses.length || licenses.some((l) => !l?.file || !l.url || !l.sha256)) {
+        throw new Error(`Wörterbuch ohne Lizenz im Manifest: ${dict.code}`)
+      }
+      const licenseRels = licenses.map((l) => `licenses/dictionaries/${l.file}`)
+      await component(
+        `dict-${dict.code}`,
+        // Every licence is part of the pin: a new or changed licence pin refreshes the entry.
+        [dict.sha256, ...licenses.map((l) => l.sha256)].join('+'),
+        licenseRels,
+        async () => {
+          const bytes = await fetchVerified(download, dict.url, dict.sha256)
+          const staged = scratch()
+          writeFileSync(join(staged, dict.file), bytes)
+          for (const [i, license] of licenses.entries()) {
+            const src = join(staged, `.license-${i}`)
+            writeFileSync(src, await fetchLicenseText(download, license))
+            placeLicense(src, outDir, /** @type {string} */ (licenseRels[i]))
+          }
+          mkdirSync(dictDir, { recursive: true })
+          rmSync(join(dictDir, dict.file), { force: true })
+          renameSync(join(staged, dict.file), join(dictDir, dict.file))
+          return [`dictionaries/${dict.file}`, ...licenseRels]
+        },
+        `Wörterbuch ${dict.code}`,
       )
     }
 

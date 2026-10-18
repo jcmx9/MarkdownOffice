@@ -507,6 +507,21 @@ dialog.settings h3 {
   font-size: 12px;
   margin: 8px 0 4px;
 }
+/* Spelling section: the own-words list scrolls so a long list cannot push the buttons away. */
+dialog.settings .settings-spell {
+  flex-direction: column;
+}
+dialog.settings .settings-hint {
+  color: var(--chrome-muted);
+  margin: 0;
+}
+dialog.settings .settings-words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
 dialog.settings .settings-error {
   color: var(--danger);
   margin: 0 0 8px;

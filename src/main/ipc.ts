@@ -19,6 +19,7 @@ import { setWindowFullScreen } from './fullscreen'
 import { readHeaderTemplate } from './header-template'
 import { noteMenuTemplate } from './menu'
 import { loadUserSnippets } from './snippets'
+import { CODE_RE } from './spellcheck/languages'
 
 const str = (v: unknown): string => {
   if (typeof v !== 'string') throw new TypeError('Ungültiger Parameter.')
@@ -40,6 +41,33 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(Ch.readHeaderTemplate, () =>
     readHeaderTemplate(join(ctx.pipeline.paths.sets, 'memo', 'memo.header.md')),
   )
+  // Arguments come from the renderer: only short strings / plain language codes (CODE_RE) pass.
+  ipcMain.handle(Ch.spellLanguage, (_e, lang: unknown) =>
+    typeof lang === 'string' && lang.length <= 35
+      ? (ctx.spellcheck?.setLanguage(lang) ?? null)
+      : null,
+  )
+  ipcMain.handle(Ch.spellDownload, (_e, code: unknown) =>
+    typeof code === 'string' && CODE_RE.test(code)
+      ? (ctx.spellcheck?.downloadDictionary(code) ?? false)
+      : false,
+  )
+  ipcMain.handle(
+    Ch.spellCheckUpdates,
+    () => ctx.spellcheck?.checkNow() ?? ({ kind: 'skipped' } as const),
+  )
+  // Own words: the list is read from the session; a removal argument comes from the renderer,
+  // so only a string of 1-100 characters passes.
+  ipcMain.handle(Ch.spellWords, () => ctx.spellcheck?.listWords() ?? [])
+  ipcMain.handle(Ch.spellRemoveWord, (_e, word: unknown) =>
+    typeof word === 'string' && word.length >= 1 && word.length <= 100
+      ? (ctx.spellcheck?.removeWord(word) ?? false)
+      : false,
+  )
+  ipcMain.handle(Ch.spellDecline, async (_e, code: unknown) => {
+    if (typeof code === 'string' && CODE_RE.test(code))
+      await ctx.spellcheck?.declineDictionary(code)
+  })
   ipcMain.handle(Ch.settingsStatus, () => ctx.settingsStatus())
   ipcMain.handle(Ch.updateSettings, (_e, patch: unknown) => ctx.updateSettings(patch))
 

@@ -114,7 +114,7 @@ Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet
 
 ### Einstellungen
 
-„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
+„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
 
 ### Gliederung
 
@@ -137,6 +137,14 @@ In einem Snippet beendet Esc zuerst den Feldmodus; im Präsentationsmodus verlä
 Das Menü **Einfügen → YAML-Header (memo)** setzt die Frontmatter-Vorlage des Sets `memo` (`memo.header.md`) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten, je Schlüssel eine Zeile mit kurzem Kommentar. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
 
 Eigene Snippets sind Dateien `name.tpl.md` im Snippet-Ordner (Standard `~/Documents/Markdown Office/Snippets/`, Einstellung „Snippet-Ordner“). Ein eigenes Snippet mit demselben Namen ersetzt das eingebaute. Neue Dateien werden beim nächsten Fokus des Fensters erkannt. Unterstützte Syntax: `$1`, `${1:Vorgabe}`, `$0` (Endposition) sowie `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (auch in der Form `${CURRENT_YEAR}`). `\$` ergibt ein wörtliches `$`, `\\` einen Backslash, und in einer Vorgabe ergibt `\}` eine wörtliche geschweifte Klammer `}`.
+
+### Rechtschreibprüfung
+
+Der Schalter **Bearbeiten → Rechtschreibprüfung** (auch in den Einstellungen) prüft die Rechtschreibung im Editor. Geprüft wird nie in der Präsentation, in Codeblöcken oder im Frontmatter. Ein Rechtsklick auf ein unterstrichenes Wort bietet Vorschläge und „Zum Wörterbuch hinzufügen“; eigene Wörter lassen sich in den Einstellungen wieder entfernen.
+
+Die Sprache bestimmt `lang:` der Notiz, sonst die Systemsprache. macOS nutzt die Rechtschreibprüfung des Systems; Sprachen und Wörterbücher verwaltet macOS unter Systemeinstellungen → Tastatur → Texteingabe. Unter Windows und Linux arbeitet die Prüfung vollständig offline mit den mitgelieferten Wörterbüchern de-DE und en-US. Aktualisierungen und weitere Sprachen kommen ausschließlich aus dem Repository `jcmx9/MarkdownOffice-dictionaries`, jede Datei wird gegen ihre Prüfsumme verifiziert. Beim Start prüft der Editor höchstens einmal am Tag auf neue Wörterbücher (abschaltbar in den Einstellungen; „Jetzt prüfen“ fragt sofort nach). Ein aktualisiertes Wörterbuch wird nach einem Neustart aktiv, eine neu geladene Sprache sofort. Fehlt das Wörterbuch für die `lang:` einer Notiz, fragt ein Hinweis, ob es geladen werden soll – nur beim Bearbeiten mit eingeschalteter Prüfung, nie in der Präsentation.
+
+Lizenzen: Das deutsche Wörterbuch (aus Chromiums `de-DE-3-0.bdic`, entstanden aus `de_DE_neu` von „Lantol“) steht unter der LGPL; der Lizenztext und die README liegen bei. Das englische Wörterbuch basiert auf SCOWL und steht unter dessen freizügiger Lizenz (Kevin Atkinson, u. a.). Beide Dateien sind reine Daten und liegen getrennt von der Anwendung, die Texte unter `licenses/dictionaries/` im Pipeline-Ordner.
 
 ## Befehl markdown-office
 

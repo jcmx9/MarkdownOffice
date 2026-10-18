@@ -13,6 +13,7 @@ import type {
   View,
 } from '../shared/types'
 import { AutosaveScheduler } from './editor/autosave'
+import { frontmatterFields } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
 import { insertHeader } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
@@ -28,6 +29,14 @@ import {
   viewExtensions,
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
+import {
+  offerDictionaryNotice,
+  replaceWordAt,
+  SpellLanguageTracker,
+  spellAnswerCurrent,
+  spellcheckCompartment,
+  spellcheckExtensions,
+} from './editor/spellcheck'
 import { type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
@@ -85,6 +94,8 @@ export class App {
   private presentFactor = 1.6
   private settings: Settings | null = null
   private settingsOpen = false
+  /** Spell checking switch (Settings.spellcheck); applied only in Edit mode. */
+  private spellcheckOn = true
   /**
    * Serializes fullscreen requests so fast toggles reach main in order. Main owns the
    * fullscreen decision: it only leaves a fullscreen the app started (a user's own
@@ -100,6 +111,11 @@ export class App {
     (on) => (on ? this.enterPresent() : this.exitPresent()),
   )
   private shownId: number | null = null
+  /** Last lang: reported to main, so unchanged values cause no IPC. */
+  private readonly spellLang = new SpellLanguageTracker()
+  private spellLangTimer: ReturnType<typeof setTimeout> | null = null
+  /** Dictionaries whose „fehlt“ notice was already shown this session. */
+  private readonly dictNoticed = new Set<string>()
   private readonly saveErrors = new Map<number, string>()
   /** Tabs held after an external change: no saving until the user answers the banner. */
   private readonly conflicts = new Set<number>()
@@ -134,6 +150,9 @@ export class App {
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           this.refresh()
+          // lang: may have been edited; report it once typing pauses.
+          if (this.spellLangTimer) clearTimeout(this.spellLangTimer)
+          this.spellLangTimer = setTimeout(() => void this.reportSpellLanguage(false), 500)
         }
       },
     })
@@ -190,6 +209,10 @@ export class App {
       .querySelector('[data-action=open]')
       ?.addEventListener('click', () => void this.open())
     this.mdo.onMenu((cmd) => void this.command(cmd))
+    this.mdo.onSpellReplace(({ word, replacement, x, y }) => {
+      // x/y are window coordinates of the right click (Electron context-menu params).
+      replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
+    })
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))
     this.mdo.onBeforeClose(() => this.beforeClose())
@@ -213,6 +236,7 @@ export class App {
     this.outlineOn = { ...startup.session.outline }
     this.outlineWidth = startup.session.outlineWidth
     this.settings = startup.settings
+    this.spellcheckOn = startup.settings.spellcheck
     this.presentFactor = startup.settings.presentFontFactor
     this.applyZoom()
     for (const t of startup.session.tabs) await this.openPath(t.path, t.headerHidden)
@@ -278,6 +302,8 @@ export class App {
         return this.toggleHeader()
       case 'toggle-outline':
         return this.toggleOutline()
+      case 'toggle-spellcheck':
+        return this.toggleSpellcheck()
       case 'fold':
         foldCode(this.editor)
         this.editor.focus()
@@ -316,6 +342,10 @@ export class App {
         settings: current,
         status: withTimeout(this.mdo.getSettingsStatus(), STATUS_TIMEOUT_MS),
         choose: (kind, path) => this.mdo.choosePath(kind, path),
+        platform: isMac ? 'darwin' : 'other',
+        checkDictionaries: () => this.mdo.checkDictionaryUpdates(),
+        words: () => this.mdo.spellWords(),
+        removeWord: (w) => this.mdo.removeSpellWord(w),
       })
       if (!patch || Object.keys(patch).length === 0) return
       const next = await this.mdo.updateSettings(patch)
@@ -326,6 +356,12 @@ export class App {
           'Nicht alle Einstellungen übernommen',
           `${dropped.join('\n')}\nFür diese Felder gilt weiter der bisherige Wert.`,
         )
+      if (next.spellcheck !== this.spellcheckOn) {
+        // A settings change (not the menu) must reach the editor too.
+        this.spellcheckOn = next.spellcheck
+        this.reconfigureAll()
+        this.spellSwitched()
+      }
       if (next.presentFontFactor !== this.presentFactor) {
         this.presentFactor = next.presentFontFactor
         this.applyZoom()
@@ -420,7 +456,7 @@ export class App {
     const hideHeader = this.headerDefaultHidden()
     this.store.add({
       path,
-      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode),
+      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode, this.spellcheckOn),
       bom: false,
       eol: '\n',
       onDisk: false,
@@ -452,7 +488,14 @@ export class App {
     }
     const tab = this.store.add({
       path,
-      state: createState(res.text, res.eol, this.effectiveView(), hideHeader, this.mode),
+      state: createState(
+        res.text,
+        res.eol,
+        this.effectiveView(),
+        hideHeader,
+        this.mode,
+        this.spellcheckOn,
+      ),
       bom: res.bom,
       eol: res.eol,
       onDisk: true,
@@ -489,11 +532,31 @@ export class App {
     await this.presentToggle.set(false)
   }
 
+  /** Menu checkbox: persisted in the settings; main switches Electron's checker and the menu tick. */
+  private async toggleSpellcheck(): Promise<void> {
+    const next = await this.mdo.updateSettings({ spellcheck: !this.spellcheckOn })
+    this.settings = next
+    this.spellcheckOn = next.spellcheck
+    this.reconfigureAll()
+    this.spellSwitched()
+    this.editor.focus()
+  }
+
+  /**
+   * After the spellcheck switch changed: off removes a pending „Wörterbuch fehlt“ notice; on
+   * asks again (forced), since a notice suppressed while checking was off was never shown.
+   */
+  private spellSwitched(): void {
+    if (this.spellcheckOn) void this.reportSpellLanguage(true)
+    else this.notices.dismissPrefix('dict-')
+  }
+
   /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
   private reconfigureAll(): void {
     const effects = [
       viewCompartment.reconfigure(viewExtensions(this.effectiveView())),
       modeCompartment.reconfigure(modeExtensions(this.mode)),
+      spellcheckCompartment.reconfigure(spellcheckExtensions(this.spellcheckOn, this.mode)),
     ]
     const collapses = (state: EditorState) =>
       this.mode === 'present' || (this.effectiveView() === 'preview' && state.field(headerHidden))
@@ -510,6 +573,8 @@ export class App {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
     this.reconfigureAll()
+    // Clients watch Present: no dictionary notice may stay on the shared screen.
+    this.notices.dismissPrefix('dict-')
     document.body.classList.add('mdo-mode-present')
     this.root.tabbar.hidden = true
     this.root.status.hidden = true
@@ -534,6 +599,8 @@ export class App {
     if (this.mode !== 'present') return
     this.mode = 'edit'
     this.reconfigureAll()
+    // Notices were held back during Present: ask again for the note now shown.
+    void this.reportSpellLanguage(true)
     document.body.classList.remove('mdo-mode-present')
     this.root.tabbar.hidden = false
     this.root.status.hidden = false
@@ -974,7 +1041,14 @@ export class App {
 
   private reload(tab: Tab, note: NoteFile): void {
     const state = this.closingState(
-      createState(note.text, note.eol, this.effectiveView(), tab.headerHidden, this.mode),
+      createState(
+        note.text,
+        note.eol,
+        this.effectiveView(),
+        tab.headerHidden,
+        this.mode,
+        this.spellcheckOn,
+      ),
     )
     const wasOnDisk = tab.onDisk
     tab.bom = note.bom
@@ -1009,9 +1083,59 @@ export class App {
       this.outline.invalidate()
     }
     this.shownId = tab?.id ?? null
+    void this.reportSpellLanguage(false)
     this.applyOutline()
     this.refresh()
     this.syncMain()
+  }
+
+  /**
+   * Tells main the shown note's lang: (only when it changed, or when `force`) and offers a
+   * missing dictionary once per language and session.
+   */
+  private async reportSpellLanguage(force: boolean): Promise<void> {
+    if (this.shownId === null) return
+    const lang = frontmatterFields(this.editor.state.doc).lang ?? ''
+    if (force) this.spellLang.reset()
+    if (!this.spellLang.next(lang)) return
+    const asked = { id: this.shownId, lang }
+    let r: Awaited<ReturnType<typeof this.mdo.setSpellLanguage>>
+    try {
+      r = await this.mdo.setSpellLanguage(lang)
+    } catch (err) {
+      // The value was stored by the tracker: forget it so the next report retries.
+      console.warn('spellcheck: language could not be set', err)
+      this.spellLang.reset()
+      return
+    }
+    // A quick tab switch or lang: edit made this answer stale; the newer request brings its own.
+    const now = {
+      id: this.shownId,
+      lang: frontmatterFields(this.editor.state.doc).lang ?? '',
+    }
+    if (!spellAnswerCurrent(asked, now)) return
+    // Never in Present (shared screen) or with checking off; exitPresent and switching on
+    // report again (forced), so the notice is not lost. Checked after the await: the mode may
+    // have changed while main answered.
+    if (!offerDictionaryNotice(this.spellcheckOn, this.mode)) return
+    if (!r?.missing || this.dictNoticed.has(r.missing.code)) return
+    const { code, name } = r.missing
+    this.dictNoticed.add(code)
+    this.notices.banner(
+      `Wörterbuch für ${name} fehlt – laden?`,
+      [
+        {
+          label: 'Laden',
+          run: () =>
+            void this.mdo.downloadDictionary(code).then((ok) => {
+              if (ok) void this.reportSpellLanguage(true)
+              else this.notices.toast('Wörterbuch konnte nicht geladen werden')
+            }),
+        },
+        { label: 'Nicht mehr fragen', run: () => void this.mdo.declineDictionary(code) },
+      ],
+      `dict-${code}`,
+    )
   }
 
   private refresh(): void {

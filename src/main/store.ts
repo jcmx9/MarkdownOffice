@@ -30,6 +30,9 @@ export function defaultSettings(documentsDir: string): Settings {
     snippetFolder: join(defaultFolder, 'Snippets'),
     presentFontFactor: 1.6,
     headerDefault: 'yaml',
+    // Spell checking is on by default; updates of the bundled dictionaries too (Windows/Linux).
+    spellcheck: true,
+    dictionaryAutoUpdate: true,
   }
 }
 
@@ -52,6 +55,12 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       defaults.presentFontFactor,
     ),
     headerDefault: headerDefault(o.headerDefault) ?? defaults.headerDefault,
+    // Only real booleans count; anything else (a hand-edited file) falls back to the default.
+    spellcheck: typeof o.spellcheck === 'boolean' ? o.spellcheck : defaults.spellcheck,
+    dictionaryAutoUpdate:
+      typeof o.dictionaryAutoUpdate === 'boolean'
+        ? o.dictionaryAutoUpdate
+        : defaults.dictionaryAutoUpdate,
   }
 }
 
@@ -72,6 +81,10 @@ export function settingsPatch(current: Settings, raw: unknown): Settings {
   if (typeof f === 'number' && Number.isFinite(f) && f >= FACTOR_MIN && f <= FACTOR_MAX)
     next.presentFontFactor = f
   next.headerDefault = headerDefault(o.headerDefault) ?? current.headerDefault
+  // A non-boolean switch value is rejected like any other invalid input: the current one stays.
+  if (typeof o.spellcheck === 'boolean') next.spellcheck = o.spellcheck
+  if (typeof o.dictionaryAutoUpdate === 'boolean')
+    next.dictionaryAutoUpdate = o.dictionaryAutoUpdate
   return next
 }
 

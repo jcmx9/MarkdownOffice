@@ -33,7 +33,8 @@ extraResources:
       - "lib/**/*"
       - logo.svg
       - example.md
-# Fails the build when the packed app lacks Typst, fonts, vendor, licences or the memo set.
+# Fails the build when the packed app lacks Typst, fonts, vendor, licences, the memo set or (on
+# Windows/Linux) the bundled dictionaries.
 afterPack: ./scripts/after-pack.mjs
 artifactName: "markdown-office-${version}-${os}-${arch}.${ext}"
 # One 1024px PNG (source: resources/icon/icon.svg); electron-builder derives .icns and .ico.
@@ -55,10 +56,19 @@ win:
   target:
     - target: zip
       arch: [x64]
+  # Bundled Hunspell dictionaries for Electron's spellchecker (macOS uses the system checker);
+  # installed into <userData>/Dictionaries before checking starts (src/main/spellcheck).
+  extraResources:
+    - from: build/pipeline-assets/dictionaries
+      to: dictionaries
 linux:
   target:
     - target: AppImage
       arch: [x64]
+  # Same bundled dictionaries as on Windows (see there).
+  extraResources:
+    - from: build/pipeline-assets/dictionaries
+      to: dictionaries
   category: Office
 fileAssociations:
   - ext: md

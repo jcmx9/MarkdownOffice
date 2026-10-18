@@ -22,6 +22,11 @@ export class Notices {
     this.banners.delete(key)
   }
 
+  /** Removes every banner whose key starts with prefix (e.g. all `dict-` notices). */
+  dismissPrefix(prefix: string): void {
+    for (const key of [...this.banners.keys()]) if (key.startsWith(prefix)) this.dismiss(key)
+  }
+
   toast(message: string): void {
     const t = document.createElement('div')
     t.className = 'toast'

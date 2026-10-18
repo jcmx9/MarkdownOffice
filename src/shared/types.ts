@@ -24,6 +24,10 @@ export interface Settings {
   presentFontFactor: number
   /** How the YAML header of a note opened without a session entry shows in the Preview. */
   headerDefault: HeaderDefault
+  /** Spell checking in the editor (never in Present, never in code blocks or front matter). */
+  spellcheck: boolean
+  /** Windows/Linux: look for dictionary updates at start (at most once a day). */
+  dictionaryAutoUpdate: boolean
 }
 
 export type HeaderDefault = 'yaml' | 'titleblock'
@@ -99,6 +103,7 @@ export type MenuCommand =
   | 'toggle-view'
   | 'toggle-header'
   | 'toggle-outline'
+  | 'toggle-spellcheck'
   | 'fold'
   | 'unfold'
   | 'fold-all'
@@ -131,6 +136,18 @@ export interface MdoApi {
   watch(paths: string[]): Promise<void>
   confirmDiscard(names: string[]): Promise<boolean>
   onMenu(cb: (cmd: MenuCommand) => void): void
+  /** A spelling correction chosen in the context menu (x/y: window coordinates of the click). */
+  onSpellReplace(cb: (m: { word: string; replacement: string; x: number; y: number }) => void): void
+  /** Tells main the shown note's lang: ('' = none); answers which dictionary is missing, if any. */
+  setSpellLanguage(lang: string): Promise<{ missing: { code: string; name: string } } | null>
+  downloadDictionary(code: string): Promise<boolean>
+  /** Checks the dictionary repo now (Windows/Linux); macOS answers skipped. */
+  checkDictionaryUpdates(): Promise<UpdateResult>
+  declineDictionary(code: string): Promise<void>
+  /** The user's own words in the spellchecker dictionary (settings dialog). */
+  spellWords(): Promise<string[]>
+  /** Removes one own word; false when main refused the string or the word was not there. */
+  removeSpellWord(word: string): Promise<boolean>
   onOpenPaths(cb: (paths: string[]) => void): void
   onExternalChange(cb: (change: ExternalChange) => void): void
   /** cb resolves true when the window may close. */
@@ -157,3 +174,11 @@ export interface SnippetDef {
   body: string
   source: 'builtin' | 'user'
 }
+
+/** Outcome of a dictionary update check (MarkdownOffice-dictionaries releases). */
+export type UpdateResult =
+  | { kind: 'current' }
+  // pending: at least one file replaced an open dictionary and becomes active after a restart.
+  | { kind: 'updated'; version: string; files: string[]; pending: boolean }
+  | { kind: 'skipped' }
+  | { kind: 'failed'; reason: string }
