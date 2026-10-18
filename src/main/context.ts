@@ -27,6 +27,7 @@ import {
   saveJson,
   settingsPatch,
 } from './store'
+import { userTemplatesDir } from './templates'
 import { NoteWatcher } from './watcher'
 import { createMainWindow } from './window'
 
@@ -71,7 +72,8 @@ export class AppContext {
 
   constructor(
     private readonly userData: string,
-    documentsDir: string,
+    /** The OS documents folder: default note folder and the user's templates folder live there. */
+    readonly documentsDir: string,
     readonly pipeline: PipelineConfig = {
       paths: pipelinePaths(false, '', process.cwd()),
       version: 'dev',
@@ -336,7 +338,12 @@ export class AppContext {
   }
 
   exportPdf(note: string): Promise<ExportResult> {
-    return runPipeline(note, { paths: this.pipeline.paths, version: this.pipeline.version })
+    return runPipeline(note, {
+      paths: this.pipeline.paths,
+      version: this.pipeline.version,
+      // One folder for picker and export: the set a note was created from is the set it exports with.
+      templatesDir: userTemplatesDir(process.env, this.documentsDir),
+    })
   }
 
   async confirmDiscard(names: readonly string[]): Promise<boolean> {

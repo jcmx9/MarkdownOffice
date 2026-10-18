@@ -3,6 +3,7 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { DEFAULT_SET, withProfile } from '../shared/sets'
 import type {
   ExportResult,
   ExternalChange,
@@ -15,7 +16,7 @@ import type {
 import { AutosaveScheduler } from './editor/autosave'
 import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
-import { insertHeader } from './editor/insert-header'
+import { headerNote, insertHeader } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
@@ -49,6 +50,7 @@ import { askText } from './ui/prompt'
 import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
+import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
 import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
@@ -59,6 +61,8 @@ const UNREADABLE_ERROR = 'Externe Fassung nicht lesbar – bitte im Hinweis ents
 const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheiden'
 
 const MAX_SAVE_ROUNDS = 3
+
+const HEADER_EXISTS = 'Die Notiz hat schon einen YAML-Header.'
 
 /** One conflict banner per tab: a tab keeps its banner when its path changes (case-only rename). */
 const bannerKey = (tabId: number): string => `tab:${tabId}`
@@ -98,6 +102,8 @@ export class App {
   private presentFactor = 1.6
   private settings: Settings | null = null
   private settingsOpen = false
+  /** The template picker is open or loading its list (Mod+Shift+N twice opens it once). */
+  private pickerOpen = false
   /** Spell checking switch (Settings.spellcheck); applied only in Edit mode. */
   private spellcheckOn = true
   /**
@@ -216,7 +222,7 @@ export class App {
     })
     root.empty
       .querySelector('[data-action=new]')
-      ?.addEventListener('click', () => void this.newNote())
+      ?.addEventListener('click', () => void this.newDefaultNote())
     root.empty
       .querySelector('[data-action=open]')
       ?.addEventListener('click', () => void this.open())
@@ -278,7 +284,9 @@ export class App {
     }
     switch (cmd) {
       case 'new':
-        return this.newNote()
+        return this.newDefaultNote()
+      case 'new-from-template':
+        return this.newFromTemplate()
       case 'open':
         return this.open()
       case 'rename':
@@ -348,7 +356,8 @@ export class App {
 
   private async editSettings(): Promise<void> {
     const current = this.settings
-    if (!current || this.settingsOpen || document.querySelector('dialog[open]')) return
+    if (!current || this.settingsOpen || this.pickerOpen || document.querySelector('dialog[open]'))
+      return
     this.settingsOpen = true
     try {
       const patch = await openSettings({
@@ -463,19 +472,126 @@ export class App {
     this.show()
   }
 
-  private async newNote(): Promise<void> {
+  /**
+   * A new tab. With a header, that header is the tab's initial and clean text (nothing is
+   * written until the user types, so an untouched new note leaves no file) and stays visible
+   * whatever the header default says, with the cursor inside `title: ""` like the header
+   * insert. Present collapses every header, so there createState's cursor after it stays.
+   */
+  private async newNote(header?: string): Promise<void> {
     if (this.closing) return
     const path = await this.mdo.newNotePath()
-    const hideHeader = this.headerDefaultHidden()
+    // The window may have started closing during the round-trip: no tab, and give the reserved
+    // name back so it does not stay blocked.
+    if (this.closing) {
+      void this.mdo.releasePath(path)
+      return
+    }
+    const hideHeader = header === undefined && this.headerDefaultHidden()
+    const note = header === undefined ? null : headerNote(header)
+    let state = createState(
+      note?.text ?? '',
+      '\n',
+      this.effectiveView(),
+      hideHeader,
+      this.mode,
+      this.spellcheckOn,
+    )
+    // Selection only: the document stays equal to the saved one, so the tab is not dirty.
+    if (note && this.mode !== 'present')
+      state = state.update({ selection: { anchor: note.anchor } }).state
     this.store.add({
       path,
-      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode, this.spellcheckOn),
+      state,
       bom: false,
       eol: '\n',
       onDisk: false,
       headerHidden: hideHeader,
     })
     this.show()
+  }
+
+  /**
+   * Mod+N / „Neu“ / the empty state's button: a note of the default set, started with its
+   * header. Without that set an empty note opens anyway, so „Neu“ never does nothing.
+   */
+  private async newDefaultNote(): Promise<void> {
+    if (this.closing) return
+    let header: string | null = null
+    try {
+      header = await this.mdo.readSetHeader(DEFAULT_SET)
+    } catch (e) {
+      console.warn('readSetHeader(default) failed', e)
+    }
+    if (this.closing) return
+    if (header === null) this.notices.toast(`Vorlage ${DEFAULT_SET} nicht gefunden.`)
+    await this.newNote(header ?? undefined)
+  }
+
+  /** „Neu aus Vorlage …“: every set except the default, then a new note with its header. */
+  private async newFromTemplate(): Promise<void> {
+    const header = await this.chosenHeader(
+      'Neu aus Vorlage',
+      'Erstellen',
+      false,
+      () => !this.closing,
+    )
+    if (header !== null) await this.newNote(header)
+  }
+
+  /**
+   * Asks for a set (and its profile) and returns that set's header with the chosen profile,
+   * or null when cancelled or no longer wanted: `still` is checked after every await, since
+   * the window may start closing or the tab change while main answers.
+   */
+  private async chosenHeader(
+    title: string,
+    confirm: string,
+    withDefault: boolean,
+    still: () => boolean,
+  ): Promise<string | null> {
+    const choice = await this.chooseTemplate(title, confirm, withDefault, still)
+    if (!choice || !still()) return null
+    let header: string | null = null
+    try {
+      header = await this.mdo.readSetHeader(choice.name)
+    } catch (e) {
+      console.warn('readSetHeader failed', e)
+    }
+    if (!still()) return null
+    if (header === null) {
+      this.notices.toast(`Vorlage ${choice.name} nicht gefunden.`)
+      return null
+    }
+    return choice.profile === null ? header : withProfile(header, choice.profile)
+  }
+
+  private async chooseTemplate(
+    title: string,
+    confirm: string,
+    withDefault: boolean,
+    still: () => boolean,
+  ): Promise<TemplateChoice | null> {
+    if (this.pickerOpen || this.settingsOpen || document.querySelector('dialog[open]')) return null
+    this.pickerOpen = true
+    try {
+      const sets = await this.mdo.listSets()
+      if (!still() || document.querySelector('dialog[open]')) return null
+      return await pickTemplate({
+        title,
+        confirm,
+        sets: pickerSets(sets, withDefault),
+        selected: withDefault ? DEFAULT_SET : undefined,
+        header: (name) => this.mdo.readSetHeader(name),
+        profiles: (name) => this.mdo.listProfiles(name),
+      })
+    } catch (e) {
+      this.notices.panel('Vorlagen nicht lesbar', e instanceof Error ? e.message : String(e))
+      return null
+    } finally {
+      this.pickerOpen = false
+      if (this.shownId !== null) this.editor.focus()
+    }
   }
 
   private async open(): Promise<void> {
@@ -640,21 +756,28 @@ export class App {
     })
   }
 
-  /** Interim until template sets reach the editor: the memo set's header at the top. */
+  /** Einfügen → „YAML-Header …“: a set's header (default set first) at the top of the note. */
   private async insertHeaderTemplate(): Promise<void> {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
-    const template = await this.mdo.readHeaderTemplate()
-    // The user may have switched tabs or started closing while main read the file.
-    if (this.closing || this.shownId !== tab.id) return
-    if (template === null) {
-      this.notices.toast('Vorlage memo.header.md nicht gefunden.')
+    // Refused before the picker opens: choosing a set for nothing would only annoy. Checked
+    // again by insertHeader below, the note may change while the picker is open.
+    if (frontmatterRange(this.editor.state.doc)) {
+      this.notices.toast(HEADER_EXISTS)
       return
     }
+    // The user may switch tabs or start closing while the picker is open or main reads a file.
+    const template = await this.chosenHeader(
+      'YAML-Header einfügen',
+      'Einfügen',
+      true,
+      () => !this.closing && this.shownId === tab.id,
+    )
+    if (template === null) return
     const state = this.editor.state
     const res = insertHeader(state, template)
     if ('refused' in res) {
-      this.notices.toast('Die Notiz hat schon einen YAML-Header.')
+      this.notices.toast(HEADER_EXISTS)
       return
     }
     // The cursor lands in the header: a collapsed header is shown, never hiding the cursor.
@@ -936,8 +1059,14 @@ export class App {
 
   // ── external changes ────────────────────────────────────────────────────
 
-  /** Dirty, or clean but its content is no longer on disk. */
+  /**
+   * Dirty, or clean but its content is no longer on disk. A note that never reached the disk and
+   * is empty again is not worth a file: a Mod+N note starts with the memo header as its clean
+   * text, so deleting that header must not leave an empty file behind (an explicit save still
+   * creates it, see writeTab's `force`).
+   */
   private unsaved(tab: Tab): boolean {
+    if (!tab.onDisk && tab.state.doc.length === 0) return this.unwritten.has(tab.id)
     return this.store.isDirty(tab) || this.unwritten.has(tab.id)
   }
 

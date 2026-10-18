@@ -536,6 +536,44 @@ dialog.settings .settings-error {
   margin: 0 0 8px;
 }
 
+/* Template picker: one row per set (name, hint, source); the list scrolls when it grows long. */
+dialog.prompt.templates {
+  width: min(560px, calc(100vw - 48px));
+}
+dialog.templates .tpl-sets {
+  border: 0;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+dialog.templates legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+dialog.templates label.tpl-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+dialog.templates .tpl-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+dialog.templates .tpl-hint {
+  overflow-wrap: anywhere;
+}
+dialog.templates .tpl-source,
+dialog.templates .tpl-note {
+  color: var(--chrome-muted);
+}
+dialog.templates .tpl-note {
+  margin: 0 0 8px;
+}
+
 /* Snippet completion: calm, flat, chrome font (rem, so Present's body zoom does not scale it). */
 .cm-tooltip.cm-tooltip-autocomplete {
   background: var(--surface);

@@ -36,6 +36,9 @@ describe('SpellcheckController.setLanguage', () => {
       settings: () => defaultSettings('/docs'),
     })
     const first = c.setLanguage('de')
+    // Start the second request only once the first is held at the gate; otherwise, under load,
+    // the second can reach installedCodes() first, get held itself and time out.
+    await vi.waitFor(() => expect(gate.release).not.toBeNull())
     const second = c.setLanguage('fr')
     await second
     gate.release?.()

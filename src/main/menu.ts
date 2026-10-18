@@ -139,6 +139,7 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     label: 'Datei',
     submenu: [
       item('new', 'Neu', 'CmdOrCtrl+N'),
+      item('new-from-template', 'Neu aus Vorlage …', 'CmdOrCtrl+Shift+N'),
       item('open', 'Öffnen …', 'CmdOrCtrl+O'),
       { label: 'Zuletzt geöffnet', submenu: recent },
       sep,
@@ -174,7 +175,7 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
   const insert: MenuItemConstructorOptions = {
     label: 'Einfügen',
     submenu: [
-      item('insert-header', 'YAML-Header (memo)'),
+      item('insert-header', 'YAML-Header …'),
       item('insert-pagebreak', 'Seitenumbruch', 'CmdOrCtrl+Enter'),
     ],
   }

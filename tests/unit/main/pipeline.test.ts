@@ -75,6 +75,13 @@ describe('runPipeline', () => {
     })
   })
 
+  it('passes the templates folder main resolved as MDO_TEMPLATES', async () => {
+    const { cli, recordFile } = await makeFakeCli(dir, { stdout: 'OK' })
+    const templatesDir = join(dir, 'Eigene Vorlagen')
+    await runPipeline(note, { paths: fakePaths(cli), version: '26.10.0', templatesDir })
+    expect((await record(recordFile)).env).toMatchObject({ MDO_TEMPLATES: templatesDir })
+  })
+
   it('returns the exit code and stderr on failure', async () => {
     const { cli, recordFile } = await makeFakeCli(dir, {
       stdout: 'Teil',
