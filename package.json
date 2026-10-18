@@ -1,7 +1,7 @@
 {
   "name": "markdown-office",
   "productName": "Markdown Office",
-  "version": "26.10.0-dev.3",
+  "version": "26.10.0-dev.4",
   "description": "Calm Markdown editor with a bundled Markdown-to-PDF/A pipeline; the editor looks like the PDF while you type.",
   "license": "MIT",
   "author": "jcmx9",
