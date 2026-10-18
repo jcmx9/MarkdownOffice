@@ -182,6 +182,16 @@ Hook it in via `scope: (image: safe-image)` in `cmarker.render`. The probe must 
 
 The scripts read a leading `---` … `---` (or `...`) block line by line as `key: value`. Values: surrounding quotes removed, `# comment` after a value removed, inline list `[A, "B"]` → `A, B`; booleans accept `true/false/yes/no/on/off/y/n` in any case (invalid → warning, default kept); empty values are ignored. The full key list with defaults is in the README section *Front matter*.
 
+Sets get the whole block as Typst data, with real YAML (lists, maps, typed values):
+
+```typst
+#import sys.inputs.mdo + "/lib/markdown.typ": frontmatter
+#let fm = frontmatter(read(sys.inputs.source))
+#fm.at("x-to", default: ())   // e.g. an address list
+```
+
+`frontmatter(src: str) -> dictionary` returns `(:)` without front matter or with an empty or unclosed block. Convention: pipeline keys have no prefix, keys that only a set reads start with `x-`. The shell parsers only read keys at column 0 and ignore indented lines (nested values) and unknown keys such as `x-…`, so a nested `title:` or `date:` never changes the pipeline's values.
+
 `<name>.header.md` is the set's front-matter template, inserted at the top of a note. Rules:
 
 - It is a complete front-matter block (`---` … `---`), UTF-8 without BOM, below 64 KiB.

@@ -62,6 +62,25 @@
   lines
 }
 
+// Front matter as Typst data for template sets: the whole leading YAML block, parsed with
+// Typst's own yaml() (lists, maps, typed values). Why: the shell parsers in build.sh and
+// convert.ps1 only read flat pipeline keys; set-specific keys (x-…) and structured values
+// such as an address list reach the set this way, identically on every OS.
+// No front matter, an empty block or an unclosed block -> (:).
+#let frontmatter(src) = {
+  let lines = src.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+  if lines.len() == 0 or lines.first().trim(at: end) != "---" { return (:) }
+  for (i, l) in lines.enumerate() {
+    if i > 0 and (l.trim(at: end) == "---" or l.trim(at: end) == "...") {
+      let block = lines.slice(1, i).join("\n")
+      if block.trim() == "" { return (:) }
+      let data = yaml(bytes(block))
+      return if type(data) == dictionary { data } else { (:) }
+    }
+  }
+  (:)
+}
+
 // Pandoc-Definitionslisten (Begriff + Folgezeile ": Definition") in HTML <dl>
 // übersetzen – cmarker kennt nur <dl>. Block-Form (Leerzeile nach <dd>), damit
 // Inline-Markdown in der Definition rendert. Eingerückte Fortsetzungszeilen der

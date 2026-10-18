@@ -645,6 +645,19 @@ test_templates() {
   expect "flach vor Ordner" "$(pdf_text "${out_dir}/flach.pdf")" "SET-PROBE"
   ok "Set-Ordner <name>/<name>.typ im Benutzerordner"
 
+  # frontmatter(): Listen, verschachtelte Werte und x-Schlüssel kommen im Set an; die
+  # Shell-Parser lesen nur Schlüssel ganz links (eingerückte Zeilen ändern date/title nicht).
+  local fmnote="${out_dir}/Set Ordner/fm.md"
+  printf -- '---\ndate: 2026-10-18\nx-to:\n  - Sonnenschein Verlag GmbH\n  - Rosenstraße 5\nx-subject: "Ihre Anfrage"\nx-map:\n  inner: tief\n  title: falsch\n  date: 1999-01-01\n---\n\nText.\n' >"${fmnote}"
+  MDO_TEMPLATES="${sets}" bash "${build}" --template fm "${fmnote}" "${out_dir}/fm.pdf" \
+    >/dev/null 2>"${out_dir}/fm.err" || die "frontmatter(): Export fehlgeschlagen: $(cat "${out_dir}/fm.err")"
+  text="$(pdf_text "${out_dir}/fm.pdf")"
+  expect "frontmatter()" "${text}" "TO=Sonnenschein Verlag GmbH|Rosenstraße 5" "SUBJ=Ihre Anfrage" \
+    "NESTED=tief" "DATEIN=2026-10-18" "EMPTY=0"
+  reject "frontmatter()" "${text}" "falsch" "1999"
+  [[ ! -s "${out_dir}/fm.err" ]] || die "frontmatter(): Warnungen: $(cat "${out_dir}/fm.err")"
+  ok "frontmatter() im Set; eingerückte und x-Zeilen ändern die Pipeline-Werte nicht"
+
   # Einzelne .typ-Datei relativ zur Notiz (Leerzeichen im Namen), Aufruf aus fremdem cwd.
   cp "${sets}/probe.typ" "${out_dir}/Set Ordner/eigene vorlage.typ"
   printf -- '---\ntemplate: ./eigene vorlage.typ\n---\n\n# Pfad\n' >"${out_dir}/Set Ordner/pfad.md"
