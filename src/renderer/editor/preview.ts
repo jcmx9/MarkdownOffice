@@ -33,13 +33,21 @@ export interface PreviewCx {
   out: Range<Decoration>[]
   /** Line starts whose text a widget already replaces: skip further replaces there. */
   replacedLines: Set<number>
+  /** Blank line starts already collapsed next to a heading (a line between two headings once). */
+  gapLines: Set<number>
+  /** True if pos lies in one of the ranges being decorated (the viewport). */
+  inRanges(pos: number): boolean
   touches(from: number, to: number): boolean
   onLine(pos: number): boolean
   lines(from: number, to: number, d: Decoration): void
   hideOrFaint(from: number, to: number, reveal: boolean): void
 }
 
-function makeCx(state: EditorState, out: Range<Decoration>[]): PreviewCx {
+function makeCx(
+  state: EditorState,
+  out: Range<Decoration>[],
+  ranges: readonly PreviewRange[] = [{ from: 0, to: state.doc.length }],
+): PreviewCx {
   const doc = state.doc
   const touches = (from: number, to: number) =>
     state.selection.ranges.some((r) => r.from <= to && r.to >= from)
@@ -47,6 +55,8 @@ function makeCx(state: EditorState, out: Range<Decoration>[]): PreviewCx {
     state,
     out,
     replacedLines: new Set(),
+    gapLines: new Set(),
+    inRanges: (pos) => ranges.some((r) => r.from <= pos && pos <= r.to),
     touches,
     onLine(pos) {
       const l = doc.lineAt(pos)
@@ -76,9 +86,34 @@ function makeCx(state: EditorState, out: Range<Decoration>[]): PreviewCx {
   }
 }
 
+const headingGap = lineDeco('mdo-heading-gap')
+
+/**
+ * Typst ignores blank lines around a heading: the heading block's own above/below spacing sets
+ * the gap. The heading line carries that spacing as padding (theme.css), so the blank lines
+ * directly before and after it collapse, and the Preview looks the same with or without them.
+ * A blank line holding the cursor or selection keeps its height, so the cursor stays visible.
+ */
+function collapseHeadingGaps(cx: PreviewCx, node: SyntaxNode): void {
+  const doc = cx.state.doc
+  const collapse = (n: number): boolean => {
+    const l = doc.line(n)
+    if (l.text.trim() !== '') return false
+    // Only lines in the decorated ranges, like every other decoration of this pass.
+    if (cx.inRanges(l.from) && !cx.onLine(l.from) && !cx.gapLines.has(l.from)) {
+      cx.gapLines.add(l.from)
+      cx.out.push(headingGap.range(l.from))
+    }
+    return true
+  }
+  for (let n = doc.lineAt(node.from).number - 1; n >= 1 && collapse(n); n--);
+  for (let n = doc.lineAt(node.to).number + 1; n <= doc.lines && collapse(n); n++);
+}
+
 function heading(cx: PreviewCx, node: SyntaxNode, level: number): void {
   const { state } = cx
   cx.out.push(lineDeco(`mdo-h${level}`).range(state.doc.lineAt(node.from).from))
+  collapseHeadingGaps(cx, node)
   const reveal = cx.onLine(node.from)
   for (const m of node.getChildren('HeaderMark')) {
     if (m.from === node.from) {
@@ -102,6 +137,7 @@ export function visitInline(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefi
   const setext = /^SetextHeading(\d)$/.exec(name)
   if (setext) {
     cx.out.push(lineDeco(`mdo-h${setext[1]}`).range(cx.state.doc.lineAt(ref.from).from))
+    collapseHeadingGaps(cx, ref.node)
     for (const m of ref.node.getChildren('HeaderMark')) cx.out.push(faint.range(m.from, m.to))
     return
   }
@@ -329,7 +365,7 @@ export function buildPreview(
   ranges: readonly PreviewRange[] = [{ from: 0, to: state.doc.length }],
 ): DecorationSet {
   const out: Range<Decoration>[] = []
-  const cx = makeCx(state, out)
+  const cx = makeCx(state, out, ranges)
   const tree = syntaxTree(state)
   // Visible ranges may overlap: handle each node once, replaying its verdict.
   const seen = new Map<string, boolean>()

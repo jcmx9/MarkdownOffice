@@ -122,8 +122,6 @@
 }
 .mdo-preview .cm-line.mdo-h1 {
   font-size: 1.4em;
-  padding-bottom: 0.1em;
-  border-bottom: 0.6pt solid var(--mdo-hairline);
 }
 .mdo-preview .cm-line.mdo-h2 {
   font-size: 1.2em;
@@ -139,23 +137,76 @@
   font-style: italic;
 }
 
-/* Spacing like the PDF: blank lines carry the paragraph/heading gaps */
+/* Spacing like the PDF: a blank line between paragraphs carries the paragraph gap */
 .mdo-preview .cm-line:has(> br:only-child) {
   line-height: 1.1em;
 }
-.mdo-preview .cm-line:has(> br:only-child):has(+ .mdo-h1) {
-  line-height: 2em;
+
+/*
+ * Heading gaps come from the heading line itself, like the memo set's heading blocks; the
+ * PDF is authoritative. memo.typ: H1 above 2.0em below 0.6em, H2 1.5em/0.7em, H3+
+ * 1.25em/0.55em, resolved at the heading's own size as CSS em is here. Blank lines next to a
+ * heading collapse (mdo-heading-gap, preview.ts), so the gap does not depend on them.
+ *
+ * Every value reproduces the PDF's baseline-to-baseline distances (measured in the rendered
+ * memo PDF) from the fonts' line boxes (Chromium: content area = hhea ascent + descent):
+ *   Source Serif 4: ascent 1.036em, descent 0.335em; cap height 0.67em
+ *   Source Sans 3:  ascent 1.0em,   descent 0.326em; cap height 0.66em
+ *   body line (line-height 1.5): 1.087 × body size above the baseline, 0.413 × below
+ * In a line box of line-height L the heading baseline sits (L − 1.371)/2 + 1.036 em below its
+ * top and (L − 1.371)/2 + 0.335 em above its bottom.
+ *   padding-top    = above + cap − heading part above the baseline − 0.413 × body
+ *   below (H2, H3) = line-height chosen so that heading part below the baseline + 1.087 × body
+ *                    = below + 0.66 × body (the body's cap height)
+ */
+.mdo-preview .cm-line.mdo-h1 {
+  /* 2.0 + 0.67 − 1.1005 */
+  padding-top: calc(1.57em - 0.413 * var(--mdo-body-size));
+  /*
+   * The PDF draws the hairline 18pt (1.29em) under the H1 baseline and sets the next text
+   * 0.6em under the rule. Padding up to the rule: 1.29 − 0.3995 (line box below the
+   * baseline); below the rule: 0.6em + 0.66 − 1.087 body. The rule is a background stripe so
+   * that the space under it stays inside the heading line (no margins on .cm-line).
+   */
+  padding-bottom: calc(1.49em - 0.427 * var(--mdo-body-size));
+  background:
+    linear-gradient(var(--mdo-hairline), var(--mdo-hairline)) left bottom
+    calc(0.6em - 0.427 * var(--mdo-body-size)) / 100% 0.6pt no-repeat;
 }
-.mdo-preview .cm-line:has(> br:only-child):has(+ .mdo-h2) {
-  line-height: 1.5em;
+.mdo-preview .cm-line.mdo-h2 {
+  /* below 0.7em: (L − 1.371)/2 + 0.335 = 0.7 − 0.427 × 10/12  →  L = 1.39 */
+  line-height: 1.39;
+  /* 1.5 + 0.67 − 1.045 */
+  padding-top: calc(1.125em - 0.413 * var(--mdo-body-size));
 }
-.mdo-preview .cm-line:has(> br:only-child):has(+ :is(.mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6)) {
-  line-height: 1.25em;
+.mdo-preview .cm-line:is(.mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
+  /*
+   * below 0.55em would need L = 0.95; 1.0 stays within 0.3pt of the PDF and keeps a wrapped
+   * heading's lines from colliding.
+   */
+  line-height: 1;
+  /* 1.25 + 0.67 − 0.8505 */
+  padding-top: calc(1.07em - 0.413 * var(--mdo-body-size));
 }
+/*
+ * CodeMirror's 1em widget buffers (next to the hidden "### ") sit on the baseline; in a line
+ * box of 1em they would stick out at the top, grow the line and push the baseline down.
+ * Top-aligned they fill the line box exactly, so the line keeps its height with the marks
+ * hidden or shown.
+ */
+.mdo-preview .cm-line:is(.mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) > .cm-widgetBuffer {
+  vertical-align: top;
+}
+/* Typst drops a block's above spacing at the top of the page */
 .mdo-preview
-  .cm-line:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6)
-  + .cm-line:has(> br:only-child) {
-  line-height: 0.6em;
+  .cm-content
+  > .cm-line:first-child:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
+  padding-top: 0;
+}
+/* Collapsed blank line: no height, still a real line (arrow keys, selection). Once the
+   cursor is on it, preview.ts drops the class and it shows as a normal blank line. */
+.mdo-preview .cm-content > .cm-line.mdo-heading-gap {
+  line-height: 0;
 }
 
 /* Marks recede; inline styles as in the PDF */
