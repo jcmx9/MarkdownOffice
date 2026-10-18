@@ -280,6 +280,8 @@ Eine eigene Vorlage bekommt dieselben Eingaben (`sys.inputs`) wie `memo.typ`, da
 
 Bilder behandelt `memo.typ` mit einer eigenen Funktion (`safe-image`); eine eigene Vorlage ohne sie bricht bei einem fehlenden Bild ab.
 
+Wie man ein eigenes Set schreibt (alle Eingaben, die zu rendernden Elemente, PDF/A-Anforderungen, ein lauffähiges Grundgerüst), beschreibt [TEMPLATES.md](TEMPLATES.md) (Englisch).
+
 ## PDF/A, Quelle und Metadaten
 
 - **PDF/A-3b**, alle Schriften eingebettet.
