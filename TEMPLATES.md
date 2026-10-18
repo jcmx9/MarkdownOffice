@@ -71,10 +71,10 @@ A set that needs a sender (a letter) reads a profile: a YAML file plus the files
 
 | Value of `profile:` | Looked up |
 |---|---|
-| a name (`a-z`, `0-9`, `_`, `-`), e.g. `roland` | `profiles/<name>.yaml` 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 3. in the folder of the resolved set (its example profiles) – the first existing file wins |
+| a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `profiles/<name>.yaml` 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 3. in the folder of the resolved set (its example profiles) – the first existing file wins |
 | a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
 
-A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. On Windows the profile's folder is copied as a whole to the staging folder when it is on another drive than Typst's root, so the signature stays readable.
+A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. On Windows only the files directly in the profile's folder (no subfolders) are copied to the staging folder when it is on another drive than Typst's root, so a signature (or logo) must sit **directly next to the profile**, not in a subfolder; a profile directly in a drive root is refused there ("Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen") so no export copies a whole drive.
 
 ## 3. Inputs (`sys.inputs`)
 

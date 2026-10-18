@@ -494,6 +494,8 @@ if [[ -n "${fm_profile}" ]]; then
         p="$(expand_path "${fm_profile}")"
         case "${p}" in /*) ;; *) p="${base_dir}/${p}" ;; esac
         if [[ ! -f "${p}" ]]; then echo "Error: Profil nicht gefunden: ${fm_profile}" >&2; exit 1; fi
+        # Anders als convert.ps1 (Staging auf andere Laufwerke) wird hier nichts kopiert:
+        # --root / macht jeden absoluten Pfad lesbar, auch /absender.yaml. Keine Sperre nötig.
         profile="$(cd "$(dirname "${p}")" && pwd)/$(basename "${p}")"
         ;;
       *)

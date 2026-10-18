@@ -381,17 +381,24 @@ function Get-TypstReadable {
   return $target
 }
 
-# Ordner fuer Typst lesbar machen (spiegelt Get-TypstReadable fuer einen ganzen Ordner):
-# liegt er auf einem anderen Laufwerk als die Typst-Wurzel, wird er komplett in den
-# Stage-Ordner kopiert. Das Profil braucht das, weil das Set Dateien daneben liest
-# (die Unterschrift).
+# Ordner fuer Typst lesbar machen (spiegelt Get-TypstReadable fuer einen Ordner): liegt er
+# auf einem anderen Laufwerk als die Typst-Wurzel, werden NUR seine Dateien auf oberster
+# Ebene (keine Unterordner) in den Stage-Ordner kopiert. Das Profil braucht das, weil das Set
+# Dateien daneben liest (die Unterschrift, direkt neben dem Profil). Ein Laufwerks-
+# Wurzelverzeichnis wird abgelehnt, damit nie ein ganzes Laufwerk kopiert wird.
 function Get-TypstReadableDir {
   param([string]$Dir)
   if (-not $Dir) { return $Dir }
   if ([IO.Path]::GetPathRoot($Dir) -eq $script:TypstRoot) { return $Dir }
+  if ($Dir.TrimEnd('\', '/') -eq [IO.Path]::GetPathRoot($Dir).TrimEnd('\', '/')) {
+    throw "Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen: $Dir"
+  }
   $script:StageCount++
   $target = Join-Path $script:StageDir ('ordner-' + $script:StageCount)
-  Copy-Item -LiteralPath $Dir -Destination $target -Recurse -Force
+  New-Item -ItemType Directory -Force -Path $target | Out-Null
+  Get-ChildItem -LiteralPath $Dir -File -Force | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+  }
   return $target
 }
 
