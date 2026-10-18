@@ -110,7 +110,7 @@ The preview uses the PDF's bundled fonts; if a font file is missing, it falls ba
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
 
-Right-clicking a tab or the file name in the status line opens a menu with rename, export PDF and close tab. The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view.
+Right-clicking a tab or the file name in the status line opens a menu with rename, export PDF and close tab. The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view.
 
 ### Settings
 
