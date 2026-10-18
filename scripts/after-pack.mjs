@@ -46,6 +46,7 @@ export function checkPackedResources(o) {
         : join('pipeline', 'vendor', p.name),
     ),
     join('sets', 'memo', 'memo.typ'),
+    join('sets', 'din5008a', 'din5008a.typ'),
     join('pipeline', win ? 'convert.ps1' : 'build.sh'),
     join('pipeline', 'cli.js'),
     ...o.licenses.map((l) => join('pipeline', 'licenses', ...l.split('/'))),

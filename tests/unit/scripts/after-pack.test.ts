@@ -28,6 +28,7 @@ function complete(win = false) {
   for (const p of ['cmarker', 'mitex', 'mmdr']) put(join('pipeline', 'vendor', p, 'typst.toml'))
   put(join('pipeline', 'vendor', 'packages', 'preview', 'cades', '0.3.1', 'typst.toml'))
   put(join('sets', 'memo', 'memo.typ'))
+  put(join('sets', 'din5008a', 'din5008a.typ'))
   put(join('pipeline', win ? 'convert.ps1' : 'build.sh'))
   put(join('pipeline', 'cli.js'))
   for (const l of licenses) put(join('pipeline', 'licenses', l))
@@ -61,6 +62,7 @@ describe('checkPackedResources', () => {
     // Store package: checked in its package-cache layout.
     join('pipeline', 'vendor', 'packages', 'preview', 'cades', '0.3.1'),
     join('sets', 'memo', 'memo.typ'),
+    join('sets', 'din5008a', 'din5008a.typ'),
     join('pipeline', 'build.sh'),
     join('pipeline', 'cli.js'),
     join('pipeline', 'licenses', 'typst', 'LICENSE'),
