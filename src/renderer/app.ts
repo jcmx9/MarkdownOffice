@@ -341,6 +341,10 @@ export class App {
         settings: current,
         status: withTimeout(this.mdo.getSettingsStatus(), STATUS_TIMEOUT_MS),
         choose: (kind, path) => this.mdo.choosePath(kind, path),
+        platform: isMac ? 'darwin' : 'other',
+        checkDictionaries: () => this.mdo.checkDictionaryUpdates(),
+        words: () => this.mdo.spellWords(),
+        removeWord: (w) => this.mdo.removeSpellWord(w),
       })
       if (!patch || Object.keys(patch).length === 0) return
       const next = await this.mdo.updateSettings(patch)

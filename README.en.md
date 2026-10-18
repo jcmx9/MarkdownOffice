@@ -114,7 +114,7 @@ Right-clicking a tab or the file name in the status line opens a menu with renam
 
 ### Settings
 
-„Einstellungen …“ (macOS Cmd+, in the app menu, otherwise Ctrl+, in the „Datei“ menu) opens the dialog: default folder for new notes, snippet folder, font factor in presentation mode and the default for the YAML header in the preview (as YAML or as title block). A read-only status block shows the version of the pipeline and of the bundled Typst. Changing the default folder never moves or deletes files. The dialog names values it did not take after saving; the previous value stays in effect for them.
+„Einstellungen …“ (macOS Cmd+, in the app menu, otherwise Ctrl+, in the „Datei“ menu) opens the dialog: default folder for new notes, snippet folder, font factor in presentation mode and the default for the YAML header in the preview (as YAML or as title block) as well as spelling (switch, automatic dictionary updates, own words). A read-only status block shows the version of the pipeline and of the bundled Typst. Changing the default folder never moves or deletes files. The dialog names values it did not take after saving; the previous value stays in effect for them.
 
 ### Outline
 
@@ -137,6 +137,14 @@ Inside a snippet, Esc first leaves field mode; in presentation mode only a furth
 The menu **Einfügen → YAML-Header (memo)** puts the front-matter template of the set `memo` (`memo.header.md`) unchanged at the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title. A note that already has a header is left unchanged.
 
 Your own snippets are files `name.tpl.md` in the snippet folder (default `~/Documents/Markdown Office/Snippets/`, setting „Snippet-Ordner“). Your own snippet with the same name replaces the built-in one. New files are picked up the next time the window gets focus. Supported syntax: `$1`, `${1:default}`, `$0` (final position) and `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (also in the form `${CURRENT_YEAR}`). `\$` gives a literal `$`, `\\` a backslash, and inside a default `\}` gives a literal `}`.
+
+### Spell checking
+
+The switch **Bearbeiten → Rechtschreibprüfung** (also in the settings) checks spelling in the editor. Nothing is checked in Present, in code blocks or in the front matter. A right click on an underlined word offers suggestions and „Zum Wörterbuch hinzufügen“; own words can be removed again in the settings.
+
+The language comes from the note's `lang:`, otherwise from the system language. macOS uses the system spellchecker; macOS manages languages and dictionaries under System Settings → Keyboard → Text Input. On Windows and Linux checking works fully offline with the bundled dictionaries de-DE and en-US. Updates and further languages come only from the repository `jcmx9/MarkdownOffice-dictionaries`, and every file is verified against its checksum. At start the editor looks for new dictionaries at most once a day (can be switched off in the settings; „Jetzt prüfen“ asks at once). If the dictionary for a note's `lang:` is missing, a notice asks whether to download it.
+
+Licences: the German dictionary (from Chromium's `de-DE-3-0.bdic`, built from `de_DE_neu` by "Lantol") is under the LGPL; the licence text and the README ship with it. The English dictionary is based on SCOWL and is under its permissive licence (Kevin Atkinson, among others). Both files are plain data kept separate from the application; the texts are in `licenses/dictionaries/` in the pipeline folder.
 
 ## The markdown-office command
 

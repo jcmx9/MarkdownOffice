@@ -27,6 +27,10 @@ const deps = (over: Partial<SettingsDialogDeps> = {}): SettingsDialogDeps => ({
   settings,
   status: Promise.resolve(status),
   choose: vi.fn(async () => null),
+  platform: 'win32',
+  checkDictionaries: vi.fn(async () => ({ kind: 'current' as const })),
+  words: vi.fn(async () => []),
+  removeWord: vi.fn(async () => true),
   ...over,
 })
 
@@ -157,6 +161,60 @@ describe('settings dialog', () => {
     expect($('settings-status-pipeline').textContent).toBe(
       'Status nicht verfügbar (keine Antwort nach 10 s)',
     )
+  })
+})
+
+describe('spelling section', () => {
+  it('shows both switches with the current values and returns changes', async () => {
+    const done = openSettings(deps())
+    expect(input('set-spellcheck').checked).toBe(true)
+    expect(input('set-dict-auto').checked).toBe(true)
+    input('set-spellcheck').checked = false
+    input('set-dict-auto').checked = false
+    $('settings-save').click()
+    expect(await done).toEqual({ spellcheck: false, dictionaryAutoUpdate: false })
+  })
+
+  it('on macOS shows the system hint and no update controls', async () => {
+    void openSettings(deps({ platform: 'darwin' }))
+    expect($('set-mac-spell-hint').textContent).toBe(
+      'Sprachen und Wörterbücher verwaltet macOS: Systemeinstellungen → Tastatur → Texteingabe',
+    )
+    for (const id of ['set-dict-auto', 'set-dict-check', 'set-dict-status'])
+      expect(document.querySelector(`[data-testid=${id}]`)).toBeNull()
+  })
+
+  it.each([
+    [{ kind: 'current' }, 'Wörterbücher aktuell'],
+    [{ kind: 'updated', version: '26.10.2', files: [] }, 'Aktualisiert auf 26.10.2'],
+    [{ kind: 'failed', reason: 'offline' }, 'Prüfung fehlgeschlagen: offline'],
+  ] as const)('Jetzt prüfen shows %j as %s', async (result, text) => {
+    const checkDictionaries = vi.fn(async () => result as never)
+    void openSettings(deps({ checkDictionaries }))
+    $('set-dict-check').click()
+    await flush()
+    expect(checkDictionaries).toHaveBeenCalledOnce()
+    expect($('set-dict-status').textContent).toBe(text)
+  })
+
+  it('lists own words; Entfernen removes the word and its row', async () => {
+    const removeWord = vi.fn(async () => true)
+    void openSettings(deps({ words: async () => ['Foo', 'Bar'], removeWord }))
+    await flush()
+    expect($('set-words').textContent).toContain('Foo')
+    $('set-word-remove-0').click()
+    await flush()
+    expect(removeWord).toHaveBeenCalledWith('Foo')
+    expect($('set-words').textContent).not.toContain('Foo')
+    expect($('set-words').textContent).toContain('Bar')
+  })
+
+  it('keeps the row when the removal fails', async () => {
+    void openSettings(deps({ words: async () => ['Foo'], removeWord: async () => false }))
+    await flush()
+    $('set-word-remove-0').click()
+    await flush()
+    expect($('set-words').textContent).toContain('Foo')
   })
 })
 

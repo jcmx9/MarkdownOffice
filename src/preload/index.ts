@@ -25,6 +25,8 @@ const api: MdoApi = {
   downloadDictionary: (code) => ipcRenderer.invoke(Ch.spellDownload, code),
   checkDictionaryUpdates: () => ipcRenderer.invoke(Ch.spellCheckUpdates),
   declineDictionary: (code) => ipcRenderer.invoke(Ch.spellDecline, code),
+  spellWords: () => ipcRenderer.invoke(Ch.spellWords),
+  removeSpellWord: (word) => ipcRenderer.invoke(Ch.spellRemoveWord, word),
   onOpenPaths: (cb) => {
     ipcRenderer.on(Ch.openPaths, (_e, paths: string[]) => cb(paths))
   },

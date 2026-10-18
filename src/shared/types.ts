@@ -144,6 +144,10 @@ export interface MdoApi {
   /** Checks the dictionary repo now (Windows/Linux); macOS answers skipped. */
   checkDictionaryUpdates(): Promise<UpdateResult>
   declineDictionary(code: string): Promise<void>
+  /** The user's own words in the spellchecker dictionary (settings dialog). */
+  spellWords(): Promise<string[]>
+  /** Removes one own word; false when main refused the string or the word was not there. */
+  removeSpellWord(word: string): Promise<boolean>
   onOpenPaths(cb: (paths: string[]) => void): void
   onExternalChange(cb: (change: ExternalChange) => void): void
   /** cb resolves true when the window may close. */

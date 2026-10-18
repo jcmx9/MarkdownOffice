@@ -170,6 +170,16 @@ export class SpellcheckController {
     return ok
   }
 
+  /** The user's own words ("Zum Wörterbuch hinzufügen"), for the settings dialog. */
+  listWords(): Promise<string[]> {
+    return this.win.webContents.session.listWordsInSpellCheckerDictionary()
+  }
+
+  /** Removes one own word; the session answers whether it existed. */
+  removeWord(word: string): boolean {
+    return this.win.webContents.session.removeWordFromSpellCheckerDictionary(word)
+  }
+
   applySettings(settings: Settings): void {
     this.win.webContents.session.setSpellCheckerEnabled(settings.spellcheck)
   }

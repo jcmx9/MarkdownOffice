@@ -56,6 +56,14 @@ export function registerIpc(ctx: AppContext): void {
     Ch.spellCheckUpdates,
     () => ctx.spellcheck?.checkNow() ?? ({ kind: 'skipped' } as const),
   )
+  // Own words: the list is read from the session; a removal argument comes from the renderer,
+  // so only a string of 1-100 characters passes.
+  ipcMain.handle(Ch.spellWords, () => ctx.spellcheck?.listWords() ?? [])
+  ipcMain.handle(Ch.spellRemoveWord, (_e, word: unknown) =>
+    typeof word === 'string' && word.length >= 1 && word.length <= 100
+      ? (ctx.spellcheck?.removeWord(word) ?? false)
+      : false,
+  )
   ipcMain.handle(Ch.spellDecline, async (_e, code: unknown) => {
     if (typeof code === 'string' && CODE.test(code)) await ctx.spellcheck?.declineDictionary(code)
   })
