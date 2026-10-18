@@ -47,6 +47,7 @@ describe('headerProfile', () => {
     ['---\nprofile:\n---\n', ''],
     ['---\r\nprofile: x\r\n---\r\n', 'x'],
     ['---\nprofile: a#b\n---\n', 'a#b'],
+    ['---\nprofile:        # Absender\n---\n', ''],
   ])('reads the value of %j', (header, value) => {
     expect(headerProfile(header)).toBe(value)
   })
@@ -71,6 +72,11 @@ describe('withProfile', () => {
   it('keeps one space before the comment when the name is longer than the padding', () => {
     const out = withProfile('---\nprofile: a  # c\n---\n', 'longername')
     expect(out).toBe('---\nprofile: longername # c\n---\n')
+  })
+
+  it('fills an empty value that is followed only by a comment and keeps the comment', () => {
+    const out = withProfile('---\nprofile:        # Absender\n---\n', 'ab')
+    expect(out).toMatch(/^profile: ab +# Absender$/m)
   })
 
   it('handles quoted values, no comment, empty values and CRLF', () => {

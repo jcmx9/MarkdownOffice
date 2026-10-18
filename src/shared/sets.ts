@@ -45,6 +45,12 @@ function splitValue(raw: string): { lead: string; value: string; tail: string } 
     if (end > 0) return { lead, value: rest.slice(1, end), tail: rest.slice(end + 1) }
     return { lead, value: rest.slice(1), tail: '' }
   }
+  // Only a comment after the key (`profile:   # …`) is an empty value, as YAML reads it. The
+  // padding then belongs to the comment, so a filled-in value starts one space after the colon.
+  if (rest.startsWith('#')) {
+    const one = lead.slice(0, 1)
+    return { lead: one, value: '', tail: raw.slice(one.length) }
+  }
   const c = rest.search(/[ \t]#/)
   const body = c < 0 ? rest : rest.slice(0, c)
   const value = body.replace(/[ \t]+$/, '')
