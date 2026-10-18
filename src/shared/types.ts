@@ -171,6 +171,17 @@ export interface MdoApi {
   choosePath(kind: ChooseKind, current: string): Promise<string | null>
 }
 
+/** A template set as the "new from template" picker lists it (discovered on disk, never hard-coded). */
+export interface SetInfo {
+  name: string
+  /** bundled: `<sets>/<name>/`; user: the templates folder (a user set shadows a bundled one). */
+  source: 'bundled' | 'user'
+  /** First comment line of the set's header file, or a note that it has none. */
+  hint: string
+  /** The header has a column-0 `profile:` key, so the picker offers the existing profiles. */
+  hasProfile: boolean
+}
+
 export interface SnippetDef {
   name: string
   body: string
