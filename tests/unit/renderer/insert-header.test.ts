@@ -1,7 +1,7 @@
 import { undo } from '@codemirror/commands'
 import { describe, expect, it } from 'vitest'
 import { frontmatterRange } from '../../../src/renderer/editor/frontmatter'
-import { insertHeader } from '../../../src/renderer/editor/insert-header'
+import { headerNote, insertHeader } from '../../../src/renderer/editor/insert-header'
 import { createState, serializeDoc } from '../../../src/renderer/editor/setup'
 
 const TEMPLATE = '---\n# Kommentar\ntitle: ""\nlang: de\n---\n'
@@ -63,5 +63,29 @@ describe('insertHeader', () => {
       },
     })
     expect(undone.doc.toString()).toBe('Text')
+  })
+})
+
+describe('headerNote', () => {
+  it('is the template with one final line break and the cursor inside title ""', () => {
+    const note = headerNote('---\n# Kommentar\ntitle: ""   # Titel\n---\n\n\n')
+    expect(note.text).toBe('---\n# Kommentar\ntitle: ""   # Titel\n---\n')
+    expect(note.anchor).toBe(note.text.indexOf('title: "') + 8)
+  })
+
+  it("normalises CRLF templates to the new note's LF", () => {
+    expect(headerNote(TEMPLATE.replace(/\n/g, '\r\n')).text).toBe(TEMPLATE)
+  })
+
+  it('puts the cursor at the end when the template has no empty title', () => {
+    const note = headerNote('---\ntemplate: brief\n---')
+    expect(note).toEqual({ text: '---\ntemplate: brief\n---\n', anchor: 24 })
+  })
+
+  it('matches what insertHeader makes of an empty note', () => {
+    const { state } = run('')
+    const note = headerNote(TEMPLATE)
+    expect(note.text).toBe(state.doc.toString())
+    expect(note.anchor).toBe(state.selection.main.head)
   })
 })
