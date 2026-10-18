@@ -385,11 +385,18 @@ else
   out="${src_dir}/${base}.pdf"
 fi
 
+# Vorlagen-Sets: <name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
+# ~/Documents/Markdown Office/Vorlagen) vor den mitgelieferten Sets
+# (MDO_SETS_DIR/<name>/<name>.typ); der Ordner ist auch ein Logo-Suchort.
+user_templates="${MDO_TEMPLATES:-${HOME:-}/Documents/Markdown Office/Vorlagen}"
+# Ein relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers (wie unter Windows).
+case "${user_templates}" in /*) ;; *) user_templates="${orig_pwd}/${user_templates}" ;; esac
+
 # Logo nur mit logo: im Frontmatter (ohne Schlüssel oder leer: kein Logo). Der
 # Wert ist eine Datei .svg/.png/.jpg/.jpeg. Absolut (auch über ~ oder $HOME) ->
 # genau diese Datei; relativ -> zuerst im Ordner der Notiz (bzw. MDO_BASE_DIR),
-# dann im Benutzerordner, dann im Pipeline-Ordner. Nichts gefunden -> ohne Logo,
-# nur ein Hinweis, nie ein Fehler.
+# dann im Benutzerordner, dann im Vorlagen-Ordner, dann im Pipeline-Ordner.
+# Nichts gefunden -> ohne Logo, nur ein Hinweis, nie ein Fehler.
 logo=""
 if [[ -n "${fm_logo}" ]]; then
   ext="$(printf '%s' "${fm_logo##*.}" | tr '[:upper:]' '[:lower:]')"
@@ -403,7 +410,7 @@ if [[ -n "${fm_logo}" ]]; then
           case "${note_logo}" in
             /*) [[ -f "${note_logo}" ]] && logo="${note_logo}" ;;
             *)
-              for dir in "${base_dir}" "${HOME:-}" "${pipeline_root}"; do
+              for dir in "${base_dir}" "${HOME:-}" "${user_templates}" "${pipeline_root}"; do
                 if [[ -n "${dir}" && -f "${dir}/${note_logo}" ]]; then
                   logo="${dir}/${note_logo}"
                   break
@@ -426,13 +433,6 @@ font_arg=()
 
 attach=""
 if [[ "${fm_embed}" != "false" ]]; then attach="${src_abs}"; fi
-
-# Vorlagen-Sets: <name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
-# ~/Documents/Markdown Office/Vorlagen) vor den mitgelieferten Sets
-# (MDO_SETS_DIR/<name>/<name>.typ).
-user_templates="${MDO_TEMPLATES:-${HOME:-}/Documents/Markdown Office/Vorlagen}"
-# Ein relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers (wie unter Windows).
-case "${user_templates}" in /*) ;; *) user_templates="${orig_pwd}/${user_templates}" ;; esac
 
 # resolve_template <wert> <basisordner>: gibt den absoluten Pfad der .typ aus.
 # Leer -> memo. Ein Name (a-z, 0-9, _ und -) ist ein Set; ein Wert auf .typ

@@ -234,14 +234,14 @@ A logo appears **only** when `logo:` is set. Without the key, with an empty valu
 
 | Value of `logo:` | Looked up |
 |------------------|-----------|
-| `company.svg`, `logos/company.svg` | 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the home folder (`~`, Windows `%USERPROFILE%`), 3. in the app's pipeline folder – the first existing file wins |
+| `company.svg`, `logos/company.svg` | 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the home folder (`~`, Windows `%USERPROFILE%`), 3. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 4. in the app's pipeline folder – the first existing file wins |
 | `/path/company.svg`, `C:\Logos\company.png` | exactly this file |
 | `~/company.svg`, `$HOME/company.svg`, `%USERPROFILE%\company.svg` | exactly this file, variables expanded |
 
 - Allowed are `.svg`, `.png`, `.jpg` and `.jpeg`.
 - If nothing is found (or the extension is wrong, or it is a web address), the PDF is built **without a logo**, with a note, never with an error.
-- **Your own logo for all documents:** put it in the home folder once (`~/company.svg`) and write `logo: company.svg` in each note. A file of the same name next to the note takes precedence, e.g. for a client logo.
-- The app ships the Markdown Office mark as `logo.svg`: `logo: logo.svg` finds it as long as no `logo.svg` of your own lies next to the note or in the home folder.
+- **Your own logo for all documents:** put it in the templates folder once (`~/Documents/Markdown Office/Vorlagen/company.svg`) and write `logo: company.svg` in each note. A file of the same name next to the note takes precedence, e.g. for a client logo.
+- The app ships the Markdown Office mark as `logo.svg`: `logo: logo.svg` finds it as long as no `logo.svg` of your own lies next to the note, in the home folder or in the templates folder.
 
 ## Markdown in the PDF
 

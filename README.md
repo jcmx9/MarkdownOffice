@@ -234,14 +234,14 @@ Ein Logo erscheint **nur**, wenn `logo:` gesetzt ist. Ohne den Schlüssel, mit l
 
 | Wert von `logo:` | Gesucht wird |
 |------------------|--------------|
-| `firma.svg`, `logos/firma.svg` | 1. im Ordner der Notiz (bzw. `MDO_BASE_DIR`), 2. im Benutzerordner (`~`, Windows `%USERPROFILE%`), 3. im Pipeline-Ordner der App – die erste vorhandene Datei gewinnt |
+| `firma.svg`, `logos/firma.svg` | 1. im Ordner der Notiz (bzw. `MDO_BASE_DIR`), 2. im Benutzerordner (`~`, Windows `%USERPROFILE%`), 3. im Vorlagen-Ordner (`~/Documents/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`), 4. im Pipeline-Ordner der App – die erste vorhandene Datei gewinnt |
 | `/Pfad/firma.svg`, `C:\Logos\firma.png` | genau diese Datei |
 | `~/firma.svg`, `$HOME/firma.svg`, `%USERPROFILE%\firma.svg` | genau diese Datei, Variablen ersetzt |
 
 - Erlaubt sind `.svg`, `.png`, `.jpg` und `.jpeg`.
 - Wird nichts gefunden (oder ist die Endung falsch, oder ist es eine Web-Adresse), entsteht das PDF **ohne Logo**, mit einem Hinweis, nie mit einem Fehler.
-- **Eigenes Logo für alle Dokumente:** einmal im Benutzerordner ablegen (`~/firma.svg`) und in jeder Notiz `logo: firma.svg` schreiben. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
-- Die App bringt das Markdown-Office-Zeichen als `logo.svg` mit: `logo: logo.svg` findet es, solange keine eigene `logo.svg` neben der Notiz oder im Benutzerordner liegt.
+- **Eigenes Logo für alle Dokumente:** einmal im Vorlagen-Ordner ablegen (`~/Documents/Markdown Office/Vorlagen/firma.svg`) und in jeder Notiz `logo: firma.svg` schreiben. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
+- Die App bringt das Markdown-Office-Zeichen als `logo.svg` mit: `logo: logo.svg` findet es, solange keine eigene `logo.svg` neben der Notiz, im Benutzerordner oder im Vorlagen-Ordner liegt.
 
 ## Markdown im PDF
 

@@ -180,16 +180,22 @@ if ($OtherTemp) {
 }
 
 # 3b) Logo nur mit logo:; relativ gesucht im Notizordner, dann im Benutzerordner
-#     (%USERPROFILE%), dann im Pipeline-Ordner. Nicht gefunden: Hinweis, Exit 0.
+#     (%USERPROFILE%), dann im Vorlagen-Ordner (MDO_TEMPLATES), dann im
+#     Pipeline-Ordner. Nicht gefunden: Hinweis, Exit 0.
 $logoDir  = Join-Path $Work 'logo notiz'
 $logoHome = Join-Path $Work 'logo home'
-New-Item -ItemType Directory -Force -Path $logoDir, $logoHome | Out-Null
+$logoVorl = Join-Path $Work 'logo vorlagen'
+New-Item -ItemType Directory -Force -Path $logoDir, $logoHome, $logoVorl | Out-Null
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoHome 'mein-logo.png')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoVorl 'vorlagen-logo.png')
 $logoPdf = Join-Path $outDir 'logo.pdf'
 $savedProfile = $env:USERPROFILE
+$savedTemplates = $env:MDO_TEMPLATES
 $env:USERPROFILE = $logoHome
+$env:MDO_TEMPLATES = $logoVorl
 foreach ($case in @(
     @{ Logo = 'mein-logo.png'; Hint = $false; Name = 'logo: aus dem Benutzerordner' },
+    @{ Logo = 'vorlagen-logo.png'; Hint = $false; Name = 'logo: aus dem Vorlagen-Ordner' },
     @{ Logo = 'fehlt.png';     Hint = $true;  Name = 'logo: nicht gefunden -> ohne Logo' },
     @{ Logo = 'mein-logo.txt'; Hint = $true;  Name = 'logo: falsche Endung -> ohne Logo' })) {
   $noteText = "---`nlogo: $($case.Logo)`n---`n`nText.`n"
@@ -202,6 +208,7 @@ foreach ($case in @(
   else { Ok $case.Name }
 }
 $env:USERPROFILE = $savedProfile
+$env:MDO_TEMPLATES = $savedTemplates
 
 # 3c) Standard: harte Umbrueche; --soft-breaks wird angenommen.
 $r = Invoke-Convert @('--soft-breaks', $note, (Join-Path $outDir 'weich.pdf'))
