@@ -18,6 +18,9 @@ const api: MdoApi = {
   onMenu: (cb) => {
     ipcRenderer.on(Ch.menu, (_e, cmd: MenuCommand) => cb(cmd))
   },
+  onSpellReplace: (cb) => {
+    ipcRenderer.on(Ch.spellReplace, (_e, m) => cb(m))
+  },
   onOpenPaths: (cb) => {
     ipcRenderer.on(Ch.openPaths, (_e, paths: string[]) => cb(paths))
   },

@@ -21,6 +21,7 @@ export const Ch = {
   listSnippets: 'mdo:list-snippets',
   readHeaderTemplate: 'mdo:read-header-template',
   noteMenu: 'mdo:note-menu',
+  spellReplace: 'mdo:spell-replace',
   settingsStatus: 'mdo:settings-get-status',
   updateSettings: 'mdo:settings-update',
   choosePath: 'mdo:settings-choose-path',

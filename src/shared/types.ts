@@ -136,6 +136,8 @@ export interface MdoApi {
   watch(paths: string[]): Promise<void>
   confirmDiscard(names: string[]): Promise<boolean>
   onMenu(cb: (cmd: MenuCommand) => void): void
+  /** A spelling correction chosen in the context menu (x/y: window coordinates of the click). */
+  onSpellReplace(cb: (m: { word: string; replacement: string; x: number; y: number }) => void): void
   onOpenPaths(cb: (paths: string[]) => void): void
   onExternalChange(cb: (change: ExternalChange) => void): void
   /** cb resolves true when the window may close. */

@@ -1,6 +1,8 @@
 import { join } from 'node:path'
-import type { BrowserWindow, Session } from 'electron'
+import { type BrowserWindow, Menu, type Session } from 'electron'
+import { Ch } from '../../shared/ipc'
 import type { Settings } from '../../shared/types'
+import { spellMenuTemplate } from './context-menu'
 import { installBundledDictionaries } from './dictionaries'
 
 /** A URL that never answers: Electron must never fetch a dictionary from Google's CDN. */
@@ -61,6 +63,30 @@ export class SpellcheckController {
       }
     }
     this.applySettings(this.opts.settings())
+    // Per window (its webContents), so no session-level guard is needed. Corrections go through
+    // the renderer as editor transactions, never webContents.replaceMisspelling.
+    this.win.webContents.on('context-menu', (_e, p) => {
+      const template = spellMenuTemplate(
+        {
+          isEditable: p.isEditable,
+          misspelledWord: p.misspelledWord,
+          dictionarySuggestions: p.dictionarySuggestions,
+          x: p.x,
+          y: p.y,
+        },
+        {
+          replace: (word, replacement, x, y) =>
+            this.win.webContents.send(Ch.spellReplace, { word, replacement, x, y }),
+          addWord: (word) =>
+            void this.win.webContents.session.addWordToSpellCheckerDictionary(word),
+        },
+      )
+      // Test hook (e2e): record instead of showing a native menu Playwright cannot click.
+      const g = globalThis as { mdoE2eMenus?: (typeof template)[] }
+      if (process.env.MDO_E2E_MENUS === '1') {
+        g.mdoE2eMenus = [...(g.mdoE2eMenus ?? []), template]
+      } else Menu.buildFromTemplate(template).popup({ window: this.win })
+    })
   }
 
   applySettings(settings: Settings): void {

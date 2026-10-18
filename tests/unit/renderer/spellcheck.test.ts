@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
+import { undo } from '@codemirror/commands'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { createState } from '../../../src/renderer/editor/setup'
 import {
+  replaceWordAt,
   spellcheckCompartment,
   spellcheckExtensions,
 } from '../../../src/renderer/editor/spellcheck'
@@ -34,5 +36,24 @@ describe('spellcheck extensions', () => {
       .map((l) => l.textContent)
     expect(off).toEqual(expect.arrayContaining(['title: Tset', 'konst x']))
     expect(off).not.toContain('Txet')
+  })
+})
+
+describe('replaceWordAt', () => {
+  it('replaces exactly the word at the position', () => {
+    const v = view('Ein Fehlr hier\n')
+    expect(replaceWordAt(v, 6, 'Fehlr', 'Fehler')).toBe(true)
+    expect(v.state.doc.toString()).toBe('Ein Fehler hier\n')
+  })
+  it('refuses when the word at the position changed meanwhile', () => {
+    const v = view('Ein Wort hier\n')
+    expect(replaceWordAt(v, 6, 'Fehlr', 'Fehler')).toBe(false)
+    expect(v.state.doc.toString()).toBe('Ein Wort hier\n')
+  })
+  it('is one undoable step', () => {
+    const v = view('Fehlr\n')
+    replaceWordAt(v, 2, 'Fehlr', 'Fehler')
+    undo(v)
+    expect(v.state.doc.toString()).toBe('Fehlr\n')
   })
 })

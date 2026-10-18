@@ -66,3 +66,26 @@ export function spellcheckExtensions(on: boolean, mode: Mode): Extension {
     active ? noSpellLines : [],
   ]
 }
+
+/**
+ * Applies a spelling correction from the context menu: replaces exactly `word` at `pos` (from
+ * the click coordinates) with `replacement`, as one undoable input transaction that autosave
+ * writes. Refuses when the text there is no longer that word (typed on meanwhile), so a
+ * correction never lands on the wrong word.
+ */
+export function replaceWordAt(
+  view: EditorView,
+  pos: number | null,
+  word: string,
+  replacement: string,
+): boolean {
+  if (pos === null) return false
+  const range = view.state.wordAt(pos)
+  if (!range || view.state.sliceDoc(range.from, range.to) !== word) return false
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert: replacement },
+    selection: { anchor: range.from + replacement.length },
+    userEvent: 'input.spellcheck',
+  })
+  return true
+}

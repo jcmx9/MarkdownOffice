@@ -28,7 +28,7 @@ import {
   viewExtensions,
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
-import { spellcheckCompartment, spellcheckExtensions } from './editor/spellcheck'
+import { replaceWordAt, spellcheckCompartment, spellcheckExtensions } from './editor/spellcheck'
 import { type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
@@ -193,6 +193,10 @@ export class App {
       .querySelector('[data-action=open]')
       ?.addEventListener('click', () => void this.open())
     this.mdo.onMenu((cmd) => void this.command(cmd))
+    this.mdo.onSpellReplace(({ word, replacement, x, y }) => {
+      // x/y are window coordinates of the right click (Electron context-menu params).
+      replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
+    })
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))
     this.mdo.onBeforeClose(() => this.beforeClose())
