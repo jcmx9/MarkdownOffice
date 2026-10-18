@@ -1,5 +1,5 @@
 ---
-client: "Muster GmbH"
+toptitle: "Muster GmbH"
 title: "Kickoff Kaffeerösterei"
 subtitle: "Protokoll"
 author: "Anna"

@@ -18,6 +18,7 @@ const app = new App({
   status: byId('status'),
   infoline: byId('infoline'),
   outline: byId('outline'),
+  outlineGrip: byId('outline-grip'),
   notices: byId('notices'),
 })
 void app.start()

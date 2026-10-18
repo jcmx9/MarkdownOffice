@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, type BrowserWindow, dialog, Menu } from 'electron'
 import { Ch } from '../shared/ipc'
@@ -16,6 +17,7 @@ import { canonicalPath, canonicalPaths, sameFile } from './files'
 import { FullScreenOwner } from './fullscreen'
 import { buildMenuTemplate, PresentKeyGuard } from './menu'
 import { type PipelinePaths, pipelinePaths, runPipeline, typstVersion } from './pipeline'
+import { prepareSpellcheck, SpellcheckController } from './spellcheck/controller'
 import {
   DEFAULT_SESSION,
   defaultSettings,
@@ -25,6 +27,7 @@ import {
   saveJson,
   settingsPatch,
 } from './store'
+import { userTemplatesDir } from './templates'
 import { NoteWatcher } from './watcher'
 import { createMainWindow } from './window'
 
@@ -62,12 +65,15 @@ export class AppContext {
   private openQueue: Promise<void> = Promise.resolve()
   private sessionQueue: Promise<void> = Promise.resolve()
   private settingsQueue: Promise<unknown> = Promise.resolve()
+  /** The current window's spellchecker; replaced with every new window. */
+  spellcheck: SpellcheckController | null = null
   /** `typst --version` of the bundled binary, asked once; a failed answer is asked again. */
   private typst: Promise<string | null> | null = null
 
   constructor(
     private readonly userData: string,
-    documentsDir: string,
+    /** The OS documents folder: default note folder and the user's templates folder live there. */
+    readonly documentsDir: string,
     readonly pipeline: PipelineConfig = {
       paths: pipelinePaths(false, '', process.cwd()),
       version: 'dev',
@@ -114,8 +120,31 @@ export class AppContext {
     throw new Error(`Zugriff verweigert: ${path}`)
   }
 
+  /**
+   * Once at app start, after load() (settings) and before the first window and anything else
+   * that touches the default session: dictionaries in place, download blocked, start languages.
+   */
+  prepareSpellcheck(): Promise<void> {
+    return prepareSpellcheck({
+      userData: this.userData,
+      bundledDir: bundledDictionaries(),
+      platform: process.platform,
+      settings: this.settings,
+    })
+  }
+
   createWindow(): void {
-    const win = createMainWindow()
+    // The controller starts before the renderer loads, so the bundled dictionaries are in
+    // place (and Electron's download is blocked) before the editor could ask for one.
+    const win = createMainWindow((w) => {
+      this.spellcheck = new SpellcheckController(w, {
+        userData: this.userData,
+        bundledDir: bundledDictionaries(),
+        platform: process.platform,
+        settings: () => this.settings,
+      })
+      return this.spellcheck.start()
+    })
     this.window = win
     this.fullScreen = new FullScreenOwner()
     this.rendererReady = false
@@ -236,6 +265,7 @@ export class AppContext {
       openRecent: (p) => void this.openPaths([p]).catch(() => undefined),
       clearRecent: () => void this.setRecent([]).catch(logSessionError),
       presentKey: this.presentKey,
+      spellcheck: this.settings.spellcheck,
     })
     Menu.setApplicationMenu(Menu.buildFromTemplate(template))
   }
@@ -273,6 +303,7 @@ export class AppContext {
     if (patch.view !== undefined) next.view = patch.view
     if (patch.zoom !== undefined) next.zoom = patch.zoom
     if (patch.outline !== undefined) next.outline = patch.outline
+    if (patch.outlineWidth !== undefined) next.outlineWidth = patch.outlineWidth
     this.session = sanitizeSession(next)
     await this.persistSession()
   }
@@ -287,6 +318,10 @@ export class AppContext {
       const next = settingsPatch(this.settings, patch)
       await saveJson(this.file('settings.json'), next)
       this.settings = next
+      // The spellcheck switch takes effect at once, without a restart.
+      this.spellcheck?.applySettings(next)
+      // The menu tick follows the stored value.
+      this.installMenu()
       return next
     })
     this.settingsQueue = run.catch(() => undefined)
@@ -303,7 +338,12 @@ export class AppContext {
   }
 
   exportPdf(note: string): Promise<ExportResult> {
-    return runPipeline(note, { paths: this.pipeline.paths, version: this.pipeline.version })
+    return runPipeline(note, {
+      paths: this.pipeline.paths,
+      version: this.pipeline.version,
+      // One folder for picker and export: the set a note was created from is the set it exports with.
+      templatesDir: userTemplatesDir(process.env, this.documentsDir),
+    })
   }
 
   async confirmDiscard(names: readonly string[]): Promise<boolean> {
@@ -338,6 +378,18 @@ export class AppContext {
   private file(name: string): string {
     return join(this.userData, name)
   }
+}
+
+/**
+ * The bundled .bdic folder: packaged `<resources>/dictionaries`, in dev the fetched assets.
+ * null on macOS (system spellchecker) or when the folder is missing (dev without assets).
+ */
+function bundledDictionaries(): string | null {
+  if (process.platform === 'darwin') return null
+  const dir = app.isPackaged
+    ? join(process.resourcesPath, 'dictionaries')
+    : join(app.getAppPath(), 'build', 'pipeline-assets', 'dictionaries')
+  return existsSync(dir) ? dir : null
 }
 
 /**

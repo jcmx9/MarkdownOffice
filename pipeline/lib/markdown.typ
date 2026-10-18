@@ -12,17 +12,30 @@
 // Zeilen, die zu einem umzäunten Code-Block gehören (inkl. der Zaunzeilen).
 // Ein Zaun ist ``` oder ~~~ (mind. 3, bis 3 Leerzeichen eingerückt); er endet
 // an einem Zaun derselben Art, der mindestens so lang ist.
+// Ebenso maskiert: mehrzeilige HTML-Kommentare (<!-- … --> über mehrere Zeilen),
+// sonst macht etwa die Typografie aus dem schließenden "-->" ein "–>" und der
+// Kommentar verschluckt den Rest. Einzeilige Kommentare bleiben unmaskiert
+// (pagebreaks erkennt sie).
 #let code-mask(lines) = {
   let mask = ()
   let fence = none
+  let comment = false
   for l in lines {
+    if comment {
+      mask.push(true)
+      if l.contains("-->") { comment = false }
+      continue
+    }
     let m = l.match(regex("^ {0,3}(`{3,}|~{3,})"))
     if fence == none {
       if m != none {
         fence = m.captures.at(0)
         mask.push(true)
       } else {
-        mask.push(false)
+        // Ein Kommentar, der am Zeilenende noch offen ist (Inline-Code zählt nicht).
+        let t = l.replace(regex("`[^`]*`"), "")
+        comment = t.contains("<!--") and not t.split("<!--").last().contains("-->")
+        mask.push(comment)
       }
     } else {
       mask.push(true)
@@ -47,6 +60,25 @@
     }
   }
   lines
+}
+
+// Front matter as Typst data for template sets: the whole leading YAML block, parsed with
+// Typst's own yaml() (lists, maps, typed values). Why: the shell parsers in build.sh and
+// convert.ps1 only read flat pipeline keys; set-specific keys (x-…) and structured values
+// such as an address list reach the set this way, identically on every OS.
+// No front matter, an empty block or an unclosed block -> (:).
+#let frontmatter(src) = {
+  let lines = src.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+  if lines.len() == 0 or lines.first().trim(at: end) != "---" { return (:) }
+  for (i, l) in lines.enumerate() {
+    if i > 0 and (l.trim(at: end) == "---" or l.trim(at: end) == "...") {
+      let block = lines.slice(1, i).join("\n")
+      if block.trim() == "" { return (:) }
+      let data = yaml(bytes(block))
+      return if type(data) == dictionary { data } else { (:) }
+    }
+  }
+  (:)
 }
 
 // Pandoc-Definitionslisten (Begriff + Folgezeile ": Definition") in HTML <dl>

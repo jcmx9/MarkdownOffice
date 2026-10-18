@@ -1,4 +1,6 @@
+import { yamlLanguage } from '@codemirror/lang-yaml'
 import type { Text } from '@codemirror/state'
+import { parseMixed } from '@lezer/common'
 import { tags as t } from '@lezer/highlight'
 import type { BlockContext, Element, Line, MarkdownConfig } from '@lezer/markdown'
 
@@ -11,6 +13,15 @@ export const Frontmatter: MarkdownConfig = {
     { name: 'Frontmatter', block: true, style: t.meta },
     { name: 'FrontmatterMark', style: t.processingInstruction },
   ],
+  // The lines between the marks are parsed as YAML (keys, strings, comments get colours).
+  wrap: parseMixed((node) => {
+    if (node.name !== 'Frontmatter') return null
+    const open = node.node.firstChild
+    const close = open?.nextSibling
+    const from = open ? open.to + 1 : node.from
+    const to = close ? close.from - 1 : node.to
+    return to > from ? { parser: yamlLanguage.parser, overlay: [{ from, to }] } : null
+  }),
   parseBlock: [
     {
       name: 'Frontmatter',

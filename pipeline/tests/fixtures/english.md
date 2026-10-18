@@ -1,5 +1,5 @@
 ---
-client: Example Ltd
+toptitle: Example Ltd
 lang: en
 date: 2026-10-17
 logo: logo.png

@@ -1,3 +1,4 @@
+import { posix, win32 } from 'node:path'
 import type { MenuItemConstructorOptions } from 'electron'
 import type { MenuCommand } from '../shared/types'
 
@@ -8,6 +9,8 @@ export interface MenuDeps {
   command(c: MenuCommand): void
   openRecent(path: string): void
   clearRecent(): void
+  /** Settings.spellcheck: the tick of the Rechtschreibprüfung checkbox. */
+  spellcheck: boolean
   /** Clock for the held-shortcut guard (tests); defaults to Date.now. */
   now?: () => number
   /** Auto-repeat guard fed by the window's before-input-event; a fresh one otherwise. */
@@ -123,10 +126,16 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     ],
   }
 
+  const labels = recentLabels(d.recent, d.platform)
   const recent: MenuItemConstructorOptions[] = d.recent.length
     ? [
         ...d.recent.map(
-          (p): MenuItemConstructorOptions => ({ label: p, click: () => d.openRecent(p) }),
+          (p, i): MenuItemConstructorOptions => ({
+            label: labels[i] ?? p,
+            // Hover text exists only in macOS menus (Electron: darwin-only `toolTip`).
+            toolTip: p,
+            click: () => d.openRecent(p),
+          }),
         ),
         sep,
         { label: 'Liste leeren', click: () => d.clearRecent() },
@@ -137,6 +146,10 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     label: 'Datei',
     submenu: [
       item('new', 'Neu', 'CmdOrCtrl+N'),
+      item('new-from-template', 'Neu aus Vorlage …', 'CmdOrCtrl+Shift+N'),
+      // No accelerator: a rare action, and the renderer refuses it (toast) for a note without
+      // `template:` or whose set ships no example profile.
+      item('create-profile', 'Profil anlegen …'),
       item('open', 'Öffnen …', 'CmdOrCtrl+O'),
       { label: 'Zuletzt geöffnet', submenu: recent },
       sep,
@@ -160,13 +173,19 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       { role: 'copy', label: 'Kopieren' },
       { role: 'paste', label: 'Einfügen' },
       item('select-all', 'Alles auswählen', 'CmdOrCtrl+A'),
+      sep,
+      {
+        ...item('toggle-spellcheck', 'Rechtschreibprüfung'),
+        type: 'checkbox',
+        checked: d.spellcheck,
+      },
     ],
   }
 
   const insert: MenuItemConstructorOptions = {
     label: 'Einfügen',
     submenu: [
-      item('insert-header', 'YAML-Header (memo)'),
+      item('insert-header', 'YAML-Header …'),
       item('insert-pagebreak', 'Seitenumbruch', 'CmdOrCtrl+Enter'),
     ],
   }
@@ -236,4 +255,33 @@ export function noteMenuTemplate(command: (c: MenuCommand) => void): MenuItemCon
     { type: 'separator' },
     item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),
   ]
+}
+
+/**
+ * Menu labels for the recent list: the file name only, because full paths make the submenu
+ * unreadable; the full path is the hover text (macOS). Windows and Linux menus have no hover,
+ * so names that occur more than once get their folder appended („Termin.md — Kunden“), and the
+ * whole folder path when even the folder names are the same. `platform` picks the path rules,
+ * so the labels are the same whatever OS the tests run on.
+ */
+export function recentLabels(paths: readonly string[], platform: NodeJS.Platform): string[] {
+  const p = platform === 'win32' ? win32 : posix
+  // Windows and macOS file systems usually ignore case, so „termin.md“ and „Termin.md“ collide.
+  const key = (s: string) => (platform === 'linux' ? s : s.toLowerCase())
+  const count = (xs: readonly string[]) => {
+    const m = new Map<string, number>()
+    for (const x of xs) m.set(key(x), (m.get(key(x)) ?? 0) + 1)
+    return m
+  }
+  const names = paths.map((x) => p.basename(x))
+  const nameCount = count(names)
+  const folders = paths.map((x) => p.basename(p.dirname(x)))
+  const folderCount = count(names.map((n, i) => `${n}/${folders[i]}`))
+  return paths.map((x, i) => {
+    const name = names[i] ?? x
+    if ((nameCount.get(key(name)) ?? 0) < 2) return name
+    const both = `${name}/${folders[i]}`
+    const folder = (folderCount.get(key(both)) ?? 0) < 2 ? folders[i] : p.dirname(x)
+    return `${name} — ${folder}`
+  })
 }

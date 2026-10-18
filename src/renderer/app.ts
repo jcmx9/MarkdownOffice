@@ -3,6 +3,7 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../shared/sets'
 import type {
   ExportResult,
   ExternalChange,
@@ -13,14 +14,17 @@ import type {
   View,
 } from '../shared/types'
 import { AutosaveScheduler } from './editor/autosave'
+import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
-import { insertHeader } from './editor/insert-header'
+import { headerNote, insertHeader } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
+import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { foldAllSections } from './editor/sections'
 import {
   createState,
+  type DocKind,
   freezeSpec,
   isFrozen,
   serializeDoc,
@@ -28,15 +32,27 @@ import {
   viewExtensions,
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
-import { type Tab, TabStore } from './tabs/tab-store'
+import {
+  forgetDismissedNotices,
+  offerDictionaryNotice,
+  recheckSpelling,
+  replaceWordAt,
+  SpellLanguageTracker,
+  spellAnswerCurrent,
+  spellcheckCompartment,
+  spellcheckExtensions,
+} from './editor/spellcheck'
+import { isMarkdownTab, type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
 import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
+import { applyOutlineWidth, attachOutlineResize } from './ui/outline-resize'
 import { askText } from './ui/prompt'
 import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
+import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
 import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
@@ -47,6 +63,11 @@ const UNREADABLE_ERROR = 'Externe Fassung nicht lesbar – bitte im Hinweis ents
 const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheiden'
 
 const MAX_SAVE_ROUNDS = 3
+
+const HEADER_EXISTS = 'Die Notiz hat schon einen YAML-Header.'
+const MARKDOWN_ONLY = 'Nur in Markdown-Notizen verfügbar.'
+
+const docKind = (path: string): DocKind => (isMarkdownTab({ path }) ? 'markdown' : 'yaml')
 
 /** One conflict banner per tab: a tab keeps its banner when its path changes (case-only rename). */
 const bannerKey = (tabId: number): string => `tab:${tabId}`
@@ -60,6 +81,7 @@ export interface AppRoot {
   status: HTMLElement
   infoline: HTMLElement
   outline: HTMLElement
+  outlineGrip: HTMLElement
   notices: HTMLElement
 }
 
@@ -75,12 +97,20 @@ export class App {
   private readonly outline: OutlineSync
   /** Outline sidebar on/off per mode (persisted in the session). */
   private outlineOn = { edit: false, present: false }
+  /** Dragged outline width in em (Edit mode, persisted); null = default. */
+  private outlineWidth: number | null = null
+  /** Width dragged during the current Present; never persisted, reset on every entry. */
+  private presentOutlineWidth: number | null = null
   private view: View = 'preview'
   private mode: Mode = 'edit'
   private zoom = { edit: 1, present: 1 }
   private presentFactor = 1.6
   private settings: Settings | null = null
   private settingsOpen = false
+  /** The template picker is open or loading its list (Mod+Shift+N twice opens it once). */
+  private pickerOpen = false
+  /** Spell checking switch (Settings.spellcheck); applied only in Edit mode. */
+  private spellcheckOn = true
   /**
    * Serializes fullscreen requests so fast toggles reach main in order. Main owns the
    * fullscreen decision: it only leaves a fullscreen the app started (a user's own
@@ -96,6 +126,11 @@ export class App {
     (on) => (on ? this.enterPresent() : this.exitPresent()),
   )
   private shownId: number | null = null
+  /** Last lang: reported to main, so unchanged values cause no IPC. */
+  private readonly spellLang = new SpellLanguageTracker()
+  private spellLangTimer: ReturnType<typeof setTimeout> | null = null
+  /** Dictionaries whose „fehlt“ notice was already shown this session. */
+  private readonly dictNoticed = new Set<string>()
   private readonly saveErrors = new Map<number, string>()
   /** Tabs held after an external change: no saving until the user answers the banner. */
   private readonly conflicts = new Set<number>()
@@ -130,6 +165,9 @@ export class App {
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           this.refresh()
+          // lang: may have been edited; report it once typing pauses.
+          if (this.spellLangTimer) clearTimeout(this.spellLangTimer)
+          this.spellLangTimer = setTimeout(() => void this.reportSpellLanguage(false), 500)
         }
       },
     })
@@ -144,6 +182,9 @@ export class App {
         if (mode !== this.mode) void this.presentToggle.toggle()
       },
       setView: (view) => this.setView(view),
+      // Through command(): the same guards as the menu (closing window, open dialog).
+      toggleOutline: () => void this.command('toggle-outline'),
+      toggleYaml: () => void this.command('toggle-header'),
     })
     this.notices = new Notices(root.notices)
     this.infoLine = new InfoLine(root.infoline, {
@@ -161,6 +202,20 @@ export class App {
       }),
       () => (this.shownId === null ? null : this.editor.state),
     )
+    attachOutlineResize(root.outlineGrip, root.outline, {
+      commit: (em) => {
+        root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em ?? 18)))
+        // A width dragged in Present lasts only until Present ends.
+        if (this.mode === 'present') {
+          this.presentOutlineWidth = em
+          return
+        }
+        this.outlineWidth = em
+        this.mdo
+          .saveSession({ outlineWidth: em })
+          .catch((e: unknown) => console.error('saveSession(outlineWidth) failed', e))
+      },
+    })
     this.mdo.onFullScreenLeft(() => {
       if (this.mode === 'present') void this.exitPresent(false)
     })
@@ -172,11 +227,21 @@ export class App {
     })
     root.empty
       .querySelector('[data-action=new]')
-      ?.addEventListener('click', () => void this.newNote())
+      ?.addEventListener('click', () => void this.newDefaultNote())
     root.empty
       .querySelector('[data-action=open]')
       ?.addEventListener('click', () => void this.open())
     this.mdo.onMenu((cmd) => void this.command(cmd))
+    this.mdo.onSpellReplace(({ word, replacement, x, y }) => {
+      // x/y are window coordinates of the right click (Electron context-menu params).
+      replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
+    })
+    this.mdo.onSpellRecheck(() => {
+      // A shown profile (YAML) stays unchecked; a later switch to a note reconfigures anyway.
+      const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
+      const on = this.spellcheckOn && (!shown || isMarkdownTab(shown))
+      recheckSpelling(this.editor, on, this.mode)
+    })
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))
     this.mdo.onBeforeClose(() => this.beforeClose())
@@ -198,7 +263,9 @@ export class App {
     this.view = startup.session.view
     this.zoom = { ...startup.session.zoom }
     this.outlineOn = { ...startup.session.outline }
+    this.outlineWidth = startup.session.outlineWidth
     this.settings = startup.settings
+    this.spellcheckOn = startup.settings.spellcheck
     this.presentFactor = startup.settings.presentFontFactor
     this.applyZoom()
     for (const t of startup.session.tabs) await this.openPath(t.path, t.headerHidden)
@@ -220,14 +287,22 @@ export class App {
     if (!allowedWithDialog(cmd, document.querySelector('dialog[open]') !== null)) return
     if (
       this.mode === 'present' &&
-      (cmd === 'export' || cmd === 'toggle-header' || cmd === 'insert-header' || cmd === 'settings')
+      (cmd === 'export' ||
+        cmd === 'toggle-header' ||
+        cmd === 'insert-header' ||
+        cmd === 'create-profile' ||
+        cmd === 'settings')
     ) {
       this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
       return
     }
     switch (cmd) {
       case 'new':
-        return this.newNote()
+        return this.newDefaultNote()
+      case 'new-from-template':
+        return this.newFromTemplate()
+      case 'create-profile':
+        return this.createProfile()
       case 'open':
         return this.open()
       case 'rename':
@@ -254,6 +329,8 @@ export class App {
       case 'select-all':
         return this.editCommand('selectAll', selectAll)
       case 'insert-pagebreak':
+        // A page break is Markdown; a profile tab (YAML) ignores the shortcut like its keymap does.
+        if (this.store.active && !isMarkdownTab(this.store.active)) return
         return this.editCommand('insertPageBreak', insertPageBreak)
       case 'insert-header':
         return this.insertHeaderTemplate()
@@ -264,6 +341,8 @@ export class App {
         return this.toggleHeader()
       case 'toggle-outline':
         return this.toggleOutline()
+      case 'toggle-spellcheck':
+        return this.toggleSpellcheck()
       case 'fold':
         foldCode(this.editor)
         this.editor.focus()
@@ -295,13 +374,18 @@ export class App {
 
   private async editSettings(): Promise<void> {
     const current = this.settings
-    if (!current || this.settingsOpen || document.querySelector('dialog[open]')) return
+    if (!current || this.settingsOpen || this.pickerOpen || document.querySelector('dialog[open]'))
+      return
     this.settingsOpen = true
     try {
       const patch = await openSettings({
         settings: current,
         status: withTimeout(this.mdo.getSettingsStatus(), STATUS_TIMEOUT_MS),
         choose: (kind, path) => this.mdo.choosePath(kind, path),
+        platform: isMac ? 'darwin' : 'other',
+        checkDictionaries: () => this.mdo.checkDictionaryUpdates(),
+        words: () => this.mdo.spellWords(),
+        removeWord: (w) => this.mdo.removeSpellWord(w),
       })
       if (!patch || Object.keys(patch).length === 0) return
       const next = await this.mdo.updateSettings(patch)
@@ -312,6 +396,12 @@ export class App {
           'Nicht alle Einstellungen übernommen',
           `${dropped.join('\n')}\nFür diese Felder gilt weiter der bisherige Wert.`,
         )
+      if (next.spellcheck !== this.spellcheckOn) {
+        // A settings change (not the menu) must reach the editor too.
+        this.spellcheckOn = next.spellcheck
+        this.reconfigureAll()
+        this.spellSwitched()
+      }
       if (next.presentFontFactor !== this.presentFactor) {
         this.presentFactor = next.presentFontFactor
         this.applyZoom()
@@ -400,19 +490,179 @@ export class App {
     this.show()
   }
 
-  private async newNote(): Promise<void> {
+  /**
+   * A new tab. With a header, that header is the tab's initial and clean text (nothing is
+   * written until the user types, so an untouched new note leaves no file) and stays visible
+   * whatever the header default says, with the cursor inside `title: ""` like the header
+   * insert. Present collapses every header, so there createState's cursor after it stays.
+   */
+  private async newNote(header?: string): Promise<void> {
     if (this.closing) return
     const path = await this.mdo.newNotePath()
-    const hideHeader = this.headerDefaultHidden()
+    // The window may have started closing during the round-trip: no tab, and give the reserved
+    // name back so it does not stay blocked.
+    if (this.closing) {
+      void this.mdo.releasePath(path)
+      return
+    }
+    const hideHeader = header === undefined && this.headerDefaultHidden()
+    const note = header === undefined ? null : headerNote(header)
+    let state = createState(
+      note?.text ?? '',
+      '\n',
+      this.effectiveView(path),
+      hideHeader,
+      this.mode,
+      this.spellcheckOn,
+    )
+    // Selection only: the document stays equal to the saved one, so the tab is not dirty.
+    if (note && this.mode !== 'present')
+      state = state.update({ selection: { anchor: note.anchor } }).state
     this.store.add({
       path,
-      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode),
+      state,
       bom: false,
       eol: '\n',
       onDisk: false,
       headerHidden: hideHeader,
     })
     this.show()
+  }
+
+  /**
+   * Mod+N / „Neu“ / the empty state's button: a note of the default set, started with its
+   * header. Without that set an empty note opens anyway, so „Neu“ never does nothing.
+   */
+  private async newDefaultNote(): Promise<void> {
+    if (this.closing) return
+    let header: string | null = null
+    try {
+      header = await this.mdo.readSetHeader(DEFAULT_SET)
+    } catch (e) {
+      console.warn('readSetHeader(default) failed', e)
+    }
+    if (this.closing) return
+    if (header === null) this.notices.toast(`Vorlage ${DEFAULT_SET} nicht gefunden.`)
+    await this.newNote(header ?? undefined)
+  }
+
+  /** „Neu aus Vorlage …“: every set except the default, then a new note with its header. */
+  private async newFromTemplate(): Promise<void> {
+    const header = await this.chosenHeader(
+      'Neu aus Vorlage',
+      'Erstellen',
+      false,
+      () => !this.closing,
+    )
+    if (header !== null) await this.newNote(header)
+  }
+
+  /**
+   * Datei → „Profil anlegen …“: for the shown note's `template:` set, main copies the set's
+   * example profile to `Vorlagen/<set>/profiles/<name>.yaml`; then the note gets
+   * `profile: <name>` (one undo step) and the new YAML opens as a tab for editing. Refused with a
+   * toast when the note names no set, a `.typ` path instead of a set, or main refuses (unknown
+   * set, no example profile, name taken: nothing is ever overwritten).
+   */
+  private async createProfile(): Promise<void> {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab || this.pickerOpen || this.settingsOpen) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
+    const set = frontmatterFields(this.editor.state.doc).template ?? ''
+    if (set === '') {
+      this.notices.toast('Die Notiz nennt kein Vorlagen-Set (template:).')
+      return
+    }
+    if (!SET_NAME_RE.test(set)) {
+      this.notices.toast(`Profile gibt es nur für Vorlagen-Sets, nicht für „${set}“.`)
+      return
+    }
+    const name = await askText(
+      'Profil anlegen',
+      `Name des neuen ${set}-Profils (a–z, 0–9, - _)`,
+      '',
+    )
+    if (!name || this.closing) return
+    let res: Awaited<ReturnType<typeof this.mdo.createProfile>>
+    try {
+      res = await this.mdo.createProfile(set, name)
+    } catch (e) {
+      res = { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+    if (!res.ok) {
+      this.notices.toast(res.error)
+      return
+    }
+    // The note may no longer be shown (tab switched while main copied): change its stored state.
+    const live = this.store.get(tab.id)
+    if (live && !this.closing) {
+      const shown = live.id === this.shownId
+      const spec = setNoteProfile(shown ? this.editor.state : live.state, name)
+      if (spec && shown) this.editor.dispatch(spec)
+      else if (spec) {
+        this.store.updateState(live.id, live.state.update(spec).state)
+        this.autosave.touch()
+      }
+    }
+    await this.openPaths([res.path])
+  }
+
+  /**
+   * Asks for a set (and its profile) and returns that set's header with the chosen profile,
+   * or null when cancelled or no longer wanted: `still` is checked after every await, since
+   * the window may start closing or the tab change while main answers.
+   */
+  private async chosenHeader(
+    title: string,
+    confirm: string,
+    withDefault: boolean,
+    still: () => boolean,
+  ): Promise<string | null> {
+    const choice = await this.chooseTemplate(title, confirm, withDefault, still)
+    if (!choice || !still()) return null
+    let header: string | null = null
+    try {
+      header = await this.mdo.readSetHeader(choice.name)
+    } catch (e) {
+      console.warn('readSetHeader failed', e)
+    }
+    if (!still()) return null
+    if (header === null) {
+      this.notices.toast(`Vorlage ${choice.name} nicht gefunden.`)
+      return null
+    }
+    return choice.profile === null ? header : withProfile(header, choice.profile)
+  }
+
+  private async chooseTemplate(
+    title: string,
+    confirm: string,
+    withDefault: boolean,
+    still: () => boolean,
+  ): Promise<TemplateChoice | null> {
+    if (this.pickerOpen || this.settingsOpen || document.querySelector('dialog[open]')) return null
+    this.pickerOpen = true
+    try {
+      const sets = await this.mdo.listSets()
+      if (!still() || document.querySelector('dialog[open]')) return null
+      return await pickTemplate({
+        title,
+        confirm,
+        sets: pickerSets(sets, withDefault),
+        selected: withDefault ? DEFAULT_SET : undefined,
+        header: (name) => this.mdo.readSetHeader(name),
+        profiles: (name) => this.mdo.listProfiles(name),
+      })
+    } catch (e) {
+      this.notices.panel('Vorlagen nicht lesbar', e instanceof Error ? e.message : String(e))
+      return null
+    } finally {
+      this.pickerOpen = false
+      if (this.shownId !== null) this.editor.focus()
+    }
   }
 
   private async open(): Promise<void> {
@@ -438,7 +688,15 @@ export class App {
     }
     const tab = this.store.add({
       path,
-      state: createState(res.text, res.eol, this.effectiveView(), hideHeader, this.mode),
+      state: createState(
+        res.text,
+        res.eol,
+        this.effectiveView(path),
+        hideHeader,
+        this.mode,
+        this.spellcheckOn && isMarkdownTab({ path }),
+        docKind(path),
+      ),
       bom: res.bom,
       eol: res.eol,
       onDisk: true,
@@ -448,8 +706,12 @@ export class App {
     return true
   }
 
-  /** Present always shows Preview; the per-tab Code/Preview choice is kept in this.view. */
-  private effectiveView(): View {
+  /**
+   * Present always shows Preview; the Code/Preview choice is kept in this.view. A YAML profile
+   * is always shown as code: the rendered preview is for Markdown only.
+   */
+  private effectiveView(path: string): View {
+    if (!isMarkdownTab({ path })) return 'code'
     return this.mode === 'present' ? 'preview' : this.view
   }
 
@@ -475,18 +737,50 @@ export class App {
     await this.presentToggle.set(false)
   }
 
+  /** Menu checkbox: persisted in the settings; main switches Electron's checker and the menu tick. */
+  private async toggleSpellcheck(): Promise<void> {
+    const next = await this.mdo.updateSettings({ spellcheck: !this.spellcheckOn })
+    this.settings = next
+    this.spellcheckOn = next.spellcheck
+    this.reconfigureAll()
+    this.spellSwitched()
+    this.editor.focus()
+  }
+
+  /**
+   * After the spellcheck switch changed: off removes a pending „Wörterbuch fehlt“ notice; on
+   * asks again (forced), since a notice suppressed while checking was off was never shown.
+   */
+  private spellSwitched(): void {
+    if (this.spellcheckOn) void this.reportSpellLanguage(true)
+    else this.dismissDictNotices()
+  }
+
+  /** App-initiated removal of the dictionary banners; their languages may be offered again later. */
+  private dismissDictNotices(): void {
+    forgetDismissedNotices(this.dictNoticed, this.notices.dismissPrefix('dict-'))
+  }
+
   /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
   private reconfigureAll(): void {
-    const effects = [
-      viewCompartment.reconfigure(viewExtensions(this.effectiveView())),
+    // Per tab: a YAML profile keeps the Code view and never gets spellchecked.
+    const effects = (tab: Tab) => [
+      viewCompartment.reconfigure(viewExtensions(this.effectiveView(tab.path))),
       modeCompartment.reconfigure(modeExtensions(this.mode)),
+      spellcheckCompartment.reconfigure(
+        spellcheckExtensions(this.spellcheckOn && isMarkdownTab(tab), this.mode),
+      ),
     ]
-    const collapses = (state: EditorState) =>
-      this.mode === 'present' || (this.effectiveView() === 'preview' && state.field(headerHidden))
+    const collapses = (tab: Tab, state: EditorState) =>
+      this.mode === 'present' ||
+      (this.effectiveView(tab.path) === 'preview' && state.field(headerHidden))
     for (const tab of this.store.all) {
       const shown = tab.id === this.shownId
       const state = shown ? this.editor.state : tab.state
-      const spec: TransactionSpec = { ...(collapses(state) ? moveOutOfHeader(state) : {}), effects }
+      const spec: TransactionSpec = {
+        ...(collapses(tab, state) ? moveOutOfHeader(state) : {}),
+        effects: effects(tab),
+      }
       if (shown) this.editor.dispatch(spec)
       else this.store.updateState(tab.id, state.update(spec).state)
     }
@@ -495,7 +789,10 @@ export class App {
   private async enterPresent(): Promise<void> {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
+    this.presentOutlineWidth = null
     this.reconfigureAll()
+    // Clients watch Present: no dictionary notice may stay on the shared screen.
+    this.dismissDictNotices()
     document.body.classList.add('mdo-mode-present')
     this.root.tabbar.hidden = true
     this.root.status.hidden = true
@@ -520,6 +817,8 @@ export class App {
     if (this.mode !== 'present') return
     this.mode = 'edit'
     this.reconfigureAll()
+    // Notices were held back during Present: ask again for the note now shown.
+    void this.reportSpellLanguage(true)
     document.body.classList.remove('mdo-mode-present')
     this.root.tabbar.hidden = false
     this.root.status.hidden = false
@@ -540,21 +839,32 @@ export class App {
     })
   }
 
-  /** Interim until template sets reach the editor: the memo set's header at the top. */
+  /** Einfügen → „YAML-Header …“: a set's header (default set first) at the top of the note. */
   private async insertHeaderTemplate(): Promise<void> {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
-    const template = await this.mdo.readHeaderTemplate()
-    // The user may have switched tabs or started closing while main read the file.
-    if (this.closing || this.shownId !== tab.id) return
-    if (template === null) {
-      this.notices.toast('Vorlage memo.header.md nicht gefunden.')
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
       return
     }
+    // Refused before the picker opens: choosing a set for nothing would only annoy. Checked
+    // again by insertHeader below, the note may change while the picker is open.
+    if (frontmatterRange(this.editor.state.doc)) {
+      this.notices.toast(HEADER_EXISTS)
+      return
+    }
+    // The user may switch tabs or start closing while the picker is open or main reads a file.
+    const template = await this.chosenHeader(
+      'YAML-Header einfügen',
+      'Einfügen',
+      true,
+      () => !this.closing && this.shownId === tab.id,
+    )
+    if (template === null) return
     const state = this.editor.state
     const res = insertHeader(state, template)
     if ('refused' in res) {
-      this.notices.toast('Die Notiz hat schon einen YAML-Header.')
+      this.notices.toast(HEADER_EXISTS)
       return
     }
     // The cursor lands in the header: a collapsed header is shown, never hiding the cursor.
@@ -570,6 +880,10 @@ export class App {
   private toggleHeader(): void {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
     if (this.view !== 'preview') {
       this.notices.toast('Der YAML-Header lässt sich nur in der Preview ausblenden.')
       return
@@ -578,6 +892,7 @@ export class App {
     this.editor.dispatch(headerToggleSpec(this.editor.state, hide))
     tab.headerHidden = hide
     this.syncMain()
+    this.refresh()
     this.editor.focus()
   }
 
@@ -588,12 +903,21 @@ export class App {
     this.mdo
       .saveSession({ outline: { ...this.outlineOn } })
       .catch((e: unknown) => console.error('saveSession(outline) failed', e))
+    this.refresh()
     this.editor.focus()
   }
 
-  /** Shown when enabled for the current mode and a tab is shown. */
+  /**
+   * Shown when enabled for the current mode and a tab is shown. The width can be dragged in
+   * Edit mode only; Present always switches to the default width (the grip is hidden there).
+   */
   private applyOutline(): void {
-    this.outline.setVisible(this.outlineOn[this.mode] && this.shownId !== null)
+    const visible = this.outlineOn[this.mode] && this.shownId !== null
+    this.outline.setVisible(visible)
+    this.root.outlineGrip.hidden = !visible
+    const width = this.mode === 'edit' ? this.outlineWidth : this.presentOutlineWidth
+    applyOutlineWidth(this.root.outline, width)
+    this.root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(width ?? 18)))
     this.outline.refresh()
   }
 
@@ -682,6 +1006,11 @@ export class App {
   private async exportPdf(): Promise<void> {
     const tab = this.store.active
     if (!tab || this.status.exporting) return
+    // The pipeline converts Markdown; a profile tab would only fail there with a cryptic error.
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast('Nur Markdown-Notizen lassen sich exportieren.')
+      return
+    }
     this.status.setExporting(true)
     try {
       if (!(await this.saveTab(tab, true))) {
@@ -826,8 +1155,14 @@ export class App {
 
   // ── external changes ────────────────────────────────────────────────────
 
-  /** Dirty, or clean but its content is no longer on disk. */
+  /**
+   * Dirty, or clean but its content is no longer on disk. A note that never reached the disk and
+   * is empty again is not worth a file: a Mod+N note starts with the memo header as its clean
+   * text, so deleting that header must not leave an empty file behind (an explicit save still
+   * creates it, see writeTab's `force`).
+   */
   private unsaved(tab: Tab): boolean {
+    if (!tab.onDisk && tab.state.doc.length === 0) return this.unwritten.has(tab.id)
     return this.store.isDirty(tab) || this.unwritten.has(tab.id)
   }
 
@@ -953,7 +1288,15 @@ export class App {
 
   private reload(tab: Tab, note: NoteFile): void {
     const state = this.closingState(
-      createState(note.text, note.eol, this.effectiveView(), tab.headerHidden, this.mode),
+      createState(
+        note.text,
+        note.eol,
+        this.effectiveView(tab.path),
+        tab.headerHidden,
+        this.mode,
+        this.spellcheckOn && isMarkdownTab(tab),
+        docKind(tab.path),
+      ),
     )
     const wasOnDisk = tab.onDisk
     tab.bom = note.bom
@@ -988,9 +1331,59 @@ export class App {
       this.outline.invalidate()
     }
     this.shownId = tab?.id ?? null
+    void this.reportSpellLanguage(false)
     this.applyOutline()
     this.refresh()
     this.syncMain()
+  }
+
+  /**
+   * Tells main the shown note's lang: (only when it changed, or when `force`) and offers a
+   * missing dictionary once per language and session.
+   */
+  private async reportSpellLanguage(force: boolean): Promise<void> {
+    if (this.shownId === null) return
+    const lang = frontmatterFields(this.editor.state.doc).lang ?? ''
+    if (force) this.spellLang.reset()
+    if (!this.spellLang.next(lang)) return
+    const asked = { id: this.shownId, lang }
+    let r: Awaited<ReturnType<typeof this.mdo.setSpellLanguage>>
+    try {
+      r = await this.mdo.setSpellLanguage(lang)
+    } catch (err) {
+      // The value was stored by the tracker: forget it so the next report retries.
+      console.warn('spellcheck: language could not be set', err)
+      this.spellLang.reset()
+      return
+    }
+    // A quick tab switch or lang: edit made this answer stale; the newer request brings its own.
+    const now = {
+      id: this.shownId,
+      lang: frontmatterFields(this.editor.state.doc).lang ?? '',
+    }
+    if (!spellAnswerCurrent(asked, now)) return
+    // Never in Present (shared screen) or with checking off; exitPresent and switching on
+    // report again (forced), so the notice is not lost. Checked after the await: the mode may
+    // have changed while main answered.
+    if (!offerDictionaryNotice(this.spellcheckOn, this.mode)) return
+    if (!r?.missing || this.dictNoticed.has(r.missing.code)) return
+    const { code, name } = r.missing
+    this.dictNoticed.add(code)
+    this.notices.banner(
+      `Wörterbuch für ${name} fehlt – laden?`,
+      [
+        {
+          label: 'Laden',
+          run: () =>
+            void this.mdo.downloadDictionary(code).then((ok) => {
+              if (ok) void this.reportSpellLanguage(true)
+              else this.notices.toast('Wörterbuch konnte nicht geladen werden')
+            }),
+        },
+        { label: 'Nicht mehr fragen', run: () => void this.mdo.declineDictionary(code) },
+      ],
+      `dict-${code}`,
+    )
   }
 
   private refresh(): void {
@@ -1003,7 +1396,13 @@ export class App {
     else if (error) state = 'error'
     else if (tab && this.store.isDirty(tab)) state = 'dirty'
     else if (tab && !tab.onDisk) state = 'new'
-    this.status.render(tab ? fileName(tab.path) : null, state, error, this.view)
+    const doc = this.shownId === null ? null : this.editor.state
+    const md = tab === null || isMarkdownTab(tab)
+    this.status.render(tab ? fileName(tab.path) : null, state, error, md ? this.view : 'code', {
+      outline: this.outlineOn.edit,
+      hasHeader: md && doc !== null && frontmatterRange(doc.doc) !== null,
+      yamlOn: doc !== null && !doc.field(headerHidden),
+    })
     document.title = tab
       ? `${fileName(tab.path)}${state === 'dirty' ? ' •' : ''} – Markdown Office`
       : 'Markdown Office'

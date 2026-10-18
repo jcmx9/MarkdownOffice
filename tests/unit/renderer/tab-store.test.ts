@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
-import { TabStore } from '../../../src/renderer/tabs/tab-store'
+import { isMarkdownTab, TabStore } from '../../../src/renderer/tabs/tab-store'
 
 const add = (store: TabStore, path: string, text = '', onDisk = true) =>
   store.add({ path, state: EditorState.create({ doc: text }), bom: false, eol: '\n', onDisk })
@@ -85,4 +85,14 @@ describe('TabStore', () => {
     expect(s.findByPath('/b.md')).toBe(t)
     expect(s.findByPath('/a.md')).toBeUndefined()
   })
+})
+
+describe('isMarkdownTab', () => {
+  it.each([
+    ['/n/a.md', true],
+    ['/n/a.markdown', true],
+    ['/n/a.txt', true],
+    ['/v/din5008a/profiles/kanzlei.yaml', false],
+    ['C:\\v\\k.YML', false],
+  ])('%s → %s', (path, md) => expect(isMarkdownTab({ path })).toBe(md))
 })

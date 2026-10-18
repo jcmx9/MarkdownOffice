@@ -94,14 +94,68 @@
       "version": "0.2.2",
       "sha256": "e87b54e8a8b269a23996204191b209ba677b096ac20c893c639a36dd5f98cc86",
       "license": "LICENSE"
+    },
+    {
+      "name": "cades",
+      "version": "0.3.1",
+      "sha256": "b6dbb30248ab4978425c62652ee8ce0921a799c99d51c67791d48a61e31ea441",
+      "license": ["LICENSE", "NOTICE"],
+      "store": true
+    },
+    {
+      "name": "jogs",
+      "version": "0.2.4",
+      "sha256": "b653a1874492a6ffebb5ff894d0ca06d3523a1b8721eea2bc32034d8562ecb45",
+      "license": ["LICENSE", "license.html"],
+      "store": true
     }
   ],
   "sets": [
     {
       "name": "memo",
       "repo": "jcmx9/MarkdownOffice-set-memo",
+      "tag": "v26.10.4",
+      "sha256": "f617c5523d072c68a4e518a245b3e6992067abd0c9810d760a5baec66f0ab674"
+    },
+    {
+      "name": "din5008a",
+      "repo": "jcmx9/MarkdownOffice-set-din5008a",
       "tag": "v26.10.0",
-      "sha256": ""
+      "sha256": "3466bd2ae5aac9ad86580a0bae5e57a8acae031ddf3ac78d4709e83f10a30e99"
+    }
+  ],
+  "dictionaries": [
+    {
+      "code": "de-DE",
+      "file": "de-DE-3-0.bdic",
+      "url": "https://redirector.gvt1.com/edgedl/chrome/dict/de-de-3-0.bdic",
+      "sha256": "076a470700dbd0aa62bb8b3d24c34e1340bdfe83cbbcfc035ce972f23c140400",
+      "license": [
+        {
+          "file": "de-DE-LICENSE.txt",
+          "url": "https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/eb106bd524eea61487644fffeec0d229fa41791a/README_de_DE_neu.txt?format=TEXT",
+          "encoding": "base64",
+          "sha256": "9ef26e87938c4432ba4854663ba0196124880447a007c87d126fae87fdcade8c"
+        },
+        {
+          "file": "de-DE-LGPL-2.1.txt",
+          "url": "https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/eb106bd524eea61487644fffeec0d229fa41791a/COPYING.LGPL?format=TEXT",
+          "encoding": "base64",
+          "sha256": "5bbcbb737e60fe9deba08ecbd00920cfcc3403ba2e534c64fdeea49d6bb87509"
+        }
+      ]
+    },
+    {
+      "code": "en-US",
+      "file": "en-US-10-1.bdic",
+      "url": "https://redirector.gvt1.com/edgedl/chrome/dict/en-us-10-1.bdic",
+      "sha256": "a075b01d9b015c616511a9e87da77da3d9881621db32f584e4606ddabf1c1100",
+      "license": {
+        "file": "en-US-LICENSE.txt",
+        "url": "https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/eb106bd524eea61487644fffeec0d229fa41791a/README_en_US.txt?format=TEXT",
+        "encoding": "base64",
+        "sha256": "168b4c01cb841f766a72f310b065c04d09cff46376c37a81d799593ce751c371"
+      }
     }
   ]
 }

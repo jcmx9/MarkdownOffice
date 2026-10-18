@@ -5,6 +5,7 @@ import {
   type MenuDeps,
   noteMenuTemplate,
   PresentKeyGuard,
+  recentLabels,
 } from '../../../src/main/menu'
 
 const deps = (over: Partial<MenuDeps> = {}): MenuDeps => ({
@@ -14,6 +15,7 @@ const deps = (over: Partial<MenuDeps> = {}): MenuDeps => ({
   command: vi.fn(),
   openRecent: vi.fn(),
   clearRecent: vi.fn(),
+  spellcheck: true,
   ...over,
 })
 
@@ -30,6 +32,7 @@ const click = (item: MenuItemConstructorOptions | undefined) => {
 describe('buildMenuTemplate', () => {
   it.each([
     ['new', 'CmdOrCtrl+N'],
+    ['new-from-template', 'CmdOrCtrl+Shift+N'],
     ['open', 'CmdOrCtrl+O'],
     ['rename', 'CmdOrCtrl+Shift+R'],
     ['close-tab', 'CmdOrCtrl+W'],
@@ -57,6 +60,16 @@ describe('buildMenuTemplate', () => {
     expect(item?.accelerator).toBe(accelerator)
     click(item)
     expect(d.command).toHaveBeenCalledWith(id)
+  })
+
+  it('Bearbeiten has a Rechtschreibprüfung checkbox reflecting the setting', () => {
+    const on = byId(buildMenuTemplate(deps({ spellcheck: true })), 'toggle-spellcheck')
+    expect(on?.type).toBe('checkbox')
+    expect(on?.checked).toBe(true)
+    expect(on?.label).toBe('Rechtschreibprüfung')
+    expect(byId(buildMenuTemplate(deps({ spellcheck: false })), 'toggle-spellcheck')?.checked).toBe(
+      false,
+    )
   })
 
   it('ignores toggle-present key repeats from a held shortcut', () => {
@@ -104,13 +117,45 @@ describe('buildMenuTemplate', () => {
     expect(winItems.some((i) => i.role === 'quit')).toBe(true)
   })
 
-  it('lists recent files and can clear them', () => {
+  it('lists recent files by name with the full path as hover text and can clear them', () => {
     const d = deps({ recent: ['/n/a.md', '/n/b.md'] })
     const items = flatten(buildMenuTemplate(d))
-    click(items.find((i) => i.label === '/n/b.md'))
+    const b = items.find((i) => i.label === 'b.md')
+    expect(b?.toolTip).toBe('/n/b.md')
+    click(b)
     expect(d.openRecent).toHaveBeenCalledWith('/n/b.md')
     click(items.find((i) => i.label === 'Liste leeren'))
     expect(d.clearRecent).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['plain names stay alone', 'darwin', ['/a/x.md', '/b/y.md'], ['x.md', 'y.md']],
+    [
+      'equal names get their folder',
+      'linux',
+      ['/k/Kunden/Termin.md', '/k/Privat/Termin.md', '/k/z.md'],
+      ['Termin.md — Kunden', 'Termin.md — Privat', 'z.md'],
+    ],
+    [
+      'equal folder names get the whole folder',
+      'darwin',
+      ['/a/Notizen/T.md', '/b/Notizen/T.md'],
+      ['T.md — /a/Notizen', 'T.md — /b/Notizen'],
+    ],
+    [
+      'case-insensitive collisions on Windows, with Windows paths',
+      'win32',
+      ['C:\\N\\Kunden\\termin.md', 'C:\\N\\Privat\\Termin.md'],
+      ['termin.md — Kunden', 'Termin.md — Privat'],
+    ],
+    [
+      'case matters on Linux',
+      'linux',
+      ['/a/termin.md', '/b/Termin.md'],
+      ['termin.md', 'Termin.md'],
+    ],
+  ] as const)('recentLabels: %s', (_name, platform, paths, labels) => {
+    expect(recentLabels(paths, platform)).toEqual(labels)
   })
 
   it('shows a disabled placeholder without recent files', () => {
@@ -135,6 +180,19 @@ describe('buildMenuTemplate', () => {
       expect(items.find((i) => i.id === 'unfold-all')?.accelerator).toBe('Alt+Shift+0')
       expect(items.some((i) => String(i.accelerator ?? '').startsWith('Ctrl+Alt+'))).toBe(false)
     }
+  })
+
+  it('puts "Neu aus Vorlage …" right below "Neu" and labels the header insert set-neutral', () => {
+    const file = buildMenuTemplate(deps()).find((m) => m.label === 'Datei')
+    const ids = ((file?.submenu ?? []) as { id?: string }[]).map((i) => i.id)
+    expect(ids.slice(0, 3)).toEqual(['new', 'new-from-template', 'create-profile'])
+    const profile = byId(buildMenuTemplate(deps()), 'create-profile')
+    expect(profile?.label).toBe('Profil anlegen …')
+    expect(profile?.accelerator).toBeUndefined()
+    expect(byId(buildMenuTemplate(deps()), 'new-from-template')?.label).toBe('Neu aus Vorlage …')
+    const header = byId(buildMenuTemplate(deps()), 'insert-header')
+    expect(header?.label).toBe('YAML-Header …')
+    click(header)
   })
 
   it('labels the outline toggle in German', () => {

@@ -118,7 +118,7 @@ describe('snippet completion in the editor', () => {
     startCompletion(view)
     await open(view)
     acceptCompletion(view)
-    expect(view.state.doc.toString().startsWith('---\nclient: "Kunde"')).toBe(true)
+    expect(view.state.doc.toString().startsWith('---\ntoptitle: "Kunde"')).toBe(true)
     expect(sel(view)).toBe('Kunde')
     expect(key(view, 'Tab')).toBe(true)
     expect(sel(view)).toBe('Thema')
@@ -261,7 +261,7 @@ describe('header snippets in Present', () => {
     expect(view.state.doc.toString()).toBe(before)
     expect(view.state.selection.main.head).toBe(before.length - 1) // $0 before the final newline
     await tick()
-    expect(before.startsWith('---\nclient: "ACME"\ntitle: "Kickoff"\n')).toBe(true)
+    expect(before.startsWith('---\ntoptitle: "ACME"\ntitle: "Kickoff"\n')).toBe(true)
     expect(isCollapsed(view)).toBe(true)
     // Read-only and the cursor stays out again.
     view.dispatch({ changes: { from: 4, insert: 'x' } })
@@ -299,7 +299,7 @@ describe('header snippets in Present', () => {
     await tick()
     const end = view.state.doc.toString().indexOf('\n---\n') + 4
     expect(view.state.selection.main.head).toBeGreaterThan(end)
-    expect(view.state.doc.toString()).toContain('client: "ACME"')
+    expect(view.state.doc.toString()).toContain('toptitle: "ACME"')
     view.destroy()
   })
 

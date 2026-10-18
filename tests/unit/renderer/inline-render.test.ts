@@ -28,6 +28,21 @@ describe('renderInline', () => {
     expect(el.querySelector('img, b')).toBeNull()
     expect(el.textContent).toBe('<img src=x onerror=alert(1)> & <b>x</b>')
   })
+  it('marks external links with the arrow span, not with arrow text', () => {
+    const el = render('[Ext](https://x.de) und [Int](#kapitel) und <https://y.de>')
+    expect(el.textContent).toBe('Ext und Int und https://y.de')
+    const ext = [...el.querySelectorAll('.mdo-link-ext')].map((e) => e.textContent)
+    expect(ext).toEqual(['Ext', 'https://y.de'])
+    const arrows = el.querySelectorAll('.mdo-link-arrow')
+    expect(arrows).toHaveLength(2)
+    expect(arrows[0]?.previousElementSibling?.textContent).toBe('Ext')
+    expect(arrows[0]?.getAttribute('aria-hidden')).toBe('true')
+  })
+  it('leaves bare URLs and internal links without the arrow', () => {
+    const el = render('[Int](#kapitel) siehe https://x.de')
+    expect(el.querySelector('.mdo-link-ext')).toBeNull()
+    expect(el.querySelector('.mdo-link-arrow')).toBeNull()
+  })
   it('renders images as their alt text, not as links', () => {
     const el = render('![alt](pic.png)')
     expect(el.textContent).toBe('alt')

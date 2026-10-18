@@ -17,6 +17,7 @@ import { fetchAssets, folderName } from '../../../scripts/fetch-pipeline-assets.
 
 type SetEntry = Manifest['sets'][number]
 type FontLicense = Manifest['fonts'][number]['license']
+type DictLicense = import('../../../scripts/fetch-pipeline-assets.mjs').DictLicense
 
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 
@@ -36,6 +37,15 @@ function makeArchive(name: string, files: Record<string, string>): Buffer {
   const flag = name.endsWith('.xz') ? '-cJf' : '-czf'
   execFileSync('tar', [flag, out, '-C', src, '.'])
   return readFileSync(out)
+}
+
+/** A Typst package archive (typst.toml, lib.typ, LICENSE) as packages.typst.org serves it. */
+function makePackage(name: string, version: string): Buffer {
+  return makeArchive(`${name}.tar.gz`, {
+    'typst.toml': `version = "${version}"`,
+    'lib.typ': 'x',
+    LICENSE: 'MIT',
+  })
 }
 
 async function download(url: string): Promise<Buffer> {
@@ -63,17 +73,29 @@ function makeManifest() {
   const oflUrl = 'https://x.test/raw/OFL.txt'
   const ofl = Buffer.from('OFL Raw')
   const pkgUrl = 'https://packages.typst.org/preview/cm-1.0.0.tar.gz'
-  const pkg = makeArchive('cm.tar.gz', {
-    'typst.toml': 'version = "1.0.0"',
-    'lib.typ': 'x',
-    LICENSE: 'MIT',
-  })
+  const pkg = makePackage('cm', '1.0.0')
+  const deUrl = 'https://x.test/dict/de-de-3-0.bdic'
+  const de = Buffer.from('BDIC-DE')
+  // Served base64-encoded, like Gitiles' ?format=TEXT; the pin is the decoded text's hash.
+  const deLicUrl = 'https://x.test/README_de_DE.txt?format=TEXT'
+  const deLic = Buffer.from('LGPL de')
+  const lgplUrl = 'https://x.test/COPYING.LGPL'
+  const lgpl = Buffer.from('LGPL 2.1 text')
+  const enUrl = 'https://x.test/dict/en-us-10-1.bdic'
+  const en = Buffer.from('BDIC-EN')
+  const enLicUrl = 'https://x.test/README_en_US.txt'
+  const enLic = Buffer.from('SCOWL en')
   served = new Map([
     [typstUrl, typst],
     [fontUrl, fonts],
     [rawUrl, raw],
     [oflUrl, ofl],
     [pkgUrl, pkg],
+    [deUrl, de],
+    [deLicUrl, Buffer.from(deLic.toString('base64'))],
+    [lgplUrl, lgpl],
+    [enUrl, en],
+    [enLicUrl, enLic],
   ])
   return {
     typst: {
@@ -95,8 +117,32 @@ function makeManifest() {
         license: { file: 'Raw-OFL.txt', url: oflUrl, sha256: sha(ofl) } as FontLicense,
       },
     ],
-    packages: [{ name: 'cm', version: '1.0.0', sha256: sha(pkg), license: 'LICENSE' }],
+    packages: [
+      { name: 'cm', version: '1.0.0', sha256: sha(pkg), license: 'LICENSE' },
+    ] as Manifest['packages'],
     sets: [] as SetEntry[],
+    dictionaries: [
+      {
+        code: 'de-DE',
+        file: 'de-DE-3-0.bdic',
+        url: deUrl,
+        sha256: sha(de),
+        // Several licence files: the README naming the LGPL plus the LGPL text itself.
+        license: [
+          { file: 'de-DE-LICENSE.txt', url: deLicUrl, encoding: 'base64', sha256: sha(deLic) },
+          { file: 'de-DE-LGPL-2.1.txt', url: lgplUrl, sha256: sha(lgpl) },
+        ] as DictLicense | DictLicense[],
+      },
+      {
+        code: 'en-US',
+        file: 'en-US-10-1.bdic',
+        url: enUrl,
+        sha256: sha(en),
+        license: { file: 'en-US-LICENSE.txt', url: enLicUrl, sha256: sha(enLic) } as
+          | DictLicense
+          | DictLicense[],
+      },
+    ],
   }
 }
 
@@ -134,6 +180,78 @@ describe('fetchAssets', () => {
     expect(readFileSync(join(outDir, 'vendor', 'cm', 'typst.toml'), 'utf8')).toContain('1.0.0')
   })
 
+  it('puts store packages into vendor/packages/preview/<name>/<version>', async () => {
+    const manifest = makeManifest()
+    const store = makePackage('qr', '0.3.1')
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', store)
+    manifest.packages.push({
+      name: 'qr',
+      version: '0.3.1',
+      sha256: sha(store),
+      license: 'LICENSE',
+      store: true,
+    })
+    await run(manifest)
+    expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.3.1/typst.toml'))).toBe(true)
+    expect(existsSync(join(outDir, 'vendor/qr'))).toBe(false)
+    expect(readFileSync(join(outDir, 'licenses/packages/qr/LICENSE'), 'utf8')).toBe('MIT')
+  })
+
+  it('refreshes a store package when its version changes', async () => {
+    const manifest = makeManifest()
+    const v1 = makePackage('qr', '0.3.1')
+    const v2 = makePackage('qr', '0.4.0')
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', v1)
+    served.set('https://packages.typst.org/preview/qr-0.4.0.tar.gz', v2)
+    const entry = { name: 'qr', version: '0.3.1', sha256: sha(v1), license: 'LICENSE', store: true }
+    manifest.packages.push(entry)
+    await run(manifest)
+    Object.assign(entry, { version: '0.4.0', sha256: sha(v2) })
+    await run(manifest)
+    expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.4.0/typst.toml'))).toBe(true)
+    // The old version must not ship next to the new one.
+    expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.3.1'))).toBe(false)
+  })
+
+  it('ships every licence file of a package with several (LICENSE plus NOTICE)', async () => {
+    const manifest = makeManifest()
+    const multi = makeArchive('qr.tar.gz', {
+      'typst.toml': 'version = "0.3.1"',
+      LICENSE: 'MIT',
+      NOTICE: 'third party',
+    })
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', multi)
+    manifest.packages.push({
+      name: 'qr',
+      version: '0.3.1',
+      sha256: sha(multi),
+      license: ['LICENSE', 'NOTICE'],
+      store: true,
+    })
+    await run(manifest)
+    const lic = (rel: string) => readFileSync(join(outDir, 'licenses', rel), 'utf8')
+    expect(lic('packages/qr/LICENSE')).toBe('MIT')
+    expect(lic('packages/qr/NOTICE')).toBe('third party')
+    // A missing licence file of an earlier fetch refreshes the package.
+    rmSync(join(outDir, 'licenses', 'packages', 'qr', 'NOTICE'))
+    await run(manifest)
+    expect(lic('packages/qr/NOTICE')).toBe('third party')
+  })
+
+  it('fails when one of several package licences is missing in the archive', async () => {
+    const manifest = makeManifest()
+    const pkg = makePackage('qr', '0.3.1')
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', pkg)
+    manifest.packages.push({
+      name: 'qr',
+      version: '0.3.1',
+      sha256: sha(pkg),
+      license: ['LICENSE', 'NOTICE'],
+      store: true,
+    })
+    await expect(run(manifest)).rejects.toThrow('Lizenz fehlt im Paket: NOTICE')
+  })
+
   it('collects the licence texts of Typst, the fonts and the packages', async () => {
     await run(makeManifest())
     const lic = (rel: string) => readFileSync(join(outDir, 'licenses', rel), 'utf8')
@@ -142,6 +260,51 @@ describe('fetchAssets', () => {
     expect(lic('fonts/A-LICENSE.md')).toBe('OFL A')
     expect(lic('fonts/Raw-OFL.txt')).toBe('OFL Raw')
     expect(lic('packages/cm/LICENSE')).toBe('MIT')
+  })
+
+  it('fetches the dictionaries and their licences (a base64 one decoded)', async () => {
+    await run(makeManifest())
+    const out = (rel: string) => readFileSync(join(outDir, rel), 'utf8')
+    expect(out('dictionaries/de-DE-3-0.bdic')).toBe('BDIC-DE')
+    expect(out('dictionaries/en-US-10-1.bdic')).toBe('BDIC-EN')
+    expect(out('licenses/dictionaries/de-DE-LICENSE.txt')).toBe('LGPL de')
+    expect(out('licenses/dictionaries/de-DE-LGPL-2.1.txt')).toBe('LGPL 2.1 text')
+    expect(out('licenses/dictionaries/en-US-LICENSE.txt')).toBe('SCOWL en')
+  })
+
+  it('verifies a dictionary against its pin and leaves no partial file', async () => {
+    const manifest = makeManifest()
+    const de = manifest.dictionaries[0] as { sha256: string; url: string }
+    de.sha256 = '0'.repeat(64)
+    await expect(run(manifest)).rejects.toThrow(`Prüfsumme falsch: ${de.url}`)
+    expect(existsSync(join(outDir, 'dictionaries', 'de-DE-3-0.bdic'))).toBe(false)
+  })
+
+  it('verifies a decoded licence against its pin', async () => {
+    const manifest = makeManifest()
+    const de = manifest.dictionaries[0] as { license: DictLicense[] }
+    de.license = [{ ...(de.license[0] as DictLicense), sha256: '0'.repeat(64) }]
+    await expect(run(manifest)).rejects.toThrow(
+      'Prüfsumme falsch: https://x.test/README_de_DE.txt?format=TEXT',
+    )
+  })
+
+  it('verifies every licence of a multi-licence entry', async () => {
+    const manifest = makeManifest()
+    const de = manifest.dictionaries[0] as { license: DictLicense[] }
+    de.license = [
+      de.license[0] as DictLicense,
+      { ...(de.license[1] as DictLicense), sha256: '0'.repeat(64) },
+    ]
+    await expect(run(manifest)).rejects.toThrow('Prüfsumme falsch: https://x.test/COPYING.LGPL')
+  })
+
+  it('fetches a dictionary again when one of its licences is missing', async () => {
+    const manifest = makeManifest()
+    await run(manifest)
+    rmSync(join(outDir, 'licenses', 'dictionaries', 'de-DE-LGPL-2.1.txt'))
+    await run(manifest)
+    expect(existsSync(join(outDir, 'licenses', 'dictionaries', 'de-DE-LGPL-2.1.txt'))).toBe(true)
   })
 
   it('verifies a separately downloaded licence against its pin', async () => {
@@ -197,7 +360,7 @@ describe('fetchAssets', () => {
     const manifest = makeManifest()
     await run(manifest)
     const first = calls.length
-    expect(first).toBe(5)
+    expect(first).toBe(10)
     await run(manifest)
     expect(calls.length).toBe(first)
   })
@@ -207,7 +370,7 @@ describe('fetchAssets', () => {
     await run(manifest)
     rmSync(join(outDir, 'mac-arm64', 'typst'))
     await run(manifest)
-    expect(calls.length).toBe(6)
+    expect(calls.length).toBe(11)
   })
 })
 

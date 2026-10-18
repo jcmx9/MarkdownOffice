@@ -1,5 +1,5 @@
 ---
-client: Muster GmbH
+toptitle: Muster GmbH
 title: "Kick-off"
 subtitle: ""
 date: 12.10.2026
