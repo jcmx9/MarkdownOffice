@@ -33,6 +33,24 @@ test('Mod+N starts with the memo header; nothing is written until typed', async 
   await app.close()
 })
 
+test('Mod+N note emptied again leaves no file behind', async () => {
+  const { app, page, notes } = await launch()
+  await clickMenu(app, 'new')
+  await expect(page.locator('.cm-content')).toContainText('template: memo')
+  // Deleting the whole header makes the doc differ from its clean text, but an empty note that
+  // never reached the disk is not worth a file — neither via autosave nor on closing the tab.
+  await clickMenu(app, 'select-all')
+  await page.keyboard.press('Delete')
+  await expect(page.locator('.cm-content')).not.toContainText('template')
+  await page.waitForTimeout(1500)
+  expect(await readdir(notes)).toEqual([])
+  await clickMenu(app, 'close-tab')
+  await expect(tabs(page)).toHaveCount(1)
+  await page.waitForTimeout(500)
+  expect(await readdir(notes)).toEqual([])
+  await app.close()
+})
+
 test('Neu aus Vorlage: din5008a with a user profile, memo not offered', async () => {
   const dirs = await makeDirs()
   await mkdir(join(dirs.templates, 'profiles'))

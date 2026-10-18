@@ -1059,8 +1059,14 @@ export class App {
 
   // ── external changes ────────────────────────────────────────────────────
 
-  /** Dirty, or clean but its content is no longer on disk. */
+  /**
+   * Dirty, or clean but its content is no longer on disk. A note that never reached the disk and
+   * is empty again is not worth a file: a Mod+N note starts with the memo header as its clean
+   * text, so deleting that header must not leave an empty file behind (an explicit save still
+   * creates it, see writeTab's `force`).
+   */
   private unsaved(tab: Tab): boolean {
+    if (!tab.onDisk && tab.state.doc.length === 0) return this.unwritten.has(tab.id)
     return this.store.isDirty(tab) || this.unwritten.has(tab.id)
   }
 
