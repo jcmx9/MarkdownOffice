@@ -6,6 +6,7 @@ import { createState } from '../../../src/renderer/editor/setup'
 import {
   replaceWordAt,
   SpellLanguageTracker,
+  spellAnswerCurrent,
   spellcheckCompartment,
   spellcheckExtensions,
 } from '../../../src/renderer/editor/spellcheck'
@@ -67,5 +68,13 @@ describe('SpellLanguageTracker', () => {
     expect(t.next('')).toBe(true)
     t.reset()
     expect(t.next('')).toBe(true)
+  })
+})
+
+describe('spellAnswerCurrent', () => {
+  it('accepts only an unchanged tab and lang', () => {
+    expect(spellAnswerCurrent({ id: 1, lang: 'fr' }, { id: 1, lang: 'fr' })).toBe(true)
+    expect(spellAnswerCurrent({ id: 1, lang: 'fr' }, { id: 2, lang: 'fr' })).toBe(false)
+    expect(spellAnswerCurrent({ id: 1, lang: 'fr' }, { id: 1, lang: 'de' })).toBe(false)
   })
 })

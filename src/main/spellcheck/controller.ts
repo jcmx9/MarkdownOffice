@@ -100,17 +100,24 @@ export class SpellcheckController {
    * language) and answers which one is missing. Without a usable dictionary it keeps checking
    * with de-DE + en-US. macOS detects the language itself.
    */
+  /** Sequence of setLanguage requests: only the latest one may apply its languages. */
+  private langSeq = 0
+
   async setLanguage(lang: string): Promise<{ missing: { code: string; name: string } } | null> {
     if (!this.hunspell) return null
+    // Overlapping calls (quick tab switches) finish in any order; the last REQUESTED wins.
+    const seq = ++this.langSeq
     const s = this.win.webContents.session
     const wanted = dictionaryFor(lang, app.getPreferredSystemLanguages(), this.offered())
     const installed = await installedCodes(this.dictDir)
+    if (seq !== this.langSeq) return null
     if (wanted && installed.includes(wanted.code)) {
       s.setSpellCheckerLanguages([wanted.code])
       return null
     }
     s.setSpellCheckerLanguages(['de-DE', 'en-US'].filter((c) => installed.includes(c)))
     const state = await readState(this.dictDir)
+    if (seq !== this.langSeq) return null
     return wanted && !state.declined.includes(wanted.code) ? { missing: wanted } : null
   }
 

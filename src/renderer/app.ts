@@ -32,6 +32,7 @@ import { snippetRegistry } from './editor/snippets'
 import {
   replaceWordAt,
   SpellLanguageTracker,
+  spellAnswerCurrent,
   spellcheckCompartment,
   spellcheckExtensions,
 } from './editor/spellcheck'
@@ -1077,7 +1078,22 @@ export class App {
     const lang = frontmatterFields(this.editor.state.doc).lang ?? ''
     if (force) this.spellLang.reset()
     if (!this.spellLang.next(lang)) return
-    const r = await this.mdo.setSpellLanguage(lang)
+    const asked = { id: this.shownId, lang }
+    let r: Awaited<ReturnType<typeof this.mdo.setSpellLanguage>>
+    try {
+      r = await this.mdo.setSpellLanguage(lang)
+    } catch (err) {
+      // The value was stored by the tracker: forget it so the next report retries.
+      console.warn('spellcheck: language could not be set', err)
+      this.spellLang.reset()
+      return
+    }
+    // A quick tab switch or lang: edit made this answer stale; the newer request brings its own.
+    const now = {
+      id: this.shownId,
+      lang: frontmatterFields(this.editor.state.doc).lang ?? '',
+    }
+    if (!spellAnswerCurrent(asked, now)) return
     if (!r?.missing || this.dictNoticed.has(r.missing.code)) return
     const { code, name } = r.missing
     this.dictNoticed.add(code)

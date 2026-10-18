@@ -103,3 +103,14 @@ export class SpellLanguageTracker {
     this.last = null
   }
 }
+
+/**
+ * Whether an answer from main still belongs to what is shown: the tab and its lang: must be
+ * unchanged since the question, else the banner would name a language of another note.
+ */
+export function spellAnswerCurrent(
+  asked: { id: number | null; lang: string },
+  now: { id: number | null; lang: string },
+): boolean {
+  return asked.id === now.id && asked.lang === now.lang
+}
