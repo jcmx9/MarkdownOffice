@@ -152,3 +152,48 @@ test('clicks and arrow keys hit the right line below the title block and a table
   expect(lines.find((l) => l.includes('Y'))).toBe('VorletzteY')
   await app.close()
 })
+
+test('YAML header, code blocks and Mermaid are highlighted in both views', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Farben.md')
+  await writeFile(
+    note,
+    [
+      '---',
+      'title: "Farben" # Kommentar',
+      'toc: auto',
+      '---',
+      '',
+      '```js',
+      'const answer = 42 // Kommentar',
+      '```',
+      '',
+      '```mermaid',
+      'flowchart LR',
+      '  A[Start] --> B[Ende]',
+      '```',
+      '',
+    ].join('\n'),
+  )
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  // The header may start collapsed: show it.
+  if ((await page.locator('.cm-line', { hasText: 'toc: auto' }).count()) === 0) {
+    await clickMenu(app, 'toggle-header')
+  }
+  // JavaScript is loaded on demand from a separate chunk (CSP script-src 'self').
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-number', { hasText: '42' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'flowchart' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: '-->' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-string', { hasText: '"Farben"' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-comment', { hasText: '# Kommentar' })).toBeVisible()
+  await shot(page, 'highlight-preview')
+  await clickMenu(app, 'toggle-view')
+  await page.locator('.cm-editor.mdo-code').waitFor()
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
+  await shot(page, 'highlight-code')
+  await app.close()
+})

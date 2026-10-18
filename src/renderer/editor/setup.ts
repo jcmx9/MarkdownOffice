@@ -15,6 +15,7 @@ import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
 import { mdoHighlight } from './highlight'
 import { mdoMarkdown } from './markdown'
+import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
 import { previewPlugin } from './preview'
@@ -96,7 +97,7 @@ export function createState(
       pageBreakKeymap,
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
-      mdoMarkdown(languages),
+      mdoMarkdown([...languages, mermaid]),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
       EditorView.lineWrapping,
