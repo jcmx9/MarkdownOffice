@@ -92,17 +92,15 @@ button.tab-close:disabled {
   cursor: default;
   background: transparent;
 }
-#empty [data-action="new"],
 dialog.prompt button[type="submit"] {
   color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-#empty [data-action="new"]:hover:not(:disabled),
 dialog.prompt button[type="submit"]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--accent);
 }
-#empty [data-action="new"]:active:not(:disabled),
+#empty button:active:not(:disabled),
 dialog.prompt button[type="submit"]:active:not(:disabled) {
   background: var(--accent);
   color: var(--on-accent);
@@ -362,9 +360,18 @@ body.mdo-ol-resizing {
   min-width: 0;
   display: grid;
   place-content: center;
-  justify-items: center;
+  /* Two equal choices: same look, same width; no text above (the empty area says it). */
+  grid-template-columns: max-content;
   gap: 8px;
   height: 100%;
+}
+#empty button {
+  min-width: 12em;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+#empty button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 #status {
   display: flex;
