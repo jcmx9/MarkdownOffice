@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Editor: Datei → Zuletzt geöffnet shows the file name; the full path is the hover text (macOS), and equal names get their folder appended
 - Editor: Mod+N / „Neu“ starts the note with the `memo` set's YAML header (no file is written until you type)
 - Editor: „Neu aus Vorlage …“ (Mod+Shift+N) picks any other template set (bundled or own, with a hint from its header file) and, when its header has `profile:`, a sender profile; the new note starts with that header
 - Editor: „Einfügen → YAML-Header …“ inserts the header of a set chosen in the same picker (memo preselected); every set's `<name>.header.md` is read, next to its `.typ`, with a `template: <name>` fallback
