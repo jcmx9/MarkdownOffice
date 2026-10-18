@@ -558,6 +558,23 @@ function Convert-One {
   # Vorlage aufloesen; eine Vorlage auf einem anderen Laufwerk wird bereitgestellt.
   $templateSrc = if ($CliTemplate) { Resolve-Template $CliTemplate (Get-Location).Path } else { Resolve-Template $fmTemplate $baseDir }
   $templateFile = Get-TypstReadable $templateSrc ([IO.Path]::GetFileName($templateSrc))
+  # Offline-Paketablage (spiegelt build.sh): @preview-Pakete aus vendor\packages im
+  # Cache-Layout preview\<name>\<version>, nie aus dem Netz; --package-path auf einen Ordner,
+  # der nicht mitgeliefert wird (keine @local-Pakete des Rechners). Die Pfade muessen nicht
+  # unter --root liegen (Pakete haben eine eigene Wurzel), daher der Original-Pipeline-Ordner
+  # auch dann, wenn lib\ und vendor\ auf ein anderes Laufwerk bereitgestellt wurden.
+  $pkgArgs = @('--package-cache-path', (Join-Path $PipelineRoot 'vendor\packages'),
+               '--package-path', (Join-Path $PipelineRoot 'vendor\local-packages'))
+  # Kein Netz, nie: ein @preview-Import der Vorlage, der nicht in der Ablage liegt, liesse
+  # Typst einen Download versuchen. Abbruch mit Meldung (Exit 1), bevor Typst laeuft. Steht
+  # hinter der Vorlagen-Aufloesung, weil die Pruefung die endgueltige Vorlagendatei liest.
+  $tplText = [IO.File]::ReadAllText($templateSrc)
+  foreach ($m in [regex]::Matches($tplText, '@preview/([a-z0-9-]+):([0-9]+\.[0-9]+\.[0-9]+)')) {
+    $dir = Join-Path $PipelineRoot ('vendor\packages\preview\' + $m.Groups[1].Value + '\' + $m.Groups[2].Value)
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+      throw "Paket nicht mitgeliefert: @preview/$($m.Groups[1].Value):$($m.Groups[2].Value) (Vorlage $templateSrc)"
+    }
+  }
   # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
   # der Notiz (bzw. MDO_BASE_DIR), im Vorlagen-Ordner, im Ordner des Sets; sonst ein Pfad
   # auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
@@ -641,7 +658,7 @@ function Convert-One {
   # Windows PowerShell 5.1 reicht sie an externe Programme nicht korrekt weiter.
   $probeExpr = '(str(query(<mdo-remote-skip>).len()),) + query(<mdo-image>).map(m => m.value).dedup()'
   $probeJson = & $TypstExe eval --in $templateFile $probeExpr `
-    --font-path $FontDir --ignore-system-fonts --root $script:TypstRoot @inputs --input probe=true 2>$null
+    --font-path $FontDir --ignore-system-fonts @pkgArgs --root $script:TypstRoot @inputs --input probe=true 2>$null
   $probe = @()
   try { $probe = @((($probeJson -join "`n") | ConvertFrom-Json) | ForEach-Object { $_ }) } catch { $probe = @() }
   $stripped = 0
@@ -670,6 +687,7 @@ function Convert-One {
   try {
     & $TypstExe compile $templateFile $outPdf `
       --font-path $FontDir --ignore-system-fonts `
+      @pkgArgs `
       --root $script:TypstRoot `
       --pdf-standard a-3b `
       @inputs

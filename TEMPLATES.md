@@ -45,9 +45,11 @@ Both scripts run Typst ≥ 0.15 twice on the resolved `.typ`:
 ```bash
 # 1. probe: collect image sources (see §5.1); errors are ignored
 typst eval --in <set>.typ '<query expression>' --font-path <pipeline>/fonts --ignore-system-fonts \
+  --package-cache-path <pipeline>/vendor/packages --package-path <pipeline>/vendor/local-packages \
   --root / <all --input …> --input probe=true
 # 2. real build
 typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-fonts \
+  --package-cache-path <pipeline>/vendor/packages --package-path <pipeline>/vendor/local-packages \
   --root / --pdf-standard a-3b <all --input …> --input images=<map.json>
 ```
 
@@ -124,15 +126,21 @@ The pipeline passes `--font-path <pipeline>/fonts --ignore-system-fonts`: **syst
 
 Use a font list with the Noto fallbacks, e.g. `("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2")`. Variable weights work with numeric `weight:` values.
 
-Bundled Typst packages live in `<mdo>/vendor/` (versions pinned in `scripts/pipeline-assets.json`):
+Bundled Typst packages live in `<mdo>/vendor/` (versions pinned in `scripts/pipeline-assets.json`; licence texts in `<pipeline>/licenses/packages/<name>/`):
 
 | Package | Version | Import | Purpose |
 |---------|---------|--------|---------|
 | cmarker | 0.1.10 | `#import mdo + "/vendor/cmarker/lib.typ" as cmarker` | Markdown → Typst |
 | mitex | 0.2.7 | `#import mdo + "/vendor/mitex/lib.typ": mitex` | LaTeX math for `$…$`, `$$…$$` (pass as `math: mitex`) |
 | mmdr | 0.2.2 | `#import mdo + "/vendor/mmdr/lib.typ": mermaid-svg` | Mermaid → SVG, offline (memo: `show raw.where(lang: "mermaid", block: true)`) |
+| cades | 0.3.1 | `#import "@preview/cades:0.3.1": qr-code` | QR codes (e.g. a vCard); store package |
+| jogs | 0.2.4 | (imported by cades) | QuickJS runtime that cades runs on; store package |
 
-Pipeline library: `#import mdo + "/lib/markdown.typ": preprocess`. Use `#let mdo = sys.inputs.at("mdo", default: ".")` and import by path; `@preview/…` imports do not work offline.
+Pipeline library: `#import mdo + "/lib/markdown.typ": preprocess`. Use `#let mdo = sys.inputs.at("mdo", default: ".")` and import cmarker, mitex and mmdr by path.
+
+**Offline package store.** Packages marked "store package" are unpacked in Typst's package-cache layout, `<pipeline>/vendor/packages/preview/<name>/<version>/`, and both scripts pass `--package-cache-path <pipeline>/vendor/packages` (and `--package-path` to a folder that does not exist, so no `@local` packages of the machine leak in). That is how `#import "@preview/<name>:<version>"` resolves without network, including imports between packages (cades imports `@preview/jogs`). Your user package cache is never consulted.
+
+**Only bundled packages.** The pipeline never downloads anything. Before Typst runs, the scripts scan the set's `.typ` for `@preview/<name>:<version>`; any import that is not in the store stops the build with `Paket nicht mitgeliefert: @preview/<name>:<version>` (exit 1). The exact pinned version is required. A package your set needs must be added to the store (manifest entry with `"store": true`, SHA-256 and licence) first. Only the set's main `.typ` is scanned: keep `@preview` imports there, not in files it includes.
 
 ## 5. Preprocessing contract
 
@@ -390,6 +398,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 
 - [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`.
 - [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"` and `mdo + "/vendor/…"`.
+- [ ] `@preview` imports only of bundled store packages, with the exact pinned version (section 4).
 - [ ] Every input is read with `sys.inputs.at(key, default: …)`; booleans compared as strings.
 - [ ] Body rendered with `cmarker.render(preprocess(read(source), hard-breaks: …, lang: …), …)`, `smart-punctuation: false`, `math: mitex`.
 - [ ] `html:` handles `mdo-alert`, `mdo-tasks`, `mdo-task`, `mdo-keep`.

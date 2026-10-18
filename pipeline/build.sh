@@ -470,6 +470,24 @@ else
   template_file="$(resolve_template "${fm_template}" "${base_dir}")" || exit 1
 fi
 
+# Offline-Paketablage: Typst-Pakete im Cache-Layout (preview/<name>/<version>), damit
+# #import "@preview/…" ohne Netz funktioniert (auch Importe zwischen Paketen: cades
+# importiert jogs). --package-path zeigt auf einen Ordner, der nicht mitgeliefert wird,
+# damit nie lokale Pakete des Rechners (@local) einfließen.
+pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path "${pipeline_root}/vendor/local-packages")
+
+# Kein Netz, nie: ein @preview-Import der Vorlage, der nicht in der Ablage liegt, würde
+# Typst einen Download versuchen lassen. Abbruch mit Meldung, bevor Typst läuft. Steht
+# hinter der Vorlagen-Auflösung, weil die Prüfung die endgültige Vorlagendatei liest.
+while IFS= read -r spec; do
+  [[ -n "${spec}" ]] || continue
+  pkg_name="${spec%%:*}"; pkg_ver="${spec#*:}"
+  if [[ ! -d "${pipeline_root}/vendor/packages/preview/${pkg_name}/${pkg_ver}" ]]; then
+    echo "Error: Paket nicht mitgeliefert: @preview/${spec} (Vorlage ${template_file})" >&2
+    exit 1
+  fi
+done < <(grep -oE '@preview/[a-z0-9-]+:[0-9]+\.[0-9]+\.[0-9]+' "${template_file}" | sed 's#^@preview/##' | sort -u)
+
 # Absender-Profil (profile:). Typst kann nicht prüfen, ob eine Datei existiert; daher sucht
 # das Skript, wie beim Logo, und übergibt den Pfad als Eingabe profile. Das Set liest die
 # YAML-Datei und Dateien daneben (z. B. die Unterschrift). Ein Name (a-z, 0-9, _ und -)
@@ -595,7 +613,7 @@ json_escape() {
 
 probe_expr='str(query(<mdo-remote-skip>).len()) + "\n" + query(<mdo-image>).map(m => m.value + "\n").dedup().sum(default: "")'
 probe="$("${typst_bin}" eval --in "${template_file}" "${probe_expr}" \
-  "${font_arg[@]}" --root / "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
+  "${font_arg[@]}" "${pkg_arg[@]}" --root / "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
 stripped=0
 image_entries=""
 first=1
@@ -619,6 +637,7 @@ typst_inputs+=(--input "images=${images_json}")
 # Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle).
 "${typst_bin}" compile "${template_file}" "${out}" \
   "${font_arg[@]}" \
+  "${pkg_arg[@]}" \
   --root / \
   --pdf-standard "${standard}" \
   "${typst_inputs[@]}"

@@ -658,6 +658,18 @@ test_templates() {
   [[ ! -s "${out_dir}/fm.err" ]] || die "frontmatter(): Warnungen: $(cat "${out_dir}/fm.err")"
   ok "frontmatter() im Set; eingerückte und x-Zeilen ändern die Pipeline-Werte nicht"
 
+  # Offline-Paketablage: @preview/cades (mit jogs) aus vendor/packages, ohne Netz.
+  MDO_TEMPLATES="${sets}" bash "${build}" --template qr "${out_dir}/Set Ordner/ohne.md" "${out_dir}/qr.pdf" \
+    >/dev/null 2>"${out_dir}/qr.err" || die "QR-Paket: Export fehlgeschlagen: $(cat "${out_dir}/qr.err")"
+  expect "QR-Paket" "$(pdf_text "${out_dir}/qr.pdf")" "QR-OK"
+  # Nicht mitgeliefertes Paket: Abbruch vor Typst, Exit 1, klare Meldung.
+  code=0
+  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template netimport "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "fremdes Paket liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0" <<<"${err}" || die "fremdes Paket: unklare Meldung: ${err}"
+  ok "Offline-Paketablage; nicht mitgelieferte Pakete werden abgewiesen"
+
   # Einzelne .typ-Datei relativ zur Notiz (Leerzeichen im Namen), Aufruf aus fremdem cwd.
   cp "${sets}/probe.typ" "${out_dir}/Set Ordner/eigene vorlage.typ"
   printf -- '---\ntemplate: ./eigene vorlage.typ\n---\n\n# Pfad\n' >"${out_dir}/Set Ordner/pfad.md"

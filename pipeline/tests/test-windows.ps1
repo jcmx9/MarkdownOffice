@@ -315,6 +315,14 @@ else { Ok 'Set-Ordner <name>\<name>.typ im Benutzerordner' }
 $r = Invoke-Convert @('--template', 'gibt-es-nicht', $setNote, (Join-Path $outDir 'x.pdf'))
 if ($r.Code -ne 1 -or $r.Text -notmatch 'Vorlage nicht gefunden: gibt-es-nicht') { Fail "unbekanntes Set: Exit $($r.Code)`n$($r.Text)" } else { Ok 'unbekanntes Set: Exit 1' }
 
+# Offline-Paketablage: @preview/cades (mit jogs) aus vendor\packages, ohne Netz; ein nicht
+# mitgeliefertes Paket bricht vor Typst mit Exit 1 ab (spiegelt test-pdf.sh).
+$qrPdf = Join-Path $outDir 'qr.pdf'
+$r = Invoke-Convert @('--template', 'qr', $setNote, $qrPdf)
+if ($r.Code -ne 0 -or -not (Test-PdfMarker $qrPdf 'QR-TEST')) { Fail "QR-Paket: Exit $($r.Code)`n$($r.Text)" } else { Ok 'QR-Paket aus der Offline-Ablage' }
+$r = Invoke-Convert @('--template', 'netimport', $setNote, (Join-Path $outDir 'net.pdf'))
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0') { Fail "fremdes Paket: Exit $($r.Code)`n$($r.Text)" } else { Ok 'fremdes Paket: Exit 1' }
+
 $r = Invoke-Convert @('--template=memo', $setNote, (Join-Path $outDir 'cli.pdf'))
 if ($r.Code -ne 0) { Fail "--template=memo: Exit $($r.Code)`n$($r.Text)" }
 elseif (Test-PdfMarker (Join-Path $outDir 'cli.pdf') 'SET-PROBE') { Fail '--template=memo: Marker SET-PROBE vorhanden, falsche Vorlage' }

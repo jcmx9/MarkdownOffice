@@ -7,6 +7,12 @@ import { checkPackedResources, manifestLicenses } from '../../../scripts/after-p
 const fonts = ['A.otf', 'B.ttf']
 const licenses = ['typst/LICENSE', 'fonts/A-OFL.txt']
 const dictionaries = ['de-DE-3-0.bdic']
+const packages = [
+  { name: 'cmarker', version: '1' },
+  { name: 'mitex', version: '1' },
+  { name: 'mmdr', version: '1' },
+  { name: 'cades', version: '0.3.1', store: true },
+]
 let dir: string
 
 function put(rel: string, mode = 0o644) {
@@ -20,6 +26,7 @@ function complete(win = false) {
   put(join('pipeline', 'bin', win ? 'typst.exe' : 'typst'), 0o755)
   for (const f of fonts) put(join('pipeline', 'fonts', f))
   for (const p of ['cmarker', 'mitex', 'mmdr']) put(join('pipeline', 'vendor', p, 'typst.toml'))
+  put(join('pipeline', 'vendor', 'packages', 'preview', 'cades', '0.3.1', 'typst.toml'))
   put(join('sets', 'memo', 'memo.typ'))
   put(join('pipeline', win ? 'convert.ps1' : 'build.sh'))
   put(join('pipeline', 'cli.js'))
@@ -36,14 +43,14 @@ describe('checkPackedResources', () => {
   it('passes for a complete resources dir', () => {
     complete()
     expect(() =>
-      checkPackedResources({ resourcesDir: dir, platform: 'linux', fonts, licenses }),
+      checkPackedResources({ resourcesDir: dir, platform: 'linux', fonts, licenses, packages }),
     ).not.toThrow()
   })
 
   it('passes for a complete Windows resources dir', () => {
     complete(true)
     expect(() =>
-      checkPackedResources({ resourcesDir: dir, platform: 'win32', fonts, licenses }),
+      checkPackedResources({ resourcesDir: dir, platform: 'win32', fonts, licenses, packages }),
     ).not.toThrow()
   })
 
@@ -51,6 +58,8 @@ describe('checkPackedResources', () => {
     join('pipeline', 'bin', 'typst'),
     join('pipeline', 'fonts', 'B.ttf'),
     join('pipeline', 'vendor', 'mitex'),
+    // Store package: checked in its package-cache layout.
+    join('pipeline', 'vendor', 'packages', 'preview', 'cades', '0.3.1'),
     join('sets', 'memo', 'memo.typ'),
     join('pipeline', 'build.sh'),
     join('pipeline', 'cli.js'),
@@ -60,7 +69,7 @@ describe('checkPackedResources', () => {
     complete()
     rmSync(join(dir, rel), { recursive: true })
     expect(() =>
-      checkPackedResources({ resourcesDir: dir, platform: 'darwin', fonts, licenses }),
+      checkPackedResources({ resourcesDir: dir, platform: 'darwin', fonts, licenses, packages }),
     ).toThrow(`Paket unvollständig: ${join(dir, rel)} – erst npm run assets`)
   })
 
@@ -68,7 +77,14 @@ describe('checkPackedResources', () => {
     complete(platform === 'win32')
     rmSync(join(dir, 'dictionaries', 'de-DE-3-0.bdic'))
     expect(() =>
-      checkPackedResources({ resourcesDir: dir, platform, fonts, licenses, dictionaries }),
+      checkPackedResources({
+        resourcesDir: dir,
+        platform,
+        fonts,
+        licenses,
+        packages,
+        dictionaries,
+      }),
     ).toThrow(`Paket unvollständig: ${join(dir, 'dictionaries', 'de-DE-3-0.bdic')}`)
   })
 
@@ -81,6 +97,7 @@ describe('checkPackedResources', () => {
         platform: 'darwin',
         fonts,
         licenses,
+        packages,
         dictionaries,
       }),
     ).not.toThrow()
@@ -91,7 +108,7 @@ describe('checkPackedResources', () => {
     complete()
     chmodSync(join(dir, 'pipeline', 'bin', 'typst'), 0o644)
     expect(() =>
-      checkPackedResources({ resourcesDir: dir, platform: 'linux', fonts, licenses }),
+      checkPackedResources({ resourcesDir: dir, platform: 'linux', fonts, licenses, packages }),
     ).toThrow(/Paket unvollständig/)
   })
 })

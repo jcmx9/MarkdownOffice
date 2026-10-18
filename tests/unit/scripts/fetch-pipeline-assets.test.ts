@@ -39,6 +39,15 @@ function makeArchive(name: string, files: Record<string, string>): Buffer {
   return readFileSync(out)
 }
 
+/** A Typst package archive (typst.toml, lib.typ, LICENSE) as packages.typst.org serves it. */
+function makePackage(name: string, version: string): Buffer {
+  return makeArchive(`${name}.tar.gz`, {
+    'typst.toml': `version = "${version}"`,
+    'lib.typ': 'x',
+    LICENSE: 'MIT',
+  })
+}
+
 async function download(url: string): Promise<Buffer> {
   calls.push(url)
   const body = served.get(url)
@@ -64,11 +73,7 @@ function makeManifest() {
   const oflUrl = 'https://x.test/raw/OFL.txt'
   const ofl = Buffer.from('OFL Raw')
   const pkgUrl = 'https://packages.typst.org/preview/cm-1.0.0.tar.gz'
-  const pkg = makeArchive('cm.tar.gz', {
-    'typst.toml': 'version = "1.0.0"',
-    'lib.typ': 'x',
-    LICENSE: 'MIT',
-  })
+  const pkg = makePackage('cm', '1.0.0')
   const deUrl = 'https://x.test/dict/de-de-3-0.bdic'
   const de = Buffer.from('BDIC-DE')
   // Served base64-encoded, like Gitiles' ?format=TEXT; the pin is the decoded text's hash.
@@ -112,7 +117,9 @@ function makeManifest() {
         license: { file: 'Raw-OFL.txt', url: oflUrl, sha256: sha(ofl) } as FontLicense,
       },
     ],
-    packages: [{ name: 'cm', version: '1.0.0', sha256: sha(pkg), license: 'LICENSE' }],
+    packages: [
+      { name: 'cm', version: '1.0.0', sha256: sha(pkg), license: 'LICENSE' },
+    ] as Manifest['packages'],
     sets: [] as SetEntry[],
     dictionaries: [
       {
@@ -171,6 +178,39 @@ describe('fetchAssets', () => {
     expect(readFileSync(join(outDir, 'mac-arm64', 'typst'), 'utf8')).toBe('BIN')
     expect(readdirSync(join(outDir, 'fonts')).sort()).toEqual(['A.otf', 'B.otf', 'Raw.ttf'])
     expect(readFileSync(join(outDir, 'vendor', 'cm', 'typst.toml'), 'utf8')).toContain('1.0.0')
+  })
+
+  it('puts store packages into vendor/packages/preview/<name>/<version>', async () => {
+    const manifest = makeManifest()
+    const store = makePackage('qr', '0.3.1')
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', store)
+    manifest.packages.push({
+      name: 'qr',
+      version: '0.3.1',
+      sha256: sha(store),
+      license: 'LICENSE',
+      store: true,
+    })
+    await run(manifest)
+    expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.3.1/typst.toml'))).toBe(true)
+    expect(existsSync(join(outDir, 'vendor/qr'))).toBe(false)
+    expect(readFileSync(join(outDir, 'licenses/packages/qr/LICENSE'), 'utf8')).toBe('MIT')
+  })
+
+  it('refreshes a store package when its version changes', async () => {
+    const manifest = makeManifest()
+    const v1 = makePackage('qr', '0.3.1')
+    const v2 = makePackage('qr', '0.4.0')
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', v1)
+    served.set('https://packages.typst.org/preview/qr-0.4.0.tar.gz', v2)
+    const entry = { name: 'qr', version: '0.3.1', sha256: sha(v1), license: 'LICENSE', store: true }
+    manifest.packages.push(entry)
+    await run(manifest)
+    Object.assign(entry, { version: '0.4.0', sha256: sha(v2) })
+    await run(manifest)
+    expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.4.0/typst.toml'))).toBe(true)
+    // The old version must not ship next to the new one.
+    expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.3.1'))).toBe(false)
   })
 
   it('collects the licence texts of Typst, the fonts and the packages', async () => {

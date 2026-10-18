@@ -23,7 +23,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
@@ -32,7 +32,10 @@ import { fileURLToPath } from 'node:url'
  *   `extract`: path (suffix) inside the font archive; else `url` + `sha256`
  * @typedef {{ url: string, sha256: string, extract?: string[], file?: string,
  *   license: FontLicense }} FontEntry
- * @typedef {{ name: string, version: string, sha256: string, license: string }} PackageEntry
+ * @typedef {{ name: string, version: string, sha256: string, license: string,
+ *   store?: boolean }} PackageEntry
+ *   `store`: unpacked into Typst's package-cache layout vendor/packages/preview/<name>/<version>
+ *   (imported as `@preview/<name>:<version>`); otherwise into vendor/<name> (imported by path)
  * @typedef {{ name: string, repo: string, tag: string, sha256: string }} SetEntry
  * @typedef {{ file: string, url: string, sha256: string, encoding?: 'base64' }} DictLicense
  *   `encoding: 'base64'`: the server sends the text base64-encoded (Gitiles `?format=TEXT`);
@@ -337,8 +340,17 @@ export async function fetchAssets(o) {
       const url = `https://packages.typst.org/preview/${pkg.name}-${pkg.version}.tar.gz`
       if (!pkg.license) throw new Error(`Paket ohne Lizenz im Manifest: ${pkg.name}`)
       const licenseRel = `licenses/packages/${pkg.name}/${pkg.license}`
+      // Store packages keep Typst's package-cache layout (preview/<name>/<version>) so
+      // `#import "@preview/<name>:<version>"` resolves offline via --package-cache-path,
+      // including imports between packages (cades imports @preview/jogs). Other packages
+      // stay at vendor/<name> and are imported by path (mdo + "/vendor/<name>/lib.typ").
+      const rel = pkg.store
+        ? join('vendor', 'packages', 'preview', pkg.name, pkg.version)
+        : join('vendor', pkg.name)
+      const relPosix = rel.split(sep).join('/')
       await component(
-        `pkg-${pkg.name}`,
+        // Store ids carry the version so a version bump refreshes the entry.
+        pkg.store ? `pkg-${pkg.name}-${pkg.version}` : `pkg-${pkg.name}`,
         pkg.sha256,
         [licenseRel],
         async () => {
@@ -348,8 +360,16 @@ export async function fetchAssets(o) {
           const src = join(staged, pkg.license)
           if (!existsSync(src)) throw new Error(`Lizenz fehlt im Paket: ${pkg.license} (${url})`)
           placeLicense(src, outDir, licenseRel)
-          swapIn(staged, join(outDir, 'vendor', pkg.name))
-          return [`vendor/${pkg.name}/typst.toml`, licenseRel]
+          if (pkg.store) {
+            // Swap in the whole preview/<name> folder holding only the pinned version: an
+            // older version of the same package must not stay behind and ship.
+            const holder = scratch()
+            renameSync(staged, join(holder, pkg.version))
+            swapIn(holder, dirname(join(outDir, rel)))
+          } else {
+            swapIn(staged, join(outDir, rel))
+          }
+          return [`${relPosix}/typst.toml`, licenseRel]
         },
         `${pkg.name} ${pkg.version}`,
       )
