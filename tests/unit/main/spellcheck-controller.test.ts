@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
@@ -40,6 +41,29 @@ describe('SpellcheckController', () => {
     expect(calls[0]).toBe(`url ${DEAD_DOWNLOAD_URL}`)
     expect(calls).toContain('enabled true')
     expect(readFileSync(join(userData, 'Dictionaries', 'de-DE-3-0.bdic'), 'utf8')).toBe('DE')
+  })
+
+  it('activates a staged update before the window loads', async () => {
+    const { win } = fakeWindow()
+    const userData = dir()
+    const dicts = join(userData, 'Dictionaries')
+    mkdirSync(dicts)
+    writeFileSync(join(dicts, 'de-DE-3-0.bdic'), 'OLD')
+    writeFileSync(join(dicts, 'de-DE-3-0.bdic.pending'), 'NEW')
+    const sum = createHash('sha256').update('NEW').digest('hex')
+    writeFileSync(
+      join(dicts, 'mdo-dictionaries.json'),
+      JSON.stringify({ version: '26.11.0', files: { 'de-DE-3-0.bdic': sum } }),
+    )
+    const c = new SpellcheckController(win, {
+      userData,
+      bundledDir: null,
+      platform: 'win32',
+      settings: () => ({ ...defaultSettings('/docs'), dictionaryAutoUpdate: false }),
+    })
+    await c.start()
+    expect(readFileSync(join(dicts, 'de-DE-3-0.bdic'), 'utf8')).toBe('NEW')
+    expect(existsSync(join(dicts, 'de-DE-3-0.bdic.pending'))).toBe(false)
   })
 
   it('on macOS only switches the system checker', async () => {
@@ -98,5 +122,8 @@ describe('SpellcheckController', () => {
       await c.start()
     }
     expect(calls.filter((c) => c === 'on spellcheck-dictionary-download-failure')).toHaveLength(1)
+    expect(calls.filter((c) => c === 'on spellcheck-dictionary-download-begin')).toHaveLength(1)
+    // The dead URL is set again per window (cheap, and never skipped).
+    expect(calls.filter((c) => c.startsWith('url '))).toHaveLength(2)
   })
 })

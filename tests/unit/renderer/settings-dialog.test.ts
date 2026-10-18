@@ -186,7 +186,14 @@ describe('spelling section', () => {
 
   it.each([
     [{ kind: 'current' }, 'Wörterbücher aktuell'],
-    [{ kind: 'updated', version: '26.10.2', files: [] }, 'Aktualisiert auf 26.10.2'],
+    [
+      { kind: 'updated', version: '26.10.2', files: [], pending: false },
+      'Aktualisiert auf 26.10.2',
+    ],
+    [
+      { kind: 'updated', version: '26.10.2', files: ['de-DE-3-0.bdic'], pending: true },
+      'Aktualisiert auf 26.10.2 – aktiv nach Neustart',
+    ],
     [{ kind: 'failed', reason: 'offline' }, 'Prüfung fehlgeschlagen: offline'],
   ] as const)('Jetzt prüfen shows %j as %s', async (result, text) => {
     const checkDictionaries = vi.fn(async () => result as never)

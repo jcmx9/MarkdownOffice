@@ -30,7 +30,10 @@ export function updateResultText(r: UpdateResult): string {
     case 'current':
       return 'Wörterbücher aktuell'
     case 'updated':
-      return `Aktualisiert auf ${r.version}`
+      // Staged files replace open dictionaries only at the next start (Windows locks them).
+      return r.pending
+        ? `Aktualisiert auf ${r.version} – aktiv nach Neustart`
+        : `Aktualisiert auf ${r.version}`
     case 'skipped':
       return 'Prüfung übersprungen'
     case 'failed':

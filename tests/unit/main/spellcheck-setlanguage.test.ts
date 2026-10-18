@@ -24,7 +24,10 @@ vi.mock('../../../src/main/spellcheck/dictionaries', async (orig) => ({
 describe('SpellcheckController.setLanguage', () => {
   it('the later request wins even when the earlier one finishes last', async () => {
     const applied: string[][] = []
-    const session = { setSpellCheckerLanguages: (l: string[]) => applied.push(l) }
+    const session = {
+      setSpellCheckerLanguages: (l: string[]) => applied.push(l),
+      setSpellCheckerEnabled: () => undefined,
+    }
     const win = { webContents: { session } } as unknown as BrowserWindow
     const c = new SpellcheckController(win, {
       userData: mkdtempSync(join(tmpdir(), 'mdo-spell-')),

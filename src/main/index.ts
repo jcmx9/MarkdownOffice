@@ -61,6 +61,12 @@ function run(initial: string[]): void {
     // macOS shows "Version <app> (<build>)"; both are the package version, so drop the build.
     app.setAboutPanelOptions({ applicationVersion: app.getVersion(), version: '' })
     await ctx.load()
+    // Before handleFontProtocol: protocol.handle creates the default session, and with it
+    // Chromium's spellchecker, which must find the dictionaries and the dead download URL.
+    // A failure only logs: the window and its own guard (SpellcheckController) still start.
+    await ctx
+      .prepareSpellcheck()
+      .catch((err) => console.warn('spellcheck: preparation at start failed', err))
     handleFontProtocol(pipeline.paths.fonts)
     registerIpc(ctx)
     ctx.markInitialized()

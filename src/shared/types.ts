@@ -178,6 +178,7 @@ export interface SnippetDef {
 /** Outcome of a dictionary update check (MarkdownOffice-dictionaries releases). */
 export type UpdateResult =
   | { kind: 'current' }
-  | { kind: 'updated'; version: string; files: string[] }
+  // pending: at least one file replaced an open dictionary and becomes active after a restart.
+  | { kind: 'updated'; version: string; files: string[]; pending: boolean }
   | { kind: 'skipped' }
   | { kind: 'failed'; reason: string }

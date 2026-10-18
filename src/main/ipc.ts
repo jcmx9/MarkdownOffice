@@ -19,6 +19,7 @@ import { setWindowFullScreen } from './fullscreen'
 import { readHeaderTemplate } from './header-template'
 import { noteMenuTemplate } from './menu'
 import { loadUserSnippets } from './snippets'
+import { CODE_RE } from './spellcheck/languages'
 
 const str = (v: unknown): string => {
   if (typeof v !== 'string') throw new TypeError('Ungültiger Parameter.')
@@ -40,15 +41,14 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(Ch.readHeaderTemplate, () =>
     readHeaderTemplate(join(ctx.pipeline.paths.sets, 'memo', 'memo.header.md')),
   )
-  // Arguments come from the renderer: only short strings / plain language codes pass.
-  const CODE = /^[a-z]{2,3}(-[A-Z]{2})?$/
+  // Arguments come from the renderer: only short strings / plain language codes (CODE_RE) pass.
   ipcMain.handle(Ch.spellLanguage, (_e, lang: unknown) =>
     typeof lang === 'string' && lang.length <= 35
       ? (ctx.spellcheck?.setLanguage(lang) ?? null)
       : null,
   )
   ipcMain.handle(Ch.spellDownload, (_e, code: unknown) =>
-    typeof code === 'string' && CODE.test(code)
+    typeof code === 'string' && CODE_RE.test(code)
       ? (ctx.spellcheck?.downloadDictionary(code) ?? false)
       : false,
   )
@@ -65,7 +65,8 @@ export function registerIpc(ctx: AppContext): void {
       : false,
   )
   ipcMain.handle(Ch.spellDecline, async (_e, code: unknown) => {
-    if (typeof code === 'string' && CODE.test(code)) await ctx.spellcheck?.declineDictionary(code)
+    if (typeof code === 'string' && CODE_RE.test(code))
+      await ctx.spellcheck?.declineDictionary(code)
   })
   ipcMain.handle(Ch.settingsStatus, () => ctx.settingsStatus())
   ipcMain.handle(Ch.updateSettings, (_e, patch: unknown) => ctx.updateSettings(patch))

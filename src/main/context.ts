@@ -17,7 +17,7 @@ import { canonicalPath, canonicalPaths, sameFile } from './files'
 import { FullScreenOwner } from './fullscreen'
 import { buildMenuTemplate, PresentKeyGuard } from './menu'
 import { type PipelinePaths, pipelinePaths, runPipeline, typstVersion } from './pipeline'
-import { SpellcheckController } from './spellcheck/controller'
+import { prepareSpellcheck, SpellcheckController } from './spellcheck/controller'
 import {
   DEFAULT_SESSION,
   defaultSettings,
@@ -116,6 +116,19 @@ export class AppContext {
       return canonical
     }
     throw new Error(`Zugriff verweigert: ${path}`)
+  }
+
+  /**
+   * Once at app start, after load() (settings) and before the first window and anything else
+   * that touches the default session: dictionaries in place, download blocked, start languages.
+   */
+  prepareSpellcheck(): Promise<void> {
+    return prepareSpellcheck({
+      userData: this.userData,
+      bundledDir: bundledDictionaries(),
+      platform: process.platform,
+      settings: this.settings,
+    })
   }
 
   createWindow(): void {
