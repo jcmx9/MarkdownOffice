@@ -11,6 +11,7 @@
 # Vorlagen liest er nur aus MDO_TEMPLATES (dort), nie aus ~/Documents.
 #
 # Usage: bash pipeline/tests/test-pdf.sh
+#        MDO_DIN5008A_DIR=~/GitHub/MarkdownOffice-set-din5008a bash pipeline/tests/test-pdf.sh
 set -euo pipefail
 
 test_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -794,8 +795,55 @@ test_profiles() {
   ok "profile: Notizordner → Vorlagen-Ordner → Set-Ordner, Pfad, Fehler bei Tippfehler"
 }
 
+# Set din5008a: Musterbrief und harte Abbrüche. Das Set kommt aus MDO_DIN5008A_DIR
+# (lokaler Klon, als <tmp>/vorlagen/din5008a verlinkt), sonst aus <sets>/din5008a;
+# ohne Set wird übersprungen.
+test_din5008a() {
+  local vorl="${MDO_TEMPLATES}" text ddir code err
+  if [[ -n "${MDO_DIN5008A_DIR:-}" ]]; then
+    [[ -f "${MDO_DIN5008A_DIR}/din5008a.typ" ]] ||
+      die "MDO_DIN5008A_DIR enthält keine din5008a.typ: ${MDO_DIN5008A_DIR}"
+    vorl="${out_dir}/vorlagen"
+    mkdir -p "${vorl}"
+    ln -s "$(cd "${MDO_DIN5008A_DIR}" && pwd)" "${vorl}/din5008a"
+  elif [[ ! -f "${MDO_SETS_DIR}/din5008a/din5008a.typ" ]]; then
+    printf 'skip din5008a (kein Set din5008a; MDO_DIN5008A_DIR setzen)\n'
+    return 0
+  fi
+
+  text="$(MDO_TEMPLATES="${vorl}" render din5008a-qr.md --template din5008a)"
+  expect din5008a-qr.md "${text}" "Sonnenschein Verlag GmbH" "Seite 1 von 2" \
+    "Manuskript 'Die Abenteuer der kleinen Eule' – Einreichung" "5. April 2026" "Mit herzlichen Grüßen"
+  # Name unter der Unterschrift als eigene Zeile (Kopf und Fuß haben ihn nur in längeren Zeilen).
+  expect_line din5008a-qr.md "${text}" "Dr. Anna Weber"
+  ok "din5008a: Musterbrief (Anschrift, Betreff, Datum, Seitenzahl, Name)"
+
+  # Harte Abbrüche: Exit 1, klare Meldung, kein PDF (ein falsch adressierter Brief ist
+  # schlimmer als keiner).
+  ddir="${out_dir}/din"
+  mkdir -p "${ddir}/profiles"
+  cp "${fixtures}/profiles/din-ohne-qr.yaml" "${ddir}/profiles/"
+  printf -- '---\nx-to:\n  - A\n---\n\nText.\n' >"${ddir}/ohne-profil.md"
+  printf -- '---\nprofile: din-ohne-qr\nx-to:\n  - 1\n  - 2\n  - 3\n  - 4\n  - 5\n  - 6\n  - 7\n---\n\nText.\n' \
+    >"${ddir}/sieben.md"
+  printf -- '---\nprofile: din-ohne-qr\nx-to: []\n---\n\nText.\n' >"${ddir}/leer.md"
+  local case_ name msg
+  for case_ in "ohne-profil|profile: fehlt" "sieben|höchstens 6 Zeilen" "leer|x-to: fehlt"; do
+    name="${case_%%|*}"
+    msg="${case_#*|}"
+    code=0
+    err="$(MDO_TEMPLATES="${vorl}" bash "${build}" --template din5008a "${ddir}/${name}.md" \
+      "${out_dir}/din-${name}.pdf" 2>&1 >/dev/null)" || code=$?
+    [[ "${code}" -eq 1 ]] || die "din5008a: ${name} liefert Exit ${code}: ${err}"
+    grep -qF -- "${msg}" <<<"${err}" || die "din5008a: ${name}: Meldung ohne \"${msg}\": ${err}"
+    [[ ! -e "${out_dir}/din-${name}.pdf" ]] || die "din5008a: ${name} erzeugt trotzdem ein PDF"
+  done
+  ok "din5008a: ohne profile:, x-to mit 7 Zeilen und leeres x-to brechen ab"
+}
+
 test_fixtures
 test_interface
 test_templates
 test_profiles
+test_din5008a
 printf 'Alle Tests bestanden.\n'

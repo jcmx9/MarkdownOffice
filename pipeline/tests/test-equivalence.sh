@@ -12,6 +12,23 @@
 # Bewusst NICHT verglichen: Keywords (enthalten den Produktnamen und die
 # Version) sowie Creator/Producer (Typst-Version der Umgebung).
 #
+# Fixtures din5008a-*: das Set din5008a muss genauso rendern wie das Original
+# typst-DIN5008a 26.4.35 (Commit 729c381; template/main.typ, example-no-qr.typ
+# und main.typ mit längerem Text). Die Referenzen wurden aus dem Original
+# gebaut, nur mit den Schriftnamen auf die mitgelieferten variablen Fonts
+# umgestellt (Source Sans 3 -> SourceSans3VF, Source Code Pro -> SourceCodeVF),
+# mit typst --font-path <fonts> --ignore-system-fonts --package-cache-path
+# <vendor/packages> und SOURCE_DATE_EPOCH=1. Gebaut wird mit --template din5008a.
+# Aus den .meta entfernt und beim Vergleich ausgelassen, weil das Set es
+# absichtlich anders macht:
+#   Attachments            das Set bettet die Notiz ein, das Original nichts
+#   CreationDate, ModDate  das Set nimmt wie memo das Briefdatum (date:) als
+#                          Dokumentdatum; das Original kennt das Datum nur als
+#                          Text und schreibt SOURCE_DATE_EPOCH
+# Keywords fehlen ohnehin (Original: mit Repo-URL). Das Set kommt aus
+# MDO_DIN5008A_DIR (lokaler Klon, als <tmp>/vorlagen/din5008a verlinkt), sonst
+# aus <sets>/din5008a; gibt es keins, werden diese Fixtures übersprungen.
+#
 # Die Referenzen wurden einmalig mit dem alten Build erzeugt (gleiches
 # typst-Binary, gleiche Fonts und Typst-Packages, SOURCE_DATE_EPOCH=1, leerer
 # Vorlagen-Ordner) und mit `--extract` dieses Skripts ausgelesen; sie werden
@@ -22,6 +39,7 @@
 # Entwicklungs-Layout build/pipeline-dev/ (tests/dev-layout.sh).
 #
 # Usage: bash pipeline/tests/test-equivalence.sh
+#        MDO_DIN5008A_DIR=~/GitHub/MarkdownOffice-set-din5008a bash pipeline/tests/test-equivalence.sh
 #        bash pipeline/tests/test-equivalence.sh --extract PDF ZIELPRÄFIX
 set -euo pipefail
 
@@ -79,16 +97,47 @@ trap cleanup EXIT
 export MDO_TEMPLATES="${out_dir}/Keine Vorlagen"
 mkdir -p "${MDO_TEMPLATES}"
 
+# Vorlagen-Ordner für die din5008a-Fixtures (leer: überspringen).
+din_templates=""
+if [[ -n "${MDO_DIN5008A_DIR:-}" ]]; then
+  [[ -f "${MDO_DIN5008A_DIR}/din5008a.typ" ]] ||
+    die "MDO_DIN5008A_DIR enthält keine din5008a.typ: ${MDO_DIN5008A_DIR}"
+  din_templates="${out_dir}/vorlagen"
+  mkdir -p "${din_templates}"
+  ln -s "$(cd "${MDO_DIN5008A_DIR}" && pwd)" "${din_templates}/din5008a"
+elif [[ -f "${MDO_SETS_DIR:-${MDO_PIPELINE_ROOT}/../sets}/din5008a/din5008a.typ" ]]; then
+  din_templates="${MDO_TEMPLATES}"
+fi
+
 count=0
 failed=0
+skipped=0
 for ref in "${refs}"/*.txt; do
   [[ -e "${ref}" ]] || die "keine Referenzen in ${refs}"
   name="$(basename "${ref}" .txt)"
   [[ -f "${refs}/${name}.meta" ]] || die "${name}: ${name}.meta fehlt"
   pdf="${out_dir}/${name}.pdf"
-  (cd "${fixtures}" && bash "${build}" "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
-    die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
-  extract "${pdf}" "${out_dir}/${name}"
+  case "${name}" in
+    din5008a-*)
+      if [[ -z "${din_templates}" ]]; then
+        printf 'skip %s (kein Set din5008a; MDO_DIN5008A_DIR setzen)\n' "${name}"
+        skipped=$((skipped + 1))
+        continue
+      fi
+      (cd "${fixtures}" && MDO_TEMPLATES="${din_templates}" bash "${build}" --template din5008a \
+        "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
+        die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
+      extract "${pdf}" "${out_dir}/${name}.raw"
+      mv "${out_dir}/${name}.raw.txt" "${out_dir}/${name}.txt"
+      # Absichtliche Abweichungen vom Original (siehe Kopfkommentar).
+      grep -v -E '^(CreationDate|ModDate|Attachments):' "${out_dir}/${name}.raw.meta" >"${out_dir}/${name}.meta"
+      ;;
+    *)
+      (cd "${fixtures}" && bash "${build}" "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
+        die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
+      extract "${pdf}" "${out_dir}/${name}"
+      ;;
+  esac
   if diff -u "${ref}" "${out_dir}/${name}.txt" >"${out_dir}/${name}.diff" &&
     diff -u "${refs}/${name}.meta" "${out_dir}/${name}.meta" >>"${out_dir}/${name}.diff"; then
     printf 'ok   %s\n' "${name}"
@@ -103,4 +152,8 @@ done
 if [[ "${failed}" -gt 0 ]]; then
   die "${failed} von ${count} Fixtures weichen ab"
 fi
-printf 'Alle %s Fixtures gleich (ohne Keywords).\n' "${count}"
+if [[ "${skipped}" -gt 0 ]]; then
+  printf 'Alle %s Fixtures gleich (ohne Keywords), %s übersprungen.\n' "${count}" "${skipped}"
+else
+  printf 'Alle %s Fixtures gleich (ohne Keywords).\n' "${count}"
+fi
