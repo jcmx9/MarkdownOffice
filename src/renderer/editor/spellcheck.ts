@@ -90,6 +90,15 @@ export function replaceWordAt(
   return true
 }
 
+/**
+ * Whether the „Wörterbuch fehlt – laden?“ notice may be shown: only while the user edits with
+ * checking switched on. Present is shown to clients (screen sharing), and with checking off a
+ * missing dictionary does not matter.
+ */
+export function offerDictionaryNotice(spellcheckOn: boolean, mode: Mode): boolean {
+  return spellcheckOn && mode === 'edit'
+}
+
 /** Reports a note's lang: to main only when it changed since the last report. */
 export class SpellLanguageTracker {
   private last: string | null = null

@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { createState } from '../../../src/renderer/editor/setup'
 import {
+  offerDictionaryNotice,
   replaceWordAt,
   SpellLanguageTracker,
   spellAnswerCurrent,
@@ -76,5 +77,17 @@ describe('spellAnswerCurrent', () => {
     expect(spellAnswerCurrent({ id: 1, lang: 'fr' }, { id: 1, lang: 'fr' })).toBe(true)
     expect(spellAnswerCurrent({ id: 1, lang: 'fr' }, { id: 2, lang: 'fr' })).toBe(false)
     expect(spellAnswerCurrent({ id: 1, lang: 'fr' }, { id: 1, lang: 'de' })).toBe(false)
+  })
+})
+
+describe('offerDictionaryNotice', () => {
+  // Present is shown to clients and an off switch makes a missing dictionary irrelevant.
+  it.each([
+    [true, 'edit', true],
+    [true, 'present', false],
+    [false, 'edit', false],
+    [false, 'present', false],
+  ] as const)('spellcheck %s, mode %s → %s', (on, mode, offered) => {
+    expect(offerDictionaryNotice(on, mode)).toBe(offered)
   })
 })

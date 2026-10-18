@@ -30,6 +30,7 @@ import {
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
 import {
+  offerDictionaryNotice,
   replaceWordAt,
   SpellLanguageTracker,
   spellAnswerCurrent,
@@ -359,6 +360,7 @@ export class App {
         // A settings change (not the menu) must reach the editor too.
         this.spellcheckOn = next.spellcheck
         this.reconfigureAll()
+        this.spellSwitched()
       }
       if (next.presentFontFactor !== this.presentFactor) {
         this.presentFactor = next.presentFontFactor
@@ -536,7 +538,17 @@ export class App {
     this.settings = next
     this.spellcheckOn = next.spellcheck
     this.reconfigureAll()
+    this.spellSwitched()
     this.editor.focus()
+  }
+
+  /**
+   * After the spellcheck switch changed: off removes a pending „Wörterbuch fehlt“ notice; on
+   * asks again (forced), since a notice suppressed while checking was off was never shown.
+   */
+  private spellSwitched(): void {
+    if (this.spellcheckOn) void this.reportSpellLanguage(true)
+    else this.notices.dismissPrefix('dict-')
   }
 
   /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
@@ -561,6 +573,8 @@ export class App {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
     this.reconfigureAll()
+    // Clients watch Present: no dictionary notice may stay on the shared screen.
+    this.notices.dismissPrefix('dict-')
     document.body.classList.add('mdo-mode-present')
     this.root.tabbar.hidden = true
     this.root.status.hidden = true
@@ -585,6 +599,8 @@ export class App {
     if (this.mode !== 'present') return
     this.mode = 'edit'
     this.reconfigureAll()
+    // Notices were held back during Present: ask again for the note now shown.
+    void this.reportSpellLanguage(true)
     document.body.classList.remove('mdo-mode-present')
     this.root.tabbar.hidden = false
     this.root.status.hidden = false
@@ -1098,6 +1114,10 @@ export class App {
       lang: frontmatterFields(this.editor.state.doc).lang ?? '',
     }
     if (!spellAnswerCurrent(asked, now)) return
+    // Never in Present (shared screen) or with checking off; exitPresent and switching on
+    // report again (forced), so the notice is not lost. Checked after the await: the mode may
+    // have changed while main answered.
+    if (!offerDictionaryNotice(this.spellcheckOn, this.mode)) return
     if (!r?.missing || this.dictNoticed.has(r.missing.code)) return
     const { code, name } = r.missing
     this.dictNoticed.add(code)
