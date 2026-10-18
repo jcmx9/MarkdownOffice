@@ -134,7 +134,7 @@ In einem Snippet beendet Esc zuerst den Feldmodus; im Präsentationsmodus verlä
 | `:header` | YAML-Header mit allen Schlüsseln des Sets `memo` |
 | `:newpage` | Seitenumbruch `<!-- pagebreak -->` |
 
-Das Menü **Einfügen → YAML-Header (memo)** setzt die Frontmatter-Vorlage des Sets `memo` (`memo.header.md`) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten und Erklärungen. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
+Das Menü **Einfügen → YAML-Header (memo)** setzt die Frontmatter-Vorlage des Sets `memo` (`memo.header.md`) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten, je Schlüssel eine Zeile mit kurzem Kommentar. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
 
 Eigene Snippets sind Dateien `name.tpl.md` im Snippet-Ordner (Standard `~/Documents/Markdown Office/Snippets/`, Einstellung „Snippet-Ordner“). Ein eigenes Snippet mit demselben Namen ersetzt das eingebaute. Neue Dateien werden beim nächsten Fokus des Fensters erkannt. Unterstützte Syntax: `$1`, `${1:Vorgabe}`, `$0` (Endposition) sowie `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (auch in der Form `${CURRENT_YEAR}`). `\$` ergibt ein wörtliches `$`, `\\` einen Backslash, und in einer Vorgabe ergibt `\}` eine wörtliche geschweifte Klammer `}`.
 

@@ -551,7 +551,8 @@ test_templates() {
     h="${dir}${name}.header.md"
     [[ -f "${dir}${name}.typ" ]] || die "Set ${name}: ${name}.typ fehlt"
     [[ -f "${h}" ]] || die "Set ${name}: ${name}.header.md fehlt"
-    grep -qx "template: ${name}" "${h}" || die "Set ${name}: Header verweist nicht auf das Set"
+    # template: <name>, optional mit Kommentar dahinter (wie jeder Frontmatter-Wert)
+    grep -qE "^template: ${name}( +#.*)?$" "${h}" || die "Set ${name}: Header verweist nicht auf das Set"
   done
   [[ -f "${MDO_SETS_DIR}/memo/memo.typ" ]] || die "Set memo fehlt"
   ok "mitgelieferte Sets"
