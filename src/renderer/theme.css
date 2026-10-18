@@ -225,6 +225,26 @@
 .mdo-preview .mdo-link {
   text-decoration: underline dotted var(--mdo-faint);
 }
+/* External links like the memo set's PDF: no colour of their own (text colour), a fine
+   solid underline (0.4pt, 2pt offset), then a small raised ↗. The arrow is a widget/span whose glyph comes from
+   ::before, so it is neither document text nor copied text. It stays an inline box (not
+   inline-block): no line break between link text and arrow, no underline under it. */
+.mdo-preview .mdo-link-ext {
+  text-decoration: underline solid currentColor;
+  text-decoration-thickness: 0.4pt;
+  text-underline-offset: 2pt;
+}
+.mdo-preview .mdo-link-arrow::before {
+  /* memo.typ: h(0.12em) before the arrow; 0.12em of the text = 0.16em of the 0.75em arrow */
+  margin-left: 0.16em;
+  font-family: var(--mdo-font-sans);
+  font-size: 0.75em;
+  font-style: normal;
+  /* raised 0.33em of the arrow size, like the PDF's baseline: -0.33em */
+  vertical-align: 0.33em;
+  line-height: 1;
+  content: "\2197";
+}
 .mdo-preview .mdo-code-inline {
   font-family: var(--mdo-font-code);
   font-size: 0.9em;
