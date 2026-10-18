@@ -108,7 +108,8 @@ export class Outline {
   }
 
   private update(row: Row, e: OutlineEntry, seen: Set<string>): void {
-    const hasFold = e.fold !== null
+    // A chevron only where it shows something: an H1 with H2 children.
+    const hasFold = e.fold !== null && e.children.length > 0
     // parentNode, not isConnected: the list may be detached while it is being built.
     if ((row.chevron.parentNode !== null) !== hasFold) {
       // Chevron and spacer occupy the same slot.
@@ -140,7 +141,7 @@ export class Outline {
   private createRow(e: OutlineEntry): Row {
     const li = document.createElement('li')
     li.className = `mdo-ol-item mdo-ol-h${e.level}`
-    const chevron = this.button('mdo-ol-chevron', '>')
+    const chevron = this.button('mdo-ol-chevron', '▸')
     const spacer = document.createElement('span')
     spacer.className = 'mdo-ol-spacer'
     const label = this.button('mdo-ol-label', e.text)
@@ -151,7 +152,7 @@ export class Outline {
     label.addEventListener('click', (ev) => {
       if (ev.button === 0) this.handlers.jump(row.entry)
     })
-    li.append(e.fold ? chevron : spacer, label)
+    li.append(e.fold && e.children.length > 0 ? chevron : spacer, label)
     return row
   }
 

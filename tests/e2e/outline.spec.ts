@@ -121,11 +121,39 @@ test('chevron folds text and outline in sync; unfold-all and fold-all follow', a
   await app.close()
 })
 
+test('chevrons only on chapters with sub-chapters; a page break does not make a section', async () => {
+  const note = [
+    '# Kontext',
+    '',
+    'Text ohne Unterkapitel.',
+    '',
+    '# Mitschrift',
+    '',
+    '## M1',
+    '',
+    '## M2',
+    '',
+    '<!-- pagebreak -->',
+    '',
+    '## M3',
+    '',
+  ].join('\n')
+  const { app, page } = await openNote(note)
+  await clickMenu(app, 'toggle-outline')
+  await expect(labels(page)).toHaveText(['Kontext', 'Mitschrift', 'M1', 'M2', 'M3'])
+  await expect(chevrons(page)).toHaveCount(1)
+  await expect(
+    page.locator('#outline li.mdo-ol-h1').nth(1).locator(':scope > .mdo-ol-chevron'),
+  ).toHaveCount(1)
+  await shot(page, 'outline-pagebreak')
+  await app.close()
+})
+
 test('typing below a folded section keeps it folded; the chevron opens it in one click', async () => {
   const { app, page } = await openNote()
   await clickMenu(app, 'toggle-outline')
   await expect(labels(page)).toHaveCount(5)
-  await chevrons(page).nth(3).click() // Beta (Alpha, Alpha eins, Alpha zwei come first)
+  await chevrons(page).nth(1).click() // Beta: only H1s with H2s get a chevron
   await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(1)
   await expect(labels(page)).toHaveCount(4)
   await page.locator('.cm-content').click()
@@ -134,10 +162,10 @@ test('typing below a folded section keeps it folded; the chevron opens it in one
   await page.keyboard.type('Neu unten.')
   await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(1)
   await expect(labels(page)).toHaveCount(4)
-  await expect(chevrons(page).nth(3)).toHaveAttribute('aria-expanded', 'false')
-  await chevrons(page).nth(3).click()
+  await expect(chevrons(page).nth(1)).toHaveAttribute('aria-expanded', 'false')
+  await chevrons(page).nth(1).click()
   await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(0)
-  await expect(chevrons(page).nth(3)).toHaveAttribute('aria-expanded', 'true')
+  await expect(chevrons(page).nth(1)).toHaveAttribute('aria-expanded', 'true')
   await expect(labels(page)).toHaveCount(5)
   await app.close()
 })

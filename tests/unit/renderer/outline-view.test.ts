@@ -60,9 +60,9 @@ describe('Outline rendering', () => {
     const chev = el.querySelector('.mdo-ol-chevron') as HTMLElement
     expect(chev.getAttribute('aria-expanded')).toBe('true')
     expect(chev.getAttribute('aria-label')).toBe('Abschnitt einklappen')
-    // Gamma and Delta have no fold: spacer instead of a chevron.
-    expect(el.querySelectorAll('.mdo-ol-chevron').length).toBe(2)
-    expect(el.querySelectorAll('.mdo-ol-spacer').length).toBe(2)
+    // Only Alpha has children: Beta (folds, but no children), Gamma and Delta get a spacer.
+    expect(el.querySelectorAll('.mdo-ol-chevron').length).toBe(1)
+    expect(el.querySelectorAll('.mdo-ol-spacer').length).toBe(3)
   })
   it('hides the children of a folded H1', () => {
     outline.render(tree(true), null)
@@ -167,16 +167,21 @@ describe('Outline in-place updates', () => {
     )
     expect([...el.querySelectorAll('li')]).toEqual(lis)
   })
-  it('swaps chevron and spacer in place when a section gains or loses its fold', () => {
-    outline.render([entry(1, 'Alpha', 0, { fold: false })], null)
+  it('no chevron without children, even when the section folds', () => {
+    outline.render([entry(1, 'Alpha', 0), entry(2, 'Vorab', 20)], null)
+    expect(el.querySelector('.mdo-ol-chevron')).toBeNull()
+    expect(el.querySelectorAll('.mdo-ol-spacer').length).toBe(2)
+  })
+  it('swaps chevron and spacer in place when a section gains or loses its children', () => {
+    outline.render([entry(1, 'Alpha', 0)], null)
     const li = el.querySelector('li') as HTMLElement
     expect(li.querySelector('.mdo-ol-chevron')).toBeNull()
     expect(li.firstElementChild?.className).toBe('mdo-ol-spacer')
-    outline.render([entry(1, 'Alpha', 0)], null)
+    outline.render([entry(1, 'Alpha', 0, { children: [entry(2, 'Beta', 20)] })], null)
     expect(el.querySelector('li')).toBe(li)
-    expect(li.querySelector('.mdo-ol-spacer')).toBeNull()
+    expect(li.querySelector(':scope > .mdo-ol-spacer')).toBeNull()
     expect(li.firstElementChild?.className).toContain('mdo-ol-chevron')
-    outline.render([entry(1, 'Alpha', 0, { fold: false })], null)
+    outline.render([entry(1, 'Alpha', 0)], null)
     expect(li.querySelector('.mdo-ol-chevron')).toBeNull()
     expect(li.firstElementChild?.className).toBe('mdo-ol-spacer')
   })
