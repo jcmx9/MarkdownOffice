@@ -31,8 +31,6 @@
   --mdo-alert-important: #7a4fb0;
   --mdo-alert-warning: #b05a1a;
   --mdo-alert-caution: #b5452b;
-  /* memo.typ link-color: external links (petrol) */
-  --mdo-link: #1f6f6a;
 
   --mdo-syntax-comment: #8a8a8a;
   --mdo-syntax-string: #298e0d;
@@ -176,13 +174,12 @@
 .mdo-preview .mdo-link {
   text-decoration: underline dotted var(--mdo-faint);
 }
-/* External links like the memo set's PDF: link colour, fine solid underline (0.4pt, 2pt
-   offset), then a small raised ↗. The arrow is a widget/span whose glyph comes from
+/* External links like the memo set's PDF: no colour of their own (text colour), a fine
+   solid underline (0.4pt, 2pt offset), then a small raised ↗. The arrow is a widget/span whose glyph comes from
    ::before, so it is neither document text nor copied text. It stays an inline box (not
    inline-block): no line break between link text and arrow, no underline under it. */
 .mdo-preview .mdo-link-ext {
-  color: var(--mdo-link);
-  text-decoration: underline solid var(--mdo-link);
+  text-decoration: underline solid currentColor;
   text-decoration-thickness: 0.4pt;
   text-underline-offset: 2pt;
 }
@@ -195,7 +192,6 @@
   /* raised 0.33em of the arrow size, like the PDF's baseline: -0.33em */
   vertical-align: 0.33em;
   line-height: 1;
-  color: var(--mdo-link);
   content: "\2197";
 }
 .mdo-preview .mdo-code-inline {

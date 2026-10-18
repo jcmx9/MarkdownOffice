@@ -198,7 +198,7 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   await app.close()
 })
 
-test('external links get the link colour and a ↗ that is not document text', async () => {
+test('external links get an underline and a ↗ that is not document text', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Links.md')
   const source =
@@ -210,7 +210,11 @@ test('external links get the link colour and a ↗ that is not document text', a
   const line = page.locator('.cm-line', { hasText: 'Siehe' })
   const ext = line.locator('.mdo-link-ext')
   await expect(ext).toHaveText('Doku')
-  await expect(ext).toHaveCSS('color', 'rgb(31, 111, 106)')
+  // No colour of its own: the link keeps the text colour of its line, only the underline marks it.
+  expect(await ext.evaluate((el) => getComputedStyle(el).color)).toBe(
+    await line.evaluate((el) => getComputedStyle(el).color),
+  )
+  await expect(ext).toHaveCSS('text-decoration-style', 'solid')
   // Internal link: plain link look, no arrow.
   await expect(line.locator('.mdo-link:not(.mdo-link-ext)')).toHaveText('Kapitel')
   const arrows = line.locator('.mdo-link-arrow')
