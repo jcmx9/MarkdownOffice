@@ -104,8 +104,8 @@ Environment:
   MDO_NO_OPEN=1           Das PDF nach dem Build nicht öffnen (Batch/Cron)
   MDO_BASE_DIR=ordner     Relative Bild-/Logopfade gelten relativ zu diesem Ordner
                           statt zum Ordner der Quelle (temporäre Kopie)
-  MDO_TEMPLATES=ordner    Ordner mit eigenen Vorlagen-Sets (Standard:
-                          ~/Documents/Markdown Office/Vorlagen)
+  MDO_TEMPLATES=ordner    Ordner mit eigenen Vorlagen-Sets, <name>.typ oder <name>/<name>.typ
+                          (Standard: ~/Documents/Markdown Office/Vorlagen)
   MDO_PIPELINE_ROOT=ordner  Pipeline-Ordner mit lib/, vendor/, fonts/, bin/typst
                           (Standard: Ordner dieses Skripts)
   MDO_SETS_DIR=ordner     Mitgelieferte Vorlagen-Sets (Standard: ../sets)
@@ -385,7 +385,7 @@ else
   out="${src_dir}/${base}.pdf"
 fi
 
-# Vorlagen-Sets: <name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
+# Vorlagen-Sets: <name>.typ oder <name>/<name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
 # ~/Documents/Markdown Office/Vorlagen) vor den mitgelieferten Sets
 # (MDO_SETS_DIR/<name>/<name>.typ); der Ordner ist auch ein Logo-Suchort.
 user_templates="${MDO_TEMPLATES:-${HOME:-}/Documents/Markdown Office/Vorlagen}"
@@ -435,13 +435,16 @@ attach=""
 if [[ "${fm_embed}" != "false" ]]; then attach="${src_abs}"; fi
 
 # resolve_template <wert> <basisordner>: gibt den absoluten Pfad der .typ aus.
-# Leer -> memo. Ein Name (a-z, 0-9, _ und -) ist ein Set; ein Wert auf .typ
+# Leer -> memo. Ein Name (a-z, 0-9, _ und -) ist ein Set (<name>.typ oder Ordner
+# <name>/<name>.typ im Benutzerordner, dann mitgeliefert); ein Wert auf .typ
 # eine einzelne Datei (relativ zum Basisordner; ~ und $VAR wie bei Bildern).
 # Sonst oder nicht gefunden: Meldung auf stderr, Exit 1.
 resolve_template() {
   local v="${1:-memo}" base="$2" p
   if [[ "${v}" =~ ^[a-z0-9_-]+$ ]]; then
-    for p in "${user_templates}/${v}.typ" "${sets_dir}/${v}/${v}.typ"; do
+    # Benutzerordner zuerst: <name>.typ, dann ein Set-Ordner <name>/<name>.typ (geklontes
+    # oder aus dem Katalog installiertes Set-Repo), danach die mitgelieferten Sets.
+    for p in "${user_templates}/${v}.typ" "${user_templates}/${v}/${v}.typ" "${sets_dir}/${v}/${v}.typ"; do
       if [[ -f "${p}" ]]; then printf '%s' "${p}"; return 0; fi
     done
     echo "Error: Vorlage nicht gefunden: ${v} (gesucht in ${user_templates} und ${sets_dir})" >&2

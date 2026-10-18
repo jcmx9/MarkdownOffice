@@ -33,7 +33,8 @@ Keep the set in **one self-contained `.typ` file**. Only import from the pipelin
 1. Value: `--template VALUE` on the command line wins; otherwise the front-matter key `template:`; otherwise `memo`.
 2. A **name** is looked up in this order, first hit wins:
    1. `${MDO_TEMPLATES:-~/Documents/Markdown Office/Vorlagen}/<name>.typ`
-   2. `${MDO_SETS_DIR:-<pipeline>/../sets}/<name>/<name>.typ`
+   2. `${MDO_TEMPLATES:-~/Documents/Markdown Office/Vorlagen}/<name>/<name>.typ` (a set folder, so that a cloned or catalog-installed set repo works as is)
+   3. `${MDO_SETS_DIR:-<pipeline>/../sets}/<name>/<name>.typ`
 3. A **`.typ` value**: `~`, `$VAR`, `${VAR}`, `%VAR%` and `%XX` are expanded; a relative path counts from the caller's working directory (`--template`) or from the note's folder / `MDO_BASE_DIR` (`template:`).
 4. Not found or invalid: message on stderr, exit 1. No fallback to `memo`.
 

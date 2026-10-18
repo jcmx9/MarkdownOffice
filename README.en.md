@@ -272,7 +272,7 @@ A template set defines how a document looks. It consists of up to three files sh
 | `name.header.md` | Front-matter template with all keys; contains `template: name` | no |
 | `name.css` | Look in the editor (reserved; the editor does not read it yet) | no |
 
-The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, ships with the app. Your own sets live as `name.typ` in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
+The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, ships with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 

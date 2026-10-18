@@ -382,15 +382,20 @@ function Get-TypstReadable {
 }
 
 # Vorlage aufloesen (spiegelt resolve_template in build.sh): leer -> memo;
-# ein Name (a-z, 0-9, _ und -) ist ein Set (Benutzerordner <name>.typ vor den
-# mitgelieferten Sets <MDO_SETS_DIR>\<name>\<name>.typ); ein Wert auf .typ eine
+# ein Name (a-z, 0-9, _ und -) ist ein Set (Benutzerordner <name>.typ oder
+# <name>\<name>.typ vor den mitgelieferten Sets <MDO_SETS_DIR>\<name>\<name>.typ); ein Wert auf .typ eine
 # einzelne Datei relativ zu $Base.
 function Resolve-Template {
   param([string]$Value, [string]$Base)
   if (-not $Value) { $Value = 'memo' }
   if ($Value -cmatch '^[a-z0-9_-]+$') {
+    # Benutzerordner zuerst: <name>.typ, dann ein Set-Ordner <name>\<name>.typ (geklontes
+    # oder aus dem Katalog installiertes Set-Repo), danach die mitgelieferten Sets.
     $cands = @()
-    if ($UserTemplates) { $cands += (Join-Path $UserTemplates "$Value.typ") }
+    if ($UserTemplates) {
+      $cands += (Join-Path $UserTemplates "$Value.typ")
+      $cands += (Join-Path (Join-Path $UserTemplates $Value) "$Value.typ")
+    }
     $cands += (Join-Path (Join-Path $SetsDir $Value) "$Value.typ")
     foreach ($cand in $cands) {
       if (Test-Path -LiteralPath $cand -PathType Leaf) { return $cand }

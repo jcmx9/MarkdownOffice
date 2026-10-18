@@ -306,6 +306,12 @@ if ($r.Code -ne 0 -or -not (Test-PdfA $setPdf)) { Fail "Set probe: Exit $($r.Cod
 elseif (-not (Test-PdfMarker $setPdf 'SET-PROBE')) { Fail 'Set probe: Marker SET-PROBE fehlt, falsche Vorlage' }
 else { Ok 'Set aus MDO_TEMPLATES' }
 
+$folderPdf = Join-Path $outDir 'folder.pdf'
+$r = Invoke-Convert @('--template', 'folderset', $setNote, $folderPdf)
+if ($r.Code -ne 0 -or -not (Test-PdfA $folderPdf)) { Fail "Set-Ordner: Exit $($r.Code)`n$($r.Text)" }
+elseif (-not (Test-PdfMarker $folderPdf 'SET-FOLDER')) { Fail 'Set-Ordner: Marker SET-FOLDER fehlt' }
+else { Ok 'Set-Ordner <name>\<name>.typ im Benutzerordner' }
+
 $r = Invoke-Convert @('--template', 'gibt-es-nicht', $setNote, (Join-Path $outDir 'x.pdf'))
 if ($r.Code -ne 1 -or $r.Text -notmatch 'Vorlage nicht gefunden: gibt-es-nicht') { Fail "unbekanntes Set: Exit $($r.Code)`n$($r.Text)" } else { Ok 'unbekanntes Set: Exit 1' }
 

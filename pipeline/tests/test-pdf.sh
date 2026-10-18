@@ -631,6 +631,20 @@ test_templates() {
   expect "eigenes memo" "$(pdf_text "${out_dir}/schatten.pdf")" "SET-PROBE"
   ok "Benutzerordner vor mitgelieferten Sets"
 
+  # Set-Ordner im Benutzerordner: <templates>/<name>/<name>.typ (geklontes Set-Repo).
+  MDO_TEMPLATES="${sets}" bash "${build}" --template folderset "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/folder.pdf" >/dev/null 2>"${out_dir}/folder.err" ||
+    die "Set-Ordner: Export fehlgeschlagen: $(cat "${out_dir}/folder.err")"
+  expect "Set-Ordner" "$(pdf_text "${out_dir}/folder.pdf")" "SET-FOLDER"
+  # Eine flache <name>.typ gewinnt über den Ordner gleichen Namens.
+  mkdir -p "${out_dir}/Flach/probe"
+  cp "${sets}/probe.typ" "${out_dir}/Flach/probe.typ"
+  cp "${sets}/folderset/folderset.typ" "${out_dir}/Flach/probe/probe.typ"
+  MDO_TEMPLATES="${out_dir}/Flach" bash "${build}" --template probe "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/flach.pdf" >/dev/null 2>&1 || die "flach vor Ordner: Export fehlgeschlagen"
+  expect "flach vor Ordner" "$(pdf_text "${out_dir}/flach.pdf")" "SET-PROBE"
+  ok "Set-Ordner <name>/<name>.typ im Benutzerordner"
+
   # Einzelne .typ-Datei relativ zur Notiz (Leerzeichen im Namen), Aufruf aus fremdem cwd.
   cp "${sets}/probe.typ" "${out_dir}/Set Ordner/eigene vorlage.typ"
   printf -- '---\ntemplate: ./eigene vorlage.typ\n---\n\n# Pfad\n' >"${out_dir}/Set Ordner/pfad.md"
