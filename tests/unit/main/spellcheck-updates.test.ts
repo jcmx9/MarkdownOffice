@@ -111,7 +111,7 @@ describe('checkForUpdates', () => {
     expect(readFileSync(join(d, 'fr-FR-3-0.bdic'), 'utf8')).toBe('OLDFR')
     const st = JSON.parse(readFileSync(join(d, 'mdo-dictionaries.json'), 'utf8'))
     expect(st.version).toBeNull()
-    expect(existsSync(join(d, 'fr-FR-3-0.bdic.download'))).toBe(false)
+    expect(readdirSync(d).filter((x) => x.endsWith('.tmp'))).toEqual([])
   })
   it('a lowercase release asset replaces the canonical installed file, no second copy', async () => {
     const d = dir()
