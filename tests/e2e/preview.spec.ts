@@ -198,8 +198,7 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   await app.close()
 })
 
-test('heading gaps come from the heading, the same with or without blank lines', async () => {
-  // Like the PDF: the gap above a heading is larger than below, blank lines do not matter.
+test('heading gaps match the memo PDF, the same with or without blank lines', async () => {
   const body = [
     'Absatz oben.',
     '# Kapitel',
@@ -209,6 +208,13 @@ test('heading gaps come from the heading, the same with or without blank lines',
     '### Klein',
     'Absatz Ende.',
   ]
+  // Baseline-to-baseline distances in pt at body 10pt, measured in the memo set's PDF of
+  // this note: [above, below] per heading (H1 below includes its hairline).
+  const pdf: Array<[string, number, number]> = [
+    ['.mdo-h1', 37.4, 33.0],
+    ['.mdo-h2', 26.0, 15.0],
+    ['.mdo-h3', 19.2, 12.1],
+  ]
   const measure = async (sep: string, name: string) => {
     const dirs = await makeDirs()
     const note = join(dirs.notes, `${name}.md`)
@@ -217,38 +223,48 @@ test('heading gaps come from the heading, the same with or without blank lines',
     await page.locator('.cm-editor.mdo-preview').waitFor()
     await expect(page.locator('.cm-line.mdo-h3')).toHaveCount(1)
     await page.evaluate(() => document.fonts.ready)
-    // Text boxes, not line boxes: the heading line's padding is part of the gap.
-    const gaps = await page.evaluate(() => {
-      const text = (el: Element) => {
-        const r = document.createRange()
-        r.selectNodeContents(el)
-        return r.getBoundingClientRect()
-      }
-      const line = (t: string) => {
-        const el = [...document.querySelectorAll('.cm-line')].find((l) => l.textContent === t)
-        if (!el) throw new Error(`line ${t} missing`)
-        return text(el)
-      }
-      const pairs: Array<[string, string, string]> = [
-        ['.mdo-h1', 'Absatz oben.', 'Absatz eins.'],
-        ['.mdo-h2', 'Absatz eins.', 'Absatz zwei.'],
-        ['.mdo-h3', 'Absatz zwei.', 'Absatz Ende.'],
-      ]
-      return pairs.map(([sel, before, after]) => {
-        const h = text(document.querySelector(`.cm-line${sel}`) as Element)
-        return { above: h.top - line(before).bottom, below: line(after).top - h.bottom }
-      })
-    })
+    const dists = await page.evaluate(
+      (sels) => {
+        // Text box bottom = baseline + descent (hhea): Source Serif 0.335em, Source Sans 0.326em.
+        const baseline = (el: Element, descent: number) => {
+          const r = document.createRange()
+          r.selectNodeContents(el)
+          return (
+            r.getBoundingClientRect().bottom - descent * parseFloat(getComputedStyle(el).fontSize)
+          )
+        }
+        const para = (t: string) => {
+          const el = [...document.querySelectorAll('.cm-line')].find((l) => l.textContent === t)
+          if (!el) throw new Error(`line ${t} missing`)
+          return { el, y: baseline(el, 0.326) }
+        }
+        // Normalise to body 10pt whatever the zoom: px per pt of the body text.
+        const unit = parseFloat(getComputedStyle(para('Absatz oben.').el).fontSize) / 10
+        const order = ['Absatz oben.', 'Absatz eins.', 'Absatz zwei.', 'Absatz Ende.']
+        return sels.map((sel, i) => {
+          const h = baseline(document.querySelector(`.cm-line${sel}`) as Element, 0.335)
+          return {
+            above: (h - para(order[i] as string).y) / unit,
+            below: (para(order[i + 1] as string).y - h) / unit,
+          }
+        })
+      },
+      pdf.map(([sel]) => sel),
+    )
     await shot(page, `heading-spacing-${name}`)
     await app.close()
-    return gaps
+    return dists
   }
   const tight = await measure('\n', 'tight')
   const blank = await measure('\n\n', 'blank')
-  for (const [i, g] of tight.entries()) {
+  for (const [i, [, above, below]] of pdf.entries()) {
+    const t = tight[i] as (typeof tight)[number]
     const b = blank[i] as (typeof blank)[number]
-    expect(Math.abs(g.above - b.above)).toBeLessThanOrEqual(1)
-    expect(Math.abs(g.below - b.below)).toBeLessThanOrEqual(1)
-    expect(g.above).toBeGreaterThan(g.below)
+    // Blank lines next to a heading do not change the layout.
+    expect(Math.abs(t.above - b.above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(t.below - b.below)).toBeLessThanOrEqual(1)
+    // Within 1pt of the PDF.
+    expect(Math.abs(t.above - above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(t.below - below)).toBeLessThanOrEqual(1)
   }
 })
