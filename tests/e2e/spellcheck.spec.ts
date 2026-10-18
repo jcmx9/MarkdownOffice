@@ -29,7 +29,7 @@ test('SPIKE: dictionary file names (Windows/Linux)', async () => {
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
   const port = (server.address() as { port: number }).port
   const dirs = await makeDirs()
-  const { app } = await launch({ dirs, args: [] })
+  const { app } = await launch({ dirs, args: [], env: { MDO_SPIKE: '1' } })
   await app.evaluate(({ BrowserWindow }, p) => {
     const s = BrowserWindow.getAllWindows()[0]?.webContents.session
     s?.setSpellCheckerDictionaryDownloadURL(`http://127.0.0.1:${p}/`)
@@ -48,7 +48,7 @@ test('SPIKE: offline check with pre-placed dictionaries (Windows/Linux)', async 
   const dd = join(dirs.userData, 'Dictionaries')
   await mkdir(dd, { recursive: true })
   for (const f of await readdir(FIX)) await copyFile(join(FIX, f), join(dd, f))
-  const { app, page } = await launch({ dirs, args: [] })
+  const { app, page } = await launch({ dirs, args: [], env: { MDO_SPIKE: '1' } })
   await app.evaluate(({ BrowserWindow }) => {
     const s = BrowserWindow.getAllWindows()[0]?.webContents.session
     s?.setSpellCheckerDictionaryDownloadURL('http://127.0.0.1:9/')
@@ -69,7 +69,7 @@ test('SPIKE: offline check with pre-placed dictionaries (Windows/Linux)', async 
 
 test('SPIKE: native right click (macOS)', async () => {
   test.skip(process.platform !== 'darwin', 'macOS only')
-  const { app, page } = await launch({ args: [] })
+  const { app, page } = await launch({ args: [], env: { MDO_SPIKE: '1' } })
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.webContents.session.setSpellCheckerLanguages(['de-DE'])
   })
