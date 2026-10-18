@@ -137,14 +137,19 @@ try {
     # Renames a folder with [IO.Directory]::Move: a pure rename that fails as a whole.
     # (Move-Item falls back to copy-and-delete for a folder whose rename fails, which
     # half-moved a running install.) Retries because Defender, the indexer or exiting
-    # child processes can hold handles for a moment.
-    function Move-MdoDir([string]$From, [string]$To) {
-      for ($attempt = 1; $attempt -le 5; $attempt++) {
+    # child processes can hold handles for a moment. -Patient: for the freshly extracted
+    # install and for the rollback, where Defender may scan ~300 MB of new files for
+    # many seconds (seen in CI: 5 tries within 3 s were not enough); up to 10 tries
+    # within ~13 s. Without it the first move (old install aside) stays quick, so a
+    # running app is reported at once.
+    function Move-MdoDir([string]$From, [string]$To, [switch]$Patient) {
+      $tries = if ($Patient) { 10 } else { 5 }
+      for ($attempt = 1; $attempt -le $tries; $attempt++) {
         try {
           [IO.Directory]::Move($From, $To)
           return $true
         } catch {
-          if ($attempt -lt 5) { Start-Sleep -Milliseconds (300 * $attempt) }
+          if ($attempt -lt $tries) { Start-Sleep -Milliseconds (300 * $attempt) }
         }
       }
       return $false
@@ -348,9 +353,9 @@ try {
         }
         $hadOld = $true
       }
-      if (-not (Move-MdoDir $Root $InstallDir)) {
+      if (-not (Move-MdoDir $Root $InstallDir -Patient)) {
         if ($hadOld) {
-          if (-not (Move-MdoDir $OldDir $InstallDir)) { Stop-MdoRecovery }
+          if (-not (Move-MdoDir $OldDir $InstallDir -Patient)) { Stop-MdoRecovery }
           Stop-Mdo 6 'Installation fehlgeschlagen - die bisherige Version wurde wiederhergestellt.'
         }
         Stop-Mdo 6 'Installation fehlgeschlagen.'

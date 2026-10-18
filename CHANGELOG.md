@@ -25,6 +25,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `TEMPLATES.md`: guide for writing template sets (inputs, preprocessing contract, PDF/A requirements, skeleton, publishing)
 
 ### Fixed
+- Windows install/update: moving the freshly extracted app into place now retries for up to ~13 s (Defender may still scan the new files); the first move, which detects a running app, stays quick
 - Start screen without an open note: no redundant „Keine Notiz geöffnet.“ line; „Neue Notiz“ and „Öffnen …“ are two equal buttons
 - Pipeline: a multi-line HTML comment (`<!--` … `-->` across lines) no longer swallows all text after it; typography and hard line breaks now leave such comments untouched
 - Outline: slightly larger than the note text and one fixed width (18em, grows with the zoom); long headings end in „…“ and show in full on hover (only when cut off), right-aligned to the row
