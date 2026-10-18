@@ -116,6 +116,12 @@
       "repo": "jcmx9/MarkdownOffice-set-memo",
       "tag": "v26.10.1",
       "sha256": "ccaa7c4732bfa5e82efa3c88a1a77505c80dd4868e3e12dcadc61890b732db1d"
+    },
+    {
+      "name": "din5008a",
+      "repo": "jcmx9/MarkdownOffice-set-din5008a",
+      "tag": "v26.10.0",
+      "sha256": "3466bd2ae5aac9ad86580a0bae5e57a8acae031ddf3ac78d4709e83f10a30e99"
     }
   ],
   "dictionaries": [

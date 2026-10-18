@@ -273,7 +273,7 @@ A template set defines how a document looks. It consists of up to three files sh
 | `name.header.md` | Front-matter template with all keys; contains `template: name` | no |
 | `name.css` | Look in the editor (reserved; the editor does not read it yet) | no |
 
-The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, ships with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
+The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 
@@ -290,6 +290,30 @@ Your own template gets the same inputs (`sys.inputs`) as `memo.typ`, among them 
 `memo.typ` handles images with its own function (`safe-image`); a template without it stops at a missing image.
 
 How to write your own set (all inputs, the elements to render, PDF/A requirements, a working skeleton) is described in [TEMPLATES.md](TEMPLATES.md).
+
+## Letters (din5008a)
+
+The set `din5008a` sets letters to DIN 5008 Form A with a sender profile, vCard QR code and signature. A minimal note:
+
+```markdown
+---
+template: din5008a
+profile: beispiel
+x-to:
+  - Beispiel GmbH
+  - Frau Muster
+  - Musterstraße 1
+  - 12345 Musterstadt
+x-subject: Anfrage zum Angebot
+x-closing: Mit freundlichen Grüßen
+---
+
+Sehr geehrte Frau Muster,
+
+vielen Dank für Ihr Angebot.
+```
+
+Your own sender profiles live as `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\profiles\<name>.yaml`). All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
 
 ## PDF/A, source and metadata
 
