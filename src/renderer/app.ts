@@ -87,8 +87,10 @@ export class App {
   private readonly outline: OutlineSync
   /** Outline sidebar on/off per mode (persisted in the session). */
   private outlineOn = { edit: false, present: false }
-  /** Dragged outline width in em (Edit mode); null = default. Present always uses the default. */
+  /** Dragged outline width in em (Edit mode, persisted); null = default. */
   private outlineWidth: number | null = null
+  /** Width dragged during the current Present; never persisted, reset on every entry. */
+  private presentOutlineWidth: number | null = null
   private view: View = 'preview'
   private mode: Mode = 'edit'
   private zoom = { edit: 1, present: 1 }
@@ -190,8 +192,13 @@ export class App {
     )
     attachOutlineResize(root.outlineGrip, root.outline, {
       commit: (em) => {
-        this.outlineWidth = em
         root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em ?? 18)))
+        // A width dragged in Present lasts only until Present ends.
+        if (this.mode === 'present') {
+          this.presentOutlineWidth = em
+          return
+        }
+        this.outlineWidth = em
         this.mdo
           .saveSession({ outlineWidth: em })
           .catch((e: unknown) => console.error('saveSession(outlineWidth) failed', e))
@@ -581,6 +588,7 @@ export class App {
   private async enterPresent(): Promise<void> {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
+    this.presentOutlineWidth = null
     this.reconfigureAll()
     // Clients watch Present: no dictionary notice may stay on the shared screen.
     this.dismissDictNotices()
@@ -690,9 +698,10 @@ export class App {
   private applyOutline(): void {
     const visible = this.outlineOn[this.mode] && this.shownId !== null
     this.outline.setVisible(visible)
-    this.root.outlineGrip.hidden = !(visible && this.mode === 'edit')
-    applyOutlineWidth(this.root.outline, this.mode === 'edit' ? this.outlineWidth : null)
-    this.root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(this.outlineWidth ?? 18)))
+    this.root.outlineGrip.hidden = !visible
+    const width = this.mode === 'edit' ? this.outlineWidth : this.presentOutlineWidth
+    applyOutlineWidth(this.root.outline, width)
+    this.root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(width ?? 18)))
     this.outline.refresh()
   }
 

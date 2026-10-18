@@ -292,7 +292,7 @@ test('the outline grows and shrinks with the zoom; H2 rows hang from tree lines'
   await app.close()
 })
 
-test('the outline width is dragged by its left edge, kept across restarts, default in Present', async () => {
+test('the outline width is dragged by its left edge, kept across restarts, default in Present, draggable there for one Present only', async () => {
   const o = await openNote()
   const dirs = { root: o.root, notes: o.notes, userData: o.userData, templates: o.templates }
   const { app, page } = o
@@ -316,8 +316,26 @@ test('the outline width is dragged by its left edge, kept across restarts, defau
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await clickMenu(app, 'toggle-outline')
   await expect(outline(page)).toBeVisible()
-  await expect(grip).toBeHidden()
+  await expect(grip).toBeVisible()
   await expect(outline(page)).not.toHaveClass(/mdo-ol-custom/)
+  await expect.poll(width).toBe(before)
+  // Dragging in Present widens the outline for this Present only.
+  const pbox = await grip.boundingBox()
+  if (!pbox) throw new Error('no grip in Present')
+  await page.mouse.move(pbox.x + pbox.width / 2, pbox.y + 100)
+  await page.mouse.down()
+  await page.mouse.move(pbox.x + pbox.width / 2 - 80, pbox.y + 100, { steps: 5 })
+  await page.mouse.up()
+  await expect.poll(width).toBeGreaterThan(before + 60)
+  await shot(page, 'outline-present-grip')
+  // Leaving Present restores the saved Edit width, untouched by the Present drag.
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  await expect.poll(width).toBe(dragged)
+  // Entering Present again starts at the default width.
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await expect.poll(width).toBe(before)
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
   await expect.poll(width).toBe(dragged)
@@ -334,4 +352,63 @@ test('the outline width is dragged by its left edge, kept across restarts, defau
     .poll(() => outline(second.page).evaluate((el) => (el as HTMLElement).offsetWidth))
     .toBe(before)
   await second.app.close()
+})
+
+test('entries read as a list: arrow with children, bullet without; levels are relative', async () => {
+  const note = [
+    '# Kapitel mit Unterkapiteln',
+    '',
+    '## Erstes Unterkapitel',
+    '',
+    'Text.',
+    '',
+    '## Zweites Unterkapitel',
+    '',
+    'Text.',
+    '',
+    '# Kapitel ohne Unterkapitel',
+    '',
+    'Text.',
+    '',
+  ].join('\n')
+  const { app, page, note: file } = await openNote(note)
+  await clickMenu(app, 'toggle-outline')
+  await expect(chevrons(page)).toHaveCount(1)
+  await expect(page.locator('#outline .mdo-ol-marker')).toHaveCount(3)
+  await shot(page, 'outline-list-chapters')
+  await writeFile(
+    file,
+    [
+      '## Entstehung und historische Bedeutung des Taufbeckens',
+      '',
+      'a',
+      '',
+      '## Material, Technik und Aufbau',
+      '',
+      'b',
+      '',
+      '## Die Bilderwelt des Beckens',
+      '',
+      'c',
+      '',
+      '## Kunstgeschichtlicher Rang: Menschliche Gestalten',
+      '',
+      'd',
+      '',
+      '## Top 5 Deutschsprachige Web-Links',
+      '',
+      'e',
+      '',
+    ].join('\n'),
+  )
+  await expect(page.locator('#outline .mdo-ol-marker')).toHaveCount(5, { timeout: 15000 })
+  await expect(page.locator('#outline li.mdo-ol-top')).toHaveCount(5)
+  await expect(page.locator('#outline li.mdo-ol-sub')).toHaveCount(0)
+  const font = await page
+    .locator('#outline li.mdo-ol-top > .mdo-ol-label')
+    .first()
+    .evaluate((el) => getComputedStyle(el).fontFamily)
+  expect(font).toMatch(/serif|Serif|Source Serif/i)
+  await shot(page, 'outline-list-h2-only')
+  await app.close()
 })
