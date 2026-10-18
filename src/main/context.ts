@@ -117,6 +117,23 @@ export class AppContext {
   createWindow(): void {
     const win = createMainWindow()
     this.window = win
+    // SPIKE: record spellchecker events and context-menu params for tests/e2e/spellcheck.spec.ts.
+    const s = win.webContents.session
+    const g = globalThis as unknown as { mdoSpell: { events: string[]; params: unknown[] } }
+    g.mdoSpell = { events: [], params: [] }
+    for (const ev of [
+      'spellcheck-dictionary-download-begin',
+      'spellcheck-dictionary-download-success',
+      'spellcheck-dictionary-download-failure',
+      'spellcheck-dictionary-initialized',
+    ] as const) {
+      s.on(ev as 'spellcheck-dictionary-initialized', (_e, code: string) =>
+        g.mdoSpell.events.push(`${ev}:${code}`),
+      )
+    }
+    win.webContents.on('context-menu', (_e, p) =>
+      g.mdoSpell.params.push({ word: p.misspelledWord, suggestions: p.dictionarySuggestions }),
+    )
     this.fullScreen = new FullScreenOwner()
     this.rendererReady = false
     this.closeApproved = false

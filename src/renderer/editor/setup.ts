@@ -101,6 +101,7 @@ export function createState(
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
       EditorView.lineWrapping,
+      EditorView.contentAttributes.of({ spellcheck: 'true' }),
       viewCompartment.of(viewExtensions(view)),
       modeCompartment.of(modeExtensions(mode)),
       closingCompartment.of(closingExtensions(false)),

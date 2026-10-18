@@ -15,8 +15,7 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      // Spelling marks would distract while presenting.
-      spellcheck: false,
+      spellcheck: true,
     },
   })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
