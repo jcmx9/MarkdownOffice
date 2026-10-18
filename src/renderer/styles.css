@@ -277,9 +277,13 @@ dialog.prompt input:focus-visible {
   text-align: center;
   padding-inline: 0;
 }
+/* ▸ from the bundled Source Sans 3: the same glyph on every OS, turned 90° when expanded. */
 #outline .mdo-ol-chevron {
-  font-size: calc(11px * var(--mdo-ol-zoom, 1));
+  font-family: var(--mdo-font-sans);
+  font-size: calc(19px * var(--mdo-ol-zoom, 1));
+  line-height: 1;
   color: var(--mdo-faint);
+  transition: transform 0.12s ease;
 }
 #outline .mdo-ol-chevron:hover {
   color: var(--chrome-fg);

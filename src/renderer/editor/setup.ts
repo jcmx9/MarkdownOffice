@@ -1,5 +1,4 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { codeFolding, foldGutter, foldKeymap, unfoldAll } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import {
@@ -12,9 +11,10 @@ import {
 } from '@codemirror/state'
 import { drawSelection, EditorView, type KeyBinding, keymap, lineNumbers } from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
-import { Frontmatter, frontmatterRange } from './frontmatter'
+import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
 import { mdoHighlight } from './highlight'
+import { mdoMarkdown } from './markdown'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
 import { previewPlugin } from './preview'
@@ -96,7 +96,7 @@ export function createState(
       pageBreakKeymap,
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
-      markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [Frontmatter] }),
+      mdoMarkdown(languages),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
       EditorView.lineWrapping,
