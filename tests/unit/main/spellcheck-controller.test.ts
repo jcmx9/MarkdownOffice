@@ -6,21 +6,54 @@ import type { BrowserWindow } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { DEAD_DOWNLOAD_URL, SpellcheckController } from '../../../src/main/spellcheck/controller'
 import { defaultSettings } from '../../../src/main/store'
+import { Ch } from '../../../src/shared/ipc'
 import type { Settings } from '../../../src/shared/types'
 
+type Listener = (...args: unknown[]) => void
+
 /** A session stand-in that records the spellchecker calls in order. */
-function fakeWindow() {
+function fakeSession() {
   const calls: string[] = []
+  const listeners = new Map<string, Listener[]>()
   const session = {
     setSpellCheckerDictionaryDownloadURL: (url: string) => calls.push(`url ${url}`),
     setSpellCheckerEnabled: (on: boolean) => calls.push(`enabled ${on}`),
-    on: (event: string) => calls.push(`on ${event}`),
+    on: (event: string, fn: Listener) => {
+      calls.push(`on ${event}`)
+      listeners.set(event, [...(listeners.get(event) ?? []), fn])
+    },
+    off: (event: string, fn: Listener) =>
+      listeners.set(
+        event,
+        (listeners.get(event) ?? []).filter((l) => l !== fn),
+      ),
+    emit: (event: string, ...args: unknown[]) => {
+      for (const l of listeners.get(event) ?? []) l({}, ...args)
+    },
   }
-  return {
-    calls,
-    session,
-    win: { webContents: { session, on: () => undefined } } as unknown as BrowserWindow,
+  return { calls, session }
+}
+
+/** A window stand-in on `session`; `sent` records the channels sent to its renderer. */
+function windowOn(session: ReturnType<typeof fakeSession>['session']) {
+  const sent: string[] = []
+  const closed: (() => void)[] = []
+  const win = {
+    isDestroyed: () => false,
+    once: (event: string, fn: () => void) => {
+      if (event === 'closed') closed.push(fn)
+    },
+    webContents: { session, on: () => undefined, send: (ch: string) => sent.push(ch) },
+  } as unknown as BrowserWindow
+  const close = () => {
+    for (const fn of closed.splice(0)) fn()
   }
+  return { win, sent, close }
+}
+
+function fakeWindow() {
+  const { calls, session } = fakeSession()
+  return { calls, session, ...windowOn(session) }
 }
 
 const dir = () => mkdtempSync(join(tmpdir(), 'mdo-spell-'))
@@ -112,7 +145,7 @@ describe('SpellcheckController', () => {
     const { calls, session } = fakeWindow()
     // Two windows on the shared default session (e.g. macOS reopen on a Linux-like setup).
     for (let i = 0; i < 2; i++) {
-      const win = { webContents: { session, on: () => undefined } } as unknown as BrowserWindow
+      const { win } = windowOn(session)
       const c = new SpellcheckController(win, {
         userData: dir(),
         bundledDir: null,
@@ -125,5 +158,24 @@ describe('SpellcheckController', () => {
     expect(calls.filter((c) => c === 'on spellcheck-dictionary-download-begin')).toHaveLength(1)
     // The dead URL is set again per window (cheap, and never skipped).
     expect(calls.filter((c) => c.startsWith('url '))).toHaveLength(2)
+  })
+
+  // Chromium checks the shown text once and never again when the dictionaries change: a
+  // lang: de note opened on an English system kept English (or no) markers (Windows CI).
+  it('asks the renderer to check again whenever a dictionary has loaded, until closed', async () => {
+    const { session, win, sent, close } = fakeWindow()
+    const c = new SpellcheckController(win, {
+      userData: dir(),
+      bundledDir: null,
+      platform: 'win32',
+      settings: () => ({ ...defaultSettings('/docs'), dictionaryAutoUpdate: false }),
+    })
+    await c.start()
+    expect(sent).toEqual([])
+    session.emit('spellcheck-dictionary-initialized', 'de-DE')
+    expect(sent).toEqual([Ch.spellRecheck])
+    close()
+    session.emit('spellcheck-dictionary-initialized', 'en-US')
+    expect(sent).toEqual([Ch.spellRecheck])
   })
 })

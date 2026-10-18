@@ -68,6 +68,19 @@ export function spellcheckExtensions(on: boolean, mode: Mode): Extension {
 }
 
 /**
+ * Makes Chromium check the editor's text again with the dictionaries active now: switching
+ * `spellcheck` off removes the old markers (and the checker's progress), switching it on
+ * checks the whole editable again. Chromium does neither by itself when the dictionaries
+ * change (see SpellcheckController.recheckOnNewDictionary). Nothing happens while checking
+ * is off or in Present, so this never switches checking on.
+ */
+export function recheckSpelling(view: EditorView, on: boolean, mode: Mode): void {
+  if (!on || mode !== 'edit') return
+  view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(false, mode)) })
+  view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(true, mode)) })
+}
+
+/**
  * Applies a spelling correction from the context menu: replaces exactly `word` at `pos` (from
  * the click coordinates) with `replacement`, as one undoable input transaction that autosave
  * writes. Refuses when the text there is no longer that word (typed on meanwhile), so a
