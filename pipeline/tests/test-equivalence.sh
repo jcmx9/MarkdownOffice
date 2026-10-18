@@ -18,6 +18,11 @@
 # nicht neu erzeugt. Weicht ein Fixture ab, ist das ein Paritätsfehler der
 # neuen Pipeline.
 #
+# Bewusste Abweichungen (nur die betroffenen Referenzen neu aus dem Set
+# erzeugt, gleiche Umgebung, mit --extract):
+#   2026-10-18, memo 26.10.2: externe Links tragen im PDF ein ↗ hinter dem
+#     Linktext. Neu: tables-showcase.txt (zwei Links in Tabellenzellen).
+#
 # Layout wie in test-pdf.sh: MDO_PIPELINE_ROOT/MDO_SETS_DIR, sonst das
 # Entwicklungs-Layout build/pipeline-dev/ (tests/dev-layout.sh).
 #

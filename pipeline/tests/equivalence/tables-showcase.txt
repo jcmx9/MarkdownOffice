@@ -175,7 +175,7 @@ Auszeichnung, Code und Symbole
 
  watermark               "ENTWURF"       diagonales Wasserzeichen                                              ✗
 
- Projektseite            Link            Verweise funktionieren auch in Zellen                                 🔗
+ Projektseite ↗          Link            Verweise funktionieren auch in Zellen                                 🔗
 
 
 Ausrichtung aus der Trennzeile
@@ -241,7 +241,7 @@ Verschiedene Datumsformen, erledigte und offene Aufgaben, Auszeichnung im Aufgab
 
  Zugänge für staging.example.com bereitstellen              IT-Abteilung    KW 44
 
- Bildrechte klären (siehe Projektseite)                     Anna Beispiel   Freitag
+ Bildrechte klären (siehe Projektseite ↗)                   Anna Beispiel   Freitag
 
  Budget freigeben                                           Kundin          30.10.         ✓
 
