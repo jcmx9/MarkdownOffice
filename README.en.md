@@ -134,7 +134,7 @@ Inside a snippet, Esc first leaves field mode; in presentation mode only a furth
 | `:header` | YAML header with all keys of the set `memo` |
 | `:newpage` | Page break `<!-- pagebreak -->` |
 
-The menu **Einfügen → YAML-Header (memo)** puts the front-matter template of the set `memo` (`memo.header.md`) unchanged at the top of the note: every key with its default value and explanation. The cursor then sits in the title. A note that already has a header is left unchanged.
+The menu **Einfügen → YAML-Header (memo)** puts the front-matter template of the set `memo` (`memo.header.md`) unchanged at the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title. A note that already has a header is left unchanged.
 
 Your own snippets are files `name.tpl.md` in the snippet folder (default `~/Documents/Markdown Office/Snippets/`, setting „Snippet-Ordner“). Your own snippet with the same name replaces the built-in one. New files are picked up the next time the window gets focus. Supported syntax: `$1`, `${1:default}`, `$0` (final position) and `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (also in the form `${CURRENT_YEAR}`). `\$` gives a literal `$`, `\\` a backslash, and inside a default `\}` gives a literal `}`.
 
