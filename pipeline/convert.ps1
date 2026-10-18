@@ -492,7 +492,8 @@ function Convert-One {
   # Logo nur mit logo: im Frontmatter (ohne Schluessel oder leer: kein Logo).
   # Der Wert ist eine Datei .svg/.png/.jpg/.jpeg. Absolut (auch ueber ~,
   # %USERPROFILE% oder $HOME) -> genau diese Datei; relativ -> zuerst im Ordner
-  # der Notiz (bzw. MDO_BASE_DIR), dann im Benutzerordner, dann im Pipeline-Ordner.
+  # der Notiz (bzw. MDO_BASE_DIR), dann im Benutzerordner, dann im Vorlagen-Ordner
+  # (MDO_TEMPLATES bzw. Dokumente\Markdown Office\Vorlagen), dann im Pipeline-Ordner.
   # Nichts gefunden -> ohne Logo, nur ein Hinweis, nie ein Fehler.
   $logoArg = ''
   if ($fmLogo) {
@@ -505,7 +506,7 @@ function Convert-One {
       if ([IO.Path]::IsPathRooted($noteLogo)) {
         if (Test-Path -LiteralPath $noteLogo -PathType Leaf) { $logoArg = $noteLogo }
       } else {
-        foreach ($dir in @($baseDir, (Get-EnvFallback 'USERPROFILE'), $PipelineRoot)) {
+        foreach ($dir in @($baseDir, (Get-EnvFallback 'USERPROFILE'), $UserTemplates, $PipelineRoot)) {
           if (-not $dir) { continue }
           $cand = [IO.Path]::Combine($dir, $noteLogo)
           if (Test-Path -LiteralPath $cand -PathType Leaf) { $logoArg = $cand; break }

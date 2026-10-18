@@ -356,38 +356,49 @@ test_fixtures() {
   ok "ohne logo: kein Logo"
 
   # Suchreihenfolge für einen relativen logo:-Wert: Ordner der Notiz, dann
-  # Benutzerordner, dann Pipeline-Ordner. Nicht gefunden: ohne Logo, Exit 0.
-  local ldir="${out_dir}/logo-suche" lhome="${out_dir}/logo-home" lout
-  mkdir -p "${ldir}" "${lhome}"
+  # Benutzerordner, dann Vorlagen-Ordner, dann Pipeline-Ordner. Nicht
+  # gefunden: ohne Logo, Exit 0.
+  local ldir="${out_dir}/logo-suche" lhome="${out_dir}/logo-home" lvorl="${out_dir}/logo-vorlagen" lout
+  mkdir -p "${ldir}" "${lhome}" "${lvorl}"
   svg_text() {
     printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60"><text x="5" y="40" font-family="SourceSans3VF" font-size="30">%s</text></svg>\n' "$1"
   }
   logo_build() {
     printf -- '---\nlogo: %s\n---\n\nText.\n' "$1" >"${ldir}/n.md"
-    (cd "${ldir}" && HOME="${lhome}" MDO_PIPELINE_ROOT="${mroot}" bash "${build}" n.md "${out_dir}/logo.pdf" \
+    (cd "${ldir}" && HOME="${lhome}" MDO_TEMPLATES="${lvorl}" MDO_PIPELINE_ROOT="${mroot}" bash "${build}" n.md "${out_dir}/logo.pdf" \
       >/dev/null 2>"${out_dir}/logo.err") || die "logo: ${1}: Export fehlgeschlagen: $(cat "${out_dir}/logo.err")"
     pdf_text "${out_dir}/logo.pdf"
   }
   svg_text NOTIZLOGO >"${ldir}/mein-logo.svg"
   svg_text HOMELOGO >"${lhome}/mein-logo.svg"
+  svg_text VORLAGENLOGO >"${lvorl}/mein-logo.svg"
   lout="$(logo_build mein-logo.svg)"
   expect "logo: Notizordner" "${lout}" "NOTIZLOGO"
   reject "logo: Notizordner" "${lout}" "HOMELOGO"
   rm "${ldir}/mein-logo.svg"
   lout="$(logo_build mein-logo.svg)"
   expect "logo: Benutzerordner" "${lout}" "HOMELOGO"
+  reject "logo: Benutzerordner" "${lout}" "VORLAGENLOGO"
   # shellcheck disable=SC2088  # ~ soll wörtlich ins Frontmatter
   lout="$(logo_build '~/mein-logo.svg')"
   expect "logo: ~/" "${lout}" "HOMELOGO"
+  rm "${lhome}/mein-logo.svg"
+  lout="$(logo_build mein-logo.svg)"
+  expect "logo: Vorlagen-Ordner" "${lout}" "VORLAGENLOGO"
+  svg_text VORLAGENLOGO >"${lvorl}/logo.svg"
+  lout="$(logo_build logo.svg)"
+  expect "logo: Vorlagen vor Pipeline" "${lout}" "VORLAGENLOGO"
+  reject "logo: Vorlagen vor Pipeline" "${lout}" "PIPELOGO"
+  rm "${lvorl}/logo.svg"
   lout="$(logo_build logo.svg)"
   expect "logo: Pipeline-Ordner" "${lout}" "PIPELOGO"
   lout="$(logo_build fehlt.svg)"
-  reject "logo: fehlt" "${lout}" "PIPELOGO" "HOMELOGO"
+  reject "logo: fehlt" "${lout}" "PIPELOGO" "HOMELOGO" "VORLAGENLOGO"
   grep -q "Logo nicht gefunden: fehlt.svg" "${out_dir}/logo.err" || die "logo: fehlt: kein Hinweis"
   lout="$(logo_build mein-logo.txt)"
-  reject "logo: falsche Endung" "${lout}" "HOMELOGO"
+  reject "logo: falsche Endung" "${lout}" "VORLAGENLOGO"
   grep -q "Logo muss .svg" "${out_dir}/logo.err" || die "logo: falsche Endung: kein Hinweis"
-  ok "logo: Suchreihenfolge Notiz → Benutzer → Pipeline"
+  ok "logo: Suchreihenfolge Notiz → Benutzer → Vorlagen → Pipeline"
 
   # Das ausgelieferte pipeline/logo.svg (ohne Text) lässt sich einbinden.
   printf -- '---\nlogo: logo.svg\n---\n\nText.\n' >"${ldir}/n.md"
