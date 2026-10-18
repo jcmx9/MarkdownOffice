@@ -481,6 +481,12 @@ export class App {
   private async newNote(header?: string): Promise<void> {
     if (this.closing) return
     const path = await this.mdo.newNotePath()
+    // The window may have started closing during the round-trip: no tab, and give the reserved
+    // name back so it does not stay blocked.
+    if (this.closing) {
+      void this.mdo.releasePath(path)
+      return
+    }
     const hideHeader = header === undefined && this.headerDefaultHidden()
     const note = header === undefined ? null : headerNote(header)
     let state = createState(
