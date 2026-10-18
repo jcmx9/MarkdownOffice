@@ -187,7 +187,7 @@ test('a click jumps to the heading and focus stays in the editor', async () => {
   await app.close()
 })
 
-test('a long heading stays one line with the full text as title', async () => {
+test('a long heading stays one line; hover shows it in full, right-aligned', async () => {
   const long = `Lang ${'x'.repeat(195)}`
   expect(long.length).toBe(200)
   const { app, page } = await openNote(`# Kurz\n\nText.\n\n# ${long}\n\nText.\n`)
@@ -198,7 +198,19 @@ test('a long heading stays one line with the full text as title', async () => {
     .evaluate((el) => (el as HTMLElement).offsetHeight)
   const longEl = labels(page).nth(1)
   expect(await longEl.evaluate((el) => (el as HTMLElement).offsetHeight)).toBe(short)
-  await expect(longEl).toHaveAttribute('title', long)
+  await longEl.hover()
+  const tip = page.locator('.mdo-ol-tip')
+  await expect(tip).toBeVisible()
+  await expect(tip).toHaveText(long)
+  const box = await longEl.boundingBox()
+  const tipBox = await tip.boundingBox()
+  expect(
+    Math.abs((tipBox?.x ?? 0) + (tipBox?.width ?? 0) - ((box?.x ?? 0) + (box?.width ?? 0))),
+  ).toBeLessThan(2)
+  expect(tipBox?.width ?? 0).toBeGreaterThan(box?.width ?? 0)
+  await shot(page, 'outline-tip')
+  await page.mouse.move(5, 5)
+  await expect(tip).toBeHidden()
   const widths = await page.evaluate(() => ({
     bar: (document.querySelector('#outline') as HTMLElement).offsetWidth,
     win: window.innerWidth,
@@ -207,21 +219,32 @@ test('a long heading stays one line with the full text as title', async () => {
   await app.close()
 })
 
-test('short headings get the minimum width of 14em', async () => {
+test('the outline keeps one width (18em), whatever the headings', async () => {
   const { app, page } = await openNote('# A\n\nText.\n\n# B\n\nText.\n')
   await clickMenu(app, 'toggle-outline')
   await expect(labels(page)).toHaveCount(2)
-  const { bar, em } = await page.evaluate(() => {
-    const el = document.querySelector('#outline') as HTMLElement
-    return { bar: el.offsetWidth, em: Number.parseFloat(getComputedStyle(el).fontSize) }
-  })
-  expect(bar).toBeGreaterThanOrEqual(14 * em - 1)
+  const measure = () =>
+    page.evaluate(() => {
+      const el = document.querySelector('#outline') as HTMLElement
+      return { bar: el.offsetWidth, em: Number.parseFloat(getComputedStyle(el).fontSize) }
+    })
+  const short = await measure()
+  expect(
+    Math.abs(
+      short.bar - Math.min(18 * short.em, (await page.evaluate(() => window.innerWidth)) * 0.33),
+    ),
+  ).toBeLessThan(2)
+  await page.locator('.cm-content').click()
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+End' : 'Control+End')
+  await page.keyboard.type('\n\n# Eine deutlich längere Überschrift, die nicht mehr passt\n')
+  await expect(labels(page)).toHaveCount(3)
+  expect((await measure()).bar).toBe(short.bar)
   await app.close()
 })
 
 test('a classic scrollbar does not cut a medium heading short', async () => {
-  // Fits 33vw even in a ~1000px window with the H1 serif at 14px (Windows CI windows are narrower).
-  const medium = 'Mittellange Überschrift Nr. 1'
+  // Fits 18em even in a ~1000px window with the H1 serif at 16px (Windows CI windows are narrower).
+  const medium = 'Mittellange Überschrift'
   const body = Array.from({ length: 80 }, (_, i) => `# Kurz ${i}\n\nText.\n`).join('\n')
   const { app, page } = await openNote(`# ${medium}\n\nText.\n\n${body}`)
   // Force a non-overlay scrollbar as on Windows/Linux (CSSOM rule, not blocked by the CSP).

@@ -36,6 +36,7 @@ let handlers: {
 }
 let outline: Outline
 beforeEach(() => {
+  for (const tip of document.querySelectorAll('.mdo-ol-tip')) tip.remove()
   el = document.createElement('nav')
   handlers = {
     jump: vi.fn<(e: OutlineEntry) => void>(),
@@ -96,10 +97,43 @@ describe('Outline rendering', () => {
     labels()[0]?.dispatchEvent(new MouseEvent('click', { button: 2, bubbles: true }))
     expect(handlers.jump).not.toHaveBeenCalled()
   })
-  it('puts the full text in the title and renders it as text, never HTML', () => {
+  it('renders the text as text, never HTML, and without a native title tooltip', () => {
     outline.render([entry(1, '<b>Very long</b> heading', 0, { fold: false })], null)
-    expect(labels()[0]?.title).toBe('<b>Very long</b> heading')
+    expect(labels()[0]?.textContent).toBe('<b>Very long</b> heading')
+    expect(labels()[0]?.title).toBe('')
     expect(el.querySelector('b')).toBeNull()
+  })
+  it('hover over a cut-off label shows the full text, right-aligned to the label', () => {
+    outline.render([entry(1, '<b>Lang</b> und abgeschnitten', 0, { fold: false })], null)
+    const label = labels()[0] as HTMLElement
+    Object.defineProperty(label, 'scrollWidth', { value: 300, configurable: true })
+    Object.defineProperty(label, 'clientWidth', { value: 100 })
+    label.getBoundingClientRect = () =>
+      ({ top: 40, right: 500, height: 22, left: 400, bottom: 62, width: 100 }) as DOMRect
+    label.dispatchEvent(new MouseEvent('mouseenter'))
+    const tip = document.querySelector('.mdo-ol-tip') as HTMLElement
+    expect(tip.hidden).toBe(false)
+    expect(tip.textContent).toBe('<b>Lang</b> und abgeschnitten')
+    expect(tip.querySelector('b')).toBeNull()
+    expect(tip.classList.contains('mdo-ol-tip-h1')).toBe(true)
+    expect(tip.style.top).toBe('40px')
+    expect(tip.style.right).toBe(`${window.innerWidth - 500}px`)
+    label.dispatchEvent(new MouseEvent('mouseleave'))
+    expect(tip.hidden).toBe(true)
+  })
+  it('no hover tip when the label fits; a re-render hides an open tip', () => {
+    outline.render([entry(2, 'Kurz', 0, { fold: false })], null)
+    const label = labels()[0] as HTMLElement
+    Object.defineProperty(label, 'scrollWidth', { value: 50, configurable: true })
+    Object.defineProperty(label, 'clientWidth', { value: 100 })
+    label.dispatchEvent(new MouseEvent('mouseenter'))
+    const tip = document.querySelector('.mdo-ol-tip') as HTMLElement | null
+    expect(tip === null || tip.hidden).toBe(true)
+    Object.defineProperty(label, 'scrollWidth', { value: 300, configurable: true })
+    label.dispatchEvent(new MouseEvent('mouseenter'))
+    expect((document.querySelector('.mdo-ol-tip') as HTMLElement).hidden).toBe(false)
+    outline.render([entry(2, 'Kurz', 0, { fold: false })], null)
+    expect((document.querySelector('.mdo-ol-tip') as HTMLElement).hidden).toBe(true)
   })
   it('shows a muted note without headings', () => {
     outline.render([], null)
