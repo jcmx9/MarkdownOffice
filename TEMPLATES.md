@@ -62,7 +62,7 @@ typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-f
 
 ### Logo lookup (decided by the script)
 
-Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote values (`http(s)://`, `//`, `data:`) are refused. Absolute (after `~`/variable expansion) → exactly that file. Relative → first existing of `<note folder or MDO_BASE_DIR>/`, `~/` (Windows `%USERPROFILE%`), `<pipeline>/`. Nothing found → `logo` input is empty, with a notice. The template never searches.
+Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote values (`http(s)://`, `//`, `data:`) are refused. Absolute (after `~`/variable expansion) → exactly that file. Relative → first existing of `<note folder or MDO_BASE_DIR>/`, `~/` (Windows `%USERPROFILE%`), the templates folder (`MDO_TEMPLATES`, default `~/Documents/Markdown Office/Vorlagen/`), `<pipeline>/`. Nothing found → `logo` input is empty, with a notice. The template never searches.
 
 ## 3. Inputs (`sys.inputs`)
 
@@ -349,7 +349,21 @@ Repository tests: `bash pipeline/tests/test-pdf.sh` (PDFs of `pipeline/tests/fix
 
   `sha256` is the hash of GitHub's tag archive `https://github.com/<repo>/archive/refs/tags/<tag>.tar.gz` (`curl -sL <url> | shasum -a 256`). `npm run assets` downloads it, verifies the hash and extracts the archive's top-level folder into `sets/<name>/`. A tag must never be moved once pinned.
 
-## 12. Checklist
+## 12. Requirements for the official catalog
+
+The app will offer sets for one-click installation from a catalog. A set is listed as *official* or *reviewed* only if it meets the rules below; anything else can still be installed, but is shown as *not reviewed*. Why: catalog sets are installed with one click and their PDFs go to clients, so users must be able to trust them without reading the code.
+
+**Fonts: licences clear and use free.** Every font a set uses must be under a free licence that allows use, embedding in PDFs and redistribution (e.g. SIL OFL 1.1, Apache 2.0), and the licence text must be shipped. Today a set can only use the bundled fonts (section 4), whose licences ship in `<pipeline>/licenses/`; a set that later brings its own fonts must add their licence files to its repo.
+
+**Security review.** A set must not put users at risk. In particular:
+
+- **No hard-coded links.** No fixed URLs in the `.typ`, `.css` or `.header.md` (no `link("https://…")`, no URLs in text): a link in a client PDF can lead to a dangerous site, and a reader cannot tell. Links come only from the user's own note.
+- **Read only what the pipeline hands over:** `read()` only on `sys.inputs.source` and files under `mdo`; no other paths.
+- **No obfuscated content** (encoded payloads, embedded files other than the source attachment).
+
+These checks will run automatically in the catalog's CI before a set is listed; a reviewer confirms the result.
+
+## 13. Checklist
 
 - [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`.
 - [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"` and `mdo + "/vendor/…"`.
@@ -363,3 +377,4 @@ Repository tests: `bash pipeline/tests/test-pdf.sh` (PDFs of `pipeline/tests/fix
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
 - [ ] Repo `MarkdownOffice-set-<name>`, CalVer tag `vYY.M.MICRO`; for bundling, manifest entry with the archive's SHA-256.
+- [ ] For the catalog: only freely licensed fonts with licence texts; no hard-coded links; `read()` only on pipeline inputs (section 12).
