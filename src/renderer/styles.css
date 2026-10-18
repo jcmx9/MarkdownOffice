@@ -159,7 +159,7 @@ dialog.prompt input:focus-visible {
   flex: 1;
   min-width: 0;
 }
-/* Drag handle on the outline's left edge (Edit mode): a 6px strip over the border line. */
+/* Drag handle on the outline's left edge (Edit and Present): a 6px strip over the border line. */
 #outline-grip {
   margin: 0;
   border: 0;
@@ -233,7 +233,7 @@ body.mdo-ol-resizing {
   cursor: pointer;
 }
 #outline button:hover,
-#outline .mdo-ol-h2 > .mdo-ol-label:hover {
+#outline .mdo-ol-sub > .mdo-ol-label:hover {
   color: var(--chrome-fg);
 }
 #outline button:focus-visible {
@@ -251,34 +251,35 @@ body.mdo-ol-resizing {
   text-overflow: ellipsis;
 }
 #outline .mdo-ol-label.active,
-#outline .mdo-ol-h1 > .mdo-ol-label.active,
-#outline .mdo-ol-h2 > .mdo-ol-label.active {
+#outline .mdo-ol-top > .mdo-ol-label.active,
+#outline .mdo-ol-sub > .mdo-ol-label.active {
   color: var(--accent);
   box-shadow: inset 2px 0 var(--accent);
 }
-/* Hierarchy: H1 in the heading serif, H2 hanging from tree lines (├─ └─). */
-#outline .mdo-ol-list > .mdo-ol-h1 + .mdo-ol-h1 {
+/* Hierarchy (relative to the note's highest level): top entries in the heading serif, their
+   children hanging from tree lines (├─ └─). */
+#outline .mdo-ol-list > .mdo-ol-top + .mdo-ol-top {
   margin-top: calc(6px * var(--mdo-ol-zoom, 1));
 }
-#outline .mdo-ol-h1 > .mdo-ol-label,
-.mdo-ol-tip-h1 {
+#outline .mdo-ol-top > .mdo-ol-label,
+.mdo-ol-tip-top {
   font-family: var(--mdo-font-serif);
   font-size: calc(16px * var(--mdo-ol-zoom, 1));
   font-weight: 560;
   color: var(--mdo-heading);
 }
-#outline .mdo-ol-h1 > .mdo-ol-list {
+#outline .mdo-ol-top > .mdo-ol-list {
   /* The trunk runs below the centre of the H1 chevron slot (18px wide). */
   margin: 0 0 calc(2px * var(--mdo-ol-zoom, 1)) calc(8.5px * var(--mdo-ol-zoom, 1));
 }
-#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item {
+#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item {
   /* Half the height of an H2 row: where the branch meets the label. */
   --mdo-ol-mid: calc(10px * var(--mdo-ol-zoom, 1));
   position: relative;
   padding-left: calc(10px * var(--mdo-ol-zoom, 1));
 }
 /* Trunk: through every H2 row, ending at the branch of the last one (└─). */
-#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item::before {
+#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item::before {
   content: "";
   position: absolute;
   left: 0;
@@ -286,12 +287,12 @@ body.mdo-ol-resizing {
   bottom: 0;
   border-left: 1px solid var(--line);
 }
-#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item:last-child::before {
+#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item:last-child::before {
   bottom: auto;
   height: var(--mdo-ol-mid);
 }
 /* Branch: from the trunk to the H2 row. */
-#outline .mdo-ol-h1 > .mdo-ol-list > .mdo-ol-item::after {
+#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item::after {
   content: "";
   position: absolute;
   left: 0;
@@ -299,13 +300,13 @@ body.mdo-ol-resizing {
   width: calc(9px * var(--mdo-ol-zoom, 1));
   border-top: 1px solid var(--line);
 }
-#outline .mdo-ol-h2 > .mdo-ol-label,
-.mdo-ol-tip-h2 {
+#outline .mdo-ol-sub > .mdo-ol-label,
+.mdo-ol-tip-sub {
   font-size: calc(14px * var(--mdo-ol-zoom, 1));
   color: var(--chrome-muted);
 }
 #outline .mdo-ol-chevron,
-#outline .mdo-ol-spacer {
+#outline .mdo-ol-marker {
   flex: none;
   width: calc(18px * var(--mdo-ol-zoom, 1));
   text-align: center;
@@ -318,6 +319,14 @@ body.mdo-ol-resizing {
   line-height: 1;
   color: var(--mdo-faint);
   transition: transform 0.12s ease;
+}
+/* List marker for entries without children: same slot and colour as the arrow. */
+#outline .mdo-ol-marker {
+  font-family: var(--mdo-font-sans);
+  font-size: calc(19px * var(--mdo-ol-zoom, 1));
+  line-height: 1;
+  color: var(--mdo-faint);
+  user-select: none;
 }
 #outline .mdo-ol-chevron:hover {
   color: var(--chrome-fg);
