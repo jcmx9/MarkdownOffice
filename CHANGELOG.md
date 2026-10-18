@@ -39,6 +39,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `TEMPLATES.md`: guide for writing template sets (inputs, preprocessing contract, PDF/A requirements, skeleton, publishing)
 - Editor: external links (`http://`, `https://`, `mailto:`, also `<https://…>`) look like in the PDF of set `memo` 26.10.2: in the text colour, with a fine underline and a small ↗ after the link, in the Preview, Present and the table widget; the arrow is not part of the document. Internal links and the Code view are unchanged
 
+### Changed
+- **Breaking:** the front-matter key `client:` is renamed to `toptitle:` (pipeline, Windows pipeline, editor title block, snippets `:header`, `:meeting`, `:telefonnotiz`, docs); `client:` is no longer read, so rename it in existing notes. The Typst input `client` is now `toptitle`; own template sets must read `sys.inputs.toptitle`
+- Set `memo` 26.10.4: reads `toptitle` instead of `client` (small line above the title, footer, PDF keywords); its header file has `toptitle:`
+
 ### Fixed
 - Preview: heading spacing and the H1 hairline follow the `memo` PDF (baseline distances within 1pt) and no longer depend on blank lines in the source; blank lines next to a heading collapse until the cursor is on them
 - Spell checking (Windows/Linux): an opened note is checked again once its dictionary has loaded; before, a `lang: de` note opened on an English system kept English suggestions or no marks until edited

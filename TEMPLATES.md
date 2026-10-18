@@ -88,7 +88,7 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `title` | Fallback metadata title: source base name without extension | text | always set |
 | `doctitle` | Front matter `title:` | text | `""` |
 | `subtitle` | Front matter `subtitle:` | text | `""` |
-| `client` | Front matter `client:` | text | `""` |
+| `toptitle` | Front matter `toptitle:` | text | `""` |
 | `author` | Front matter `author:`; an inline list `[A, B]` becomes `A, B` | comma-separated text | `""` |
 | `date` | Front matter `date:`, **raw** (not normalised) | `2026-10-13`, `13.10.2026` or free text | `""` |
 | `lang` | Front matter `lang:` | `de`, `en`, … | `de` |
@@ -250,7 +250,7 @@ Every set must produce a valid **PDF/A-3b** with the source attached, like `memo
 | PDF/A-3b | `--pdf-standard a-3b`; Typst embeds all fonts and refuses non-conforming output | Set a non-empty `title` in `set document` (PDF/A requires it). Never set `date: none` (PDF/A requires a date): use a parsed `date` or `auto` |
 | Reproducible date | `SOURCE_DATE_EPOCH` = source mtime | Parse `date` (ISO or `D.M.YYYY`, validate month/day) into `datetime`, else `auto` |
 | Embedded source | Passes `attach` (empty with `--no-source` / `embed_source: false`) | If `attach != ""`: `pdf.attach("/" + attach.split("/").last(), read(attach, encoding: none), relationship: "source", mime-type: "text/markdown")`. Use only the file name as attachment name, never the full path (it would leak the local user name) |
-| Metadata | — | memo: `title` = `doctitle` or `title`; `author` = `author` split at `,`; `description` = `doctitle`; `keywords` = `client` + `"Markdown Office " + version` |
+| Metadata | — | memo: `title` = `doctitle` or `title`; `author` = `author` split at `,`; `description` = `doctitle`; `keywords` = `toptitle` + `"Markdown Office " + version` |
 | Colours | — | Use `luma()` for greys (stored as single-channel grey); Typst 0.15 cannot embed CMYK in PDF/A |
 
 ## 8. Editor preview CSS
@@ -345,7 +345,7 @@ Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task ta
 )
 ```
 
-Not covered by the skeleton, see `memo.typ`: `toc`, `h1_break`, `showname`, `header`, `watermark`, `logo`/`logo_height`, `client`/`subtitle`, localised labels per `lang`, Mermaid, table styling, footnotes.
+Not covered by the skeleton, see `memo.typ`: `toc`, `h1_break`, `showname`, `header`, `watermark`, `logo`/`logo_height`, `toptitle`/`subtitle`, localised labels per `lang`, Mermaid, table styling, footnotes.
 
 ## 10. Testing locally
 

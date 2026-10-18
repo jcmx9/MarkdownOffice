@@ -71,7 +71,7 @@ if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -For
 $inDir  = Join-Path $Work 'Notiz Ordner'
 $outDir = Join-Path $Work 'Aus gabe'
 New-Item -ItemType Directory -Force -Path (Join-Path $inDir 'bilder'), $outDir | Out-Null
-Copy-Item -LiteralPath (Join-Path $Fixtures 'client-meta.md') -Destination (Join-Path $inDir 'meine notiz.md')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'toptitle-meta.md') -Destination (Join-Path $inDir 'meine notiz.md')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination $inDir
 Copy-Item -LiteralPath (Join-Path $Fixtures 'edge-cases.md') -Destination (Join-Path $inDir 'mit bild.md')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $inDir 'bilder')

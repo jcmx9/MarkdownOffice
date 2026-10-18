@@ -2,7 +2,8 @@ import type { Text } from '@codemirror/state'
 import { frontmatterFields } from './frontmatter'
 
 export interface TitleBlock {
-  client: string
+  /** Front matter `toptitle:`: the small letter-spaced line above the title (memo set). */
+  toptitle: string
   title: string
   subtitle: string
   /** "date · author", only when author is set (as in the PDF). */
@@ -54,13 +55,18 @@ export function formatDate(raw: string, lang: string): string {
 
 export function titleBlockData(doc: Text): TitleBlock | null {
   const f = frontmatterFields(doc)
-  const client = f.client ?? ''
+  const toptitle = f.toptitle ?? ''
   const title = f.title ?? ''
   const subtitle = f.subtitle ?? ''
   const author = f.author ?? ''
-  if (!client && !title && !subtitle && !author) return null
+  if (!toptitle && !title && !subtitle && !author) return null
   const date = formatDate(f.date ?? '', f.lang || 'de')
-  return { client, title, subtitle, meta: author ? [date, author].filter(Boolean).join(' · ') : '' }
+  return {
+    toptitle,
+    title,
+    subtitle,
+    meta: author ? [date, author].filter(Boolean).join(' · ') : '',
+  }
 }
 
 export function renderTitleBlock(
@@ -87,7 +93,7 @@ export function renderTitleBlock(
     d.textContent = text
     el.append(d)
   }
-  part('mdo-tb-client', tb.client)
+  part('mdo-tb-toptitle', tb.toptitle)
   part('mdo-tb-title', tb.title)
   part('mdo-tb-subtitle', tb.subtitle)
   part('mdo-tb-meta', tb.meta)

@@ -204,7 +204,7 @@ Ein YAML-Block am Dateianfang steuert einzelne Dokumente. Alle Schlüssel sind o
 ---
 title: "Kick-off Relaunch"   # Titel: Titelblock, Kopfzeile, PDF-Titel
 subtitle: "Workshop"         # Untertitel
-client: "Muster GmbH"        # Kunde, klein und gesperrt über dem Titel
+toptitle: "Muster GmbH"      # Toptitel, klein und gesperrt über dem Titel
 author: [Anna, Ben]          # Autor(en): Zeile "Datum · Autor"
 date: 13.10.2026             # Datum (ISO oder T.M.JJJJ)
 lang: de                     # Sprache; Standard de
@@ -220,7 +220,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `template` | Set-Name oder `.typ`-Datei | `memo` | Vorlagen-Set des Dokuments, siehe [Vorlagen-Sets](#vorlagen-sets). |
 | `title` | Text | — | Titelblock oben, Kopfzeile ab Seite 1, PDF-Metadatentitel. Ohne `title` kein Titelblock; der PDF-Titel ist dann der Dateiname. `# …` im Text ist immer ein Kapitel, nie der Titel. |
 | `subtitle` | Text | — | Untertitel unter dem Titel. |
-| `client` | Text | — | Kunde/Firma, klein und gesperrt über dem Titel. |
+| `toptitle` | Text | — | Kleine, gesperrte Zeile über dem Titel, etwa Kunde oder Firma; auch vorn in der Fußzeile und in den PDF-Stichwörtern. |
 | `author` | Text oder `[A, B]` | — | Zeile unter dem Titel: „Datum · Autor“. |
 | `date` | `2026-10-13` oder `13.10.2026` | — | Datum unten rechts (nach `lang`), ISO-Präfix am Dateinamen, festes PDF-Datum. Ein nicht erkanntes Datum erscheint unverändert, ohne Präfix. |
 | `isodate_praefix` | `true` / `false` | `true` | ISO-Präfix am Dateinamen, wenn `date` gesetzt ist. |
@@ -228,7 +228,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `toc` | `auto` / `true` / `false` | `auto` | Inhaltsverzeichnis (nur H1 + H2); `auto` ab mehr als fünf H1/H2. |
 | `h1_break` | `auto` / `true` / `false` | `auto` | Jedes Kapitel (`#`) auf neuer Seite; `auto` wie bei `toc`. |
 | `header` | Text | — | Fester Kopfzeilentext ab Seite 1 statt des laufenden Kapitels. |
-| `print_filename` | `true` / `false` | `true` | Angabe unten links (Dateiname bzw. „Kunde · Titel“) ein-/ausblenden. |
+| `print_filename` | `true` / `false` | `true` | Angabe unten links (Dateiname bzw. „Toptitel · Titel“) ein-/ausblenden. |
 | `watermark` | Text | — | Diagonales, hellgraues Wasserzeichen unter allem. |
 | `logo` | Datei `.svg`/`.png`/`.jpg`/`.jpeg` | kein Logo | Logo im Kopf, nur wenn gesetzt; siehe [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximale Logohöhe (höchstens 25 mm); das Logo bleibt proportional und höchstens 60 mm breit. |
@@ -325,7 +325,7 @@ Eigene Absender-Profile liegen als `~/Documents/Markdown Office/Vorlagen/profile
 - **PDF/A-3b**, alle Schriften eingebettet.
 - Die **Markdown-Quelle** liegt als Anhang im PDF (unter ihrem Dateinamen, ohne lokalen Pfad) und lässt sich z. B. mit `mutool extract datei.pdf` wieder herauslösen. Abschalten mit `embed_source: false` oder `--no-source`.
 - Das **PDF-Datum** ist das `date:` der Notiz, sonst die Änderungszeit der Quelle, nie der Zeitpunkt des Builds.
-- **Weitere Metadaten:** Titel und Thema aus `title:`, Autor nur aus `author:`, Sprache aus `lang:`; die Stichwörter enthalten den Kunden und „Markdown Office <Version>“. Als erzeugendes Programm trägt Typst sich selbst ein.
+- **Weitere Metadaten:** Titel und Thema aus `title:`, Autor nur aus `author:`, Sprache aus `lang:`; die Stichwörter enthalten den Toptitel (`toptitle:`) und „Markdown Office <Version>“. Als erzeugendes Programm trägt Typst sich selbst ein.
 
 ## Schriften und Lizenzen
 

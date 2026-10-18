@@ -100,7 +100,7 @@ Options:
   -Help,    --help      Diese Hilfe ausgeben und beenden
 
 Optionale YAML-Frontmatter-Schluessel:
-  title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
+  title, subtitle, toptitle, author, date, isodate_praefix, toc, h1_break,
   print_filename, lang, header, watermark, logo, logo-height, profile,
   embed_source, hard_breaks, template
 
@@ -497,7 +497,7 @@ function Convert-One {
   # werden ignoriert, nie ein Fehler.
   $fmDate = ''; $fmIsodatePraefix = ''; $fmToc = 'auto'; $fmBreak = 'auto'; $fmShowname = 'true'; $fmLang = 'de'
   $fmHeader = ''; $fmWatermark = ''; $fmTitle = ''
-  $fmTemplate = ''; $fmSubtitle = ''; $fmClient = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
+  $fmTemplate = ''; $fmSubtitle = ''; $fmToptitle = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
   if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
     for ($i = 1; $i -lt $lines.Count; $i++) {
       if ($lines[$i].Trim() -in @('---', '...')) { break }
@@ -509,7 +509,7 @@ function Convert-One {
         'title'           { $fmTitle = ConvertTo-YamlStr $raw }
         'template'        { $fmTemplate = ConvertTo-YamlStr $raw }
         'subtitle'        { $fmSubtitle = ConvertTo-YamlStr $raw }
-        'client'          { $fmClient = ConvertTo-YamlStr $raw }
+        'toptitle'        { $fmToptitle = ConvertTo-YamlStr $raw }
         'author'          { $fmAuthor = ConvertTo-YamlStr $raw }
         'logo'            { $fmLogo = ConvertTo-YamlStr $raw }
         'logo-height'     { $fmLogoHeight = ConvertTo-YamlStr $raw }
@@ -660,7 +660,7 @@ function Convert-One {
     '--input', "title=$base",
     '--input', "doctitle=$fmTitle",
     '--input', "subtitle=$fmSubtitle",
-    '--input', "client=$fmClient",
+    '--input', "toptitle=$fmToptitle",
     '--input', "author=$fmAuthor",
     '--input', "logo=$logoFwd",
     '--input', "logo_height=$fmLogoHeight",

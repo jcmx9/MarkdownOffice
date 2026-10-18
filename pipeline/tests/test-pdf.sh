@@ -156,30 +156,30 @@ test_fixtures() {
   expect empty-fields.md "${text}" "Leere Kopfdaten" "Alle optionalen Felder sind leer."
   ok empty-fields.md
 
-  # Titel + Untertitel aus dem Front Matter, mehrere Kapitel, Fußzeile ohne Kunde.
+  # Titel + Untertitel aus dem Front Matter, mehrere Kapitel, Fußzeile ohne Toptitel.
   text="$(render yaml-title.md)"
   expect yaml-title.md "${text}" "Kick-off: Relaunch" "Workshop" "Ziele" "Unterpunkt" "Aufgaben" \
     "Kick-off: Relaunch · Workshop"
   reject yaml-title.md "${text}" "$(date +%d.%m.%Y)"
   ok yaml-title.md
 
-  # Kunde, deutsches Datum, Autorenliste, Fußzeile "Kunde · Titel"; leerer
+  # Toptitel, deutsches Datum, Autorenliste, Fußzeile "Toptitel · Titel"; leerer
   # Untertitel und ungültige logo-height (50 %) werden ignoriert.
-  text="$(render client-meta.md)"
-  expect_compact client-meta.md "${text}" "MUSTER GMBH"
-  expect client-meta.md "${text}" "Kick-off" "12. Oktober 2026 · jcmx9, Ben Probe" \
+  text="$(render toptitle-meta.md)"
+  expect_compact toptitle-meta.md "${text}" "MUSTER GMBH"
+  expect toptitle-meta.md "${text}" "Kick-off" "12. Oktober 2026 · jcmx9, Ben Probe" \
     "Muster GmbH · Kick-off" "Seite 1 / 1"
-  # PDF-Metadaten: Autor(en), Stichwörter mit Kunde und Markdown-Office-Version.
+  # PDF-Metadaten: Autor(en), Stichwörter mit Toptitel und Markdown-Office-Version.
   if command -v pdfinfo >/dev/null 2>&1; then
     local info
-    info="$(pdfinfo "${out_dir}/client-meta.pdf")"
-    expect "client-meta.md Metadaten" "${info}" "jcmx9, Ben Probe" "Muster GmbH, Markdown Office ${version}"
-    grep -q '^Subject: *Kick-off$' <<<"${info}" || die "client-meta.md: Thema ist nicht der Titel"
+    info="$(pdfinfo "${out_dir}/toptitle-meta.pdf")"
+    expect "toptitle-meta.md Metadaten" "${info}" "jcmx9, Ben Probe" "Muster GmbH, Markdown Office ${version}"
+    grep -q '^Subject: *Kick-off$' <<<"${info}" || die "toptitle-meta.md: Thema ist nicht der Titel"
     # Ohne author: kein Autor, ohne title: kein Thema.
     info="$(pdfinfo "${out_dir}/edge-cases.pdf")"
     if grep -qE '^(Author|Subject):' <<<"${info}"; then die "edge-cases.md: Autor/Thema ohne YAML gesetzt"; fi
   fi
-  ok client-meta.md
+  ok toptitle-meta.md
 
   # Englische Beschriftungen.
   text="$(render english.md)"
@@ -418,7 +418,7 @@ test_fixtures() {
   reject mermaid.md "${text}" "flowchart LR" "sequenceDiagram" "-->"
   ok mermaid.md
 
-  # Lange Fußzeile (Kunde · Titel): auf eine Zeile mit „…“ gekürzt, Abstand zur
+  # Lange Fußzeile (Toptitel · Titel): auf eine Zeile mit „…“ gekürzt, Abstand zur
   # Seitenzahl bleibt.
   text="$(render long-footer.md)"
   expect long-footer.md "${text}" "Muster Beratungsgesellschaft mbH · Kick…" "Seite 1 / 1"
@@ -455,16 +455,16 @@ test_interface() {
   local err code text
 
   # Ausdrücklich angegebene Ausgabe: exakt dieser Pfad, kein ISO-Präfix.
-  (cd "${fixtures}" && bash "${build}" client-meta.md "${out_dir}/exakt.pdf" >/dev/null 2>&1)
+  (cd "${fixtures}" && bash "${build}" toptitle-meta.md "${out_dir}/exakt.pdf" >/dev/null 2>&1)
   [[ -s "${out_dir}/exakt.pdf" ]] || die "Ausgabe nicht exakt geschrieben"
-  [[ ! -e "${out_dir}/2026-10-12_exakt.pdf" && ! -e "${fixtures}/2026-10-12_client-meta.pdf" ]] ||
+  [[ ! -e "${out_dir}/2026-10-12_exakt.pdf" && ! -e "${fixtures}/2026-10-12_toptitle-meta.pdf" ]] ||
     die "ISO-Präfix trotz ausdrücklicher Ausgabe"
   ok "Ausgabe exakt"
 
   # Ohne Ausgabe: neben der Quelle, deutsches Datum -> ISO-Präfix.
-  cp "${fixtures}/client-meta.md" "${fixtures}/logo.png" "${out_dir}/"
-  (cd "${out_dir}" && bash "${build}" client-meta.md >/dev/null 2>&1)
-  [[ -s "${out_dir}/2026-10-12_client-meta.pdf" ]] || die "ISO-Präfix aus 12.10.2026 fehlt"
+  cp "${fixtures}/toptitle-meta.md" "${fixtures}/logo.png" "${out_dir}/"
+  (cd "${out_dir}" && bash "${build}" toptitle-meta.md >/dev/null 2>&1)
+  [[ -s "${out_dir}/2026-10-12_toptitle-meta.pdf" ]] || die "ISO-Präfix aus 12.10.2026 fehlt"
   ok "ISO-Präfix aus deutschem Datum"
 
   # Fehlende Quelle: Exit != 0, kurze Meldung auf stderr.

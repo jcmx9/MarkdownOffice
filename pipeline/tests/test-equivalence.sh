@@ -45,6 +45,9 @@
 #     Neu: checklist, edge-cases, english, tasks (.txt), tables und
 #     tables-showcase (.txt/.meta, je eine Seite weniger), table-intro (.txt;
 #     zusätzlich mehr Fülltext im Fixture, siehe test-pdf.sh).
+#   2026-10-18, memo 26.10.4: Frontmatter-Schlüssel client: heißt toptitle:.
+#     Fixture client-meta umbenannt in toptitle-meta; in der .meta nur der
+#     Anhangsname angepasst, der Seitentext bleibt gleich (nicht neu erzeugt).
 #
 # Layout wie in test-pdf.sh: MDO_PIPELINE_ROOT/MDO_SETS_DIR, sonst das
 # Entwicklungs-Layout build/pipeline-dev/ (tests/dev-layout.sh).

@@ -94,7 +94,7 @@ Options:
   -h, --help      Diese Hilfe ausgeben und beenden
 
 Optionale YAML-Frontmatter-Schlüssel:
-  title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
+  title, subtitle, toptitle, author, date, isodate_praefix, toc, h1_break,
   print_filename, lang, header, watermark, logo, logo-height, profile,
   embed_source, hard_breaks, template
 
@@ -301,7 +301,7 @@ fm_header=""
 fm_watermark=""
 fm_title=""
 fm_subtitle=""
-fm_client=""
+fm_toptitle=""
 fm_author=""
 fm_logo=""
 fm_logo_height=""
@@ -331,7 +331,7 @@ if [[ "$(head -n 1 "${src}" | tr -d '\r')" == "---" ]]; then
         ;;
       title:*)           fm_title="$(yaml_str "${line#title:}")" ;;
       subtitle:*)        fm_subtitle="$(yaml_str "${line#subtitle:}")" ;;
-      client:*)          fm_client="$(yaml_str "${line#client:}")" ;;
+      toptitle:*)        fm_toptitle="$(yaml_str "${line#toptitle:}")" ;;
       author:*)          fm_author="$(yaml_str "${line#author:}")" ;;
       logo:*)            fm_logo="$(yaml_str "${line#logo:}")" ;;
       logo-height:*)     fm_logo_height="$(yaml_str "${line#logo-height:}")" ;;
@@ -565,7 +565,7 @@ typst_inputs=(
   --input "title=${base}"
   --input "doctitle=${fm_title}"
   --input "subtitle=${fm_subtitle}"
-  --input "client=${fm_client}"
+  --input "toptitle=${fm_toptitle}"
   --input "author=${fm_author}"
   --input "logo=${logo}"
   --input "logo_height=${fm_logo_height}"
