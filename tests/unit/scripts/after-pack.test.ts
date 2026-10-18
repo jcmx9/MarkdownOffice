@@ -119,7 +119,10 @@ describe('manifestLicenses', () => {
       manifestLicenses({
         typst: { licenses: ['LICENSE', 'NOTICE'] },
         fonts: [{ license: { file: 'A-OFL.txt' } }],
-        packages: [{ name: 'cm', license: 'LICENSE' }],
+        packages: [
+          { name: 'cm', license: 'LICENSE' },
+          { name: 'qr', license: ['LICENSE', 'NOTICE'] },
+        ],
         dictionaries: [
           {
             file: 'de-DE-3-0.bdic',
@@ -133,6 +136,8 @@ describe('manifestLicenses', () => {
       'typst/NOTICE',
       'fonts/A-OFL.txt',
       'packages/cm/LICENSE',
+      'packages/qr/LICENSE',
+      'packages/qr/NOTICE',
       'dictionaries/de-DE-LICENSE.txt',
       'dictionaries/de-DE-LGPL-2.1.txt',
       'dictionaries/en-US-LICENSE.txt',
@@ -145,7 +150,14 @@ describe('manifestLicenses', () => {
     )
     const all = manifestLicenses(manifest)
     expect(all.filter((l) => l.startsWith('fonts/'))).toHaveLength(manifest.fonts.length)
-    expect(all.filter((l) => l.startsWith('packages/'))).toHaveLength(manifest.packages.length)
+    const pkgLicenses = manifest.packages.flatMap((p: { license: unknown }) =>
+      Array.isArray(p.license) ? p.license : [p.license],
+    )
+    expect(all.filter((l) => l.startsWith('packages/'))).toHaveLength(pkgLicenses.length)
+    // R3: the third-party notices bundled in cades and jogs ship as well.
+    expect(all).toEqual(
+      expect.arrayContaining(['packages/cades/NOTICE', 'packages/jogs/license.html']),
+    )
     const dictLicenses = manifest.dictionaries.flatMap((d: { license: unknown }) =>
       Array.isArray(d.license) ? d.license : [d.license],
     )

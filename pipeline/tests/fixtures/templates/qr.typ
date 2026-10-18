@@ -1,4 +1,4 @@
-// Test set: the QR package from the offline store (@preview/cades imports @preview/jogs).
+// Test set: the QR package cades from the offline store (cades itself imports jogs).
 #import "@preview/cades:0.3.1": qr-code
 #set document(title: "QR-TEST")
 #set text(font: ("SourceSans3VF",))

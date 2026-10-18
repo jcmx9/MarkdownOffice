@@ -476,17 +476,36 @@ fi
 # damit nie lokale Pakete des Rechners (@local) einfließen.
 pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path "${pipeline_root}/vendor/local-packages")
 
-# Kein Netz, nie: ein @preview-Import der Vorlage, der nicht in der Ablage liegt, würde
-# Typst einen Download versuchen lassen. Abbruch mit Meldung, bevor Typst läuft. Steht
-# hinter der Vorlagen-Auflösung, weil die Prüfung die endgültige Vorlagendatei liest.
+# Kein Netz, nie (1/2): jeder @preview-Import, der nicht in der Ablage liegt, würde Typst
+# einen Download in die Ablage versuchen lassen. Abbruch mit Meldung, bevor Typst läuft.
+# Fail closed: JEDES Vorkommen von @preview/ bis zum Anführungszeichen oder Leerraum zählt,
+# auch in Kommentaren, und alles, was kein vorhandener Ablage-Ordner <name>/<version> ist
+# (auch ungültige Angaben mit Großbuchstaben oder _), wird abgewiesen. Geprüft wird die
+# Vorlage; ist sie ein Set-Ordner <name>/<name>.typ, jede .typ darin (auch Unterordner),
+# weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen .typ nur diese, weil ihre
+# Nachbarn andere Sets sein können. Steht hinter der Vorlagen-Auflösung (endgültige Datei).
+template_dir="$(dirname "${template_file}")"
+if [[ "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
+  scan_files=("${template_dir}")
+else
+  scan_files=("${template_file}")
+fi
 while IFS= read -r spec; do
   [[ -n "${spec}" ]] || continue
   pkg_name="${spec%%:*}"; pkg_ver="${spec#*:}"
-  if [[ ! -d "${pipeline_root}/vendor/packages/preview/${pkg_name}/${pkg_ver}" ]]; then
+  if [[ ! "${spec}" =~ ^[a-z0-9-]+:[0-9]+\.[0-9]+\.[0-9]+$ ||
+        ! -d "${pipeline_root}/vendor/packages/preview/${pkg_name}/${pkg_ver}" ]]; then
     echo "Error: Paket nicht mitgeliefert: @preview/${spec} (Vorlage ${template_file})" >&2
     exit 1
   fi
-done < <(grep -oE '@preview/[a-z0-9-]+:[0-9]+\.[0-9]+\.[0-9]+' "${template_file}" | sed 's#^@preview/##' | sort -u)
+done < <(find "${scan_files[@]}" -type f -name '*.typ' -exec grep -ohE '@preview/[^"[:space:]]*' {} + |
+  sed 's#^@preview/##' | sort -u)
+
+# Kein Netz, nie (2/2): was kein Textscan sieht (z. B. eine per Verkettung gebaute
+# Paketangabe), stoppt ein unerreichbarer Proxy für beide Typst-Aufrufe; ein Download
+# scheitert, bevor etwas in die Ablage geschrieben wird. NO_PROXY leer: keine Ausnahmen.
+no_net=(env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9
+  https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 NO_PROXY= no_proxy=)
 
 # Absender-Profil (profile:). Typst kann nicht prüfen, ob eine Datei existiert; daher sucht
 # das Skript, wie beim Logo, und übergibt den Pfad als Eingabe profile. Das Set liest die
@@ -612,7 +631,7 @@ json_escape() {
 }
 
 probe_expr='str(query(<mdo-remote-skip>).len()) + "\n" + query(<mdo-image>).map(m => m.value + "\n").dedup().sum(default: "")'
-probe="$("${typst_bin}" eval --in "${template_file}" "${probe_expr}" \
+probe="$("${no_net[@]}" "${typst_bin}" eval --in "${template_file}" "${probe_expr}" \
   "${font_arg[@]}" "${pkg_arg[@]}" --root / "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
 stripped=0
 image_entries=""
@@ -635,7 +654,7 @@ printf '{%s}\n' "${image_entries}" > "${images_json}"
 typst_inputs+=(--input "images=${images_json}")
 
 # Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle).
-"${typst_bin}" compile "${template_file}" "${out}" \
+"${no_net[@]}" "${typst_bin}" compile "${template_file}" "${out}" \
   "${font_arg[@]}" \
   "${pkg_arg[@]}" \
   --root / \

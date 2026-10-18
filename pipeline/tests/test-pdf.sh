@@ -668,7 +668,30 @@ test_templates() {
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "fremdes Paket liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0" <<<"${err}" || die "fremdes Paket: unklare Meldung: ${err}"
-  ok "Offline-Paketablage; nicht mitgelieferte Pakete werden abgewiesen"
+  # Fail closed: auch eine ungültige Angabe (Großbuchstaben, Unterstrich) ist ein Paket-Import.
+  code=0
+  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template netupper "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "ungültige Paketangabe liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/Gibts_Nicht:1.0.0" <<<"${err}" || die "ungültige Paketangabe: unklare Meldung: ${err}"
+  # Ein Set-Ordner wird ganz geprüft: der Import steht in einer Hilfsdatei des Sets.
+  code=0
+  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "Import in Hilfsdatei liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "Import in Hilfsdatei: unklare Meldung: ${err}"
+  # Was kein Textscan sieht (Angabe per Verkettung): Typst läuft hinter einem unerreichbaren
+  # Proxy, der Download scheitert, und in der Paketablage entsteht nichts.
+  local store_before
+  store_before="$(ls -R "${MDO_PIPELINE_ROOT}/vendor/packages/")"
+  code=0
+  MDO_TEMPLATES="${sets}" bash "${build}" --template netconcat "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/concat.pdf" >/dev/null 2>"${out_dir}/concat.err" || code=$?
+  [[ "${code}" -ne 0 ]] || die "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)"
+  [[ ! -e "${out_dir}/concat.pdf" ]] || die "verkettete Paketangabe erzeugt trotzdem ein PDF"
+  [[ "$(ls -R "${MDO_PIPELINE_ROOT}/vendor/packages/")" == "${store_before}" ]] ||
+    die "verkettete Paketangabe: Paketablage verändert"
+  ok "Offline-Paketablage; nicht mitgelieferte Pakete werden abgewiesen (Scan + gesperrter Proxy)"
 
   # Einzelne .typ-Datei relativ zur Notiz (Leerzeichen im Namen), Aufruf aus fremdem cwd.
   cp "${sets}/probe.typ" "${out_dir}/Set Ordner/eigene vorlage.typ"

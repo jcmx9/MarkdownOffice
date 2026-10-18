@@ -565,16 +565,38 @@ function Convert-One {
   # auch dann, wenn lib\ und vendor\ auf ein anderes Laufwerk bereitgestellt wurden.
   $pkgArgs = @('--package-cache-path', (Join-Path $PipelineRoot 'vendor\packages'),
                '--package-path', (Join-Path $PipelineRoot 'vendor\local-packages'))
-  # Kein Netz, nie: ein @preview-Import der Vorlage, der nicht in der Ablage liegt, liesse
-  # Typst einen Download versuchen. Abbruch mit Meldung (Exit 1), bevor Typst laeuft. Steht
-  # hinter der Vorlagen-Aufloesung, weil die Pruefung die endgueltige Vorlagendatei liest.
-  $tplText = [IO.File]::ReadAllText($templateSrc)
-  foreach ($m in [regex]::Matches($tplText, '@preview/([a-z0-9-]+):([0-9]+\.[0-9]+\.[0-9]+)')) {
-    $dir = Join-Path $PipelineRoot ('vendor\packages\preview\' + $m.Groups[1].Value + '\' + $m.Groups[2].Value)
-    if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
-      throw "Paket nicht mitgeliefert: @preview/$($m.Groups[1].Value):$($m.Groups[2].Value) (Vorlage $templateSrc)"
+  # Kein Netz, nie (1/2, spiegelt build.sh): jeder @preview-Import, der nicht in der Ablage
+  # liegt, liesse Typst einen Download in die Ablage versuchen. Abbruch mit Meldung (Exit 1),
+  # bevor Typst laeuft. Fail closed: JEDES Vorkommen von @preview/ bis zum Anfuehrungszeichen
+  # oder Leerraum zaehlt, auch in Kommentaren, und alles, was kein vorhandener Ablage-Ordner
+  # <name>\<version> ist (auch ungueltige Angaben mit Grossbuchstaben oder _), wird
+  # abgewiesen. Geprueft wird die Vorlage; ist sie ein Set-Ordner <name>\<name>.typ, jede .typ
+  # darin (auch Unterordner), weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen
+  # .typ nur diese, weil ihre Nachbarn andere Sets sein koennen.
+  $tplDir = Split-Path -Parent $templateSrc
+  $scan = if ((Split-Path -Leaf $tplDir) -eq [IO.Path]::GetFileNameWithoutExtension($templateSrc)) {
+    @(Get-ChildItem -LiteralPath $tplDir -Recurse -File -Force -Filter '*.typ' | ForEach-Object { $_.FullName })
+  } else { @($templateSrc) }
+  foreach ($f in $scan) {
+    foreach ($m in [regex]::Matches([IO.File]::ReadAllText($f), '@preview/[^"\s]*')) {
+      $spec = $m.Value.Substring('@preview/'.Length)
+      $ok = $spec -cmatch '^([a-z0-9-]+):([0-9]+\.[0-9]+\.[0-9]+)$'
+      if ($ok) {
+        $dir = Join-Path $PipelineRoot ('vendor\packages\preview\' + $Matches[1] + '\' + $Matches[2])
+        $ok = Test-Path -LiteralPath $dir -PathType Container
+      }
+      if (-not $ok) { throw "Paket nicht mitgeliefert: @preview/$spec (Vorlage $templateSrc)" }
     }
   }
+  # Kein Netz, nie (2/2): was kein Textscan sieht (z. B. eine per Verkettung gebaute
+  # Paketangabe), stoppt ein unerreichbarer Proxy fuer beide Typst-Aufrufe; ein Download
+  # scheitert, bevor etwas in die Ablage geschrieben wird. NO_PROXY leer: keine Ausnahmen.
+  # convert.ps1 laeuft immer als eigener Prozess (powershell -File), daher ohne Zuruecksetzen.
+  # (Unter Windows sind HTTPS_PROXY und https_proxy dieselbe Variable; beide zu setzen schadet nicht.)
+  foreach ($v in @('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')) {
+    [Environment]::SetEnvironmentVariable($v, 'http://127.0.0.1:9', 'Process')
+  }
+  foreach ($v in @('NO_PROXY', 'no_proxy')) { [Environment]::SetEnvironmentVariable($v, $null, 'Process') }
   # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
   # der Notiz (bzw. MDO_BASE_DIR), im Vorlagen-Ordner, im Ordner des Sets; sonst ein Pfad
   # auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).

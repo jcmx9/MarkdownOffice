@@ -322,6 +322,21 @@ $r = Invoke-Convert @('--template', 'qr', $setNote, $qrPdf)
 if ($r.Code -ne 0 -or -not (Test-PdfMarker $qrPdf 'QR-TEST')) { Fail "QR-Paket: Exit $($r.Code)`n$($r.Text)" } else { Ok 'QR-Paket aus der Offline-Ablage' }
 $r = Invoke-Convert @('--template', 'netimport', $setNote, (Join-Path $outDir 'net.pdf'))
 if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0') { Fail "fremdes Paket: Exit $($r.Code)`n$($r.Text)" } else { Ok 'fremdes Paket: Exit 1' }
+# Fail closed: ungueltige Angabe (Grossbuchstaben, _) und ein Import in einer Hilfsdatei des Set-Ordners.
+$r = Invoke-Convert @('--template', 'netupper', $setNote, (Join-Path $outDir 'net.pdf'))
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/Gibts_Nicht:1.0.0') { Fail "ungueltige Paketangabe: Exit $($r.Code)`n$($r.Text)" } else { Ok 'ungueltige Paketangabe: Exit 1' }
+$r = Invoke-Convert @('--template', 'nethelper', $setNote, (Join-Path $outDir 'net.pdf'))
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0') { Fail "Import in Hilfsdatei: Exit $($r.Code)`n$($r.Text)" } else { Ok 'Import in Hilfsdatei: Exit 1' }
+# Verkettete Paketangabe (kein Textscan sieht sie): der gesperrte Proxy verhindert den Download,
+# die Paketablage bleibt unveraendert.
+$storeDir = Join-Path $env:MDO_PIPELINE_ROOT 'vendor\packages'
+$storeBefore = (Get-ChildItem -LiteralPath $storeDir -Recurse -Force | ForEach-Object { $_.FullName }) -join "`n"
+$concatPdf = Join-Path $outDir 'concat.pdf'
+$r = Invoke-Convert @('--template', 'netconcat', $setNote, $concatPdf)
+$storeAfter = (Get-ChildItem -LiteralPath $storeDir -Recurse -Force | ForEach-Object { $_.FullName }) -join "`n"
+if ($r.Code -eq 0 -or (Test-Path -LiteralPath $concatPdf)) { Fail "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)`n$($r.Text)" }
+elseif ($storeAfter -ne $storeBefore) { Fail 'verkettete Paketangabe: Paketablage veraendert' }
+else { Ok 'verkettete Paketangabe: kein Download, Ablage unveraendert' }
 
 $r = Invoke-Convert @('--template=memo', $setNote, (Join-Path $outDir 'cli.pdf'))
 if ($r.Code -ne 0) { Fail "--template=memo: Exit $($r.Code)`n$($r.Text)" }

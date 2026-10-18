@@ -11,7 +11,7 @@ export function checkPackedResources(o: {
 export function manifestLicenses(manifest: {
   typst: { licenses: string[] }
   fonts: { license: { file: string } }[]
-  packages: { name: string; license: string }[]
+  packages: { name: string; license: string | string[] }[]
   dictionaries?: { file: string; license: { file: string } | { file: string }[] }[]
 }): string[]
 export default function afterPack(context: {

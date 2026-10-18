@@ -24,7 +24,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 | Bundled sets | `<MDO_SETS_DIR>/<name>/<name>.typ` | default `<pipeline>/../sets`; the app ships `<resources>/sets/memo/` |
 | Set repository | `<name>.typ`, `<name>.css`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
 
-Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`, see §4). On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
+Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`) and the bundled store packages (`@preview/…`), see §4. On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
 
 ## 2. How the pipeline finds and runs a set
 
@@ -126,7 +126,7 @@ The pipeline passes `--font-path <pipeline>/fonts --ignore-system-fonts`: **syst
 
 Use a font list with the Noto fallbacks, e.g. `("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2")`. Variable weights work with numeric `weight:` values.
 
-Bundled Typst packages live in `<mdo>/vendor/` (versions pinned in `scripts/pipeline-assets.json`; licence texts in `<pipeline>/licenses/packages/<name>/`):
+Bundled Typst packages live in `<mdo>/vendor/` (versions pinned in `scripts/pipeline-assets.json`; licence texts, including bundled third-party notices such as cades' `NOTICE` and jogs' `license.html`, in `<pipeline>/licenses/packages/<name>/`):
 
 | Package | Version | Import | Purpose |
 |---------|---------|--------|---------|
@@ -140,7 +140,7 @@ Pipeline library: `#import mdo + "/lib/markdown.typ": preprocess`. Use `#let mdo
 
 **Offline package store.** Packages marked "store package" are unpacked in Typst's package-cache layout, `<pipeline>/vendor/packages/preview/<name>/<version>/`, and both scripts pass `--package-cache-path <pipeline>/vendor/packages` (and `--package-path` to a folder that does not exist, so no `@local` packages of the machine leak in). That is how `#import "@preview/<name>:<version>"` resolves without network, including imports between packages (cades imports `@preview/jogs`). Your user package cache is never consulted.
 
-**Only bundled packages.** The pipeline never downloads anything. Before Typst runs, the scripts scan the set's `.typ` for `@preview/<name>:<version>`; any import that is not in the store stops the build with `Paket nicht mitgeliefert: @preview/<name>:<version>` (exit 1). The exact pinned version is required. A package your set needs must be added to the store (manifest entry with `"store": true`, SHA-256 and licence) first. Only the set's main `.typ` is scanned: keep `@preview` imports there, not in files it includes.
+**Only bundled packages.** The pipeline never downloads anything. Before Typst runs, the scripts scan for every `@preview/` occurrence (up to the next quote or whitespace): in the set's `.typ`, and for a set folder `<name>/<name>.typ` in every `.typ` of that folder and its subfolders (helper files count). Anything that is not an existing store folder `<name>/<version>`, including malformed specs (uppercase, `_`) and imports in **comments** (the scan does not parse Typst, so it errs on the safe side), stops the build with `Paket nicht mitgeliefert: @preview/<spec>` (exit 1). Do not write `@preview/` in comments except for real imports. The exact pinned version is required. A package your set needs must be added to the store (manifest entry with `"store": true`, SHA-256 and every licence file) first. As a second line of defence, both Typst calls run behind an unreachable proxy (`HTTPS_PROXY`/`HTTP_PROXY` = `http://127.0.0.1:9`, `NO_PROXY` empty), so a spec the scan cannot see (e.g. built by string concatenation) fails with a download error instead of reaching the network.
 
 ## 5. Preprocessing contract
 
@@ -397,8 +397,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 ## 13. Checklist
 
 - [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`.
-- [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"` and `mdo + "/vendor/…"`.
-- [ ] `@preview` imports only of bundled store packages, with the exact pinned version (section 4).
+- [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"`, `mdo + "/vendor/…"` and bundled store packages (`@preview/<name>:<version>` with the exact pinned version, section 4); no `@preview/` in comments.
 - [ ] Every input is read with `sys.inputs.at(key, default: …)`; booleans compared as strings.
 - [ ] Body rendered with `cmarker.render(preprocess(read(source), hard-breaks: …, lang: …), …)`, `smart-punctuation: false`, `math: mitex`.
 - [ ] `html:` handles `mdo-alert`, `mdo-tasks`, `mdo-task`, `mdo-keep`.

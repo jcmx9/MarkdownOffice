@@ -213,6 +213,45 @@ describe('fetchAssets', () => {
     expect(existsSync(join(outDir, 'vendor/packages/preview/qr/0.3.1'))).toBe(false)
   })
 
+  it('ships every licence file of a package with several (LICENSE plus NOTICE)', async () => {
+    const manifest = makeManifest()
+    const multi = makeArchive('qr.tar.gz', {
+      'typst.toml': 'version = "0.3.1"',
+      LICENSE: 'MIT',
+      NOTICE: 'third party',
+    })
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', multi)
+    manifest.packages.push({
+      name: 'qr',
+      version: '0.3.1',
+      sha256: sha(multi),
+      license: ['LICENSE', 'NOTICE'],
+      store: true,
+    })
+    await run(manifest)
+    const lic = (rel: string) => readFileSync(join(outDir, 'licenses', rel), 'utf8')
+    expect(lic('packages/qr/LICENSE')).toBe('MIT')
+    expect(lic('packages/qr/NOTICE')).toBe('third party')
+    // A missing licence file of an earlier fetch refreshes the package.
+    rmSync(join(outDir, 'licenses', 'packages', 'qr', 'NOTICE'))
+    await run(manifest)
+    expect(lic('packages/qr/NOTICE')).toBe('third party')
+  })
+
+  it('fails when one of several package licences is missing in the archive', async () => {
+    const manifest = makeManifest()
+    const pkg = makePackage('qr', '0.3.1')
+    served.set('https://packages.typst.org/preview/qr-0.3.1.tar.gz', pkg)
+    manifest.packages.push({
+      name: 'qr',
+      version: '0.3.1',
+      sha256: sha(pkg),
+      license: ['LICENSE', 'NOTICE'],
+      store: true,
+    })
+    await expect(run(manifest)).rejects.toThrow('Lizenz fehlt im Paket: NOTICE')
+  })
+
   it('collects the licence texts of Typst, the fonts and the packages', async () => {
     await run(makeManifest())
     const lic = (rel: string) => readFileSync(join(outDir, 'licenses', rel), 'utf8')

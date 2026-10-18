@@ -32,8 +32,10 @@ import { fileURLToPath } from 'node:url'
  *   `extract`: path (suffix) inside the font archive; else `url` + `sha256`
  * @typedef {{ url: string, sha256: string, extract?: string[], file?: string,
  *   license: FontLicense }} FontEntry
- * @typedef {{ name: string, version: string, sha256: string, license: string,
+ * @typedef {{ name: string, version: string, sha256: string, license: string | string[],
  *   store?: boolean }} PackageEntry
+ *   `license`: one licence file in the package archive, or several (e.g. LICENSE plus the
+ *   third-party NOTICE of what the package bundles); all ship in licenses/packages/<name>/
  *   `store`: unpacked into Typst's package-cache layout vendor/packages/preview/<name>/<version>
  *   (imported as `@preview/<name>:<version>`); otherwise into vendor/<name> (imported by path)
  * @typedef {{ name: string, repo: string, tag: string, sha256: string }} SetEntry
@@ -120,6 +122,15 @@ async function fetchLicenseText(download, license) {
  */
 export function dictLicenses(dict) {
   return Array.isArray(dict.license) ? dict.license : [dict.license]
+}
+
+/**
+ * The licence files of a package entry: a single name and an array are both accepted.
+ * @param {PackageEntry} pkg
+ * @returns {string[]}
+ */
+export function packageLicenses(pkg) {
+  return Array.isArray(pkg.license) ? pkg.license : [pkg.license]
 }
 
 /**
@@ -338,8 +349,11 @@ export async function fetchAssets(o) {
 
     for (const pkg of manifest.packages) {
       const url = `https://packages.typst.org/preview/${pkg.name}-${pkg.version}.tar.gz`
-      if (!pkg.license) throw new Error(`Paket ohne Lizenz im Manifest: ${pkg.name}`)
-      const licenseRel = `licenses/packages/${pkg.name}/${pkg.license}`
+      const licenses = packageLicenses(pkg)
+      if (!licenses.length || licenses.some((l) => !l)) {
+        throw new Error(`Paket ohne Lizenz im Manifest: ${pkg.name}`)
+      }
+      const licenseRels = licenses.map((l) => `licenses/packages/${pkg.name}/${l}`)
       // Store packages keep Typst's package-cache layout (preview/<name>/<version>) so
       // `#import "@preview/<name>:<version>"` resolves offline via --package-cache-path,
       // including imports between packages (cades imports @preview/jogs). Other packages
@@ -351,15 +365,19 @@ export async function fetchAssets(o) {
       await component(
         // Store ids carry the version so a version bump refreshes the entry.
         pkg.store ? `pkg-${pkg.name}-${pkg.version}` : `pkg-${pkg.name}`,
-        pkg.sha256,
-        [licenseRel],
+        // The licence texts come from the pinned archive; their names are part of the pin
+        // (several only, so single-licence stamps stay valid) and every one must exist.
+        licenses.length > 1 ? `${pkg.sha256}+${licenses.join(',')}` : pkg.sha256,
+        licenseRels,
         async () => {
           const bytes = await fetchVerified(download, url, pkg.sha256)
           const staged = scratch()
           extractArchive(bytes, `${pkg.name}.tar.gz`, staged)
-          const src = join(staged, pkg.license)
-          if (!existsSync(src)) throw new Error(`Lizenz fehlt im Paket: ${pkg.license} (${url})`)
-          placeLicense(src, outDir, licenseRel)
+          for (const [i, l] of licenses.entries()) {
+            const src = join(staged, l)
+            if (!existsSync(src)) throw new Error(`Lizenz fehlt im Paket: ${l} (${url})`)
+            placeLicense(src, outDir, /** @type {string} */ (licenseRels[i]))
+          }
           if (pkg.store) {
             // Swap in the whole preview/<name> folder holding only the pinned version: an
             // older version of the same package must not stay behind and ship.
@@ -369,7 +387,7 @@ export async function fetchAssets(o) {
           } else {
             swapIn(staged, join(outDir, rel))
           }
-          return [`${relPosix}/typst.toml`, licenseRel]
+          return [`${relPosix}/typst.toml`, ...licenseRels]
         },
         `${pkg.name} ${pkg.version}`,
       )

@@ -99,14 +99,14 @@
       "name": "cades",
       "version": "0.3.1",
       "sha256": "b6dbb30248ab4978425c62652ee8ce0921a799c99d51c67791d48a61e31ea441",
-      "license": "LICENSE",
+      "license": ["LICENSE", "NOTICE"],
       "store": true
     },
     {
       "name": "jogs",
       "version": "0.2.4",
       "sha256": "b653a1874492a6ffebb5ff894d0ca06d3523a1b8721eea2bc32034d8562ecb45",
-      "license": "LICENSE",
+      "license": ["LICENSE", "license.html"],
       "store": true
     }
   ],
