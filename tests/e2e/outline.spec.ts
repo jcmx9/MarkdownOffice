@@ -291,3 +291,47 @@ test('the outline grows and shrinks with the zoom; H2 rows hang from tree lines'
   expect(branch).toBe('1px')
   await app.close()
 })
+
+test('the outline width is dragged by its left edge, kept across restarts, default in Present', async () => {
+  const o = await openNote()
+  const dirs = { root: o.root, notes: o.notes, userData: o.userData, templates: o.templates }
+  const { app, page } = o
+  await clickMenu(app, 'toggle-outline')
+  await expect(outline(page)).toBeVisible()
+  const width = () => outline(page).evaluate((el) => (el as HTMLElement).offsetWidth)
+  const before = await width()
+  const grip = page.locator('#outline-grip')
+  await expect(grip).toBeVisible()
+  const box = await grip.boundingBox()
+  if (!box) throw new Error('no grip')
+  await page.mouse.move(box.x + box.width / 2, box.y + 100)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 - 60, box.y + 100, { steps: 5 })
+  await page.mouse.up()
+  await expect.poll(width).toBeGreaterThan(before + 50)
+  const dragged = await width()
+
+  // Present always uses the default width; back in Edit the dragged width returns.
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await clickMenu(app, 'toggle-outline')
+  await expect(outline(page)).toBeVisible()
+  await expect(grip).toBeHidden()
+  await expect(outline(page)).not.toHaveClass(/mdo-ol-custom/)
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  await expect.poll(width).toBe(dragged)
+  await app.close()
+
+  const second = await launch({ dirs, args: [o.note] })
+  await expect(outline(second.page)).toBeVisible()
+  await expect
+    .poll(() => outline(second.page).evaluate((el) => (el as HTMLElement).offsetWidth))
+    .toBe(dragged)
+  // Double-click on the grip restores the default width.
+  await second.page.locator('#outline-grip').dblclick()
+  await expect
+    .poll(() => outline(second.page).evaluate((el) => (el as HTMLElement).offsetWidth))
+    .toBe(before)
+  await second.app.close()
+})

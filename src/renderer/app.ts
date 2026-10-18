@@ -33,6 +33,7 @@ import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
 import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
+import { applyOutlineWidth, attachOutlineResize } from './ui/outline-resize'
 import { askText } from './ui/prompt'
 import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
@@ -60,6 +61,7 @@ export interface AppRoot {
   status: HTMLElement
   infoline: HTMLElement
   outline: HTMLElement
+  outlineGrip: HTMLElement
   notices: HTMLElement
 }
 
@@ -75,6 +77,8 @@ export class App {
   private readonly outline: OutlineSync
   /** Outline sidebar on/off per mode (persisted in the session). */
   private outlineOn = { edit: false, present: false }
+  /** Dragged outline width in em (Edit mode); null = default. Present always uses the default. */
+  private outlineWidth: number | null = null
   private view: View = 'preview'
   private mode: Mode = 'edit'
   private zoom = { edit: 1, present: 1 }
@@ -161,6 +165,15 @@ export class App {
       }),
       () => (this.shownId === null ? null : this.editor.state),
     )
+    attachOutlineResize(root.outlineGrip, root.outline, {
+      commit: (em) => {
+        this.outlineWidth = em
+        root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em ?? 18)))
+        this.mdo
+          .saveSession({ outlineWidth: em })
+          .catch((e: unknown) => console.error('saveSession(outlineWidth) failed', e))
+      },
+    })
     this.mdo.onFullScreenLeft(() => {
       if (this.mode === 'present') void this.exitPresent(false)
     })
@@ -198,6 +211,7 @@ export class App {
     this.view = startup.session.view
     this.zoom = { ...startup.session.zoom }
     this.outlineOn = { ...startup.session.outline }
+    this.outlineWidth = startup.session.outlineWidth
     this.settings = startup.settings
     this.presentFactor = startup.settings.presentFontFactor
     this.applyZoom()
@@ -591,9 +605,16 @@ export class App {
     this.editor.focus()
   }
 
-  /** Shown when enabled for the current mode and a tab is shown. */
+  /**
+   * Shown when enabled for the current mode and a tab is shown. The width can be dragged in
+   * Edit mode only; Present always switches to the default width (the grip is hidden there).
+   */
   private applyOutline(): void {
-    this.outline.setVisible(this.outlineOn[this.mode] && this.shownId !== null)
+    const visible = this.outlineOn[this.mode] && this.shownId !== null
+    this.outline.setVisible(visible)
+    this.root.outlineGrip.hidden = !(visible && this.mode === 'edit')
+    applyOutlineWidth(this.root.outline, this.mode === 'edit' ? this.outlineWidth : null)
+    this.root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(this.outlineWidth ?? 18)))
     this.outline.refresh()
   }
 

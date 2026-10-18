@@ -161,6 +161,38 @@ dialog.prompt input:focus-visible {
   flex: 1;
   min-width: 0;
 }
+/* Drag handle on the outline's left edge (Edit mode): a 6px strip over the border line. */
+#outline-grip {
+  margin: 0;
+  border: 0;
+  align-self: stretch;
+  flex: none;
+  width: 6px;
+  margin-right: -6px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+}
+#outline-grip[hidden] {
+  display: none;
+}
+#outline-grip:hover,
+#outline-grip:focus-visible,
+body.mdo-ol-resizing #outline-grip {
+  background: linear-gradient(
+    to right,
+    transparent 2px,
+    var(--accent) 2px,
+    var(--accent) 4px,
+    transparent 4px
+  );
+  outline: none;
+}
+/* While dragging: no text selection, the resize cursor everywhere. */
+body.mdo-ol-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
 #outline {
   box-sizing: border-box;
   /* Fixed width (em: grows with the zoom), so the bar never jumps with the headings; long
@@ -294,6 +326,10 @@ dialog.prompt input:focus-visible {
 }
 #outline .mdo-ol-chevron.expanded {
   transform: rotate(90deg);
+}
+/* A dragged width may take up to half the window. */
+#outline.mdo-ol-custom {
+  max-width: 50vw;
 }
 /* Hover tip for a cut-off heading: over the row, right edge on the row's right edge. */
 .mdo-ol-tip {

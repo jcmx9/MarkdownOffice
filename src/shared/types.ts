@@ -56,11 +56,13 @@ export interface Session {
   zoom: { edit: number; present: number }
   /** Outline sidebar on/off per mode. */
   outline: { edit: boolean; present: boolean }
+  /** Outline width in em set by dragging (Edit mode); null = default width. */
+  outlineWidth: number | null
   recent: string[]
 }
 
 export type SessionPatch = Partial<
-  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline'>
+  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'outlineWidth'>
 >
 
 export interface StartupState {
