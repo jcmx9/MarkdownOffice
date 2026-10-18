@@ -21,6 +21,7 @@ import { pageBreakKeymap } from './pagebreak'
 import { previewPlugin } from './preview'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
+import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
 import { tableField } from './tables'
 
 export const viewCompartment = new Compartment()
@@ -85,6 +86,7 @@ export function createState(
   view: View,
   headerHiddenInit = false,
   mode: Mode = 'edit',
+  spellcheck = false,
 ): EditorState {
   const state = EditorState.create({
     doc: text,
@@ -103,6 +105,8 @@ export function createState(
       EditorView.lineWrapping,
       viewCompartment.of(viewExtensions(view)),
       modeCompartment.of(modeExtensions(mode)),
+      // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
+      spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
     ],
   })

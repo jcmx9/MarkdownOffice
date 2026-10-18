@@ -28,6 +28,7 @@ import {
   viewExtensions,
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
+import { spellcheckCompartment, spellcheckExtensions } from './editor/spellcheck'
 import { type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
@@ -85,6 +86,8 @@ export class App {
   private presentFactor = 1.6
   private settings: Settings | null = null
   private settingsOpen = false
+  /** Spell checking switch (Settings.spellcheck); applied only in Edit mode. */
+  private spellcheckOn = true
   /**
    * Serializes fullscreen requests so fast toggles reach main in order. Main owns the
    * fullscreen decision: it only leaves a fullscreen the app started (a user's own
@@ -213,6 +216,7 @@ export class App {
     this.outlineOn = { ...startup.session.outline }
     this.outlineWidth = startup.session.outlineWidth
     this.settings = startup.settings
+    this.spellcheckOn = startup.settings.spellcheck
     this.presentFactor = startup.settings.presentFontFactor
     this.applyZoom()
     for (const t of startup.session.tabs) await this.openPath(t.path, t.headerHidden)
@@ -278,6 +282,8 @@ export class App {
         return this.toggleHeader()
       case 'toggle-outline':
         return this.toggleOutline()
+      case 'toggle-spellcheck':
+        return this.toggleSpellcheck()
       case 'fold':
         foldCode(this.editor)
         this.editor.focus()
@@ -326,6 +332,11 @@ export class App {
           'Nicht alle Einstellungen übernommen',
           `${dropped.join('\n')}\nFür diese Felder gilt weiter der bisherige Wert.`,
         )
+      if (next.spellcheck !== this.spellcheckOn) {
+        // A settings change (not the menu) must reach the editor too.
+        this.spellcheckOn = next.spellcheck
+        this.reconfigureAll()
+      }
       if (next.presentFontFactor !== this.presentFactor) {
         this.presentFactor = next.presentFontFactor
         this.applyZoom()
@@ -420,7 +431,7 @@ export class App {
     const hideHeader = this.headerDefaultHidden()
     this.store.add({
       path,
-      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode),
+      state: createState('', '\n', this.effectiveView(), hideHeader, this.mode, this.spellcheckOn),
       bom: false,
       eol: '\n',
       onDisk: false,
@@ -452,7 +463,14 @@ export class App {
     }
     const tab = this.store.add({
       path,
-      state: createState(res.text, res.eol, this.effectiveView(), hideHeader, this.mode),
+      state: createState(
+        res.text,
+        res.eol,
+        this.effectiveView(),
+        hideHeader,
+        this.mode,
+        this.spellcheckOn,
+      ),
       bom: res.bom,
       eol: res.eol,
       onDisk: true,
@@ -489,11 +507,21 @@ export class App {
     await this.presentToggle.set(false)
   }
 
+  /** Menu checkbox: persisted in the settings; main switches Electron's checker and the menu tick. */
+  private async toggleSpellcheck(): Promise<void> {
+    const next = await this.mdo.updateSettings({ spellcheck: !this.spellcheckOn })
+    this.settings = next
+    this.spellcheckOn = next.spellcheck
+    this.reconfigureAll()
+    this.editor.focus()
+  }
+
   /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
   private reconfigureAll(): void {
     const effects = [
       viewCompartment.reconfigure(viewExtensions(this.effectiveView())),
       modeCompartment.reconfigure(modeExtensions(this.mode)),
+      spellcheckCompartment.reconfigure(spellcheckExtensions(this.spellcheckOn, this.mode)),
     ]
     const collapses = (state: EditorState) =>
       this.mode === 'present' || (this.effectiveView() === 'preview' && state.field(headerHidden))
@@ -974,7 +1002,14 @@ export class App {
 
   private reload(tab: Tab, note: NoteFile): void {
     const state = this.closingState(
-      createState(note.text, note.eol, this.effectiveView(), tab.headerHidden, this.mode),
+      createState(
+        note.text,
+        note.eol,
+        this.effectiveView(),
+        tab.headerHidden,
+        this.mode,
+        this.spellcheckOn,
+      ),
     )
     const wasOnDisk = tab.onDisk
     tab.bom = note.bom

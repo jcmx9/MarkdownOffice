@@ -8,6 +8,8 @@ export interface MenuDeps {
   command(c: MenuCommand): void
   openRecent(path: string): void
   clearRecent(): void
+  /** Settings.spellcheck: the tick of the Rechtschreibprüfung checkbox. */
+  spellcheck: boolean
   /** Clock for the held-shortcut guard (tests); defaults to Date.now. */
   now?: () => number
   /** Auto-repeat guard fed by the window's before-input-event; a fresh one otherwise. */
@@ -160,6 +162,12 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       { role: 'copy', label: 'Kopieren' },
       { role: 'paste', label: 'Einfügen' },
       item('select-all', 'Alles auswählen', 'CmdOrCtrl+A'),
+      sep,
+      {
+        ...item('toggle-spellcheck', 'Rechtschreibprüfung'),
+        type: 'checkbox',
+        checked: d.spellcheck,
+      },
     ],
   }
 

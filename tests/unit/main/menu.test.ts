@@ -14,6 +14,7 @@ const deps = (over: Partial<MenuDeps> = {}): MenuDeps => ({
   command: vi.fn(),
   openRecent: vi.fn(),
   clearRecent: vi.fn(),
+  spellcheck: true,
   ...over,
 })
 
@@ -57,6 +58,16 @@ describe('buildMenuTemplate', () => {
     expect(item?.accelerator).toBe(accelerator)
     click(item)
     expect(d.command).toHaveBeenCalledWith(id)
+  })
+
+  it('Bearbeiten has a Rechtschreibprüfung checkbox reflecting the setting', () => {
+    const on = byId(buildMenuTemplate(deps({ spellcheck: true })), 'toggle-spellcheck')
+    expect(on?.type).toBe('checkbox')
+    expect(on?.checked).toBe(true)
+    expect(on?.label).toBe('Rechtschreibprüfung')
+    expect(byId(buildMenuTemplate(deps({ spellcheck: false })), 'toggle-spellcheck')?.checked).toBe(
+      false,
+    )
   })
 
   it('ignores toggle-present key repeats from a held shortcut', () => {

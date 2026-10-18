@@ -103,6 +103,7 @@ export type MenuCommand =
   | 'toggle-view'
   | 'toggle-header'
   | 'toggle-outline'
+  | 'toggle-spellcheck'
   | 'fold'
   | 'unfold'
   | 'fold-all'

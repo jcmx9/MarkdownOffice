@@ -250,6 +250,7 @@ export class AppContext {
       openRecent: (p) => void this.openPaths([p]).catch(() => undefined),
       clearRecent: () => void this.setRecent([]).catch(logSessionError),
       presentKey: this.presentKey,
+      spellcheck: this.settings.spellcheck,
     })
     Menu.setApplicationMenu(Menu.buildFromTemplate(template))
   }
@@ -304,6 +305,8 @@ export class AppContext {
       this.settings = next
       // The spellcheck switch takes effect at once, without a restart.
       this.spellcheck?.applySettings(next)
+      // The menu tick follows the stored value.
+      this.installMenu()
       return next
     })
     this.settingsQueue = run.catch(() => undefined)
