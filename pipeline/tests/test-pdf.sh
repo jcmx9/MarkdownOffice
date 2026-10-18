@@ -318,6 +318,9 @@ test_fixtures() {
 
   # Eine kurze Einleitung vor einer Tabelle steht nie allein unten auf der
   # Seite: passt die Tabelle nicht mehr, wandert die Einleitung mit.
+  # Der Fülltext ist auf die Zeilenhöhe von memo 26.10.3 (Zell-Inset y 5 pt)
+  # abgestimmt: ohne Tabelle passte die Einleitung noch auf Seite 1, Kopf- und
+  # erste Tabellenzeile aber nicht mehr (sticky bindet nur an den Tabellenanfang).
   text="$(render table-intro.md)"
   expect table-intro.md "${text}" "Die folgende Übersicht zeigt alle Posten:" "Posten 15"
   if command -v pdftotext >/dev/null 2>&1; then

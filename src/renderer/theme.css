@@ -379,7 +379,8 @@
   hyphens: manual;
 }
 .mdo-preview table.mdo-table :is(th, td) {
-  padding: 7pt 5pt;
+  /* Same cell inset as memo 26.10.3 (y 5pt, x 5pt), so rows match the PDF */
+  padding: 5pt;
   vertical-align: top;
 }
 .mdo-preview table.mdo-table :is(th, td) + :is(th, td) {

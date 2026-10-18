@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Set `memo` 26.10.3: table rows slightly tighter (cell inset 5 pt vertically instead of 7 pt); the editor preview's tables use the same inset
 - Set `memo` 26.10.2: external links are marked in the PDF with a fine underline and a small ↗ (text colour)
 - Set din5008a: DIN 5008 Form A letters with sender profiles, vCard QR and signature
 - Offline Typst package store (vendor/packages, cades 0.3.1 + jogs 0.2.4 for QR codes, with their licence and third-party notice texts); a template or set-folder file importing an unbundled @preview package is refused instead of downloading it, and Typst runs behind an unreachable proxy so no download can happen

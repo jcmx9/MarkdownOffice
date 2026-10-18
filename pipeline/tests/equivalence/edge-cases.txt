@@ -2,9 +2,7 @@ Notiz ohne Titel und ohne Front Matter, so wie sie mitten im Termin entsteht.
 Überschrift direkt auf Ebene drei
 
  Punkt
-
          leer links
-
 
 Formel: 𝑥2 + 𝑦2 = 𝑧 2
                                           𝑛
@@ -17,7 +15,6 @@ Formel: 𝑥2 + 𝑦2 = 𝑧 2
 
 
      Aufgabe          Status
-
  Aufgabe ohne alles
 
 

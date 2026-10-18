@@ -39,6 +39,12 @@
 # erzeugt, gleiche Umgebung, mit --extract):
 #   2026-10-18, memo 26.10.2: externe Links tragen im PDF ein ↗ hinter dem
 #     Linktext. Neu: tables-showcase.txt (zwei Links in Tabellenzellen).
+#   2026-10-18, memo 26.10.3: Tabellenzeilen enger (Zell-Inset y 5 pt statt
+#     7 pt). Nur Leerraum und Seitenumbrüche ändern sich, die Wortfolge bleibt
+#     bis auf Fußzeilen-Seitenzahlen und wiederholte Tabellenköpfe gleich.
+#     Neu: checklist, edge-cases, english, tasks (.txt), tables und
+#     tables-showcase (.txt/.meta, je eine Seite weniger), table-intro (.txt;
+#     zusätzlich mehr Fülltext im Fixture, siehe test-pdf.sh).
 #
 # Layout wie in test-pdf.sh: MDO_PIPELINE_ROOT/MDO_SETS_DIR, sonst das
 # Entwicklungs-Layout build/pipeline-dev/ (tests/dev-layout.sh).
