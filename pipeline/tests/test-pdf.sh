@@ -631,6 +631,96 @@ test_templates() {
   expect "eigenes memo" "$(pdf_text "${out_dir}/schatten.pdf")" "SET-PROBE"
   ok "Benutzerordner vor mitgelieferten Sets"
 
+  # Set-Ordner im Benutzerordner: <templates>/<name>/<name>.typ (geklontes Set-Repo).
+  MDO_TEMPLATES="${sets}" bash "${build}" --template folderset "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/folder.pdf" >/dev/null 2>"${out_dir}/folder.err" ||
+    die "Set-Ordner: Export fehlgeschlagen: $(cat "${out_dir}/folder.err")"
+  expect "Set-Ordner" "$(pdf_text "${out_dir}/folder.pdf")" "SET-FOLDER"
+  # Eine flache <name>.typ gewinnt über den Ordner gleichen Namens.
+  mkdir -p "${out_dir}/Flach/probe"
+  cp "${sets}/probe.typ" "${out_dir}/Flach/probe.typ"
+  cp "${sets}/folderset/folderset.typ" "${out_dir}/Flach/probe/probe.typ"
+  MDO_TEMPLATES="${out_dir}/Flach" bash "${build}" --template probe "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/flach.pdf" >/dev/null 2>&1 || die "flach vor Ordner: Export fehlgeschlagen"
+  expect "flach vor Ordner" "$(pdf_text "${out_dir}/flach.pdf")" "SET-PROBE"
+  ok "Set-Ordner <name>/<name>.typ im Benutzerordner"
+
+  # frontmatter(): Listen, verschachtelte Werte und x-Schlüssel kommen im Set an; die
+  # Shell-Parser lesen nur Schlüssel ganz links (eingerückte Zeilen ändern date/title nicht).
+  local fmnote="${out_dir}/Set Ordner/fm.md"
+  printf -- '---\ndate: 2026-10-18\nx-to:\n  - Sonnenschein Verlag GmbH\n  - Rosenstraße 5\nx-subject: "Ihre Anfrage"\nx-map:\n  inner: tief\n  title: falsch\n  date: 1999-01-01\n---\n\nText.\n' >"${fmnote}"
+  MDO_TEMPLATES="${sets}" bash "${build}" --template fm "${fmnote}" "${out_dir}/fm.pdf" \
+    >/dev/null 2>"${out_dir}/fm.err" || die "frontmatter(): Export fehlgeschlagen: $(cat "${out_dir}/fm.err")"
+  text="$(pdf_text "${out_dir}/fm.pdf")"
+  expect "frontmatter()" "${text}" "TO=Sonnenschein Verlag GmbH|Rosenstraße 5" "SUBJ=Ihre Anfrage" \
+    "NESTED=tief" "DATEIN=2026-10-18" "EMPTY=0"
+  reject "frontmatter()" "${text}" "falsch" "1999"
+  [[ ! -s "${out_dir}/fm.err" ]] || die "frontmatter(): Warnungen: $(cat "${out_dir}/fm.err")"
+  ok "frontmatter() im Set; eingerückte und x-Zeilen ändern die Pipeline-Werte nicht"
+
+  # Offline-Paketablage: @preview/cades (mit jogs) aus vendor/packages, ohne Netz.
+  MDO_TEMPLATES="${sets}" bash "${build}" --template qr "${out_dir}/Set Ordner/ohne.md" "${out_dir}/qr.pdf" \
+    >/dev/null 2>"${out_dir}/qr.err" || die "QR-Paket: Export fehlgeschlagen: $(cat "${out_dir}/qr.err")"
+  expect "QR-Paket" "$(pdf_text "${out_dir}/qr.pdf")" "QR-OK"
+  # Nicht mitgeliefertes Paket: Abbruch vor Typst, Exit 1, klare Meldung.
+  code=0
+  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template netimport "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "fremdes Paket liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0" <<<"${err}" || die "fremdes Paket: unklare Meldung: ${err}"
+  # Fail closed: auch eine ungültige Angabe (Großbuchstaben, Unterstrich) ist ein Paket-Import.
+  code=0
+  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template netupper "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "ungültige Paketangabe liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/Gibts_Nicht:1.0.0" <<<"${err}" || die "ungültige Paketangabe: unklare Meldung: ${err}"
+  # Ein Set-Ordner wird ganz geprüft: der Import steht in einer Hilfsdatei des Sets.
+  code=0
+  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "Import in Hilfsdatei liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "Import in Hilfsdatei: unklare Meldung: ${err}"
+  # Verlinkter Set-Ordner (geklontes Set-Repo als Symlink im Vorlagen-Ordner): find folgt
+  # dem Link; die Vorlage selbst wird immer geprüft, auch der Import in einer Hilfsdatei.
+  local links="${out_dir}/Verlinkt"
+  mkdir -p "${links}" "${out_dir}/Repo/linkmain"
+  printf '#import "@preview/gibtsnicht:3.0.0": nichts\nText\n' >"${out_dir}/Repo/linkmain/linkmain.typ"
+  ln -s "${out_dir}/Repo/linkmain" "${links}/linkmain"
+  ln -s "${sets}/nethelper" "${links}/nethelper"
+  code=0
+  err="$(MDO_TEMPLATES="${links}" bash "${build}" --template linkmain "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "verlinkter Set-Ordner liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:3.0.0" <<<"${err}" || die "verlinkter Set-Ordner: unklare Meldung: ${err}"
+  code=0
+  err="$(MDO_TEMPLATES="${links}" bash "${build}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "verlinkter Set-Ordner mit Hilfsdatei liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "verlinkter Set-Ordner mit Hilfsdatei: unklare Meldung: ${err}"
+  # Fail closed: eine unlesbare Datei im Set-Ordner (Scan scheitert) ist eine Abweisung.
+  mkdir -p "${out_dir}/Unlesbar/unlesbar"
+  printf 'Text\n' >"${out_dir}/Unlesbar/unlesbar/unlesbar.typ"
+  printf 'x\n' >"${out_dir}/Unlesbar/unlesbar/helper.typ"
+  chmod 000 "${out_dir}/Unlesbar/unlesbar/helper.typ"
+  code=0
+  err="$(MDO_TEMPLATES="${out_dir}/Unlesbar" bash "${build}" --template unlesbar "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  chmod 644 "${out_dir}/Unlesbar/unlesbar/helper.typ"
+  [[ "${code}" -eq 1 ]] || die "unlesbare Set-Datei liefert Exit ${code}"
+  grep -q "Vorlage nicht prüfbar" <<<"${err}" || die "unlesbare Set-Datei: unklare Meldung: ${err}"
+  # Was kein Textscan sieht (Angabe per Verkettung): Typst läuft hinter einem unerreichbaren
+  # Proxy, der Download scheitert, und in der Paketablage entsteht nichts.
+  local store_before
+  store_before="$(ls -R "${MDO_PIPELINE_ROOT}/vendor/packages/")"
+  code=0
+  MDO_TEMPLATES="${sets}" bash "${build}" --template netconcat "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/concat.pdf" >/dev/null 2>"${out_dir}/concat.err" || code=$?
+  [[ "${code}" -ne 0 ]] || die "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)"
+  [[ ! -e "${out_dir}/concat.pdf" ]] || die "verkettete Paketangabe erzeugt trotzdem ein PDF"
+  [[ "$(ls -R "${MDO_PIPELINE_ROOT}/vendor/packages/")" == "${store_before}" ]] ||
+    die "verkettete Paketangabe: Paketablage verändert"
+  ok "Offline-Paketablage; nicht mitgelieferte Pakete werden abgewiesen (Scan + gesperrter Proxy)"
+
   # Einzelne .typ-Datei relativ zur Notiz (Leerzeichen im Namen), Aufruf aus fremdem cwd.
   cp "${sets}/probe.typ" "${out_dir}/Set Ordner/eigene vorlage.typ"
   printf -- '---\ntemplate: ./eigene vorlage.typ\n---\n\n# Pfad\n' >"${out_dir}/Set Ordner/pfad.md"
@@ -662,7 +752,50 @@ test_templates() {
   ok "Fehlerfälle und --help"
 }
 
+test_profiles() {
+  local sets="${fixtures}/templates" pdir="${out_dir}/Profil Notiz" vorl="${out_dir}/Profil Vorlagen" text err code
+  mkdir -p "${pdir}/profiles" "${vorl}/profiles"
+  # Nur im Vorlagen-Ordner: gefunden über <templates>/profiles/<name>.yaml.
+  cp "${fixtures}/profiles/testprofil.yaml" "${fixtures}/profiles/sig.svg" "${vorl}/profiles/"
+  cp "${sets}/profile.typ" "${vorl}/"
+  printf -- '---\ntemplate: profile\nprofile: testprofil\n---\n\nText.\n' >"${pdir}/brief.md"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/brief.md" "${out_dir}/p1.pdf" >/dev/null 2>"${out_dir}/p1.err" ||
+    die "profile: Vorlagen-Ordner: $(cat "${out_dir}/p1.err")"
+  text="$(pdf_text "${out_dir}/p1.pdf")"
+  expect "profile: Vorlagen-Ordner" "${text}" "NAME=PROFIL-NAME" "SIG-OK"
+
+  # profiles/ neben der Notiz gewinnt.
+  sed 's/PROFIL-NAME/NOTIZ-PROFIL/' "${fixtures}/profiles/testprofil.yaml" >"${pdir}/profiles/testprofil.yaml"
+  cp "${fixtures}/profiles/sig.svg" "${pdir}/profiles/"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/brief.md" "${out_dir}/p2.pdf" >/dev/null 2>&1 ||
+    die "profile: Notizordner: Export fehlgeschlagen"
+  expect "profile: Notizordner" "$(pdf_text "${out_dir}/p2.pdf")" "NAME=NOTIZ-PROFIL"
+
+  # Als Pfad (relativ zur Notiz, mit ~ und $VAR) statt als Name.
+  printf -- '---\ntemplate: profile\nprofile: profiles/testprofil.yaml\n---\n\nText.\n' >"${pdir}/pfad.md"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/pfad.md" "${out_dir}/p3.pdf" >/dev/null 2>&1 ||
+    die "profile: Pfad: Export fehlgeschlagen"
+  expect "profile: Pfad" "$(pdf_text "${out_dir}/p3.pdf")" "NAME=NOTIZ-PROFIL"
+
+  # Ohne profile: leere Eingabe.
+  printf -- '---\ntemplate: profile\n---\n\nText.\n' >"${pdir}/ohne.md"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/ohne.md" "${out_dir}/p4.pdf" >/dev/null 2>&1 ||
+    die "profile: ohne: Export fehlgeschlagen"
+  expect "profile: ohne" "$(pdf_text "${out_dir}/p4.pdf")" "KEIN-PROFIL"
+
+  # Tippfehler: Exit 1, klare Meldung mit den gesuchten Ordnern, kein PDF.
+  printf -- '---\ntemplate: profile\nprofile: testprofli\n---\n\nText.\n' >"${pdir}/falsch.md"
+  code=0
+  err="$(MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/falsch.md" "${out_dir}/p5.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "profile: Tippfehler liefert Exit ${code}"
+  grep -q "Profil nicht gefunden: testprofli" <<<"${err}" || die "profile: unklare Meldung: ${err}"
+  grep -q "${vorl}/profiles" <<<"${err}" || die "profile: Meldung nennt den Vorlagen-Ordner nicht: ${err}"
+  [[ ! -e "${out_dir}/p5.pdf" ]] || die "profile: Tippfehler erzeugt trotzdem ein PDF"
+  ok "profile: Notizordner → Vorlagen-Ordner → Set-Ordner, Pfad, Fehler bei Tippfehler"
+}
+
 test_fixtures
 test_interface
 test_templates
+test_profiles
 printf 'Alle Tests bestanden.\n'

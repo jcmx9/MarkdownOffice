@@ -13,7 +13,15 @@ export type Manifest = {
     /** `extract`: path (suffix) inside the font archive; else a pinned `url` + `sha256`. */
     license: { file: string; extract?: string; url?: string; sha256?: string }
   }[]
-  packages: { name: string; version: string; sha256: string; license: string }[]
+  /** `store`: unpacked to vendor/packages/preview/<name>/<version> (Typst package-cache layout). */
+  packages: {
+    name: string
+    version: string
+    sha256: string
+    /** One licence file in the archive, or several (all ship in licenses/packages/<name>/). */
+    license: string | string[]
+    store?: boolean
+  }[]
   sets: { name: string; repo: string; tag: string; sha256: string }[]
   /** Hunspell dictionaries for Windows/Linux; `file` is the canonical Chromium name. */
   dictionaries?: {

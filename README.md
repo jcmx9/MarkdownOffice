@@ -231,6 +231,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `watermark` | Text | — | Diagonales, hellgraues Wasserzeichen unter allem. |
 | `logo` | Datei `.svg`/`.png`/`.jpg`/`.jpeg` | kein Logo | Logo im Kopf, nur wenn gesetzt; siehe [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximale Logohöhe (höchstens 25 mm); das Logo bleibt proportional und höchstens 60 mm breit. |
+| `profile` | Name oder `.yaml`-Pfad | kein Profil | Absender-Profil: ein Name sucht `profiles/<name>.yaml` neben der Notiz, im Vorlagen-Ordner und im Set; ein Pfad auf eine `.yaml`-Datei gilt relativ zur Notiz. Nur für Sets, die Profile nutzen (z. B. din5008a); nicht gefunden: Fehler, kein PDF. |
 | `embed_source` | `true` / `false` | `true` | Markdown-Quelle als Anhang ins PDF einbetten. |
 | `hard_breaks` | `true` / `false` | `true` | Jeder Zeilenumbruch bleibt einer (wie im Editor getippt), auch ohne Eintrag. Nur `false` setzt CommonMark: Ein einzelner Umbruch wird zum Leerzeichen. |
 
@@ -272,7 +273,7 @@ Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu dre
 | `name.header.md` | Frontmatter-Vorlage mit allen Schlüsseln; enthält `template: name` | nein |
 | `name.css` | Aussehen im Editor (reserviert; der Editor liest es noch nicht) | nein |
 
-Mitgeliefert ist das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout. Eigene Sets liegen als `name.typ` im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
+Mitgeliefert ist das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout. Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
 
 Eine Notiz wählt ihr Set mit `template: name` im Frontmatter; ohne Schlüssel gilt `memo`. `template: ./angebot.typ` nimmt eine einzelne Vorlage relativ zur Notiz. `--template` überschreibt den Schlüssel. Ein unbekanntes Set bricht den Build mit einer Meldung ab.
 
