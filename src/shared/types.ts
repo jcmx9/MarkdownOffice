@@ -141,6 +141,8 @@ export interface MdoApi {
   /** Tells main the shown note's lang: ('' = none); answers which dictionary is missing, if any. */
   setSpellLanguage(lang: string): Promise<{ missing: { code: string; name: string } } | null>
   downloadDictionary(code: string): Promise<boolean>
+  /** Checks the dictionary repo now (Windows/Linux); macOS answers skipped. */
+  checkDictionaryUpdates(): Promise<UpdateResult>
   declineDictionary(code: string): Promise<void>
   onOpenPaths(cb: (paths: string[]) => void): void
   onExternalChange(cb: (change: ExternalChange) => void): void
@@ -168,3 +170,10 @@ export interface SnippetDef {
   body: string
   source: 'builtin' | 'user'
 }
+
+/** Outcome of a dictionary update check (MarkdownOffice-dictionaries releases). */
+export type UpdateResult =
+  | { kind: 'current' }
+  | { kind: 'updated'; version: string; files: string[] }
+  | { kind: 'skipped' }
+  | { kind: 'failed'; reason: string }

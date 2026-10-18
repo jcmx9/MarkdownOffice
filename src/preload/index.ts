@@ -23,6 +23,7 @@ const api: MdoApi = {
   },
   setSpellLanguage: (lang) => ipcRenderer.invoke(Ch.spellLanguage, lang),
   downloadDictionary: (code) => ipcRenderer.invoke(Ch.spellDownload, code),
+  checkDictionaryUpdates: () => ipcRenderer.invoke(Ch.spellCheckUpdates),
   declineDictionary: (code) => ipcRenderer.invoke(Ch.spellDecline, code),
   onOpenPaths: (cb) => {
     ipcRenderer.on(Ch.openPaths, (_e, paths: string[]) => cb(paths))

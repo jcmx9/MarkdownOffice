@@ -25,6 +25,7 @@ export const Ch = {
   spellLanguage: 'mdo:spell-language',
   spellDownload: 'mdo:spell-download',
   spellDecline: 'mdo:spell-decline',
+  spellCheckUpdates: 'mdo:spell-check-updates',
   settingsStatus: 'mdo:settings-get-status',
   updateSettings: 'mdo:settings-update',
   choosePath: 'mdo:settings-choose-path',

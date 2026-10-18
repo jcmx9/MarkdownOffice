@@ -1,10 +1,11 @@
 import { join } from 'node:path'
-import { app, type BrowserWindow, Menu, type Session } from 'electron'
+import { app, type BrowserWindow, Menu, net, type Session } from 'electron'
 import { Ch } from '../../shared/ipc'
-import type { Settings } from '../../shared/types'
+import type { Settings, UpdateResult } from '../../shared/types'
 import { spellMenuTemplate } from './context-menu'
 import { installBundledDictionaries, installedCodes, readState, writeState } from './dictionaries'
 import { dictionaryFor, KNOWN } from './languages'
+import { checkForUpdates, downloadDictionary } from './updates'
 
 /** A URL that never answers: Electron must never fetch a dictionary from Google's CDN. */
 export const DEAD_DOWNLOAD_URL = 'http://127.0.0.1:9/'
@@ -64,6 +65,8 @@ export class SpellcheckController {
       }
     }
     this.applySettings(this.opts.settings())
+    // Windows/Linux only (macOS uses system dictionaries); the daily limit lives in the check.
+    if (this.hunspell && this.opts.settings().dictionaryAutoUpdate) void this.runCheck(false)
     // Per window (its webContents), so no session-level guard is needed. Corrections go through
     // the renderer as editor transactions, never webContents.replaceMisspelling.
     this.win.webContents.on('context-menu', (_e, p) => {
@@ -107,6 +110,7 @@ export class SpellcheckController {
     if (!this.hunspell) return null
     // Overlapping calls (quick tab switches) finish in any order; the last REQUESTED wins.
     const seq = ++this.langSeq
+    this.lastLang = lang
     const s = this.win.webContents.session
     const wanted = dictionaryFor(lang, app.getPreferredSystemLanguages(), this.offered())
     const installed = await installedCodes(this.dictDir)
@@ -128,10 +132,41 @@ export class SpellcheckController {
     await writeState(this.dictDir, { ...state, declined: [...state.declined, code] })
   }
 
-  /** Task 6 fills in the real download; until then it reports failure. */
+  /** GitHub requires a User-Agent; net.fetch honours the system proxy. Only the repo's releases. */
+  private fetch = (url: string): Promise<Response> =>
+    net.fetch(url, { headers: { 'User-Agent': 'Markdown Office' } })
+
+  /** Language last requested; re-applied after an update so Electron reloads the new files. */
+  private lastLang = ''
+
+  /** Manual „jetzt prüfen“: ignores the daily limit. macOS has no check. */
+  checkNow(): Promise<UpdateResult> {
+    return this.hunspell ? this.runCheck(true) : Promise.resolve({ kind: 'skipped' })
+  }
+
+  private async runCheck(force: boolean): Promise<UpdateResult> {
+    const r = await checkForUpdates({
+      dir: this.dictDir,
+      fetch: this.fetch,
+      codes: await installedCodes(this.dictDir),
+      force,
+      now: Date.now(),
+    })
+    if (r.kind === 'updated') await this.reload()
+    return r
+  }
+
+  /** Re-applies the current language (a new request, so the latest one still wins). */
+  private async reload(): Promise<void> {
+    await this.setLanguage(this.lastLang)
+  }
+
+  /** Verified download of one language from the dictionary repo. */
   async downloadDictionary(code: string): Promise<boolean> {
-    console.warn(`spellcheck: download of ${code} is not yet available`)
-    return false
+    if (!this.hunspell) return false
+    const ok = await downloadDictionary({ dir: this.dictDir, fetch: this.fetch, code })
+    if (ok) await this.reload()
+    return ok
   }
 
   applySettings(settings: Settings): void {

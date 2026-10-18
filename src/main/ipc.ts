@@ -52,6 +52,10 @@ export function registerIpc(ctx: AppContext): void {
       ? (ctx.spellcheck?.downloadDictionary(code) ?? false)
       : false,
   )
+  ipcMain.handle(
+    Ch.spellCheckUpdates,
+    () => ctx.spellcheck?.checkNow() ?? ({ kind: 'skipped' } as const),
+  )
   ipcMain.handle(Ch.spellDecline, async (_e, code: unknown) => {
     if (typeof code === 'string' && CODE.test(code)) await ctx.spellcheck?.declineDictionary(code)
   })
