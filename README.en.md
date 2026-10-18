@@ -299,11 +299,11 @@ The set `din5008a` sets letters to DIN 5008 Form A with a sender profile, vCard 
 ---
 template: din5008a
 profile: beispiel
-x-to: |
-  Beispiel GmbH
-  Frau Muster
-  Musterstraße 1
-  12345 Musterstadt
+x-to:
+  - Beispiel GmbH
+  - Frau Muster
+  - Musterstraße 1
+  - 12345 Musterstadt
 x-subject: Anfrage zum Angebot
 x-closing: Mit freundlichen Grüßen
 ---

@@ -299,35 +299,11 @@ Das Set `din5008a` setzt Briefe nach DIN 5008 Form A mit Absender-Profil, vCard-
 ---
 template: din5008a
 profile: beispiel
-x-to: |
-  Beispiel GmbH
-  Frau Muster
-  Musterstraße 1
-  12345 Musterstadt
-x-subject: Anfrage zum Angebot
-x-closing: Mit freundlichen Grüßen
----
-
-Sehr geehrte Frau Muster,
-
-vielen Dank für Ihr Angebot.
-```
-
-Eigene Absender-Profile liegen als `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\profiles\<name>.yaml`). Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
-
-## Briefe (din5008a)
-
-Das Set `din5008a` setzt Briefe nach DIN 5008 Form A mit Absender-Profil, vCard-QR-Code und Unterschrift. Eine minimale Notiz:
-
-```markdown
----
-template: din5008a
-profile: beispiel
-x-to: |
-  Beispiel GmbH
-  Frau Muster
-  Musterstraße 1
-  12345 Musterstadt
+x-to:
+  - Beispiel GmbH
+  - Frau Muster
+  - Musterstraße 1
+  - 12345 Musterstadt
 x-subject: Anfrage zum Angebot
 x-closing: Mit freundlichen Grüßen
 ---
