@@ -63,6 +63,11 @@ test('right click on a misspelled word offers suggestions; a click fixes exactly
   // lang: de makes the real language path pick de-DE, whatever the runner's system language is.
   await writeFile(note, '---\nlang: de\n---\n\nEin Fehlr hier.\n')
   const { app, page } = await launch({ dirs, args: [note], env: { MDO_E2E_MENUS: '1' } })
+  // The real language path (lang: de -> renderer -> main) must have activated checking.
+  await expect.poll(() => spellLanguages(app)).toEqual(['de-DE'])
+  expect(await app.evaluate(({ session }) => session.defaultSession.isSpellCheckerEnabled())).toBe(
+    true,
+  )
   // The checker marks asynchronously: retry the right click until suggestions arrive. The
   // word is located again each time, so a late reflow cannot move the click off it.
   await expect
@@ -90,6 +95,36 @@ test('right click on a misspelled word offers suggestions; a click fixes exactly
     10_000,
   )
   expect(saved.toString('utf8')).toBe('---\nlang: de\n---\n\nEin Fehler hier.\n')
+  await app.close()
+})
+
+// Chromium checks the text already in an editable only after a user-gesture focus unless the
+// app lifts that restriction (src/main/spellcheck/features.ts): the editor is focused by the
+// app, so without it an opened note's misspellings were never marked, only typed words. No
+// typing here. English, because every runner has an English dictionary (macOS: the system's).
+test('a misspelling already in an opened note is marked without typing', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Vorhanden.md')
+  await writeFile(note, '---\nlang: en\n---\n\nThis sentense is wrong.\n')
+  const { app, page } = await launch({
+    dirs,
+    args: [note],
+    env: { MDO_E2E_MENUS: '1' },
+    settings: { dictionaryAutoUpdate: false },
+  })
+  await expect
+    .poll(
+      async () => {
+        const { x, y } = await wordCentre(page, 'sentense')
+        await page.mouse.click(x, y, { button: 'right' })
+        return app.evaluate(() => {
+          const m = (globalThis as { mdoE2eMenus?: Recorded }).mdoE2eMenus ?? []
+          return m.at(-1)?.map((i) => i.label ?? '') ?? []
+        })
+      },
+      { timeout: 15000 },
+    )
+    .toContain('Zum Wörterbuch hinzufügen')
   await app.close()
 })
 

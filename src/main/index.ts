@@ -4,12 +4,15 @@ import { AppContext } from './context'
 import { handleFontProtocol, registerFontScheme } from './font-protocol'
 import { registerIpc } from './ipc'
 import { pipelinePaths } from './pipeline'
+import { enableExistingTextSpellcheck } from './spellcheck/features'
 import { userDataOverride } from './user-data'
 
 // Must run before requestSingleInstanceLock: the lock lives in userData.
 const userData = userDataOverride(process.env, app.isPackaged, app.getPath('appData'))
 if (userData) app.setPath('userData', userData)
 registerFontScheme()
+// Before ready: lets Chromium check the text of an opened note, not only typed words.
+enableExistingTextSpellcheck(app.commandLine)
 
 const cli = parseCli(argsFromArgv(process.argv, app.isPackaged), process.cwd())
 
