@@ -484,11 +484,25 @@ pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path 
 # Vorlage; ist sie ein Set-Ordner <name>/<name>.typ, jede .typ darin (auch Unterordner),
 # weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen .typ nur diese, weil ihre
 # Nachbarn andere Sets sein können. Steht hinter der Vorlagen-Auflösung (endgültige Datei).
+# find -H folgt einem verlinkten Set-Ordner (z. B. ein geklontes Set-Repo, als Symlink im
+# Vorlagen-Ordner); die Vorlage selbst steht immer in der Liste, was find auch liefert.
+# Fail closed: scheitert find oder grep (z. B. unlesbare Datei), wird die Vorlage abgewiesen.
 template_dir="$(dirname "${template_file}")"
+scan_files=("${template_file}")
 if [[ "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
-  scan_files=("${template_dir}")
-else
-  scan_files=("${template_file}")
+  if ! found="$(find -H "${template_dir}" -type f -name '*.typ')"; then
+    echo "Error: Vorlage nicht prüfbar (Set-Ordner nicht lesbar): ${template_dir}" >&2
+    exit 1
+  fi
+  while IFS= read -r f; do
+    if [[ -n "${f}" ]]; then scan_files+=("${f}"); fi
+  done <<<"${found}"
+fi
+scan_rc=0
+specs="$(grep -ohE '@preview/[^"[:space:]]*' -- "${scan_files[@]}")" || scan_rc=$?
+if (( scan_rc > 1 )); then
+  echo "Error: Vorlage nicht prüfbar (Datei nicht lesbar): ${template_file}" >&2
+  exit 1
 fi
 while IFS= read -r spec; do
   [[ -n "${spec}" ]] || continue
@@ -498,8 +512,7 @@ while IFS= read -r spec; do
     echo "Error: Paket nicht mitgeliefert: @preview/${spec} (Vorlage ${template_file})" >&2
     exit 1
   fi
-done < <(find "${scan_files[@]}" -type f -name '*.typ' -exec grep -ohE '@preview/[^"[:space:]]*' {} + |
-  sed 's#^@preview/##' | sort -u)
+done < <(printf '%s\n' "${specs}" | sed 's#^@preview/##' | sort -u)
 
 # Kein Netz, nie (2/2): was kein Textscan sieht (z. B. eine per Verkettung gebaute
 # Paketangabe), stoppt ein unerreichbarer Proxy für beide Typst-Aufrufe; ein Download

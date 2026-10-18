@@ -368,6 +368,33 @@ function Initialize-Stage {
     ($cands -join ', ') + ')')
 }
 
+# Kein Netz, nie (2/2, spiegelt build.sh): was der Textscan der Vorlage nicht sieht (z. B.
+# eine per Verkettung gebaute Paketangabe), stoppt ein unerreichbarer Proxy fuer die
+# Typst-Aufrufe; ein Download scheitert, bevor etwas in die Ablage geschrieben wird.
+# NO_PROXY leer: keine Ausnahmen. Enable-NoNetwork setzt die Variablen NUR um einen
+# Typst-Aufruf herum und gibt die alten Werte zurueck; Restore-Network stellt sie in einem
+# finally wieder her, damit weder der PDF-Betrachter (Start-Process) noch ein Aufrufer im
+# selben Prozess sie erbt. (Unter Windows sind HTTPS_PROXY und https_proxy dieselbe
+# Variable; das Speichern in fester Reihenfolge und Wiederherstellen in umgekehrter
+# Reihenfolge stellt den urspruenglichen Wert her.)
+$script:NoNetVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'NO_PROXY', 'no_proxy')
+function Enable-NoNetwork {
+  $saved = [ordered]@{}
+  foreach ($v in $script:NoNetVars) { $saved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+  foreach ($v in $script:NoNetVars) {
+    $val = if ($v -like '*no_proxy') { $null } else { 'http://127.0.0.1:9' }
+    [Environment]::SetEnvironmentVariable($v, $val, 'Process')
+  }
+  return $saved
+}
+function Restore-Network {
+  param($Saved)
+  if (-not $Saved) { return }
+  $names = @($Saved.Keys)
+  [array]::Reverse($names)
+  foreach ($v in $names) { [Environment]::SetEnvironmentVariable($v, $Saved[$v], 'Process') }
+}
+
 function Get-TypstReadable {
   param([string]$Path, [string]$Name = '')
   if (-not $Path) { return $Path }
@@ -588,15 +615,8 @@ function Convert-One {
       if (-not $ok) { throw "Paket nicht mitgeliefert: @preview/$spec (Vorlage $templateSrc)" }
     }
   }
-  # Kein Netz, nie (2/2): was kein Textscan sieht (z. B. eine per Verkettung gebaute
-  # Paketangabe), stoppt ein unerreichbarer Proxy fuer beide Typst-Aufrufe; ein Download
-  # scheitert, bevor etwas in die Ablage geschrieben wird. NO_PROXY leer: keine Ausnahmen.
-  # convert.ps1 laeuft immer als eigener Prozess (powershell -File), daher ohne Zuruecksetzen.
-  # (Unter Windows sind HTTPS_PROXY und https_proxy dieselbe Variable; beide zu setzen schadet nicht.)
-  foreach ($v in @('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy')) {
-    [Environment]::SetEnvironmentVariable($v, 'http://127.0.0.1:9', 'Process')
-  }
-  foreach ($v in @('NO_PROXY', 'no_proxy')) { [Environment]::SetEnvironmentVariable($v, $null, 'Process') }
+  # Kein Netz, nie (2/2): beide Typst-Aufrufe unten laufen hinter einem unerreichbaren
+  # Proxy (siehe Enable-NoNetwork).
   # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
   # der Notiz (bzw. MDO_BASE_DIR), im Vorlagen-Ordner, im Ordner des Sets; sonst ein Pfad
   # auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
@@ -679,8 +699,12 @@ function Convert-One {
   # Der Ausdruck enthaelt bewusst KEINE doppelten Anfuehrungszeichen:
   # Windows PowerShell 5.1 reicht sie an externe Programme nicht korrekt weiter.
   $probeExpr = '(str(query(<mdo-remote-skip>).len()),) + query(<mdo-image>).map(m => m.value).dedup()'
-  $probeJson = & $TypstExe eval --in $templateFile $probeExpr `
-    --font-path $FontDir --ignore-system-fonts @pkgArgs --root $script:TypstRoot @inputs --input probe=true 2>$null
+  $noNet = Enable-NoNetwork
+  try {
+    $probeJson = & $TypstExe eval --in $templateFile $probeExpr `
+      --font-path $FontDir --ignore-system-fonts @pkgArgs --root $script:TypstRoot @inputs --input probe=true 2>$null
+  }
+  finally { Restore-Network $noNet }
   $probe = @()
   try { $probe = @((($probeJson -join "`n") | ConvertFrom-Json) | ForEach-Object { $_ }) } catch { $probe = @() }
   $stripped = 0
@@ -706,7 +730,9 @@ function Convert-One {
   [IO.File]::WriteAllText($imagesJson, ($imageMap | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
   $inputs += @('--input', ('images=' + (ConvertTo-TypstPath $imagesJson)))
 
+  $noNet = $null
   try {
+    $noNet = Enable-NoNetwork
     & $TypstExe compile $templateFile $outPdf `
       --font-path $FontDir --ignore-system-fonts `
       @pkgArgs `
@@ -716,6 +742,7 @@ function Convert-One {
     if ($LASTEXITCODE) { throw "typst-Fehler ($LASTEXITCODE)" }
   }
   finally {
+    Restore-Network $noNet
     if ($script:StageDir) { Remove-Item -LiteralPath $script:StageDir -Recurse -Force -ErrorAction SilentlyContinue }
   }
 

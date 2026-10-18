@@ -680,6 +680,34 @@ test_templates() {
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "Import in Hilfsdatei liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "Import in Hilfsdatei: unklare Meldung: ${err}"
+  # Verlinkter Set-Ordner (geklontes Set-Repo als Symlink im Vorlagen-Ordner): find folgt
+  # dem Link; die Vorlage selbst wird immer geprüft, auch der Import in einer Hilfsdatei.
+  local links="${out_dir}/Verlinkt"
+  mkdir -p "${links}" "${out_dir}/Repo/linkmain"
+  printf '#import "@preview/gibtsnicht:3.0.0": nichts\nText\n' >"${out_dir}/Repo/linkmain/linkmain.typ"
+  ln -s "${out_dir}/Repo/linkmain" "${links}/linkmain"
+  ln -s "${sets}/nethelper" "${links}/nethelper"
+  code=0
+  err="$(MDO_TEMPLATES="${links}" bash "${build}" --template linkmain "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "verlinkter Set-Ordner liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:3.0.0" <<<"${err}" || die "verlinkter Set-Ordner: unklare Meldung: ${err}"
+  code=0
+  err="$(MDO_TEMPLATES="${links}" bash "${build}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "verlinkter Set-Ordner mit Hilfsdatei liefert Exit ${code}"
+  grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "verlinkter Set-Ordner mit Hilfsdatei: unklare Meldung: ${err}"
+  # Fail closed: eine unlesbare Datei im Set-Ordner (Scan scheitert) ist eine Abweisung.
+  mkdir -p "${out_dir}/Unlesbar/unlesbar"
+  printf 'Text\n' >"${out_dir}/Unlesbar/unlesbar/unlesbar.typ"
+  printf 'x\n' >"${out_dir}/Unlesbar/unlesbar/helper.typ"
+  chmod 000 "${out_dir}/Unlesbar/unlesbar/helper.typ"
+  code=0
+  err="$(MDO_TEMPLATES="${out_dir}/Unlesbar" bash "${build}" --template unlesbar "${out_dir}/Set Ordner/ohne.md" \
+    "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
+  chmod 644 "${out_dir}/Unlesbar/unlesbar/helper.typ"
+  [[ "${code}" -eq 1 ]] || die "unlesbare Set-Datei liefert Exit ${code}"
+  grep -q "Vorlage nicht prüfbar" <<<"${err}" || die "unlesbare Set-Datei: unklare Meldung: ${err}"
   # Was kein Textscan sieht (Angabe per Verkettung): Typst läuft hinter einem unerreichbaren
   # Proxy, der Download scheitert, und in der Paketablage entsteht nichts.
   local store_before

@@ -337,6 +337,25 @@ $storeAfter = (Get-ChildItem -LiteralPath $storeDir -Recurse -Force | ForEach-Ob
 if ($r.Code -eq 0 -or (Test-Path -LiteralPath $concatPdf)) { Fail "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)`n$($r.Text)" }
 elseif ($storeAfter -ne $storeBefore) { Fail 'verkettete Paketangabe: Paketablage veraendert' }
 else { Ok 'verkettete Paketangabe: kein Download, Ablage unveraendert' }
+# Der gesperrte Proxy gilt nur um die Typst-Aufrufe: convert.ps1 IM SELBEN PROZESS (&) aufrufen
+# (einmal erfolgreich, einmal mit Fehler) und pruefen, dass die Proxy-Variablen danach wieder
+# die vorherigen Werte haben (kein Erben durch den PDF-Betrachter oder den Aufrufer).
+$proxyVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY')
+$proxySaved = @{}
+foreach ($v in $proxyVars) { $proxySaved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+[Environment]::SetEnvironmentVariable('HTTPS_PROXY', 'http://sentinel.invalid:1', 'Process')
+[Environment]::SetEnvironmentVariable('HTTP_PROXY', $null, 'Process')
+[Environment]::SetEnvironmentVariable('NO_PROXY', 'sentinel.invalid', 'Process')
+$inProcPdf = Join-Path $outDir 'inproc.pdf'
+$null = & $Convert $setNote $inProcPdf *>&1
+$okRun = ($LASTEXITCODE -eq 0) -and (Test-PdfA $inProcPdf)
+$null = & $Convert '--template' 'netconcat' $setNote (Join-Path $outDir 'inproc-net.pdf') *>&1
+$after = @($env:HTTPS_PROXY, $env:HTTP_PROXY, $env:NO_PROXY)
+foreach ($v in $proxyVars) { [Environment]::SetEnvironmentVariable($v, $proxySaved[$v], 'Process') }
+if (-not $okRun) { Fail 'Proxy-Wiederherstellung: Build im selben Prozess fehlgeschlagen' }
+elseif ($after[0] -ne 'http://sentinel.invalid:1' -or $after[1] -or $after[2] -ne 'sentinel.invalid') {
+  Fail "Proxy-Variablen nach dem Build veraendert: HTTPS_PROXY=$($after[0]) HTTP_PROXY=$($after[1]) NO_PROXY=$($after[2])"
+} else { Ok 'Proxy-Variablen nach dem Build unveraendert (auch nach einem Fehler)' }
 
 $r = Invoke-Convert @('--template=memo', $setNote, (Join-Path $outDir 'cli.pdf'))
 if ($r.Code -ne 0) { Fail "--template=memo: Exit $($r.Code)`n$($r.Text)" }
