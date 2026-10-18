@@ -32,6 +32,7 @@ import { snippetRegistry } from './editor/snippets'
 import {
   forgetDismissedNotices,
   offerDictionaryNotice,
+  recheckSpelling,
   replaceWordAt,
   SpellLanguageTracker,
   spellAnswerCurrent,
@@ -224,6 +225,7 @@ export class App {
       // x/y are window coordinates of the right click (Electron context-menu params).
       replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
     })
+    this.mdo.onSpellRecheck(() => recheckSpelling(this.editor, this.spellcheckOn, this.mode))
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))
     this.mdo.onBeforeClose(() => this.beforeClose())

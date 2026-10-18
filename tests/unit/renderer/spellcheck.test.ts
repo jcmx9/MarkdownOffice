@@ -6,6 +6,7 @@ import { createState } from '../../../src/renderer/editor/setup'
 import {
   forgetDismissedNotices,
   offerDictionaryNotice,
+  recheckSpelling,
   replaceWordAt,
   SpellLanguageTracker,
   spellAnswerCurrent,
@@ -40,6 +41,36 @@ describe('spellcheck extensions', () => {
       .map((l) => l.textContent)
     expect(off).toEqual(expect.arrayContaining(['title: Tset', 'konst x']))
     expect(off).not.toContain('Txet')
+  })
+})
+
+describe('recheckSpelling', () => {
+  /** Old values of every change to the content's spellcheck attribute during `run`. */
+  function oldValues(v: EditorView, run: () => void): string[] {
+    const mo = new MutationObserver(() => undefined)
+    mo.observe(v.contentDOM, { attributeFilter: ['spellcheck'], attributeOldValue: true })
+    run()
+    const seen = mo.takeRecords().map((r) => r.oldValue ?? '')
+    mo.disconnect()
+    return seen
+  }
+
+  it('switches checking off and on again, so Chromium checks the text anew', () => {
+    const v = view('Ein Fehlr hier\n')
+    v.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(true, 'edit')) })
+    // true -> false -> true: it really went through off before it ended on again.
+    expect(oldValues(v, () => recheckSpelling(v, true, 'edit'))).toEqual(['true', 'false'])
+    expect(attr(v)).toBe('true')
+  })
+
+  it.each([
+    [false, 'edit'],
+    [true, 'present'],
+  ] as const)('never touches checking when on=%s in %s', (on, mode) => {
+    const v = view('Text\n')
+    v.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(on, mode)) })
+    expect(oldValues(v, () => recheckSpelling(v, on, mode))).toEqual([])
+    expect(attr(v)).toBe('false')
   })
 })
 
