@@ -118,7 +118,7 @@ Right-clicking a tab or the file name in the status line opens a menu with renam
 
 ### Outline
 
-A sidebar on the right lists the note's H1 and H2 headings. The arrow in front of an entry with content folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
+A sidebar on the right lists the note's H1 and H2 headings. The arrow in front of a chapter with sub-chapters folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. In the editor, the width can be dragged with the mouse at the outline's left edge (double-click: default width) and is remembered; Present always uses the default width. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
 
 ### Snippets
 

@@ -161,10 +161,44 @@ dialog.prompt input:focus-visible {
   flex: 1;
   min-width: 0;
 }
+/* Drag handle on the outline's left edge (Edit mode): a 6px strip over the border line. */
+#outline-grip {
+  margin: 0;
+  border: 0;
+  align-self: stretch;
+  flex: none;
+  width: 6px;
+  margin-right: -6px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+}
+#outline-grip[hidden] {
+  display: none;
+}
+#outline-grip:hover,
+#outline-grip:focus-visible,
+body.mdo-ol-resizing #outline-grip {
+  background: linear-gradient(
+    to right,
+    transparent 2px,
+    var(--accent) 2px,
+    var(--accent) 4px,
+    transparent 4px
+  );
+  outline: none;
+}
+/* While dragging: no text selection, the resize cursor everywhere. */
+body.mdo-ol-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
 #outline {
   box-sizing: border-box;
-  width: max-content;
-  min-width: 14em;
+  /* Fixed width (em: grows with the zoom), so the bar never jumps with the headings; long
+     headings end in "…" and show in full on hover (.mdo-ol-tip). */
+  width: 18em;
+  flex: none;
   max-width: 33vw;
   overflow-y: auto;
   overflow-x: hidden;
@@ -175,8 +209,8 @@ dialog.prompt input:focus-visible {
   padding: 8px 4px;
   background: var(--chrome-bg);
   color: var(--chrome-muted);
-  /* Chrome size, scaled with the editor zoom of the current mode (--mdo-ol-zoom). */
-  font-size: calc(13px * var(--mdo-ol-zoom, 1));
+  /* Slightly larger than the note's 10pt body, scaled with the editor zoom (--mdo-ol-zoom). */
+  font-size: calc(15px * var(--mdo-ol-zoom, 1));
 }
 #outline .mdo-ol-list {
   margin: 0;
@@ -228,9 +262,10 @@ dialog.prompt input:focus-visible {
 #outline .mdo-ol-list > .mdo-ol-h1 + .mdo-ol-h1 {
   margin-top: calc(6px * var(--mdo-ol-zoom, 1));
 }
-#outline .mdo-ol-h1 > .mdo-ol-label {
+#outline .mdo-ol-h1 > .mdo-ol-label,
+.mdo-ol-tip-h1 {
   font-family: var(--mdo-font-serif);
-  font-size: calc(14px * var(--mdo-ol-zoom, 1));
+  font-size: calc(16px * var(--mdo-ol-zoom, 1));
   font-weight: 560;
   color: var(--mdo-heading);
 }
@@ -266,8 +301,9 @@ dialog.prompt input:focus-visible {
   width: calc(9px * var(--mdo-ol-zoom, 1));
   border-top: 1px solid var(--line);
 }
-#outline .mdo-ol-h2 > .mdo-ol-label {
-  font-size: calc(12.5px * var(--mdo-ol-zoom, 1));
+#outline .mdo-ol-h2 > .mdo-ol-label,
+.mdo-ol-tip-h2 {
+  font-size: calc(14px * var(--mdo-ol-zoom, 1));
   color: var(--chrome-muted);
 }
 #outline .mdo-ol-chevron,
@@ -290,6 +326,32 @@ dialog.prompt input:focus-visible {
 }
 #outline .mdo-ol-chevron.expanded {
   transform: rotate(90deg);
+}
+/* A dragged width may take up to half the window. */
+#outline.mdo-ol-custom {
+  max-width: 50vw;
+}
+/* Hover tip for a cut-off heading: over the row, right edge on the row's right edge. */
+.mdo-ol-tip {
+  position: fixed;
+  z-index: 50;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  max-width: calc(100vw - 16px);
+  padding: 0 calc(4px * var(--mdo-ol-zoom, 1)) 0 calc(6px * var(--mdo-ol-zoom, 1));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  pointer-events: none;
+}
+.mdo-ol-tip[hidden] {
+  display: none;
 }
 #outline .mdo-ol-empty {
   margin: 0;

@@ -118,7 +118,7 @@ Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet
 
 ### Gliederung
 
-Eine Seitenleiste rechts listet die Überschriften H1 und H2 der Notiz. Der Pfeil vor einem Eintrag mit Inhalt klappt den Abschnitt im Text und in der Gliederung gleichzeitig ein oder aus; „Alle ein-/ausklappen“ wirkt ebenso auf beide. Ein Klick auf einen Eintrag springt im Text zur Überschrift, der Fokus bleibt im Editor. Mod+Shift+O blendet die Gliederung ein oder aus; die Einstellung wird getrennt für Editor und Präsentation gemerkt.
+Eine Seitenleiste rechts listet die Überschriften H1 und H2 der Notiz. Der Pfeil vor einem Kapitel mit Unterkapiteln klappt den Abschnitt im Text und in der Gliederung gleichzeitig ein oder aus; „Alle ein-/ausklappen“ wirkt ebenso auf beide. Ein Seitenumbruch oder Kommentar am Ende eines Abschnitts gehört zur nächsten Überschrift. Ein Klick auf einen Eintrag springt im Text zur Überschrift, der Fokus bleibt im Editor. Lange Überschriften enden mit „…“; mit der Maus darüber erscheint der volle Text. Die Breite lässt sich im Editor am linken Rand der Gliederung mit der Maus ziehen (Doppelklick: Standardbreite) und wird gemerkt; in der Präsentation gilt immer die Standardbreite. Mod+Shift+O blendet die Gliederung ein oder aus; die Einstellung wird getrennt für Editor und Präsentation gemerkt.
 
 ### Snippets
 

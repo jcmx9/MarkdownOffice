@@ -44,6 +44,8 @@ export class Outline {
   private activeRow: Row | null = null
   private activeKey: string | null = null
   private keys = new Map<OutlineEntry, string>()
+  /** Full text of a cut-off label on hover, right-aligned to it (created on first use). */
+  private tip: HTMLDivElement | null = null
 
   constructor(
     private readonly el: HTMLElement,
@@ -51,6 +53,7 @@ export class Outline {
   ) {
     this.empty.className = 'mdo-ol-empty'
     this.empty.textContent = 'Keine Überschriften'
+    el.addEventListener('scroll', () => this.hideTip(), { passive: true })
   }
 
   setVisible(on: boolean): void {
@@ -58,6 +61,7 @@ export class Outline {
   }
 
   render(entries: OutlineEntry[], active: OutlineEntry | null): void {
+    this.hideTip()
     if (entries.length === 0) {
       this.rows.clear()
       this.list = null
@@ -122,7 +126,6 @@ export class Outline {
       e.folded ? 'Abschnitt ausklappen' : 'Abschnitt einklappen',
     )
     row.chevron.classList.toggle('expanded', !e.folded)
-    if (row.label.title !== e.text) row.label.title = e.text
     if (row.label.textContent !== e.text) row.label.textContent = e.text
 
     if (e.children.length > 0 && !e.folded) {
@@ -152,8 +155,34 @@ export class Outline {
     label.addEventListener('click', (ev) => {
       if (ev.button === 0) this.handlers.jump(row.entry)
     })
+    label.addEventListener('mouseenter', () => this.showTip(row))
+    label.addEventListener('mouseleave', () => this.hideTip())
     li.append(e.fold && e.children.length > 0 ? chevron : spacer, label)
     return row
+  }
+
+  private showTip(row: Row): void {
+    const label = row.label
+    if (label.scrollWidth <= label.clientWidth) return
+    if (!this.tip) {
+      this.tip = document.createElement('div')
+      this.tip.setAttribute('aria-hidden', 'true')
+      document.body.append(this.tip)
+    }
+    const r = label.getBoundingClientRect()
+    const tip = this.tip
+    tip.className = `mdo-ol-tip mdo-ol-tip-h${row.entry.level}`
+    tip.textContent = row.entry.text
+    // Same font and zoom as the row; the right edges line up, the text grows to the left.
+    tip.style.setProperty('--mdo-ol-zoom', this.el.style.getPropertyValue('--mdo-ol-zoom') || '1')
+    tip.style.top = `${r.top}px`
+    tip.style.right = `${window.innerWidth - r.right}px`
+    tip.style.minHeight = `${r.height}px`
+    tip.hidden = false
+  }
+
+  private hideTip(): void {
+    if (this.tip) this.tip.hidden = true
   }
 
   private button(className: string, text: string): HTMLButtonElement {
