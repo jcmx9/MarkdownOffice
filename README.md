@@ -110,7 +110,7 @@ Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdate
 
 `Mod` = Cmd unter macOS, sonst Ctrl. Die Auswahl mit Shift bzw. Mod+Shift und den Pfeiltasten übernimmt CodeMirror.
 
-Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, PDF exportieren und Tab schließen. Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht.
+Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, PDF exportieren und Tab schließen. Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Rechts daneben schalten `Gliederung` und `YAML` die Gliederung (Mod+Shift+O) und den YAML-Header der Vorschau (Mod+Shift+H) ein oder aus; ist ein Schalter hervorgehoben, ist er an. `YAML` ist ausgegraut, wenn die Notiz keinen Header hat oder die Code-Ansicht (dort ist der Header immer sichtbar) aktiv ist. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht.
 
 ### Einstellungen
 

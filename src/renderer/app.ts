@@ -13,7 +13,7 @@ import type {
   View,
 } from '../shared/types'
 import { AutosaveScheduler } from './editor/autosave'
-import { frontmatterFields } from './editor/frontmatter'
+import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
 import { insertHeader } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
@@ -167,6 +167,9 @@ export class App {
         if (mode !== this.mode) void this.presentToggle.toggle()
       },
       setView: (view) => this.setView(view),
+      // Through command(): the same guards as the menu (closing window, open dialog).
+      toggleOutline: () => void this.command('toggle-outline'),
+      toggleYaml: () => void this.command('toggle-header'),
     })
     this.notices = new Notices(root.notices)
     this.infoLine = new InfoLine(root.infoline, {
@@ -659,6 +662,7 @@ export class App {
     this.editor.dispatch(headerToggleSpec(this.editor.state, hide))
     tab.headerHidden = hide
     this.syncMain()
+    this.refresh()
     this.editor.focus()
   }
 
@@ -669,6 +673,7 @@ export class App {
     this.mdo
       .saveSession({ outline: { ...this.outlineOn } })
       .catch((e: unknown) => console.error('saveSession(outline) failed', e))
+    this.refresh()
     this.editor.focus()
   }
 
@@ -1148,7 +1153,12 @@ export class App {
     else if (error) state = 'error'
     else if (tab && this.store.isDirty(tab)) state = 'dirty'
     else if (tab && !tab.onDisk) state = 'new'
-    this.status.render(tab ? fileName(tab.path) : null, state, error, this.view)
+    const doc = this.shownId === null ? null : this.editor.state
+    this.status.render(tab ? fileName(tab.path) : null, state, error, this.view, {
+      outline: this.outlineOn.edit,
+      hasHeader: doc !== null && frontmatterRange(doc.doc) !== null,
+      yamlOn: doc !== null && !doc.field(headerHidden),
+    })
     document.title = tab
       ? `${fileName(tab.path)}${state === 'dirty' ? ' •' : ''} – Markdown Office`
       : 'Markdown Office'

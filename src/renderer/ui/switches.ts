@@ -68,3 +68,61 @@ function lift(b: HTMLButtonElement, on: boolean): void {
   b.classList.toggle('active', on)
   b.setAttribute('aria-pressed', String(on))
 }
+
+export interface ToggleActions {
+  toggleOutline(): void
+  toggleYaml(): void
+}
+
+export interface ToggleState {
+  /** A note is open. */
+  hasNote: boolean
+  /** The outline is visible in this mode. */
+  outline: boolean
+  /** The note has a front matter. */
+  hasHeader: boolean
+  /** The header is shown expanded; in Code it always is. */
+  yamlOn: boolean
+  /** Code view: the header cannot be collapsed there (toggle-header only works in Preview). */
+  code: boolean
+}
+
+/**
+ * Two single flat toggles right of `Code | Vorschau`: `Gliederung` and `YAML`. Same look as
+ * ModeSwitches (lifted = on, grey = off). Test ids: `<prefix>-outline`, `<prefix>-yaml`.
+ */
+export class StatusToggles {
+  readonly el = document.createElement('span')
+  private readonly outline: HTMLButtonElement
+  private readonly yaml: HTMLButtonElement
+
+  constructor(prefix: string, actions: ToggleActions) {
+    this.outline = chromeButton(
+      `${prefix}-outline`,
+      'Gliederung',
+      'Gliederung ein/aus (Mod+Shift+O)',
+      () => actions.toggleOutline(),
+    )
+    this.yaml = chromeButton(`${prefix}-yaml`, 'YAML', 'YAML-Header ein/aus (Mod+Shift+H)', () =>
+      actions.toggleYaml(),
+    )
+    this.el.className = 'mdo-switches'
+    this.el.append(this.outline, this.yaml)
+  }
+
+  render(s: ToggleState): void {
+    lift(this.outline, s.hasNote && s.outline)
+    this.outline.disabled = !s.hasNote
+    // Intent: the lifted state mirrors what toggle-header changes (expanded = on). Code shows
+    // the header always expanded, so the button stays lifted but cannot act there.
+    lift(this.yaml, s.hasNote && s.hasHeader && s.yamlOn)
+    this.yaml.disabled = !s.hasNote || !s.hasHeader || s.code
+    this.yaml.title = !s.hasNote
+      ? 'YAML-Header ein/aus (Mod+Shift+H)'
+      : !s.hasHeader
+        ? 'Die Notiz hat keinen YAML-Header'
+        : s.code
+          ? 'Der YAML-Header lässt sich nur in der Vorschau ausblenden'
+          : 'YAML-Header ein/aus (Mod+Shift+H)'
+  }
+}

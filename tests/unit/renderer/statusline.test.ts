@@ -2,7 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StatusLine, saveText } from '../../../src/renderer/ui/statusline'
 
-const actions = () => ({ noteMenu: vi.fn(), setMode: vi.fn(), setView: vi.fn() })
+const actions = () => ({
+  noteMenu: vi.fn(),
+  setMode: vi.fn(),
+  setView: vi.fn(),
+  toggleOutline: vi.fn(),
+  toggleYaml: vi.fn(),
+})
 const q = (el: HTMLElement, id: string) =>
   el.querySelector(`[data-testid=${id}]`) as HTMLButtonElement
 
@@ -43,7 +49,7 @@ describe('status line', () => {
     status.render('a.md', 'saved', null, 'code')
     expect(q(el, 'status-clock').textContent).toBe('09:07')
     const order = [...el.children].map((c) => c.className)
-    expect(order.slice(0, 3)).toEqual(['clock', 'mdo-switches', 'file'])
+    expect(order.slice(0, 4)).toEqual(['clock', 'mdo-switches', 'mdo-switches', 'file'])
     status.stop()
   })
 
@@ -65,6 +71,45 @@ describe('status line', () => {
     status.stop()
   })
 
+  it('lifts Gliederung and YAML by state; clicks call the toggle actions', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const status = new StatusLine(el, a)
+    status.render('a.md', 'saved', null, 'preview', {
+      outline: true,
+      hasHeader: true,
+      yamlOn: false,
+    })
+    expect(q(el, 'status-outline').getAttribute('aria-pressed')).toBe('true')
+    expect(q(el, 'status-yaml').getAttribute('aria-pressed')).toBe('false')
+    expect(q(el, 'status-yaml').disabled).toBe(false)
+    q(el, 'status-outline').click()
+    q(el, 'status-yaml').click()
+    expect(a.toggleOutline).toHaveBeenCalledOnce()
+    expect(a.toggleYaml).toHaveBeenCalledOnce()
+    status.stop()
+  })
+
+  it('disables YAML without front matter, in Code and without a note; Gliederung without a note', () => {
+    const el = document.createElement('footer')
+    const status = new StatusLine(el, actions())
+    const on = { outline: true, hasHeader: true, yamlOn: true }
+    status.render('a.md', 'saved', null, 'preview', { ...on, hasHeader: false })
+    expect(q(el, 'status-yaml').disabled).toBe(true)
+    expect(q(el, 'status-yaml').classList.contains('active')).toBe(false)
+    status.render('a.md', 'saved', null, 'code', on)
+    expect(q(el, 'status-yaml').disabled).toBe(true)
+    expect(q(el, 'status-yaml').classList.contains('active')).toBe(true)
+    status.render(null, 'saved', null, 'preview', on)
+    expect(q(el, 'status-yaml').disabled).toBe(true)
+    expect(q(el, 'status-outline').disabled).toBe(true)
+    expect(q(el, 'status-outline').classList.contains('active')).toBe(false)
+    status.render('a.md', 'saved', null, 'preview', on)
+    expect(q(el, 'status-yaml').disabled).toBe(false)
+    expect(q(el, 'status-outline').disabled).toBe(false)
+    status.stop()
+  })
+
   it('cannot start Present without an open note', () => {
     const el = document.createElement('footer')
     const status = new StatusLine(el, actions())
@@ -79,7 +124,14 @@ describe('status line', () => {
     const el = document.createElement('footer')
     const status = new StatusLine(el, actions())
     status.render('a.md', 'saved', null, 'preview')
-    for (const id of ['status-edit', 'status-present', 'status-code', 'status-preview']) {
+    for (const id of [
+      'status-edit',
+      'status-present',
+      'status-code',
+      'status-preview',
+      'status-outline',
+      'status-yaml',
+    ]) {
       expect(q(el, id).tabIndex).toBe(-1)
       const ev = new MouseEvent('mousedown', { button: 0, bubbles: true, cancelable: true })
       q(el, id).dispatchEvent(ev)
