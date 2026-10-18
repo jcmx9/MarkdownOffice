@@ -148,6 +148,7 @@ export class SpellcheckController {
       } catch (err) {
         console.warn('spellcheck: bundled dictionaries could not be installed', err)
       }
+      this.recheckOnNewDictionary(s)
     }
     this.applySettings(this.opts.settings())
     // Windows/Linux only (macOS uses system dictionaries); the daily limit lives in the check.
@@ -180,6 +181,22 @@ export class SpellcheckController {
         g.mdoE2eMenus = [...(g.mdoE2eMenus ?? []), template]
       } else Menu.buildFromTemplate(template).popup({ window: this.win })
     })
+  }
+
+  /**
+   * Chromium checks the text already in the editor once and does not check it again when the
+   * dictionaries change: a note opened while the start languages (system language) were active
+   * kept their markers and suggestions (English ones for a `lang: de` note), or none at all
+   * when it was checked before a dictionary had loaded. Its `lang:` arrives only after the
+   * note is shown, and the new dictionary loads asynchronously after that. So every loaded
+   * dictionary asks the renderer to check the shown text again (it toggles `spellcheck`).
+   */
+  private recheckOnNewDictionary(s: Session): void {
+    const recheck = () => {
+      if (!this.win.isDestroyed()) this.win.webContents.send(Ch.spellRecheck)
+    }
+    s.on('spellcheck-dictionary-initialized', recheck)
+    this.win.once('closed', () => s.off('spellcheck-dictionary-initialized', recheck))
   }
 
   /** Sequence of setLanguage requests: only the latest one may apply its languages. */

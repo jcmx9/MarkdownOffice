@@ -22,6 +22,7 @@ export const Ch = {
   readHeaderTemplate: 'mdo:read-header-template',
   noteMenu: 'mdo:note-menu',
   spellReplace: 'mdo:spell-replace',
+  spellRecheck: 'mdo:spell-recheck',
   spellLanguage: 'mdo:spell-language',
   spellDownload: 'mdo:spell-download',
   spellDecline: 'mdo:spell-decline',
