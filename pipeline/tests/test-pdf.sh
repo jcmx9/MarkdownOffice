@@ -796,6 +796,34 @@ test_profiles() {
   grep -q "${vorl}/profiles" <<<"${err}" || die "profile: Meldung nennt den Vorlagen-Ordner nicht: ${err}"
   [[ ! -e "${out_dir}/p5.pdf" ]] || die "profile: Tippfehler erzeugt trotzdem ein PDF"
   ok "profile: Notizordner → Vorlagen-Ordner → Set-Ordner, Pfad, Fehler bei Tippfehler"
+
+  # Profile eines Sets im Vorlagen-Ordner (<Vorlagen>/<set>/profiles) gewinnen über das
+  # gemeinsame <Vorlagen>/profiles und über die Beispielprofile des mitgelieferten Sets. Der
+  # Ordner <Vorlagen>/profset hat keine profset.typ und verdeckt das mitgelieferte Set nicht.
+  local bsets="${out_dir}/Profil Sets" svorl="${out_dir}/Set Vorlagen" sdir="${out_dir}/Set Notiz" name
+  mkdir -p "${bsets}/profset/profiles" "${svorl}/profset/profiles" "${svorl}/profiles" "${sdir}"
+  cp "${sets}/profile.typ" "${bsets}/profset/profset.typ"
+  for pair in "${bsets}/profset/profiles|SET-BEISPIEL" "${svorl}/profiles|GEMEINSAM" "${svorl}/profset/profiles|SET-PROFIL"; do
+    sed "s/PROFIL-NAME/${pair#*|}/" "${fixtures}/profiles/testprofil.yaml" >"${pair%%|*}/testprofil.yaml"
+    cp "${fixtures}/profiles/sig.svg" "${pair%%|*}/"
+  done
+  printf -- '---\ntemplate: profset\nprofile: testprofil\n---\n\nText.\n' >"${sdir}/brief.md"
+  for name in SET-PROFIL GEMEINSAM SET-BEISPIEL; do
+    MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" bash "${build}" "${sdir}/brief.md" "${out_dir}/ps.pdf" \
+      >/dev/null 2>"${out_dir}/ps.err" || die "profile: Set-Profile (${name}): $(cat "${out_dir}/ps.err")"
+    expect "profile: Set-Profile (${name})" "$(pdf_text "${out_dir}/ps.pdf")" "NAME=${name}"
+    # Nächster Durchlauf: den Ordner, der eben gewann, leeren.
+    case "${name}" in
+      SET-PROFIL) rm "${svorl}/profset/profiles/testprofil.yaml" ;;
+      GEMEINSAM) rm "${svorl}/profiles/testprofil.yaml" ;;
+    esac
+  done
+
+  # Nicht gefunden: die Meldung nennt auch <Vorlagen>/<set>/profiles.
+  printf -- '---\ntemplate: profset\nprofile: fehlt\n---\n\nText.\n' >"${sdir}/fehlt.md"
+  err="$(MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" bash "${build}" "${sdir}/fehlt.md" "${out_dir}/pf.pdf" 2>&1 >/dev/null)" || true
+  grep -qF "${svorl}/profset/profiles" <<<"${err}" || die "profile: Meldung nennt die Set-Profile nicht: ${err}"
+  ok "profile: <Vorlagen>/<set>/profiles → <Vorlagen>/profiles → Beispiel des Sets"
 }
 
 # Set din5008a: Musterbrief und harte Abbrüche. Das Set kommt aus MDO_DIN5008A_DIR

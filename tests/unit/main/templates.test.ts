@@ -82,6 +82,12 @@ describe('listSets', () => {
     ])
   })
 
+  it('keeps the bundled set when the user folder of that name holds only profiles', async () => {
+    const { sets, user } = await fixture({ 'din5008a/profiles/kanzlei.yaml': '' })
+    expect((await listSets(sets, user)).find((s) => s.name === 'din5008a')?.source).toBe('bundled')
+    expect(await readSetHeader(sets, user, 'din5008a')).toBe(DIN)
+  })
+
   it('ignores bad names, folders without <n>.typ and non-files', async () => {
     const { sets, user } = await fixture({
       'Bad.typ': '',
@@ -181,6 +187,23 @@ describe('listProfiles', () => {
     })
     await mkdir(join(user, 'profiles', 'dir.yaml'))
     expect(await listProfiles(sets, user, 'din5008a')).toEqual(['beispiel', 'kanzlei'])
+  })
+
+  it('adds <user>/<set>/profiles for a bundled set, merged with the others', async () => {
+    const { sets, user } = await fixture({
+      'din5008a/profiles/kanzlei.yaml': '',
+      'din5008a/profiles/beispiel.yaml': '',
+      'profiles/privat.yaml': '',
+      // Profiles of another set are not offered for din5008a.
+      'memo/profiles/fremd.yaml': '',
+    })
+    expect(await listProfiles(sets, user, 'din5008a')).toEqual(['beispiel', 'kanzlei', 'privat'])
+    expect(await listProfiles(sets, user, 'memo')).toEqual(['fremd', 'privat'])
+  })
+
+  it('uses <user>/<set>/profiles for a flat user set too', async () => {
+    const { sets, user } = await fixture({ 'flat.typ': '', 'flat/profiles/eins.yaml': '' })
+    expect(await listProfiles(sets, user, 'flat')).toEqual(['eins'])
   })
 
   it('uses the profiles folder of the winning set', async () => {

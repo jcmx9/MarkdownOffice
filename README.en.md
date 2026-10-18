@@ -232,7 +232,7 @@ hard_breaks: false           # line breaks become spaces
 | `watermark` | text | — | Diagonal light-grey watermark beneath everything. |
 | `logo` | file `.svg`/`.png`/`.jpg`/`.jpeg` | no logo | Logo in the header, only when set; see [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximum logo height (at most 25 mm); the logo keeps its proportions and is at most 60 mm wide. |
-| `profile` | name or `.yaml` path | no profile | Sender profile: a name looks for `profiles/<name>.yaml` next to the note, in the templates folder and in the set; a path to a `.yaml` file is relative to the note. Only for sets that use profiles (e.g. din5008a); not found: error, no PDF. |
+| `profile` | name or `.yaml` path | no profile | Sender profile: a name looks for `<name>.yaml` in `profiles/` next to the note, in `Vorlagen/<set>/profiles/`, in `Vorlagen/profiles/` and in the set; a path to a `.yaml` file is relative to the note. Only for sets that use profiles (e.g. din5008a); not found: error, no PDF. |
 | `embed_source` | `true` / `false` | `true` | Embed the Markdown source as an attachment. |
 | `hard_breaks` | `true` / `false` | `true` | Every line break stays one (as typed in the editor), even without an entry. Only `false` switches to CommonMark: a single break becomes a space. |
 
@@ -316,9 +316,9 @@ Sehr geehrte Frau Muster,
 vielen Dank für Ihr Angebot.
 ```
 
-**Datei → Neu aus Vorlage …** (Mod+Shift+N) with the set `din5008a` starts a letter: the picker offers the sender profiles it finds (your own from `Vorlagen/profiles/` and the set's example profiles, alphabetically), and the chosen profile then stands under `profile:` in the header. Without a profile found, the header template's value stays.
+**Datei → Neu aus Vorlage …** (Mod+Shift+N) with the set `din5008a` starts a letter: the picker offers the sender profiles it finds (your own from `Vorlagen/din5008a/profiles/` and `Vorlagen/profiles/` plus the set's example profiles, alphabetically), and the chosen profile then stands under `profile:` in the header. Without a profile found, the header template's value stays.
 
-Your own sender profiles live as `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\profiles\<name>.yaml`). All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
+Your own sender profiles live per set as `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); the folder `Vorlagen/din5008a/` needs no `din5008a.typ` for this and does not shadow the bundled set. Profiles in `Vorlagen/profiles/` still apply to all sets. On export the first profile found wins: `profiles/` next to the note, then `Vorlagen/<set>/profiles/`, then `Vorlagen/profiles/`, then the set's example profiles. All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
 
 ## PDF/A, source and metadata
 

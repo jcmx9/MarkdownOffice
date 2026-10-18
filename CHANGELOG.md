@@ -14,6 +14,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Set din5008a: DIN 5008 Form A letters with sender profiles, vCard QR and signature
 - Offline Typst package store (vendor/packages, cades 0.3.1 + jogs 0.2.4 for QR codes, with their licence and third-party notice texts); a template or set-folder file importing an unbundled @preview package is refused instead of downloading it, and Typst runs behind an unreachable proxy so no download can happen
 - Front matter profile: (sender profile file) for sets such as din5008a; looked up next to the note, in the templates folder and in the set folder
+- Profiles per set: `Vorlagen/<set>/profiles/<name>.yaml` (also for bundled sets; such a folder without `<set>.typ` does not shadow the set) is searched after the note's folder and before the shared `Vorlagen/profiles/`, by the export and the picker alike; the not-found message lists every searched folder
 - lib/markdown.typ: frontmatter(src) gives template sets the whole YAML front matter (lists, maps, x- keys)
 - Templates folder: a set may also be a folder <name>/<name>.typ (e.g. a cloned set repo)
 - Outline: entries read as a list; a chapter with sub-chapters keeps the fold arrow, an entry without sub-chapters shows a bullet (•) in the same slot; levels are relative, so a note with only `##` headings shows them in the top-level look

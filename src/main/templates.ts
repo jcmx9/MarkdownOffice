@@ -149,9 +149,12 @@ export async function readSetHeader(
 }
 
 /**
- * Profile names for a set: `*.yaml` in `<user>/profiles/`, then in the set's own `profiles/`
- * (its example profiles), deduplicated and sorted. The pipeline searches the same folders
- * (after the note's own folder, which a new note does not have yet). `.yml` is not listed
+ * Profile names for a set: `*.yaml` in `<user>/<set>/profiles/` (the set's profiles on the user
+ * side, also for a bundled set; such a folder without `<set>.typ` does not shadow the set, see
+ * `resolveSet`), then in the shared `<user>/profiles/` (fallback for existing users), then in
+ * the winning set's own `profiles/` (its example profiles); deduplicated and sorted. The
+ * pipeline searches the same folders in this order (after the note's own folder, which a new
+ * note does not have yet), so every offered name resolves on export. `.yml` is not listed
  * because the pipeline only resolves `<name>.yaml` for a profile name.
  */
 export async function listProfiles(
@@ -162,7 +165,12 @@ export async function listProfiles(
   const set = await resolveSet(setsDir, userDir, name)
   if (!set) return []
   const found = new Set<string>()
-  for (const dir of [join(userDir, 'profiles'), join(dirname(set.typ), 'profiles')]) {
+  const dirs = [
+    join(userDir, name, 'profiles'),
+    join(userDir, 'profiles'),
+    join(dirname(set.typ), 'profiles'),
+  ]
+  for (const dir of dirs) {
     for (const entry of await names(dir)) {
       if (!entry.endsWith(PROFILE_EXT)) continue
       const profile = entry.slice(0, -PROFILE_EXT.length)

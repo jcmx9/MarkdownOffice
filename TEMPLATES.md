@@ -73,8 +73,10 @@ A set that needs a sender (a letter) reads a profile: a YAML file plus the files
 
 | Value of `profile:` | Looked up |
 |---|---|
-| a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `profiles/<name>.yaml` 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 3. in the folder of the resolved set (its example profiles) – the first existing file wins |
+| a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `<name>.yaml` 1. in `profiles/` in the note's folder (or `MDO_BASE_DIR`), 2. in `<set>/profiles/` in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`; the set's profiles, also for a bundled set – only when `template:` is a set name, not a `.typ` file), 3. in `profiles/` in the templates folder (shared by all sets), 4. in `profiles/` in the folder of the resolved set (its example profiles) – the first existing file wins |
 | a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
+
+A folder `Vorlagen/<set>/` that holds only `profiles/` (no `<set>.typ`) does not shadow the bundled set: a set is resolved by its `.typ` only.
 
 A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. On Windows only the files directly in the profile's folder (no subfolders) are copied to the staging folder when it is on another drive than Typst's root, so a signature (or logo) must sit **directly next to the profile**, not in a subfolder; a profile directly in a drive root is refused there ("Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen") so no export copies a whole drive.
 
@@ -239,7 +241,7 @@ The editor reads the header file of every set: Mod+N starts a note with `memo.he
 - The header file is `<name>.header.md` in the folder of the winning `.typ`; for a flat user set that is `<MDO_TEMPLATES>/<name>.header.md`.
 - Without a header file (or one that is not a regular file, not valid UTF-8 or larger than 64 KiB) the note starts with `---`, `template: <name>`, `---`.
 - The first `# …` comment line of the header file, trimmed to 80 characters, is the set's hint in the picker; choose it so a user can tell the sets apart.
-- A column-0 `profile:` key enables the profile choice: the picker lists the `*.yaml` names (matching the name rule) from `<MDO_TEMPLATES>/profiles/` and `<set folder>/profiles/`, deduplicated and sorted (the same folders the pipeline searches, minus the note's own), and writes the chosen name into that line, keeping its alignment and comment.
+- A column-0 `profile:` key enables the profile choice: the picker lists the `*.yaml` names (matching the name rule) from `<MDO_TEMPLATES>/<name>/profiles/`, `<MDO_TEMPLATES>/profiles/` and `<set folder>/profiles/`, deduplicated and sorted (the same folders the pipeline searches, minus the note's own), and writes the chosen name into that line, keeping its alignment and comment.
 
 ## 7. PDF requirements
 
@@ -412,6 +414,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
+- [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
 - [ ] Repo `MarkdownOffice-set-<name>`, CalVer tag `vYY.M.MICRO`; for bundling, manifest entry with the archive's SHA-256.
 - [ ] For the catalog: only freely licensed fonts with licence texts; no hard-coded links; `read()` only on pipeline inputs (section 12).

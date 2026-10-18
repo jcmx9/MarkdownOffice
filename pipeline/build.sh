@@ -465,9 +465,19 @@ resolve_template() {
   return 1
 }
 if [[ -n "${cli_template}" ]]; then
+  template_value="${cli_template}"
   template_file="$(resolve_template "${cli_template}" "${orig_pwd}")" || exit 1
 else
+  template_value="${fm_template}"
   template_file="$(resolve_template "${fm_template}" "${base_dir}")" || exit 1
+fi
+# Name des Sets für die Profilsuche in <Vorlagen>/<set>/profiles. Nur ein Set-Name zählt (leer =
+# memo); eine einzelne .typ-Datei hat keinen Set-Namen, dort entfällt dieser Suchort.
+set_name=""
+if [[ -z "${template_value}" ]]; then
+  set_name="memo"
+elif [[ "${template_value}" =~ ^[a-z0-9_-]+$ ]]; then
+  set_name="${template_value}"
 fi
 
 # Offline-Paketablage: Typst-Pakete im Cache-Layout (preview/<name>/<version>), damit
@@ -523,19 +533,30 @@ no_net=(env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9
 # Absender-Profil (profile:). Typst kann nicht prüfen, ob eine Datei existiert; daher sucht
 # das Skript, wie beim Logo, und übergibt den Pfad als Eingabe profile. Das Set liest die
 # YAML-Datei und Dateien daneben (z. B. die Unterschrift). Ein Name (a-z, 0-9, _ und -)
-# sucht profiles/<name>.yaml im Ordner der Notiz (bzw. MDO_BASE_DIR), dann im
-# Vorlagen-Ordner, dann im Ordner des Sets (Beispielprofile); ein Wert auf .yaml/.yml ist
-# ein Pfad (relativ zur Notiz, ~ und $VAR wie bei Bildern). Nicht gefunden -> Exit 1: ein
-# Brief ohne Absender wäre schlimmer als keiner.
+# sucht profiles/<name>.yaml im Ordner der Notiz (bzw. MDO_BASE_DIR), dann in den Profilen des
+# Sets im Vorlagen-Ordner (<Vorlagen>/<set>/profiles; dort legt „Profil anlegen …“ sie ab, auch
+# für mitgelieferte Sets – ein solcher Ordner ohne <set>.typ verdeckt das Set nicht), dann im
+# gemeinsamen <Vorlagen>/profiles (Rückfall für bestehende Profile), dann im Ordner des Sets
+# (Beispielprofile); der erste Treffer gewinnt. Ein Wert auf .yaml/.yml ist ein Pfad (relativ
+# zur Notiz, ~ und $VAR wie bei Bildern). Nicht gefunden -> Exit 1: ein Brief ohne Absender
+# wäre schlimmer als keiner. src/main/templates.ts listProfiles bietet dieselben Ordner an.
 profile=""
 if [[ -n "${fm_profile}" ]]; then
   if [[ "${fm_profile}" =~ ^[a-z0-9_-]+$ ]]; then
     set_dir="$(dirname "${template_file}")"
-    for dir in "${base_dir}/profiles" "${user_templates}/profiles" "${set_dir}/profiles"; do
+    profile_dirs=("${base_dir}/profiles")
+    if [[ -n "${set_name}" ]]; then profile_dirs+=("${user_templates}/${set_name}/profiles"); fi
+    profile_dirs+=("${user_templates}/profiles")
+    # Ein Set-Ordner im Vorlagen-Ordner ist schon Suchort 2; doppelt nennen verwirrt nur.
+    if [[ -z "${set_name}" || "${set_dir}" != "${user_templates}/${set_name}" ]]; then
+      profile_dirs+=("${set_dir}/profiles")
+    fi
+    for dir in "${profile_dirs[@]}"; do
       if [[ -f "${dir}/${fm_profile}.yaml" ]]; then profile="${dir}/${fm_profile}.yaml"; break; fi
     done
     if [[ -z "${profile}" ]]; then
-      echo "Error: Profil nicht gefunden: ${fm_profile} (gesucht in ${base_dir}/profiles, ${user_templates}/profiles und ${set_dir}/profiles)" >&2
+      searched="$(printf '%s, ' "${profile_dirs[@]}")"
+      echo "Error: Profil nicht gefunden: ${fm_profile} (gesucht in ${searched%, })" >&2
       exit 1
     fi
   else

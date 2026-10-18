@@ -232,7 +232,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `watermark` | Text | — | Diagonales, hellgraues Wasserzeichen unter allem. |
 | `logo` | Datei `.svg`/`.png`/`.jpg`/`.jpeg` | kein Logo | Logo im Kopf, nur wenn gesetzt; siehe [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximale Logohöhe (höchstens 25 mm); das Logo bleibt proportional und höchstens 60 mm breit. |
-| `profile` | Name oder `.yaml`-Pfad | kein Profil | Absender-Profil: ein Name sucht `profiles/<name>.yaml` neben der Notiz, im Vorlagen-Ordner und im Set; ein Pfad auf eine `.yaml`-Datei gilt relativ zur Notiz. Nur für Sets, die Profile nutzen (z. B. din5008a); nicht gefunden: Fehler, kein PDF. |
+| `profile` | Name oder `.yaml`-Pfad | kein Profil | Absender-Profil: ein Name sucht `<name>.yaml` in `profiles/` neben der Notiz, in `Vorlagen/<set>/profiles/`, in `Vorlagen/profiles/` und im Set; ein Pfad auf eine `.yaml`-Datei gilt relativ zur Notiz. Nur für Sets, die Profile nutzen (z. B. din5008a); nicht gefunden: Fehler, kein PDF. |
 | `embed_source` | `true` / `false` | `true` | Markdown-Quelle als Anhang ins PDF einbetten. |
 | `hard_breaks` | `true` / `false` | `true` | Jeder Zeilenumbruch bleibt einer (wie im Editor getippt), auch ohne Eintrag. Nur `false` setzt CommonMark: Ein einzelner Umbruch wird zum Leerzeichen. |
 
@@ -316,9 +316,9 @@ Sehr geehrte Frau Muster,
 vielen Dank für Ihr Angebot.
 ```
 
-Einen Brief beginnt **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit dem Set `din5008a`: Die Auswahl bietet die gefundenen Absender-Profile an (eigene aus `Vorlagen/profiles/` und die Beispielprofile des Sets, alphabetisch), und das gewählte Profil steht danach unter `profile:` im Header. Ohne gefundenes Profil bleibt der Wert aus der Header-Vorlage stehen.
+Einen Brief beginnt **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit dem Set `din5008a`: Die Auswahl bietet die gefundenen Absender-Profile an (eigene aus `Vorlagen/din5008a/profiles/` und `Vorlagen/profiles/` sowie die Beispielprofile des Sets, alphabetisch), und das gewählte Profil steht danach unter `profile:` im Header. Ohne gefundenes Profil bleibt der Wert aus der Header-Vorlage stehen.
 
-Eigene Absender-Profile liegen als `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\profiles\<name>.yaml`). Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
+Eigene Absender-Profile liegen je Set als `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); der Ordner `Vorlagen/din5008a/` braucht dafür keine `din5008a.typ` und verdeckt das mitgelieferte Set nicht. Profile in `Vorlagen/profiles/` gelten weiterhin für alle Sets. Beim Export gewinnt das erste gefundene Profil: `profiles/` neben der Notiz, dann `Vorlagen/<set>/profiles/`, dann `Vorlagen/profiles/`, dann die Beispielprofile des Sets. Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
 
 ## PDF/A, Quelle und Metadaten
 
