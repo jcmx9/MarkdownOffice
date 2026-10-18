@@ -141,6 +141,14 @@ test_fixtures() {
     "Aufgabe ohne alles" "edge-cases.pdf"
   ok edge-cases.md
 
+  # HTML-Kommentare (ein- und mehrzeilig) und [//]: # bleiben unsichtbar und
+  # verschlucken keinen Text danach; in Code-Blöcken ist <!-- nur Text.
+  text="$(render comments.md)"
+  expect comments.md "${text}" "Vor den Kommentaren." "Mitten im Absatz" "und weiter im Absatz." \
+    "CODE-SICHTBAR" "Nach den Kommentaren – mit Halbgeviertstrich."
+  reject comments.md "${text}" "VERSTECKT" "–>"
+  ok comments.md
+
   # Leere Felder werden ignoriert (kein Fehler, kein leerer Rest).
   text="$(render empty-fields.md)"
   expect_compact empty-fields.md "${text}" "MUSTER GMBH"

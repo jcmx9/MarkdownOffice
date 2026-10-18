@@ -12,17 +12,30 @@
 // Zeilen, die zu einem umzäunten Code-Block gehören (inkl. der Zaunzeilen).
 // Ein Zaun ist ``` oder ~~~ (mind. 3, bis 3 Leerzeichen eingerückt); er endet
 // an einem Zaun derselben Art, der mindestens so lang ist.
+// Ebenso maskiert: mehrzeilige HTML-Kommentare (<!-- … --> über mehrere Zeilen),
+// sonst macht etwa die Typografie aus dem schließenden "-->" ein "–>" und der
+// Kommentar verschluckt den Rest. Einzeilige Kommentare bleiben unmaskiert
+// (pagebreaks erkennt sie).
 #let code-mask(lines) = {
   let mask = ()
   let fence = none
+  let comment = false
   for l in lines {
+    if comment {
+      mask.push(true)
+      if l.contains("-->") { comment = false }
+      continue
+    }
     let m = l.match(regex("^ {0,3}(`{3,}|~{3,})"))
     if fence == none {
       if m != none {
         fence = m.captures.at(0)
         mask.push(true)
       } else {
-        mask.push(false)
+        // Ein Kommentar, der am Zeilenende noch offen ist (Inline-Code zählt nicht).
+        let t = l.replace(regex("`[^`]*`"), "")
+        comment = t.contains("<!--") and not t.split("<!--").last().contains("-->")
+        mask.push(comment)
       }
     } else {
       mask.push(true)
