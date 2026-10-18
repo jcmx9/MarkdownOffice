@@ -22,10 +22,11 @@ function quiet(err: unknown): boolean {
 }
 
 /**
- * The user's templates folder, exactly as the pipeline computes it (`build.sh`, `convert.ps1`):
- * MDO_TEMPLATES (a relative value counts from the working directory) or
- * `<documents>/Markdown Office/Vorlagen`. Deliberately not derived from the settings, so the
- * editor offers the same sets the export will find.
+ * The user's templates folder: MDO_TEMPLATES (a relative value counts from main's working
+ * directory) or `<documents>/Markdown Office/Vorlagen` (Electron's documents folder, localised on
+ * Linux via XDG). Deliberately not derived from the settings. The export receives this absolute
+ * folder as MDO_TEMPLATES (`exportPdf` → `runPipeline`), so the pipeline finds exactly the sets
+ * and profiles the editor offered.
  */
 export function userTemplatesDir(env: NodeJS.ProcessEnv, documentsDir: string): string {
   const v = env.MDO_TEMPLATES
