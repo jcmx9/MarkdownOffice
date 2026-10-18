@@ -30,6 +30,7 @@ import {
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
 import {
+  forgetDismissedNotices,
   offerDictionaryNotice,
   replaceWordAt,
   SpellLanguageTracker,
@@ -548,7 +549,12 @@ export class App {
    */
   private spellSwitched(): void {
     if (this.spellcheckOn) void this.reportSpellLanguage(true)
-    else this.notices.dismissPrefix('dict-')
+    else this.dismissDictNotices()
+  }
+
+  /** App-initiated removal of the dictionary banners; their languages may be offered again later. */
+  private dismissDictNotices(): void {
+    forgetDismissedNotices(this.dictNoticed, this.notices.dismissPrefix('dict-'))
   }
 
   /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
@@ -574,7 +580,7 @@ export class App {
     this.mode = 'present'
     this.reconfigureAll()
     // Clients watch Present: no dictionary notice may stay on the shared screen.
-    this.notices.dismissPrefix('dict-')
+    this.dismissDictNotices()
     document.body.classList.add('mdo-mode-present')
     this.root.tabbar.hidden = true
     this.root.status.hidden = true

@@ -123,3 +123,12 @@ export function spellAnswerCurrent(
 ): boolean {
   return asked.id === now.id && asked.lang === now.lang
 }
+
+/**
+ * Forgets the languages whose `dict-<code>` banner the app itself removed (Present, spellcheck
+ * off), so the notice can return afterwards. Codes the user closed or declined are not in
+ * `dismissedKeys` and stay noticed; „Nicht mehr fragen“ is persisted in main and still wins.
+ */
+export function forgetDismissedNotices(noticed: Set<string>, dismissedKeys: string[]): void {
+  for (const key of dismissedKeys) if (key.startsWith('dict-')) noticed.delete(key.slice(5))
+}

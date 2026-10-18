@@ -226,6 +226,9 @@ test('the missing-dictionary banner stays out of Present and off', async () => {
   await expect(banner(first.page)).toHaveCount(1)
   await clickMenu(first.app, 'toggle-present')
   await expect(first.page.locator('.banner')).toHaveCount(0)
+  // Leaving Present reports the language again; the dismissed notice must come back.
+  await clickMenu(first.app, 'toggle-present')
+  await expect(banner(first.page)).toHaveCount(1)
   await first.app.close()
 
   const off = await launch({
