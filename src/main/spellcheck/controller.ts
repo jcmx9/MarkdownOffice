@@ -3,7 +3,7 @@ import { app, type BrowserWindow, Menu, net, type Session } from 'electron'
 import { Ch } from '../../shared/ipc'
 import type { Settings, UpdateResult } from '../../shared/types'
 import { spellMenuTemplate } from './context-menu'
-import { installBundledDictionaries, installedCodes, readState, writeState } from './dictionaries'
+import { installBundledDictionaries, installedCodes, readState, updateState } from './dictionaries'
 import { dictionaryFor, KNOWN } from './languages'
 import { checkForUpdates, downloadDictionary } from './updates'
 
@@ -127,9 +127,10 @@ export class SpellcheckController {
 
   /** Remembers that the user does not want the „fehlt – laden?“ notice for this language. */
   async declineDictionary(code: string): Promise<void> {
-    const state = await readState(this.dictDir)
-    if (state.declined.includes(code)) return
-    await writeState(this.dictDir, { ...state, declined: [...state.declined, code] })
+    // Under the state lock, so a running update check cannot write an older state over it.
+    await updateState(this.dictDir, (state) =>
+      state.declined.includes(code) ? state : { ...state, declined: [...state.declined, code] },
+    )
   }
 
   /** GitHub requires a User-Agent; net.fetch honours the system proxy. Only the repo's releases. */

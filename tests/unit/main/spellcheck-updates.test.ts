@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { updateState } from '../../../src/main/spellcheck/dictionaries'
 import { checkForUpdates, downloadDictionary } from '../../../src/main/spellcheck/updates'
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -160,5 +161,48 @@ describe('downloadDictionary', () => {
         code: 'fr-FR',
       }),
     ).toBe(false)
+  })
+})
+
+describe('concurrent state operations', () => {
+  const slow = (f: (u: string) => Promise<Response>) => async (u: string) => {
+    await new Promise((r) => setTimeout(r, 5))
+    return f(u)
+  }
+  it('a decline during a check survives', async () => {
+    const d = dir()
+    writeFileSync(join(d, 'de-DE-3-0.bdic'), 'OLD')
+    const f = slow(release('26.11.0', { 'de-DE-3-0.bdic': 'NEW' }))
+    const check = checkForUpdates({ dir: d, fetch: f, codes: ['de-DE'], force: true, now: 1 })
+    await updateState(d, (s) => ({ ...s, declined: ['fr-FR'] }))
+    await check
+    const st = JSON.parse(readFileSync(join(d, 'mdo-dictionaries.json'), 'utf8'))
+    expect(st.declined).toEqual(['fr-FR'])
+    expect(st.version).toBe('26.11.0')
+  })
+  it('a check and a download of different files both land in the state', async () => {
+    const d = dir()
+    writeFileSync(join(d, 'de-DE-3-0.bdic'), 'OLD')
+    const f = slow(release('26.11.0', { 'de-DE-3-0.bdic': 'NEW', 'fr-FR-3-0.bdic': 'FR' }))
+    const [, ok] = await Promise.all([
+      checkForUpdates({ dir: d, fetch: f, codes: ['de-DE'], force: true, now: 1 }),
+      downloadDictionary({ dir: d, fetch: f, code: 'fr-FR' }),
+    ])
+    expect(ok).toBe(true)
+    const st = JSON.parse(readFileSync(join(d, 'mdo-dictionaries.json'), 'utf8'))
+    expect(Object.keys(st.files).sort()).toEqual(['de-DE-3-0.bdic', 'fr-FR-3-0.bdic'])
+  })
+  it('two checks and a same-file download do not collide on temp files', async () => {
+    const d = dir()
+    writeFileSync(join(d, 'de-DE-3-0.bdic'), 'OLD')
+    const f = slow(release('26.11.0', { 'de-DE-3-0.bdic': 'NEW' }))
+    const rs = await Promise.all([
+      checkForUpdates({ dir: d, fetch: f, codes: ['de-DE'], force: true, now: 1 }),
+      checkForUpdates({ dir: d, fetch: f, codes: ['de-DE'], force: true, now: 2 }),
+      downloadDictionary({ dir: d, fetch: f, code: 'de-DE' }),
+    ])
+    expect(rs.map((r) => (typeof r === 'boolean' ? r : r.kind))).not.toContain('failed')
+    expect(readdirSync(d).filter((x) => x.endsWith('.tmp'))).toEqual([])
+    expect(readFileSync(join(d, 'de-DE-3-0.bdic'), 'utf8')).toBe('NEW')
   })
 })

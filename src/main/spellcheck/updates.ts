@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { UpdateResult } from '../../shared/types'
-import { codeOf, readState, sha256, writeState } from './dictionaries'
+import { codeOf, readState, sha256, tempName, withStateLock, writeState } from './dictionaries'
 
 /**
  * Dictionary updates and downloads (Windows/Linux) come only from this repo's GitHub releases,
@@ -83,13 +83,24 @@ async function install(fetch: Fetch, rel: Release, dir: string, e: Entry): Promi
   // Verified before anything is written: a wrong file never touches the working one.
   if (got !== e.sum) throw new Error(`${e.asset}: Prüfsumme falsch`)
   await fs.mkdir(dir, { recursive: true })
-  const tmp = join(dir, `${e.canonical}.download`)
+  const tmp = join(dir, tempName(e.canonical))
   await fs.writeFile(tmp, bytes)
   await fs.rename(tmp, join(dir, e.canonical))
   return got
 }
 
-export async function checkForUpdates(o: {
+export function checkForUpdates(o: {
+  dir: string
+  fetch: Fetch
+  codes: string[]
+  force: boolean
+  now: number
+}): Promise<UpdateResult> {
+  // Whole check under the state lock: the state read at the start is still current at the end.
+  return withStateLock(o.dir, () => runCheck(o))
+}
+
+async function runCheck(o: {
   dir: string
   fetch: Fetch
   codes: string[]
@@ -132,11 +143,15 @@ export async function checkForUpdates(o: {
 }
 
 /** Installs one language from the latest release (verified); false on any failure. */
-export async function downloadDictionary(o: {
+export function downloadDictionary(o: {
   dir: string
   fetch: Fetch
   code: string
 }): Promise<boolean> {
+  return withStateLock(o.dir, () => runDownload(o))
+}
+
+async function runDownload(o: { dir: string; fetch: Fetch; code: string }): Promise<boolean> {
   try {
     const rel = await latest(o.fetch)
     const e = (await entries(o.fetch, rel, o.dir)).find((x) => codeOf(x.asset) === o.code)

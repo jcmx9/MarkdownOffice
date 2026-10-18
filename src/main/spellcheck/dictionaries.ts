@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 
@@ -42,10 +42,39 @@ export async function readState(dir: string): Promise<DictionaryState> {
   }
 }
 
+/** Per-folder queue tail: state operations (read-modify-write) run strictly one after another. */
+const locks = new Map<string, Promise<unknown>>()
+
+/**
+ * Serializes every operation that reads and then writes the dictionary folder or its state
+ * (update check, download, decline, bundled install). Without it a slow check would write
+ * back a stale state and drop a decline or a download recorded in the meantime.
+ */
+export function withStateLock<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+  const run = (locks.get(dir) ?? Promise.resolve()).then(fn, fn)
+  const tail = run.catch(() => undefined)
+  locks.set(dir, tail)
+  void tail.then(() => {
+    if (locks.get(dir) === tail) locks.delete(dir)
+  })
+  return run
+}
+
+/** Unique temp name per operation, so parallel writers never share (and rename away) a file. */
+export const tempName = (name: string): string => `${name}.${randomBytes(6).toString('hex')}.tmp`
+
+/** Reads, changes and writes the state under the lock (for small edits like „declined“). */
+export function updateState(
+  dir: string,
+  change: (s: DictionaryState) => DictionaryState,
+): Promise<void> {
+  return withStateLock(dir, async () => writeState(dir, change(await readState(dir))))
+}
+
 /** Writes the state atomically (temp file + rename), so a crash never leaves half a file. */
 export async function writeState(dir: string, s: DictionaryState): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
-  const tmp = join(dir, `${STATE_FILE}.tmp`)
+  const tmp = join(dir, tempName(STATE_FILE))
   await fs.writeFile(tmp, JSON.stringify(s, null, 2))
   await fs.rename(tmp, join(dir, STATE_FILE))
 }
@@ -82,10 +111,14 @@ export async function installedCodes(dir: string): Promise<string[]> {
  * through a temp file and a rename, so Electron never reads a half-written dictionary.
  * Returns the codes installed in `targetDir` afterwards.
  */
-export async function installBundledDictionaries(
+export function installBundledDictionaries(
   bundledDir: string,
   targetDir: string,
 ): Promise<string[]> {
+  return withStateLock(targetDir, () => installBundled(bundledDir, targetDir))
+}
+
+async function installBundled(bundledDir: string, targetDir: string): Promise<string[]> {
   await fs.mkdir(targetDir, { recursive: true })
   const state = await readState(targetDir)
   const updated = new Set(Object.keys(state.files).map((f) => f.toLowerCase()))
@@ -95,7 +128,7 @@ export async function installBundledDictionaries(
     const dest = join(targetDir, file)
     const current = await fs.readFile(dest).catch(() => null)
     if (current && current.length === src.length && sha256(current) === sha256(src)) continue
-    const tmp = `${dest}.tmp`
+    const tmp = join(targetDir, tempName(file))
     await fs.writeFile(tmp, src)
     await fs.rename(tmp, dest)
   }
