@@ -22,6 +22,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `markdown-office --app [note.md …]` opens the editor; on Windows the command is `markdown-office.cmd` on the PATH
 - One-line install, update and uninstall for macOS, Linux and Windows (`scripts/bootstrap.sh`, `scripts/bootstrap.ps1`), also for pre-releases (`--pre` / `-Pre`); macOS builds are ad-hoc signed, including the bundled Typst
 - Release script `scripts/release.sh dev|prod`, release workflow with `SHA256SUMS`, CI on macOS, Linux and Windows
+- `TEMPLATES.md`: guide for writing template sets (inputs, preprocessing contract, PDF/A requirements, skeleton, publishing)
 
 ### Fixed
 - Pipeline: a multi-line HTML comment (`<!--` … `-->` across lines) no longer swallows all text after it; typography and hard line breaks now leave such comments untouched

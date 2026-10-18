@@ -280,6 +280,8 @@ Your own template gets the same inputs (`sys.inputs`) as `memo.typ`, among them 
 
 `memo.typ` handles images with its own function (`safe-image`); a template without it stops at a missing image.
 
+How to write your own set (all inputs, the elements to render, PDF/A requirements, a working skeleton) is described in [TEMPLATES.md](TEMPLATES.md).
+
 ## PDF/A, source and metadata
 
 - **PDF/A-3b**, all fonts embedded.
