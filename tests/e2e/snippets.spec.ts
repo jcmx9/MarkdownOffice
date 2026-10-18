@@ -43,8 +43,8 @@ async function acceptFirst(page: Page): Promise<void> {
 }
 
 test('new note, :meeting, tab through the stops, autosaved', async () => {
+  // The start note is empty (Mod+N would start with the memo header): :meeting writes its own.
   const { app, page, notes } = await launch()
-  await clickMenu(app, 'new')
   await page.locator('.cm-content').click()
   await page.keyboard.type(':mee')
   await expect(popup(page).locator('li')).toHaveCount(1)
@@ -140,8 +140,8 @@ test(':newpage inserts the page break byte-exact', async () => {
 })
 
 test('Present, new note: :meeting fills client and title, then the title block shows them', async () => {
+  // The empty start note: a Mod+N note already carries the memo header.
   const { app, page, notes } = await launch()
-  await clickMenu(app, 'new')
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await page.locator('.cm-content').click()
@@ -213,12 +213,16 @@ test('page break from the menu and with Mod+Enter inserts exactly one', async ()
   await app.close()
 })
 
-test('Einfügen → YAML-Header puts the memo set’s header on top, once', async () => {
+test('Einfügen → YAML-Header … puts the memo set’s header on top, once', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Termin.md')
   await writeFile(note, '# Termin\n\nText\n')
   const { app, page } = await launch({ dirs, args: [note] })
   await clickMenu(app, 'insert-header')
+  // The picker preselects memo: Enter takes it.
+  await expect(page.getByTestId('tpl-set-memo')).toBeChecked()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('tpl-dialog')).toHaveCount(0)
   await page.keyboard.type('Kickoff')
   const saved = await waitForFile(note, (b) => b.toString('utf8').includes('title: "Kickoff"'))
   const text = saved.toString('utf8')
