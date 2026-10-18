@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { createState } from '../../../src/renderer/editor/setup'
 import {
   replaceWordAt,
+  SpellLanguageTracker,
   spellcheckCompartment,
   spellcheckExtensions,
 } from '../../../src/renderer/editor/spellcheck'
@@ -55,5 +56,16 @@ describe('replaceWordAt', () => {
     replaceWordAt(v, 2, 'Fehlr', 'Fehler')
     undo(v)
     expect(v.state.doc.toString()).toBe('Fehlr\n')
+  })
+})
+
+describe('SpellLanguageTracker', () => {
+  it('reports the first value and changes, not repeats', () => {
+    const t = new SpellLanguageTracker()
+    expect(t.next('de')).toBe(true)
+    expect(t.next('de')).toBe(false)
+    expect(t.next('')).toBe(true)
+    t.reset()
+    expect(t.next('')).toBe(true)
   })
 })

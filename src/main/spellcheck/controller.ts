@@ -1,9 +1,10 @@
 import { join } from 'node:path'
-import { type BrowserWindow, Menu, type Session } from 'electron'
+import { app, type BrowserWindow, Menu, type Session } from 'electron'
 import { Ch } from '../../shared/ipc'
 import type { Settings } from '../../shared/types'
 import { spellMenuTemplate } from './context-menu'
-import { installBundledDictionaries } from './dictionaries'
+import { installBundledDictionaries, installedCodes, readState, writeState } from './dictionaries'
+import { dictionaryFor, KNOWN } from './languages'
 
 /** A URL that never answers: Electron must never fetch a dictionary from Google's CDN. */
 export const DEAD_DOWNLOAD_URL = 'http://127.0.0.1:9/'
@@ -87,6 +88,43 @@ export class SpellcheckController {
         g.mdoE2eMenus = [...(g.mdoE2eMenus ?? []), template]
       } else Menu.buildFromTemplate(template).popup({ window: this.win })
     })
+  }
+
+  /** Codes the dictionary repo offers; Task 6 replaces this with the downloaded dictionaries.json. */
+  private offered(): readonly string[] {
+    return KNOWN
+  }
+
+  /**
+   * Called by the renderer for the shown note: picks the dictionary from `lang:` (or the system
+   * language) and answers which one is missing. Without a usable dictionary it keeps checking
+   * with de-DE + en-US. macOS detects the language itself.
+   */
+  async setLanguage(lang: string): Promise<{ missing: { code: string; name: string } } | null> {
+    if (!this.hunspell) return null
+    const s = this.win.webContents.session
+    const wanted = dictionaryFor(lang, app.getPreferredSystemLanguages(), this.offered())
+    const installed = await installedCodes(this.dictDir)
+    if (wanted && installed.includes(wanted.code)) {
+      s.setSpellCheckerLanguages([wanted.code])
+      return null
+    }
+    s.setSpellCheckerLanguages(['de-DE', 'en-US'].filter((c) => installed.includes(c)))
+    const state = await readState(this.dictDir)
+    return wanted && !state.declined.includes(wanted.code) ? { missing: wanted } : null
+  }
+
+  /** Remembers that the user does not want the „fehlt – laden?“ notice for this language. */
+  async declineDictionary(code: string): Promise<void> {
+    const state = await readState(this.dictDir)
+    if (state.declined.includes(code)) return
+    await writeState(this.dictDir, { ...state, declined: [...state.declined, code] })
+  }
+
+  /** Task 6 fills in the real download; until then it reports failure. */
+  async downloadDictionary(code: string): Promise<boolean> {
+    console.warn(`spellcheck: download of ${code} is not yet available`)
+    return false
   }
 
   applySettings(settings: Settings): void {

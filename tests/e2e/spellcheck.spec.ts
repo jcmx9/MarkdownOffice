@@ -30,10 +30,9 @@ test('right click on a misspelled word offers suggestions; a click fixes exactly
   test.skip(process.platform === 'darwin', 'macOS CI runners have no German system dictionary')
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Fehler.md')
-  await writeFile(note, 'Ein Fehlr hier.\n')
+  // lang: de makes the real language path pick de-DE, whatever the runner's system language is.
+  await writeFile(note, '---\nlang: de\n---\n\nEin Fehlr hier.\n')
   const { app, page } = await launch({ dirs, args: [note], env: { MDO_E2E_MENUS: '1' } })
-  // Test-only: until the language setting exists (Task 5) the checker would use the OS locale.
-  await app.evaluate(({ session }) => session.defaultSession.setSpellCheckerLanguages(['de-DE']))
   const word = page.locator('.cm-line', { hasText: 'Fehlr' })
   const box = await word.boundingBox()
   if (!box) throw new Error('no line box')

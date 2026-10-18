@@ -13,6 +13,7 @@ import type {
   View,
 } from '../shared/types'
 import { AutosaveScheduler } from './editor/autosave'
+import { frontmatterFields } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
 import { insertHeader } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
@@ -28,7 +29,12 @@ import {
   viewExtensions,
 } from './editor/setup'
 import { snippetRegistry } from './editor/snippets'
-import { replaceWordAt, spellcheckCompartment, spellcheckExtensions } from './editor/spellcheck'
+import {
+  replaceWordAt,
+  SpellLanguageTracker,
+  spellcheckCompartment,
+  spellcheckExtensions,
+} from './editor/spellcheck'
 import { type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
@@ -103,6 +109,11 @@ export class App {
     (on) => (on ? this.enterPresent() : this.exitPresent()),
   )
   private shownId: number | null = null
+  /** Last lang: reported to main, so unchanged values cause no IPC. */
+  private readonly spellLang = new SpellLanguageTracker()
+  private spellLangTimer: ReturnType<typeof setTimeout> | null = null
+  /** Dictionaries whose „fehlt“ notice was already shown this session. */
+  private readonly dictNoticed = new Set<string>()
   private readonly saveErrors = new Map<number, string>()
   /** Tabs held after an external change: no saving until the user answers the banner. */
   private readonly conflicts = new Set<number>()
@@ -137,6 +148,9 @@ export class App {
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           this.refresh()
+          // lang: may have been edited; report it once typing pauses.
+          if (this.spellLangTimer) clearTimeout(this.spellLangTimer)
+          this.spellLangTimer = setTimeout(() => void this.reportSpellLanguage(false), 500)
         }
       },
     })
@@ -1048,9 +1062,40 @@ export class App {
       this.outline.invalidate()
     }
     this.shownId = tab?.id ?? null
+    void this.reportSpellLanguage(false)
     this.applyOutline()
     this.refresh()
     this.syncMain()
+  }
+
+  /**
+   * Tells main the shown note's lang: (only when it changed, or when `force`) and offers a
+   * missing dictionary once per language and session.
+   */
+  private async reportSpellLanguage(force: boolean): Promise<void> {
+    if (this.shownId === null) return
+    const lang = frontmatterFields(this.editor.state.doc).lang ?? ''
+    if (force) this.spellLang.reset()
+    if (!this.spellLang.next(lang)) return
+    const r = await this.mdo.setSpellLanguage(lang)
+    if (!r?.missing || this.dictNoticed.has(r.missing.code)) return
+    const { code, name } = r.missing
+    this.dictNoticed.add(code)
+    this.notices.banner(
+      `Wörterbuch für ${name} fehlt – laden?`,
+      [
+        {
+          label: 'Laden',
+          run: () =>
+            void this.mdo.downloadDictionary(code).then((ok) => {
+              if (ok) void this.reportSpellLanguage(true)
+              else this.notices.toast('Wörterbuch konnte nicht geladen werden')
+            }),
+        },
+        { label: 'Nicht mehr fragen', run: () => void this.mdo.declineDictionary(code) },
+      ],
+      `dict-${code}`,
+    )
   }
 
   private refresh(): void {

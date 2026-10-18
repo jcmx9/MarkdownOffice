@@ -138,6 +138,10 @@ export interface MdoApi {
   onMenu(cb: (cmd: MenuCommand) => void): void
   /** A spelling correction chosen in the context menu (x/y: window coordinates of the click). */
   onSpellReplace(cb: (m: { word: string; replacement: string; x: number; y: number }) => void): void
+  /** Tells main the shown note's lang: ('' = none); answers which dictionary is missing, if any. */
+  setSpellLanguage(lang: string): Promise<{ missing: { code: string; name: string } } | null>
+  downloadDictionary(code: string): Promise<boolean>
+  declineDictionary(code: string): Promise<void>
   onOpenPaths(cb: (paths: string[]) => void): void
   onExternalChange(cb: (change: ExternalChange) => void): void
   /** cb resolves true when the window may close. */

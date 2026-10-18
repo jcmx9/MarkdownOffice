@@ -89,3 +89,17 @@ export function replaceWordAt(
   })
   return true
 }
+
+/** Reports a note's lang: to main only when it changed since the last report. */
+export class SpellLanguageTracker {
+  private last: string | null = null
+  next(lang: string): boolean {
+    if (lang === this.last) return false
+    this.last = lang
+    return true
+  }
+  /** Forget the last value so the next call reports again (after a dictionary download). */
+  reset(): void {
+    this.last = null
+  }
+}

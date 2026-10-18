@@ -21,6 +21,9 @@ const api: MdoApi = {
   onSpellReplace: (cb) => {
     ipcRenderer.on(Ch.spellReplace, (_e, m) => cb(m))
   },
+  setSpellLanguage: (lang) => ipcRenderer.invoke(Ch.spellLanguage, lang),
+  downloadDictionary: (code) => ipcRenderer.invoke(Ch.spellDownload, code),
+  declineDictionary: (code) => ipcRenderer.invoke(Ch.spellDecline, code),
   onOpenPaths: (cb) => {
     ipcRenderer.on(Ch.openPaths, (_e, paths: string[]) => cb(paths))
   },
