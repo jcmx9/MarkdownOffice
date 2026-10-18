@@ -80,6 +80,9 @@ const DROP_REASONS: Record<keyof Settings, string> = {
   snippetFolder: 'kein gültiger absoluter Pfad',
   presentFontFactor: 'ungültiger Wert',
   headerDefault: 'ungültiger Wert',
+  // The spellcheck switches are booleans; main rejects anything else.
+  spellcheck: 'ungültiger Wert',
+  dictionaryAutoUpdate: 'ungültiger Wert',
 }
 
 const FACTOR_LABEL = 'Schriftfaktor im Präsentationsmodus'
@@ -91,6 +94,9 @@ const FIELD_LABELS: Record<keyof Settings, string> = {
   >),
   presentFontFactor: FACTOR_LABEL,
   headerDefault: 'YAML-Header in der Vorschau',
+  // Labels for the spellcheck switches, so a refused value is named in the dialog's notice.
+  spellcheck: 'Rechtschreibprüfung',
+  dictionaryAutoUpdate: 'Wörterbücher automatisch aktualisieren',
 }
 
 /**

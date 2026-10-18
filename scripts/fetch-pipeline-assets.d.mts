@@ -15,6 +15,15 @@ export type Manifest = {
   }[]
   packages: { name: string; version: string; sha256: string; license: string }[]
   sets: { name: string; repo: string; tag: string; sha256: string }[]
+  /** Hunspell dictionaries for Windows/Linux; `file` is the canonical Chromium name. */
+  dictionaries?: {
+    code: string
+    file: string
+    url: string
+    sha256: string
+    /** `encoding: 'base64'`: served base64-encoded; `sha256` pins the decoded text. */
+    license: { file: string; url: string; sha256: string; encoding?: 'base64' }
+  }[]
 }
 export function folderName(target: string): string
 export function hostTarget(): string

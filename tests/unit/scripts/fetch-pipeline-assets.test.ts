@@ -17,6 +17,7 @@ import { fetchAssets, folderName } from '../../../scripts/fetch-pipeline-assets.
 
 type SetEntry = Manifest['sets'][number]
 type FontLicense = Manifest['fonts'][number]['license']
+type DictLicense = NonNullable<Manifest['dictionaries']>[number]['license']
 
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 
@@ -68,12 +69,25 @@ function makeManifest() {
     'lib.typ': 'x',
     LICENSE: 'MIT',
   })
+  const deUrl = 'https://x.test/dict/de-de-3-0.bdic'
+  const de = Buffer.from('BDIC-DE')
+  // Served base64-encoded, like Gitiles' ?format=TEXT; the pin is the decoded text's hash.
+  const deLicUrl = 'https://x.test/README_de_DE.txt?format=TEXT'
+  const deLic = Buffer.from('LGPL de')
+  const enUrl = 'https://x.test/dict/en-us-10-1.bdic'
+  const en = Buffer.from('BDIC-EN')
+  const enLicUrl = 'https://x.test/README_en_US.txt'
+  const enLic = Buffer.from('SCOWL en')
   served = new Map([
     [typstUrl, typst],
     [fontUrl, fonts],
     [rawUrl, raw],
     [oflUrl, ofl],
     [pkgUrl, pkg],
+    [deUrl, de],
+    [deLicUrl, Buffer.from(deLic.toString('base64'))],
+    [enUrl, en],
+    [enLicUrl, enLic],
   ])
   return {
     typst: {
@@ -97,6 +111,27 @@ function makeManifest() {
     ],
     packages: [{ name: 'cm', version: '1.0.0', sha256: sha(pkg), license: 'LICENSE' }],
     sets: [] as SetEntry[],
+    dictionaries: [
+      {
+        code: 'de-DE',
+        file: 'de-DE-3-0.bdic',
+        url: deUrl,
+        sha256: sha(de),
+        license: {
+          file: 'de-DE-LICENSE.txt',
+          url: deLicUrl,
+          encoding: 'base64',
+          sha256: sha(deLic),
+        } as DictLicense,
+      },
+      {
+        code: 'en-US',
+        file: 'en-US-10-1.bdic',
+        url: enUrl,
+        sha256: sha(en),
+        license: { file: 'en-US-LICENSE.txt', url: enLicUrl, sha256: sha(enLic) } as DictLicense,
+      },
+    ],
   }
 }
 
@@ -142,6 +177,32 @@ describe('fetchAssets', () => {
     expect(lic('fonts/A-LICENSE.md')).toBe('OFL A')
     expect(lic('fonts/Raw-OFL.txt')).toBe('OFL Raw')
     expect(lic('packages/cm/LICENSE')).toBe('MIT')
+  })
+
+  it('fetches the dictionaries and their licences (a base64 one decoded)', async () => {
+    await run(makeManifest())
+    const out = (rel: string) => readFileSync(join(outDir, rel), 'utf8')
+    expect(out('dictionaries/de-DE-3-0.bdic')).toBe('BDIC-DE')
+    expect(out('dictionaries/en-US-10-1.bdic')).toBe('BDIC-EN')
+    expect(out('licenses/dictionaries/de-DE-LICENSE.txt')).toBe('LGPL de')
+    expect(out('licenses/dictionaries/en-US-LICENSE.txt')).toBe('SCOWL en')
+  })
+
+  it('verifies a dictionary against its pin and leaves no partial file', async () => {
+    const manifest = makeManifest()
+    const de = manifest.dictionaries[0] as { sha256: string; url: string }
+    de.sha256 = '0'.repeat(64)
+    await expect(run(manifest)).rejects.toThrow(`Prüfsumme falsch: ${de.url}`)
+    expect(existsSync(join(outDir, 'dictionaries', 'de-DE-3-0.bdic'))).toBe(false)
+  })
+
+  it('verifies a decoded licence against its pin', async () => {
+    const manifest = makeManifest()
+    const de = manifest.dictionaries[0] as { license: DictLicense }
+    de.license = { ...de.license, sha256: '0'.repeat(64) }
+    await expect(run(manifest)).rejects.toThrow(
+      'Prüfsumme falsch: https://x.test/README_de_DE.txt?format=TEXT',
+    )
   })
 
   it('verifies a separately downloaded licence against its pin', async () => {
@@ -197,7 +258,7 @@ describe('fetchAssets', () => {
     const manifest = makeManifest()
     await run(manifest)
     const first = calls.length
-    expect(first).toBe(5)
+    expect(first).toBe(9)
     await run(manifest)
     expect(calls.length).toBe(first)
   })
@@ -207,7 +268,7 @@ describe('fetchAssets', () => {
     await run(manifest)
     rmSync(join(outDir, 'mac-arm64', 'typst'))
     await run(manifest)
-    expect(calls.length).toBe(6)
+    expect(calls.length).toBe(10)
   })
 })
 

@@ -22,7 +22,22 @@ describe('settings', () => {
       snippetFolder: join(docs, 'Markdown Office', 'Snippets'),
       presentFontFactor: 1.6,
       headerDefault: 'yaml',
+      spellcheck: true,
+      dictionaryAutoUpdate: true,
     })
+  })
+
+  it('spellcheck switches: default on, booleans kept, anything else → default', () => {
+    const d = defaultSettings('/docs')
+    expect(d.spellcheck).toBe(true)
+    expect(d.dictionaryAutoUpdate).toBe(true)
+    expect(sanitizeSettings({ spellcheck: false, dictionaryAutoUpdate: false }, d)).toMatchObject({
+      spellcheck: false,
+      dictionaryAutoUpdate: false,
+    })
+    expect(sanitizeSettings({ spellcheck: 'no' }, d).spellcheck).toBe(true)
+    expect(settingsPatch(d, { spellcheck: false }).spellcheck).toBe(false)
+    expect(settingsPatch(d, { spellcheck: 0 }).spellcheck).toBe(true)
   })
 
   it('keeps a known header default and drops an unknown one', () => {
@@ -68,12 +83,16 @@ describe('settingsPatch', () => {
         snippetFolder: snippets,
         presentFontFactor: 2.2,
         headerDefault: 'titleblock',
+        spellcheck: false,
+        dictionaryAutoUpdate: false,
       }),
     ).toEqual({
       defaultFolder: folder,
       snippetFolder: snippets,
       presentFontFactor: 2.2,
       headerDefault: 'titleblock',
+      spellcheck: false,
+      dictionaryAutoUpdate: false,
     })
   })
 

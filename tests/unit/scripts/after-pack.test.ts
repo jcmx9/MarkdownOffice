@@ -6,6 +6,7 @@ import { checkPackedResources, manifestLicenses } from '../../../scripts/after-p
 
 const fonts = ['A.otf', 'B.ttf']
 const licenses = ['typst/LICENSE', 'fonts/A-OFL.txt']
+const dictionaries = ['de-DE-3-0.bdic']
 let dir: string
 
 function put(rel: string, mode = 0o644) {
@@ -23,6 +24,7 @@ function complete(win = false) {
   put(join('pipeline', win ? 'convert.ps1' : 'build.sh'))
   put(join('pipeline', 'cli.js'))
   for (const l of licenses) put(join('pipeline', 'licenses', l))
+  for (const d of dictionaries) put(join('dictionaries', d))
 }
 
 beforeEach(() => {
@@ -62,6 +64,28 @@ describe('checkPackedResources', () => {
     ).toThrow(`Paket unvollständig: ${join(dir, rel)} – erst npm run assets`)
   })
 
+  it.each(['win32', 'linux'])('on %s requires the bundled dictionaries', (platform) => {
+    complete(platform === 'win32')
+    rmSync(join(dir, 'dictionaries', 'de-DE-3-0.bdic'))
+    expect(() =>
+      checkPackedResources({ resourcesDir: dir, platform, fonts, licenses, dictionaries }),
+    ).toThrow(`Paket unvollständig: ${join(dir, 'dictionaries', 'de-DE-3-0.bdic')}`)
+  })
+
+  it('on macOS does not require dictionaries (system spellchecker)', () => {
+    complete()
+    rmSync(join(dir, 'dictionaries'), { recursive: true })
+    expect(() =>
+      checkPackedResources({
+        resourcesDir: dir,
+        platform: 'darwin',
+        fonts,
+        licenses,
+        dictionaries,
+      }),
+    ).not.toThrow()
+  })
+
   // Windows has no executable bit: chmod cannot make the file non-executable there.
   it.skipIf(process.platform === 'win32')('fails when typst is not executable', () => {
     complete()
@@ -79,8 +103,15 @@ describe('manifestLicenses', () => {
         typst: { licenses: ['LICENSE', 'NOTICE'] },
         fonts: [{ license: { file: 'A-OFL.txt' } }],
         packages: [{ name: 'cm', license: 'LICENSE' }],
+        dictionaries: [{ file: 'de-DE-3-0.bdic', license: { file: 'de-DE-LICENSE.txt' } }],
       }),
-    ).toEqual(['typst/LICENSE', 'typst/NOTICE', 'fonts/A-OFL.txt', 'packages/cm/LICENSE'])
+    ).toEqual([
+      'typst/LICENSE',
+      'typst/NOTICE',
+      'fonts/A-OFL.txt',
+      'packages/cm/LICENSE',
+      'dictionaries/de-DE-LICENSE.txt',
+    ])
   })
 
   it('covers every font and package of the real manifest', () => {
@@ -90,6 +121,9 @@ describe('manifestLicenses', () => {
     const all = manifestLicenses(manifest)
     expect(all.filter((l) => l.startsWith('fonts/'))).toHaveLength(manifest.fonts.length)
     expect(all.filter((l) => l.startsWith('packages/'))).toHaveLength(manifest.packages.length)
+    expect(all.filter((l) => l.startsWith('dictionaries/'))).toHaveLength(
+      manifest.dictionaries.length,
+    )
     expect(all).toEqual(expect.arrayContaining(['typst/LICENSE', 'typst/NOTICE']))
   })
 })

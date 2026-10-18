@@ -1,7 +1,13 @@
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 
-export function createMainWindow(): BrowserWindow {
+/**
+ * `beforeLoad` runs before the renderer loads (the spellchecker's dictionaries must be in
+ * place first); a failure there is logged and the window loads anyway.
+ */
+export function createMainWindow(
+  beforeLoad?: (win: BrowserWindow) => Promise<void>,
+): BrowserWindow {
   const win = new BrowserWindow({
     width: 1100,
     height: 820,
@@ -15,15 +21,25 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      // Spelling marks would distract while presenting.
-      spellcheck: false,
+      // The main process switches checking on/off (SpellcheckController); the renderer limits it to Edit mode outside code and front matter.
+      spellcheck: true,
     },
   })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.once('ready-to-show', () => win.show())
   const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL
-  if (devUrl) void win.loadURL(devUrl)
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  const load = () => {
+    if (win.isDestroyed()) return
+    if (devUrl) void win.loadURL(devUrl)
+    else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+  if (beforeLoad) {
+    void beforeLoad(win)
+      .catch((err) =>
+        console.error('Markdown Office: Vorbereitung des Fensters fehlgeschlagen', err),
+      )
+      .then(load)
+  } else load()
   return win
 }

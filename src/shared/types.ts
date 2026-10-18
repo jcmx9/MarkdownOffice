@@ -24,6 +24,10 @@ export interface Settings {
   presentFontFactor: number
   /** How the YAML header of a note opened without a session entry shows in the Preview. */
   headerDefault: HeaderDefault
+  /** Spell checking in the editor (never in Present, never in code blocks or front matter). */
+  spellcheck: boolean
+  /** Windows/Linux: look for dictionary updates at start (at most once a day). */
+  dictionaryAutoUpdate: boolean
 }
 
 export type HeaderDefault = 'yaml' | 'titleblock'

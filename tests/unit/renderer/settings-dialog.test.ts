@@ -17,6 +17,8 @@ const settings: Settings = {
   snippetFolder: '/Users/u/Documents/Markdown Office/Snippets',
   presentFontFactor: 1.6,
   headerDefault: 'yaml',
+  spellcheck: true,
+  dictionaryAutoUpdate: true,
 }
 
 const status: SettingsStatus = { version: '26.10.0', typst: '0.15.0' }
