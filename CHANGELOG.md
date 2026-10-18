@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Editor: Mod+N / „Neu“ starts the note with the `memo` set's YAML header (no file is written until you type)
+- Editor: „Neu aus Vorlage …“ (Mod+Shift+N) picks any other template set (bundled or own, with a hint from its header file) and, when its header has `profile:`, a sender profile; the new note starts with that header
+- Editor: „Einfügen → YAML-Header …“ inserts the header of a set chosen in the same picker (memo preselected); every set's `<name>.header.md` is read, next to its `.typ`, with a `template: <name>` fallback
 - Set `memo` 26.10.3: table rows slightly tighter (cell inset 5 pt vertically instead of 7 pt); the editor preview's tables use the same inset
 - Set `memo` 26.10.2: external links are marked in the PDF with a fine underline and a small ↗ (text colour)
 - Set din5008a: DIN 5008 Form A letters with sender profiles, vCard QR and signature

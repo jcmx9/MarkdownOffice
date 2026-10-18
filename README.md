@@ -92,7 +92,8 @@ Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdate
 
 | Kürzel | Aktion |
 |--------|--------|
-| Mod+N | Neue Notiz im Standardordner (`JJJJ-MM-TT_HH-mm-ss.md`) |
+| Mod+N | Neue Notiz im Standardordner (`JJJJ-MM-TT_HH-mm-ss.md`), beginnt mit dem YAML-Header des Sets `memo`; die Datei entsteht erst beim ersten Tippen |
+| Mod+Shift+N | Neu aus Vorlage …: anderes Vorlagen-Set (und ggf. Profil) wählen, neue Notiz mit dessen YAML-Header |
 | Mod+O | Öffnen |
 | Mod+Shift+R | Umbenennen |
 | Mod+W | Tab schließen |
@@ -134,7 +135,7 @@ In einem Snippet beendet Esc zuerst den Feldmodus; im Präsentationsmodus verlä
 | `:header` | YAML-Header mit allen Schlüsseln des Sets `memo` |
 | `:newpage` | Seitenumbruch `<!-- pagebreak -->` |
 
-Das Menü **Einfügen → YAML-Header (memo)** setzt die Frontmatter-Vorlage des Sets `memo` (`memo.header.md`) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten, je Schlüssel eine Zeile mit kurzem Kommentar. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
+Das Menü **Einfügen → YAML-Header …** fragt nach einem Vorlagen-Set (`memo` steht vorne und ist vorausgewählt) und setzt dessen Frontmatter-Vorlage (`name.header.md`, siehe [Vorlagen-Sets](#vorlagen-sets)) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten, je Schlüssel eine Zeile mit kurzem Kommentar. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
 
 Eigene Snippets sind Dateien `name.tpl.md` im Snippet-Ordner (Standard `~/Documents/Markdown Office/Snippets/`, Einstellung „Snippet-Ordner“). Ein eigenes Snippet mit demselben Namen ersetzt das eingebaute. Neue Dateien werden beim nächsten Fokus des Fensters erkannt. Unterstützte Syntax: `$1`, `${1:Vorgabe}`, `$0` (Endposition) sowie `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (auch in der Form `${CURRENT_YEAR}`). `\$` ergibt ein wörtliches `$`, `\\` einen Backslash, und in einer Vorgabe ergibt `\}` eine wörtliche geschweifte Klammer `}`.
 
@@ -197,7 +198,7 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/pfad/zur/notiz" markdown-office --no-source "/pfad/
 
 ## Frontmatter
 
-Ein YAML-Block am Dateianfang steuert einzelne Dokumente. Alle Schlüssel sind optional; die Frontmatter-Vorlage des Sets `memo` (Menü **Einfügen → YAML-Header (memo)** oder Snippet `:header`) enthält jeden Schlüssel mit Standardwert und Kommentar.
+Ein YAML-Block am Dateianfang steuert einzelne Dokumente. Alle Schlüssel sind optional; die Frontmatter-Vorlage des Sets `memo` (Menü **Einfügen → YAML-Header …** oder Snippet `:header`) enthält jeden Schlüssel mit Standardwert und Kommentar.
 
 ```yaml
 ---
@@ -275,6 +276,8 @@ Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu dre
 
 Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
 
+Neue Notizen beginnen mit dem Header eines Sets: Mod+N mit `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit einem Set aus einer Auswahl aller übrigen Sets (mitgelieferte und eigene; je Set ein Hinweis aus der ersten `# …`-Kommentarzeile seiner Header-Datei). Der Editor liest dazu `name.header.md` neben der gewählten `name.typ`: bei einem eigenen Set als Datei also `Vorlagen/name.header.md`, als Ordner `Vorlagen/name/name.header.md`. Fehlt die Datei, beginnt die Notiz mit einem Header, der nur `template: name` enthält. Enthält der Header einen Schlüssel `profile:`, bietet die Auswahl zusätzlich die vorhandenen Profile an (siehe [Briefe](#briefe-din5008a)).
+
 Eine Notiz wählt ihr Set mit `template: name` im Frontmatter; ohne Schlüssel gilt `memo`. `template: ./angebot.typ` nimmt eine einzelne Vorlage relativ zur Notiz. `--template` überschreibt den Schlüssel. Ein unbekanntes Set bricht den Build mit einer Meldung ab.
 
 Eine Vorlage ist Typst-Code und kann deine Dateien lesen; nutze nur Vorlagen, denen du vertraust.
@@ -312,6 +315,8 @@ Sehr geehrte Frau Muster,
 
 vielen Dank für Ihr Angebot.
 ```
+
+Einen Brief beginnt **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit dem Set `din5008a`: Die Auswahl bietet die gefundenen Absender-Profile an (eigene aus `Vorlagen/profiles/` und die Beispielprofile des Sets, alphabetisch), und das gewählte Profil steht danach unter `profile:` im Header. Ohne gefundenes Profil bleibt der Wert aus der Header-Vorlage stehen.
 
 Eigene Absender-Profile liegen als `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\profiles\<name>.yaml`). Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
 

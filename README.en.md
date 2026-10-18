@@ -92,7 +92,8 @@ The preview uses the PDF's bundled fonts; if a font file is missing, it falls ba
 
 | Shortcut | Action |
 |----------|--------|
-| Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`) |
+| Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`), starting with the YAML header of the set `memo`; the file is only created once you type |
+| Mod+Shift+N | Neu aus Vorlage …: pick another template set (and a profile, if any), new note with its YAML header |
 | Mod+O | Open |
 | Mod+Shift+R | Rename |
 | Mod+W | Close tab |
@@ -134,7 +135,7 @@ Inside a snippet, Esc first leaves field mode; in presentation mode only a furth
 | `:header` | YAML header with all keys of the set `memo` |
 | `:newpage` | Page break `<!-- pagebreak -->` |
 
-The menu **Einfügen → YAML-Header (memo)** puts the front-matter template of the set `memo` (`memo.header.md`) unchanged at the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title. A note that already has a header is left unchanged.
+The menu **Einfügen → YAML-Header …** asks for a template set (`memo` comes first and is preselected) and puts its front-matter template (`name.header.md`, see [Template sets](#template-sets)) unchanged at the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title. A note that already has a header is left unchanged.
 
 Your own snippets are files `name.tpl.md` in the snippet folder (default `~/Documents/Markdown Office/Snippets/`, setting „Snippet-Ordner“). Your own snippet with the same name replaces the built-in one. New files are picked up the next time the window gets focus. Supported syntax: `$1`, `${1:default}`, `$0` (final position) and `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (also in the form `${CURRENT_YEAR}`). `\$` gives a literal `$`, `\\` a backslash, and inside a default `\}` gives a literal `}`.
 
@@ -197,7 +198,7 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/path/to/note" markdown-office --no-source "/path/no
 
 ## Front matter
 
-A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → YAML-Header (memo)** or the `:header` snippet) contains every key with its default value and a comment.
+A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → YAML-Header …** or the `:header` snippet) contains every key with its default value and a comment.
 
 ```yaml
 ---
@@ -275,6 +276,8 @@ A template set defines how a document looks. It consists of up to three files sh
 
 The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
+New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all other sets (bundled and your own; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
+
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 
 A template is Typst code and can read your files; only use templates you trust.
@@ -312,6 +315,8 @@ Sehr geehrte Frau Muster,
 
 vielen Dank für Ihr Angebot.
 ```
+
+**Datei → Neu aus Vorlage …** (Mod+Shift+N) with the set `din5008a` starts a letter: the picker offers the sender profiles it finds (your own from `Vorlagen/profiles/` and the set's example profiles, alphabetically), and the chosen profile then stands under `profile:` in the header. Without a profile found, the header template's value stays.
 
 Your own sender profiles live as `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\profiles\<name>.yaml`). All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
 
