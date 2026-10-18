@@ -100,7 +100,7 @@ Options:
   -Help,    --help      Diese Hilfe ausgeben und beenden
 
 Optionale YAML-Frontmatter-Schluessel:
-  title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
+  title, subtitle, toptitle, author, date, isodate_praefix, toc, h1_break,
   print_filename, lang, header, watermark, logo, logo-height, profile,
   embed_source, hard_breaks, template
 
@@ -497,7 +497,7 @@ function Convert-One {
   # werden ignoriert, nie ein Fehler.
   $fmDate = ''; $fmIsodatePraefix = ''; $fmToc = 'auto'; $fmBreak = 'auto'; $fmShowname = 'true'; $fmLang = 'de'
   $fmHeader = ''; $fmWatermark = ''; $fmTitle = ''
-  $fmTemplate = ''; $fmSubtitle = ''; $fmClient = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
+  $fmTemplate = ''; $fmSubtitle = ''; $fmToptitle = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
   if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
     for ($i = 1; $i -lt $lines.Count; $i++) {
       if ($lines[$i].Trim() -in @('---', '...')) { break }
@@ -509,7 +509,7 @@ function Convert-One {
         'title'           { $fmTitle = ConvertTo-YamlStr $raw }
         'template'        { $fmTemplate = ConvertTo-YamlStr $raw }
         'subtitle'        { $fmSubtitle = ConvertTo-YamlStr $raw }
-        'client'          { $fmClient = ConvertTo-YamlStr $raw }
+        'toptitle'        { $fmToptitle = ConvertTo-YamlStr $raw }
         'author'          { $fmAuthor = ConvertTo-YamlStr $raw }
         'logo'            { $fmLogo = ConvertTo-YamlStr $raw }
         'logo-height'     { $fmLogoHeight = ConvertTo-YamlStr $raw }
@@ -618,15 +618,26 @@ function Convert-One {
   # Kein Netz, nie (2/2): beide Typst-Aufrufe unten laufen hinter einem unerreichbaren
   # Proxy (siehe Enable-NoNetwork).
   # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
-  # der Notiz (bzw. MDO_BASE_DIR), im Vorlagen-Ordner, im Ordner des Sets; sonst ein Pfad
-  # auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
+  # der Notiz (bzw. MDO_BASE_DIR), in Vorlagen\<set>\profiles (Profile des Sets, auch fuer
+  # mitgelieferte Sets; nur bei einem Set-Namen, nicht bei einer .typ-Datei), im gemeinsamen
+  # Vorlagen\profiles (Rueckfall), im Ordner des Sets (Beispielprofile); erster Treffer
+  # gewinnt. Sonst ein Pfad auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
+  $templateValue = if ($CliTemplate) { $CliTemplate } else { $fmTemplate }
+  $setName = if (-not $templateValue) { 'memo' } elseif ($templateValue -cmatch '^[a-z0-9_-]+$') { $templateValue } else { '' }
   $profileArg = ''
   if ($fmProfile) {
     if ($fmProfile -cmatch '^[a-z0-9_-]+$') {
       $setDir = Split-Path -Parent $templateSrc
       $dirs = @((Join-Path $baseDir 'profiles'))
+      $userSetProfiles = ''
+      if ($UserTemplates -and $setName) {
+        $userSetProfiles = Join-Path (Join-Path $UserTemplates $setName) 'profiles'
+        $dirs += $userSetProfiles
+      }
       if ($UserTemplates) { $dirs += (Join-Path $UserTemplates 'profiles') }
-      $dirs += (Join-Path $setDir 'profiles')
+      # Ein Set-Ordner im Vorlagen-Ordner ist schon als Vorlagen\<set>\profiles dabei.
+      $setProfiles = Join-Path $setDir 'profiles'
+      if ($setProfiles -ne $userSetProfiles) { $dirs += $setProfiles }
       foreach ($d in $dirs) {
         $cand = Join-Path $d "$fmProfile.yaml"
         if (Test-Path -LiteralPath $cand -PathType Leaf) { $profileArg = $cand; break }
@@ -660,7 +671,7 @@ function Convert-One {
     '--input', "title=$base",
     '--input', "doctitle=$fmTitle",
     '--input', "subtitle=$fmSubtitle",
-    '--input', "client=$fmClient",
+    '--input', "toptitle=$fmToptitle",
     '--input', "author=$fmAuthor",
     '--input', "logo=$logoFwd",
     '--input', "logo_height=$fmLogoHeight",

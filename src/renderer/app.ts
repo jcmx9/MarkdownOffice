@@ -3,7 +3,7 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { DEFAULT_SET, withProfile } from '../shared/sets'
+import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../shared/sets'
 import type {
   ExportResult,
   ExternalChange,
@@ -18,11 +18,13 @@ import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
 import { headerNote, insertHeader } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
+import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { foldAllSections } from './editor/sections'
 import {
   createState,
+  type DocKind,
   freezeSpec,
   isFrozen,
   serializeDoc,
@@ -40,7 +42,7 @@ import {
   spellcheckCompartment,
   spellcheckExtensions,
 } from './editor/spellcheck'
-import { type Tab, TabStore } from './tabs/tab-store'
+import { isMarkdownTab, type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
 import { Notices } from './ui/notices'
@@ -63,6 +65,9 @@ const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheid
 const MAX_SAVE_ROUNDS = 3
 
 const HEADER_EXISTS = 'Die Notiz hat schon einen YAML-Header.'
+const MARKDOWN_ONLY = 'Nur in Markdown-Notizen verfügbar.'
+
+const docKind = (path: string): DocKind => (isMarkdownTab({ path }) ? 'markdown' : 'yaml')
 
 /** One conflict banner per tab: a tab keeps its banner when its path changes (case-only rename). */
 const bannerKey = (tabId: number): string => `tab:${tabId}`
@@ -231,7 +236,12 @@ export class App {
       // x/y are window coordinates of the right click (Electron context-menu params).
       replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
     })
-    this.mdo.onSpellRecheck(() => recheckSpelling(this.editor, this.spellcheckOn, this.mode))
+    this.mdo.onSpellRecheck(() => {
+      // A shown profile (YAML) stays unchecked; a later switch to a note reconfigures anyway.
+      const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
+      const on = this.spellcheckOn && (!shown || isMarkdownTab(shown))
+      recheckSpelling(this.editor, on, this.mode)
+    })
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))
     this.mdo.onBeforeClose(() => this.beforeClose())
@@ -277,7 +287,11 @@ export class App {
     if (!allowedWithDialog(cmd, document.querySelector('dialog[open]') !== null)) return
     if (
       this.mode === 'present' &&
-      (cmd === 'export' || cmd === 'toggle-header' || cmd === 'insert-header' || cmd === 'settings')
+      (cmd === 'export' ||
+        cmd === 'toggle-header' ||
+        cmd === 'insert-header' ||
+        cmd === 'create-profile' ||
+        cmd === 'settings')
     ) {
       this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
       return
@@ -287,6 +301,8 @@ export class App {
         return this.newDefaultNote()
       case 'new-from-template':
         return this.newFromTemplate()
+      case 'create-profile':
+        return this.createProfile()
       case 'open':
         return this.open()
       case 'rename':
@@ -313,6 +329,8 @@ export class App {
       case 'select-all':
         return this.editCommand('selectAll', selectAll)
       case 'insert-pagebreak':
+        // A page break is Markdown; a profile tab (YAML) ignores the shortcut like its keymap does.
+        if (this.store.active && !isMarkdownTab(this.store.active)) return
         return this.editCommand('insertPageBreak', insertPageBreak)
       case 'insert-header':
         return this.insertHeaderTemplate()
@@ -492,7 +510,7 @@ export class App {
     let state = createState(
       note?.text ?? '',
       '\n',
-      this.effectiveView(),
+      this.effectiveView(path),
       hideHeader,
       this.mode,
       this.spellcheckOn,
@@ -537,6 +555,59 @@ export class App {
       () => !this.closing,
     )
     if (header !== null) await this.newNote(header)
+  }
+
+  /**
+   * Datei → „Profil anlegen …“: for the shown note's `template:` set, main copies the set's
+   * example profile to `Vorlagen/<set>/profiles/<name>.yaml`; then the note gets
+   * `profile: <name>` (one undo step) and the new YAML opens as a tab for editing. Refused with a
+   * toast when the note names no set, a `.typ` path instead of a set, or main refuses (unknown
+   * set, no example profile, name taken: nothing is ever overwritten).
+   */
+  private async createProfile(): Promise<void> {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab || this.pickerOpen || this.settingsOpen) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
+    const set = frontmatterFields(this.editor.state.doc).template ?? ''
+    if (set === '') {
+      this.notices.toast('Die Notiz nennt kein Vorlagen-Set (template:).')
+      return
+    }
+    if (!SET_NAME_RE.test(set)) {
+      this.notices.toast(`Profile gibt es nur für Vorlagen-Sets, nicht für „${set}“.`)
+      return
+    }
+    const name = await askText(
+      'Profil anlegen',
+      `Name des neuen ${set}-Profils (a–z, 0–9, - _)`,
+      '',
+    )
+    if (!name || this.closing) return
+    let res: Awaited<ReturnType<typeof this.mdo.createProfile>>
+    try {
+      res = await this.mdo.createProfile(set, name)
+    } catch (e) {
+      res = { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+    if (!res.ok) {
+      this.notices.toast(res.error)
+      return
+    }
+    // The note may no longer be shown (tab switched while main copied): change its stored state.
+    const live = this.store.get(tab.id)
+    if (live && !this.closing) {
+      const shown = live.id === this.shownId
+      const spec = setNoteProfile(shown ? this.editor.state : live.state, name)
+      if (spec && shown) this.editor.dispatch(spec)
+      else if (spec) {
+        this.store.updateState(live.id, live.state.update(spec).state)
+        this.autosave.touch()
+      }
+    }
+    await this.openPaths([res.path])
   }
 
   /**
@@ -620,10 +691,11 @@ export class App {
       state: createState(
         res.text,
         res.eol,
-        this.effectiveView(),
+        this.effectiveView(path),
         hideHeader,
         this.mode,
-        this.spellcheckOn,
+        this.spellcheckOn && isMarkdownTab({ path }),
+        docKind(path),
       ),
       bom: res.bom,
       eol: res.eol,
@@ -634,8 +706,12 @@ export class App {
     return true
   }
 
-  /** Present always shows Preview; the per-tab Code/Preview choice is kept in this.view. */
-  private effectiveView(): View {
+  /**
+   * Present always shows Preview; the Code/Preview choice is kept in this.view. A YAML profile
+   * is always shown as code: the rendered preview is for Markdown only.
+   */
+  private effectiveView(path: string): View {
+    if (!isMarkdownTab({ path })) return 'code'
     return this.mode === 'present' ? 'preview' : this.view
   }
 
@@ -687,17 +763,24 @@ export class App {
 
   /** Applies view + mode to every tab; a cursor that would end inside a collapsed header moves out. */
   private reconfigureAll(): void {
-    const effects = [
-      viewCompartment.reconfigure(viewExtensions(this.effectiveView())),
+    // Per tab: a YAML profile keeps the Code view and never gets spellchecked.
+    const effects = (tab: Tab) => [
+      viewCompartment.reconfigure(viewExtensions(this.effectiveView(tab.path))),
       modeCompartment.reconfigure(modeExtensions(this.mode)),
-      spellcheckCompartment.reconfigure(spellcheckExtensions(this.spellcheckOn, this.mode)),
+      spellcheckCompartment.reconfigure(
+        spellcheckExtensions(this.spellcheckOn && isMarkdownTab(tab), this.mode),
+      ),
     ]
-    const collapses = (state: EditorState) =>
-      this.mode === 'present' || (this.effectiveView() === 'preview' && state.field(headerHidden))
+    const collapses = (tab: Tab, state: EditorState) =>
+      this.mode === 'present' ||
+      (this.effectiveView(tab.path) === 'preview' && state.field(headerHidden))
     for (const tab of this.store.all) {
       const shown = tab.id === this.shownId
       const state = shown ? this.editor.state : tab.state
-      const spec: TransactionSpec = { ...(collapses(state) ? moveOutOfHeader(state) : {}), effects }
+      const spec: TransactionSpec = {
+        ...(collapses(tab, state) ? moveOutOfHeader(state) : {}),
+        effects: effects(tab),
+      }
       if (shown) this.editor.dispatch(spec)
       else this.store.updateState(tab.id, state.update(spec).state)
     }
@@ -760,6 +843,10 @@ export class App {
   private async insertHeaderTemplate(): Promise<void> {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
     // Refused before the picker opens: choosing a set for nothing would only annoy. Checked
     // again by insertHeader below, the note may change while the picker is open.
     if (frontmatterRange(this.editor.state.doc)) {
@@ -793,6 +880,10 @@ export class App {
   private toggleHeader(): void {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
     if (this.view !== 'preview') {
       this.notices.toast('Der YAML-Header lässt sich nur in der Preview ausblenden.')
       return
@@ -915,6 +1006,11 @@ export class App {
   private async exportPdf(): Promise<void> {
     const tab = this.store.active
     if (!tab || this.status.exporting) return
+    // The pipeline converts Markdown; a profile tab would only fail there with a cryptic error.
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast('Nur Markdown-Notizen lassen sich exportieren.')
+      return
+    }
     this.status.setExporting(true)
     try {
       if (!(await this.saveTab(tab, true))) {
@@ -1195,10 +1291,11 @@ export class App {
       createState(
         note.text,
         note.eol,
-        this.effectiveView(),
+        this.effectiveView(tab.path),
         tab.headerHidden,
         this.mode,
-        this.spellcheckOn,
+        this.spellcheckOn && isMarkdownTab(tab),
+        docKind(tab.path),
       ),
     )
     const wasOnDisk = tab.onDisk
@@ -1300,9 +1397,10 @@ export class App {
     else if (tab && this.store.isDirty(tab)) state = 'dirty'
     else if (tab && !tab.onDisk) state = 'new'
     const doc = this.shownId === null ? null : this.editor.state
-    this.status.render(tab ? fileName(tab.path) : null, state, error, this.view, {
+    const md = tab === null || isMarkdownTab(tab)
+    this.status.render(tab ? fileName(tab.path) : null, state, error, md ? this.view : 'code', {
       outline: this.outlineOn.edit,
-      hasHeader: doc !== null && frontmatterRange(doc.doc) !== null,
+      hasHeader: md && doc !== null && frontmatterRange(doc.doc) !== null,
       yamlOn: doc !== null && !doc.field(headerHidden),
     })
     document.title = tab

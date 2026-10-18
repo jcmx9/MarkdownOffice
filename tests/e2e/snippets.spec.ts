@@ -58,7 +58,9 @@ test('new note, :meeting, tab through the stops, autosaved', async () => {
   const path = await newNotePath(notes)
   const saved = await waitForFile(path, (b) => b.toString('utf8').includes('- Anna'))
   expect(
-    saved.toString('utf8').startsWith(`---\nclient: "ACME"\ntitle: "Kickoff"\ndate: ${today()}\n`),
+    saved
+      .toString('utf8')
+      .startsWith(`---\ntoptitle: "ACME"\ntitle: "Kickoff"\ndate: ${today()}\n`),
   ).toBe(true)
   await app.close()
 })
@@ -96,7 +98,7 @@ test('Present: first Esc closes the list, second Esc leaves Present', async () =
   await expect(popup(page)).toHaveCount(0)
   await holds(async () => (await page.locator('body.mdo-mode-present').count()) === 1)
   await expect(page.locator('.cm-content')).toContainText('Text :mee')
-  await expect(page.locator('.cm-content')).not.toContainText('client:')
+  await expect(page.locator('.cm-content')).not.toContainText('toptitle:')
   await page.keyboard.press('Escape')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
   await app.close()
@@ -139,7 +141,7 @@ test(':newpage inserts the page break byte-exact', async () => {
   await app.close()
 })
 
-test('Present, new note: :meeting fills client and title, then the title block shows them', async () => {
+test('Present, new note: :meeting fills toptitle and title, then the title block shows them', async () => {
   // The empty start note: a Mod+N note already carries the memo header.
   const { app, page, notes } = await launch()
   await clickMenu(app, 'toggle-present')
@@ -154,17 +156,19 @@ test('Present, new note: :meeting fills client and title, then the title block s
   // First Esc ends the snippet session: the header collapses to the title block.
   await page.keyboard.press('Escape')
   await expect(page.locator('.mdo-titleblock .mdo-tb-title')).toHaveText('Kickoff')
-  await expect(page.locator('.mdo-titleblock .mdo-tb-client')).toHaveText('ACME')
+  await expect(page.locator('.mdo-titleblock .mdo-tb-toptitle')).toHaveText('ACME')
   await holds(async () => (await page.locator('body.mdo-mode-present').count()) === 1)
   const path = await newNotePath(notes)
   const saved = await waitForFile(path, (b) => b.toString('utf8').includes('Kickoff'))
   expect(
-    saved.toString('utf8').startsWith(`---\nclient: "ACME"\ntitle: "Kickoff"\ndate: ${today()}\n`),
+    saved
+      .toString('utf8')
+      .startsWith(`---\ntoptitle: "ACME"\ntitle: "Kickoff"\ndate: ${today()}\n`),
   ).toBe(true)
   // Typing now goes below the header, never into it.
   await page.keyboard.type('Notiz')
   const after = await waitForFile(path, (b) => b.toString('utf8').includes('Notiz'))
-  expect(after.toString('utf8').startsWith('---\nclient: "ACME"\ntitle: "Kickoff"\n')).toBe(true)
+  expect(after.toString('utf8').startsWith('---\ntoptitle: "ACME"\ntitle: "Kickoff"\n')).toBe(true)
   await app.close()
 })
 

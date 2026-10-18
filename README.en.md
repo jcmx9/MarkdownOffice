@@ -204,7 +204,7 @@ A YAML block at the start of the file controls individual documents. All keys ar
 ---
 title: "Kick-off relaunch"   # title: title block, header, PDF title
 subtitle: "Workshop"         # subtitle
-client: "Example Ltd"        # client, small and letter-spaced above the title
+toptitle: "Example Ltd"      # top title, small and letter-spaced above the title
 author: [Anna, Ben]          # author(s): line "date · author"
 date: 2026-10-13             # date (ISO or D.M.YYYY)
 lang: en                     # language; default de
@@ -220,7 +220,7 @@ hard_breaks: false           # line breaks become spaces
 | `template` | set name or `.typ` file | `memo` | The document's template set, see [Template sets](#template-sets). |
 | `title` | text | — | Title block on top, header from page 1, PDF metadata title. Without `title` there is no title block; the PDF title is then the file name. `# …` in the text is always a chapter, never the title. |
 | `subtitle` | text | — | Subtitle below the title. |
-| `client` | text | — | Client/company, small and letter-spaced above the title. |
+| `toptitle` | text | — | Small, letter-spaced line above the title, e.g. client or company; also first in the footer and in the PDF keywords. |
 | `author` | text or `[A, B]` | — | Line below the title: “date · author”. |
 | `date` | `2026-10-13` or `13.10.2026` | — | Date bottom right (per `lang`), ISO prefix on the file name, fixed PDF date. An unrecognised date is shown as is, without a prefix. |
 | `isodate_praefix` | `true` / `false` | `true` | ISO prefix on the file name when `date` is set. |
@@ -228,11 +228,11 @@ hard_breaks: false           # line breaks become spaces
 | `toc` | `auto` / `true` / `false` | `auto` | Table of contents (H1 + H2 only); `auto` above five H1/H2. |
 | `h1_break` | `auto` / `true` / `false` | `auto` | Every chapter (`#`) on a new page; `auto` as for `toc`. |
 | `header` | text | — | Fixed header text from page 1 instead of the running chapter. |
-| `print_filename` | `true` / `false` | `true` | Show/hide the bottom-left entry (file name or “client · title”). |
+| `print_filename` | `true` / `false` | `true` | Show/hide the bottom-left entry (file name or “top title · title”). |
 | `watermark` | text | — | Diagonal light-grey watermark beneath everything. |
 | `logo` | file `.svg`/`.png`/`.jpg`/`.jpeg` | no logo | Logo in the header, only when set; see [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximum logo height (at most 25 mm); the logo keeps its proportions and is at most 60 mm wide. |
-| `profile` | name or `.yaml` path | no profile | Sender profile: a name looks for `profiles/<name>.yaml` next to the note, in the templates folder and in the set; a path to a `.yaml` file is relative to the note. Only for sets that use profiles (e.g. din5008a); not found: error, no PDF. |
+| `profile` | name or `.yaml` path | no profile | Sender profile: a name looks for `<name>.yaml` in `profiles/` next to the note, in `Vorlagen/<set>/profiles/`, in `Vorlagen/profiles/` and in the set; a path to a `.yaml` file is relative to the note. Only for sets that use profiles (e.g. din5008a); not found: error, no PDF. |
 | `embed_source` | `true` / `false` | `true` | Embed the Markdown source as an attachment. |
 | `hard_breaks` | `true` / `false` | `true` | Every line break stays one (as typed in the editor), even without an entry. Only `false` switches to CommonMark: a single break becomes a space. |
 
@@ -316,16 +316,18 @@ Sehr geehrte Frau Muster,
 vielen Dank für Ihr Angebot.
 ```
 
-**Datei → Neu aus Vorlage …** (Mod+Shift+N) with the set `din5008a` starts a letter: the picker offers the sender profiles it finds (your own from `Vorlagen/profiles/` and the set's example profiles, alphabetically), and the chosen profile then stands under `profile:` in the header. Without a profile found, the header template's value stays.
+**Datei → Neu aus Vorlage …** (Mod+Shift+N) with the set `din5008a` starts a letter: the picker offers the sender profiles it finds (your own from `Vorlagen/din5008a/profiles/` and `Vorlagen/profiles/` plus the set's example profiles, alphabetically), and the chosen profile then stands under `profile:` in the header. Without a profile found, the header template's value stays.
 
-Your own sender profiles live as `~/Documents/Markdown Office/Vorlagen/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\profiles\<name>.yaml`). All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
+Your own sender profiles live per set as `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Documents\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); the folder `Vorlagen/din5008a/` needs no `din5008a.typ` for this and does not shadow the bundled set. Profiles in `Vorlagen/profiles/` still apply to all sets. On export the first profile found wins: `profiles/` next to the note, then `Vorlagen/<set>/profiles/`, then `Vorlagen/profiles/`, then the set's example profiles. All keys, profile fields and options are described in the README of the set repository MarkdownOffice-set-din5008a.
+
+**Datei → Profil anlegen …** creates your own profile: in a note with `template: din5008a` (or another set with an example profile) the editor asks for a name (`a–z`, `0–9`, `-`, `_`), copies the set's example profile with its companion files to `Vorlagen/<set>/profiles/<name>.yaml` (`beispiel-unterschrift.svg` becomes `<name>-unterschrift.svg`, `signature:` points to the copy), sets `profile: <name>` in the note and opens the YAML file as a tab for editing (Code view, no spell checking, no PDF export). Existing files are never overwritten: if the name is taken, the editor says so and changes nothing.
 
 ## PDF/A, source and metadata
 
 - **PDF/A-3b**, all fonts embedded.
 - The **Markdown source** is attached to the PDF (under its file name, without a local path) and can be extracted again, e.g. with `mutool extract file.pdf`. Disable with `embed_source: false` or `--no-source`.
 - The **PDF date** is the note's `date:`, otherwise the source's modification time, never the build time.
-- **Further metadata:** title and subject from `title:`, author only from `author:`, language from `lang:`; the keywords contain the client and “Markdown Office <version>”. Typst records itself as the creating program.
+- **Further metadata:** title and subject from `title:`, author only from `author:`, language from `lang:`; the keywords contain the top title (`toptitle:`) and “Markdown Office <version>”. Typst records itself as the creating program.
 
 ## Fonts and licences
 

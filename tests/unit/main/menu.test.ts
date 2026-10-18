@@ -185,7 +185,10 @@ describe('buildMenuTemplate', () => {
   it('puts "Neu aus Vorlage …" right below "Neu" and labels the header insert set-neutral', () => {
     const file = buildMenuTemplate(deps()).find((m) => m.label === 'Datei')
     const ids = ((file?.submenu ?? []) as { id?: string }[]).map((i) => i.id)
-    expect(ids.slice(0, 2)).toEqual(['new', 'new-from-template'])
+    expect(ids.slice(0, 3)).toEqual(['new', 'new-from-template', 'create-profile'])
+    const profile = byId(buildMenuTemplate(deps()), 'create-profile')
+    expect(profile?.label).toBe('Profil anlegen …')
+    expect(profile?.accelerator).toBeUndefined()
     expect(byId(buildMenuTemplate(deps()), 'new-from-template')?.label).toBe('Neu aus Vorlage …')
     const header = byId(buildMenuTemplate(deps()), 'insert-header')
     expect(header?.label).toBe('YAML-Header …')

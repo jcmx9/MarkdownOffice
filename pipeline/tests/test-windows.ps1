@@ -71,7 +71,7 @@ if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -For
 $inDir  = Join-Path $Work 'Notiz Ordner'
 $outDir = Join-Path $Work 'Aus gabe'
 New-Item -ItemType Directory -Force -Path (Join-Path $inDir 'bilder'), $outDir | Out-Null
-Copy-Item -LiteralPath (Join-Path $Fixtures 'client-meta.md') -Destination (Join-Path $inDir 'meine notiz.md')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'toptitle-meta.md') -Destination (Join-Path $inDir 'meine notiz.md')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination $inDir
 Copy-Item -LiteralPath (Join-Path $Fixtures 'edge-cases.md') -Destination (Join-Path $inDir 'mit bild.md')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $inDir 'bilder')
@@ -409,6 +409,22 @@ $r = Invoke-Convert @((Join-Path $profNote 'falsch.md'), $p5)
 if ($r.Code -ne 1 -or $r.Text -notmatch 'Profil nicht gefunden: testprofli') { Fail "profile: Tippfehler: Exit $($r.Code)`n$($r.Text)" }
 elseif (Test-PdfA $p5) { Fail 'profile: Tippfehler erzeugt trotzdem ein PDF' }
 else { Ok 'profile: Tippfehler -> Exit 1' }
+# Profile des Sets: Vorlagen\<set>\profiles. nurset.yaml liegt nur dort (nicht in
+# Vorlagen\profiles, das beim flachen Set profile.typ auch der Set-Ordner ist), also beweist ein
+# erfolgreicher Export den neuen Suchort; die Fehlermeldung nennt ihn ebenfalls.
+$setProf = Join-Path (Join-Path $profVorl 'profile') 'profiles'
+New-Item -ItemType Directory -Force -Path $setProf | Out-Null
+Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\testprofil.yaml') -Destination (Join-Path $setProf 'nurset.yaml')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\sig.svg') -Destination $setProf
+[IO.File]::WriteAllText((Join-Path $profNote 'set.md'), "---`ntemplate: profile`nprofile: nurset`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+$p6 = Join-Path $outDir 'p6.pdf'
+$r = Invoke-Convert @((Join-Path $profNote 'set.md'), $p6)
+if ($r.Code -ne 0) { Fail "profile: Vorlagen\<set>\profiles: Exit $($r.Code)`n$($r.Text)" }
+elseif (-not (Test-PdfA $p6)) { Fail 'profile: Vorlagen\<set>\profiles: PDF fehlt' }
+else { Ok 'profile: aus Vorlagen\<set>\profiles' }
+$r = Invoke-Convert @((Join-Path $profNote 'falsch.md'), $p5)
+if (-not $r.Text.Contains($setProf)) { Fail "profile: Meldung nennt Vorlagen\<set>\profiles nicht`n$($r.Text)" }
+else { Ok 'profile: Meldung nennt Vorlagen\<set>\profiles' }
 if ($OtherTemp) {
   # Notiz und Profil auf einem anderen Laufwerk: der Profil-Ordner wird komplett bereitgestellt.
   $pdrv = Join-Path $OtherTemp ('mdo profil platte ' + [Guid]::NewGuid().ToString('N'))

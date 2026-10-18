@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { foldedRanges } from '@codemirror/language'
+import { ensureSyntaxTree, foldedRanges } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { headerHidden } from '../../../src/renderer/editor/header'
@@ -40,6 +40,19 @@ describe('createState / serializeDoc', () => {
 })
 
 describe('createState wiring', () => {
+  it('parses a YAML profile as YAML, so a # comment is no heading', () => {
+    const text = '# Beispielprofil\nname: Anna\n'
+    const names = (kind: 'markdown' | 'yaml') => {
+      const s = createState(text, '\n', 'code', false, 'edit', false, kind)
+      const out: string[] = []
+      ensureSyntaxTree(s, s.doc.length, 5000)?.iterate({ enter: (n) => void out.push(n.name) })
+      return out
+    }
+    expect(names('markdown')).toContain('ATXHeading1')
+    expect(names('yaml')).not.toContain('ATXHeading1')
+    expect(names('yaml')).toContain('Comment')
+  })
+
   it('starts with the given header flag and keeps it across view switches', () => {
     const s = createState('---\na: 1\n---\nx', '\n', 'preview', true)
     expect(s.field(headerHidden)).toBe(true)

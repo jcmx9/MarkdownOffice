@@ -113,6 +113,6 @@ describe('BUILTIN_SNIPPETS', () => {
 
   it('keeps the raw, unexpanded meeting body', () => {
     const meeting = BUILTIN_SNIPPETS.find((s) => s.name === 'meeting')
-    expect(meeting?.body.startsWith('---\nclient: "${1:Kunde}"')).toBe(true)
+    expect(meeting?.body.startsWith('---\ntoptitle: "${1:Kunde}"')).toBe(true)
   })
 })

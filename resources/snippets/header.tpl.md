@@ -2,7 +2,7 @@
 template: memo          # Vorlagen-Set
 title: "${1:Titel}"         # Titelblock, Kopfzeile, PDF-Titel
 subtitle: "$2"           # unter dem Titel
-client: "$3"             # klein über dem Titel
+toptitle: "$3"           # klein über dem Titel
 author: "$4"             # „Datum · Autor“; mehrere: [Anna, Ben]
 date: ${5:$CURRENT_YEAR-$CURRENT_MONTH-$CURRENT_DATE}       # leer: kein Datum
 isodate_praefix: ${6:true}  # ISO-Datum vor dem Dateinamen

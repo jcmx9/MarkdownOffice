@@ -6,6 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Editor: „Datei → Profil anlegen …“ copies the shown note's set example profile (with its companion files, renamed, and the YAML's references to them updated) to `Vorlagen/<set>/profiles/<name>.yaml`, sets `profile: <name>` in the note (one undo step) and opens the YAML as a tab; nothing is ever overwritten
+- Editor: YAML files (`.yaml`/`.yml`) open as tabs (also via „Öffnen …“): always the Code view with YAML highlighting, no spell checking; export, header insert/toggle and page breaks are refused there, and renaming keeps the YAML extension
 - Editor: Datei → Zuletzt geöffnet shows the file name; the full path is the hover text (macOS), and equal names get their folder appended
 - Editor: Mod+N / „Neu“ starts the note with the `memo` set's YAML header (no file is written until you type)
 - Editor: „Neu aus Vorlage …“ (Mod+Shift+N) picks any other template set (bundled or own, with a hint from its header file) and, when its header has `profile:`, a sender profile; the new note starts with that header
@@ -15,6 +17,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Set din5008a: DIN 5008 Form A letters with sender profiles, vCard QR and signature
 - Offline Typst package store (vendor/packages, cades 0.3.1 + jogs 0.2.4 for QR codes, with their licence and third-party notice texts); a template or set-folder file importing an unbundled @preview package is refused instead of downloading it, and Typst runs behind an unreachable proxy so no download can happen
 - Front matter profile: (sender profile file) for sets such as din5008a; looked up next to the note, in the templates folder and in the set folder
+- Profiles per set: `Vorlagen/<set>/profiles/<name>.yaml` (also for bundled sets; such a folder without `<set>.typ` does not shadow the set) is searched after the note's folder and before the shared `Vorlagen/profiles/`, by the export and the picker alike; the not-found message lists every searched folder
 - lib/markdown.typ: frontmatter(src) gives template sets the whole YAML front matter (lists, maps, x- keys)
 - Templates folder: a set may also be a folder <name>/<name>.typ (e.g. a cloned set repo)
 - Outline: entries read as a list; a chapter with sub-chapters keeps the fold arrow, an entry without sub-chapters shows a bullet (•) in the same slot; levels are relative, so a note with only `##` headings shows them in the top-level look
@@ -39,6 +42,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Release script `scripts/release.sh dev|prod`, release workflow with `SHA256SUMS`, CI on macOS, Linux and Windows
 - `TEMPLATES.md`: guide for writing template sets (inputs, preprocessing contract, PDF/A requirements, skeleton, publishing)
 - Editor: external links (`http://`, `https://`, `mailto:`, also `<https://…>`) look like in the PDF of set `memo` 26.10.2: in the text colour, with a fine underline and a small ↗ after the link, in the Preview, Present and the table widget; the arrow is not part of the document. Internal links and the Code view are unchanged
+
+### Changed
+- **Breaking:** the front-matter key `client:` is renamed to `toptitle:` (pipeline, Windows pipeline, editor title block, snippets `:header`, `:meeting`, `:telefonnotiz`, docs); `client:` is no longer read, so rename it in existing notes. The Typst input `client` is now `toptitle`; own template sets must read `sys.inputs.toptitle`
+- Set `memo` 26.10.4: reads `toptitle` instead of `client` (small line above the title, footer, PDF keywords); its header file has `toptitle:`
 
 ### Fixed
 - Preview: heading spacing and the H1 hairline follow the `memo` PDF (baseline distances within 1pt) and no longer depend on blank lines in the source; blank lines next to a heading collapse until the cursor is on them

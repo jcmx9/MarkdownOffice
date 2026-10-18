@@ -68,10 +68,10 @@ async function resolveSet(
 }
 
 /**
- * A header file as text without BOM; null when missing, not a regular file, larger than
- * 64 KiB or not UTF-8 (then the set counts as having no header file).
+ * A small text file (a set's header, a profile) as text without BOM; null when missing, not a
+ * regular file, larger than 64 KiB or not UTF-8 (then a set counts as having no header file).
  */
-async function readHeaderFile(p: string): Promise<string | null> {
+export async function readSmallText(p: string): Promise<string | null> {
   try {
     // Only regular files (symlinks followed): opening a FIFO would block a libuv thread for good.
     if (!(await stat(p)).isFile()) return null
@@ -92,6 +92,26 @@ async function readHeaderFile(p: string): Promise<string | null> {
     if (!quiet(err)) console.warn('Markdown Office: header template skipped', p, err)
     return null
   }
+}
+
+/**
+ * The example profile a set ships: the profile its header names (`profile:`), looked up in the
+ * winning set's own `profiles/` folder (pipeline step 4; for a flat user set that is the shared
+ * `<user>/profiles/`). null when the set does not exist, its header names no valid profile, or
+ * that file is not a regular file. „Profil anlegen …“ copies it (src/main/profiles.ts).
+ */
+export async function setExampleProfile(
+  setsDir: string,
+  userDir: string,
+  name: string,
+): Promise<{ dir: string; example: string } | null> {
+  const set = await resolveSet(setsDir, userDir, name)
+  if (!set) return null
+  const header = await readSmallText(headerPath(set, name))
+  const example = header === null ? null : headerProfile(header)
+  if (!example || !SET_NAME_RE.test(example)) return null
+  const dir = join(dirname(set.typ), 'profiles')
+  return (await isFile(join(dir, `${example}${PROFILE_EXT}`))) ? { dir, example } : null
 }
 
 /** `<dir of the winning .typ>/<n>.header.md` (a flat user set: `Vorlagen/<n>.header.md`). */
@@ -123,7 +143,7 @@ export async function listSets(setsDir: string, userDir: string): Promise<SetInf
   for (const name of candidates) {
     const set = await resolveSet(setsDir, userDir, name)
     if (!set) continue
-    const header = await readHeaderFile(headerPath(set, name))
+    const header = await readSmallText(headerPath(set, name))
     out.push({
       name,
       source: set.source,
@@ -145,13 +165,16 @@ export async function readSetHeader(
 ): Promise<string | null> {
   const set = await resolveSet(setsDir, userDir, name)
   if (!set) return null
-  return (await readHeaderFile(headerPath(set, name))) ?? minimalHeader(name)
+  return (await readSmallText(headerPath(set, name))) ?? minimalHeader(name)
 }
 
 /**
- * Profile names for a set: `*.yaml` in `<user>/profiles/`, then in the set's own `profiles/`
- * (its example profiles), deduplicated and sorted. The pipeline searches the same folders
- * (after the note's own folder, which a new note does not have yet). `.yml` is not listed
+ * Profile names for a set: `*.yaml` in `<user>/<set>/profiles/` (the set's profiles on the user
+ * side, also for a bundled set; such a folder without `<set>.typ` does not shadow the set, see
+ * `resolveSet`), then in the shared `<user>/profiles/` (fallback for existing users), then in
+ * the winning set's own `profiles/` (its example profiles); deduplicated and sorted. The
+ * pipeline searches the same folders in this order (after the note's own folder, which a new
+ * note does not have yet), so every offered name resolves on export. `.yml` is not listed
  * because the pipeline only resolves `<name>.yaml` for a profile name.
  */
 export async function listProfiles(
@@ -162,7 +185,12 @@ export async function listProfiles(
   const set = await resolveSet(setsDir, userDir, name)
   if (!set) return []
   const found = new Set<string>()
-  for (const dir of [join(userDir, 'profiles'), join(dirname(set.typ), 'profiles')]) {
+  const dirs = [
+    join(userDir, name, 'profiles'),
+    join(userDir, 'profiles'),
+    join(dirname(set.typ), 'profiles'),
+  ]
+  for (const dir of dirs) {
     for (const entry of await names(dir)) {
       if (!entry.endsWith(PROFILE_EXT)) continue
       const profile = entry.slice(0, -PROFILE_EXT.length)

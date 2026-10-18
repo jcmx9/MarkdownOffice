@@ -147,6 +147,9 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     submenu: [
       item('new', 'Neu', 'CmdOrCtrl+N'),
       item('new-from-template', 'Neu aus Vorlage …', 'CmdOrCtrl+Shift+N'),
+      // No accelerator: a rare action, and the renderer refuses it (toast) for a note without
+      // `template:` or whose set ships no example profile.
+      item('create-profile', 'Profil anlegen …'),
       item('open', 'Öffnen …', 'CmdOrCtrl+O'),
       { label: 'Zuletzt geöffnet', submenu: recent },
       sep,

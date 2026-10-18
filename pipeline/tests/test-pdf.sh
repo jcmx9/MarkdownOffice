@@ -156,30 +156,30 @@ test_fixtures() {
   expect empty-fields.md "${text}" "Leere Kopfdaten" "Alle optionalen Felder sind leer."
   ok empty-fields.md
 
-  # Titel + Untertitel aus dem Front Matter, mehrere Kapitel, Fußzeile ohne Kunde.
+  # Titel + Untertitel aus dem Front Matter, mehrere Kapitel, Fußzeile ohne Toptitel.
   text="$(render yaml-title.md)"
   expect yaml-title.md "${text}" "Kick-off: Relaunch" "Workshop" "Ziele" "Unterpunkt" "Aufgaben" \
     "Kick-off: Relaunch · Workshop"
   reject yaml-title.md "${text}" "$(date +%d.%m.%Y)"
   ok yaml-title.md
 
-  # Kunde, deutsches Datum, Autorenliste, Fußzeile "Kunde · Titel"; leerer
+  # Toptitel, deutsches Datum, Autorenliste, Fußzeile "Toptitel · Titel"; leerer
   # Untertitel und ungültige logo-height (50 %) werden ignoriert.
-  text="$(render client-meta.md)"
-  expect_compact client-meta.md "${text}" "MUSTER GMBH"
-  expect client-meta.md "${text}" "Kick-off" "12. Oktober 2026 · jcmx9, Ben Probe" \
+  text="$(render toptitle-meta.md)"
+  expect_compact toptitle-meta.md "${text}" "MUSTER GMBH"
+  expect toptitle-meta.md "${text}" "Kick-off" "12. Oktober 2026 · jcmx9, Ben Probe" \
     "Muster GmbH · Kick-off" "Seite 1 / 1"
-  # PDF-Metadaten: Autor(en), Stichwörter mit Kunde und Markdown-Office-Version.
+  # PDF-Metadaten: Autor(en), Stichwörter mit Toptitel und Markdown-Office-Version.
   if command -v pdfinfo >/dev/null 2>&1; then
     local info
-    info="$(pdfinfo "${out_dir}/client-meta.pdf")"
-    expect "client-meta.md Metadaten" "${info}" "jcmx9, Ben Probe" "Muster GmbH, Markdown Office ${version}"
-    grep -q '^Subject: *Kick-off$' <<<"${info}" || die "client-meta.md: Thema ist nicht der Titel"
+    info="$(pdfinfo "${out_dir}/toptitle-meta.pdf")"
+    expect "toptitle-meta.md Metadaten" "${info}" "jcmx9, Ben Probe" "Muster GmbH, Markdown Office ${version}"
+    grep -q '^Subject: *Kick-off$' <<<"${info}" || die "toptitle-meta.md: Thema ist nicht der Titel"
     # Ohne author: kein Autor, ohne title: kein Thema.
     info="$(pdfinfo "${out_dir}/edge-cases.pdf")"
     if grep -qE '^(Author|Subject):' <<<"${info}"; then die "edge-cases.md: Autor/Thema ohne YAML gesetzt"; fi
   fi
-  ok client-meta.md
+  ok toptitle-meta.md
 
   # Englische Beschriftungen.
   text="$(render english.md)"
@@ -418,7 +418,7 @@ test_fixtures() {
   reject mermaid.md "${text}" "flowchart LR" "sequenceDiagram" "-->"
   ok mermaid.md
 
-  # Lange Fußzeile (Kunde · Titel): auf eine Zeile mit „…“ gekürzt, Abstand zur
+  # Lange Fußzeile (Toptitel · Titel): auf eine Zeile mit „…“ gekürzt, Abstand zur
   # Seitenzahl bleibt.
   text="$(render long-footer.md)"
   expect long-footer.md "${text}" "Muster Beratungsgesellschaft mbH · Kick…" "Seite 1 / 1"
@@ -455,16 +455,16 @@ test_interface() {
   local err code text
 
   # Ausdrücklich angegebene Ausgabe: exakt dieser Pfad, kein ISO-Präfix.
-  (cd "${fixtures}" && bash "${build}" client-meta.md "${out_dir}/exakt.pdf" >/dev/null 2>&1)
+  (cd "${fixtures}" && bash "${build}" toptitle-meta.md "${out_dir}/exakt.pdf" >/dev/null 2>&1)
   [[ -s "${out_dir}/exakt.pdf" ]] || die "Ausgabe nicht exakt geschrieben"
-  [[ ! -e "${out_dir}/2026-10-12_exakt.pdf" && ! -e "${fixtures}/2026-10-12_client-meta.pdf" ]] ||
+  [[ ! -e "${out_dir}/2026-10-12_exakt.pdf" && ! -e "${fixtures}/2026-10-12_toptitle-meta.pdf" ]] ||
     die "ISO-Präfix trotz ausdrücklicher Ausgabe"
   ok "Ausgabe exakt"
 
   # Ohne Ausgabe: neben der Quelle, deutsches Datum -> ISO-Präfix.
-  cp "${fixtures}/client-meta.md" "${fixtures}/logo.png" "${out_dir}/"
-  (cd "${out_dir}" && bash "${build}" client-meta.md >/dev/null 2>&1)
-  [[ -s "${out_dir}/2026-10-12_client-meta.pdf" ]] || die "ISO-Präfix aus 12.10.2026 fehlt"
+  cp "${fixtures}/toptitle-meta.md" "${fixtures}/logo.png" "${out_dir}/"
+  (cd "${out_dir}" && bash "${build}" toptitle-meta.md >/dev/null 2>&1)
+  [[ -s "${out_dir}/2026-10-12_toptitle-meta.pdf" ]] || die "ISO-Präfix aus 12.10.2026 fehlt"
   ok "ISO-Präfix aus deutschem Datum"
 
   # Fehlende Quelle: Exit != 0, kurze Meldung auf stderr.
@@ -796,6 +796,34 @@ test_profiles() {
   grep -q "${vorl}/profiles" <<<"${err}" || die "profile: Meldung nennt den Vorlagen-Ordner nicht: ${err}"
   [[ ! -e "${out_dir}/p5.pdf" ]] || die "profile: Tippfehler erzeugt trotzdem ein PDF"
   ok "profile: Notizordner → Vorlagen-Ordner → Set-Ordner, Pfad, Fehler bei Tippfehler"
+
+  # Profile eines Sets im Vorlagen-Ordner (<Vorlagen>/<set>/profiles) gewinnen über das
+  # gemeinsame <Vorlagen>/profiles und über die Beispielprofile des mitgelieferten Sets. Der
+  # Ordner <Vorlagen>/profset hat keine profset.typ und verdeckt das mitgelieferte Set nicht.
+  local bsets="${out_dir}/Profil Sets" svorl="${out_dir}/Set Vorlagen" sdir="${out_dir}/Set Notiz" name
+  mkdir -p "${bsets}/profset/profiles" "${svorl}/profset/profiles" "${svorl}/profiles" "${sdir}"
+  cp "${sets}/profile.typ" "${bsets}/profset/profset.typ"
+  for pair in "${bsets}/profset/profiles|SET-BEISPIEL" "${svorl}/profiles|GEMEINSAM" "${svorl}/profset/profiles|SET-PROFIL"; do
+    sed "s/PROFIL-NAME/${pair#*|}/" "${fixtures}/profiles/testprofil.yaml" >"${pair%%|*}/testprofil.yaml"
+    cp "${fixtures}/profiles/sig.svg" "${pair%%|*}/"
+  done
+  printf -- '---\ntemplate: profset\nprofile: testprofil\n---\n\nText.\n' >"${sdir}/brief.md"
+  for name in SET-PROFIL GEMEINSAM SET-BEISPIEL; do
+    MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" bash "${build}" "${sdir}/brief.md" "${out_dir}/ps.pdf" \
+      >/dev/null 2>"${out_dir}/ps.err" || die "profile: Set-Profile (${name}): $(cat "${out_dir}/ps.err")"
+    expect "profile: Set-Profile (${name})" "$(pdf_text "${out_dir}/ps.pdf")" "NAME=${name}"
+    # Nächster Durchlauf: den Ordner, der eben gewann, leeren.
+    case "${name}" in
+      SET-PROFIL) rm "${svorl}/profset/profiles/testprofil.yaml" ;;
+      GEMEINSAM) rm "${svorl}/profiles/testprofil.yaml" ;;
+    esac
+  done
+
+  # Nicht gefunden: die Meldung nennt auch <Vorlagen>/<set>/profiles.
+  printf -- '---\ntemplate: profset\nprofile: fehlt\n---\n\nText.\n' >"${sdir}/fehlt.md"
+  err="$(MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" bash "${build}" "${sdir}/fehlt.md" "${out_dir}/pf.pdf" 2>&1 >/dev/null)" || true
+  grep -qF "${svorl}/profset/profiles" <<<"${err}" || die "profile: Meldung nennt die Set-Profile nicht: ${err}"
+  ok "profile: <Vorlagen>/<set>/profiles → <Vorlagen>/profiles → Beispiel des Sets"
 }
 
 # Set din5008a: Musterbrief und harte Abbrüche. Das Set kommt aus MDO_DIN5008A_DIR

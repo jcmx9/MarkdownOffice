@@ -1,4 +1,5 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { yaml } from '@codemirror/lang-yaml'
 import { codeFolding, foldGutter, foldKeymap, unfoldAll } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import {
@@ -80,6 +81,9 @@ export function viewExtensions(view: View): Extension {
       ]
 }
 
+/** What a tab holds: a Markdown note, or a YAML profile opened for editing („Profil anlegen …“). */
+export type DocKind = 'markdown' | 'yaml'
+
 export function createState(
   text: string,
   eol: Eol,
@@ -87,7 +91,9 @@ export function createState(
   headerHiddenInit = false,
   mode: Mode = 'edit',
   spellcheck = false,
+  kind: DocKind = 'markdown',
 ): EditorState {
+  const md = kind === 'markdown'
   const state = EditorState.create({
     doc: text,
     extensions: [
@@ -95,11 +101,12 @@ export function createState(
       history(),
       drawSelection(),
       codeFolding(),
-      snippetExtensions,
-      pageBreakKeymap,
+      // A profile is YAML: no snippets or page breaks, and YAML highlighting, so a `# comment`
+      // line is not taken for a heading (outline, section folds).
+      md ? [snippetExtensions, pageBreakKeymap] : [],
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
-      mdoMarkdown([...languages, mermaid]),
+      md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
       EditorView.lineWrapping,

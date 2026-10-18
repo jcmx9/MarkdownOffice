@@ -65,7 +65,7 @@ test('the YAML header collapses, stays collapsed after restart, disk untouched',
   await expect(first.page.locator('.mdo-titleblock .mdo-tb-title')).toHaveText(
     'Kickoff Kaffeerösterei',
   )
-  await expect(first.page.locator('.mdo-titleblock .mdo-tb-client')).toHaveText('Muster GmbH')
+  await expect(first.page.locator('.mdo-titleblock .mdo-tb-toptitle')).toHaveText('Muster GmbH')
   await expect(first.page.locator('.mdo-titleblock .mdo-tb-subtitle')).toHaveText('Protokoll')
   await expect(first.page.locator('.mdo-titleblock .mdo-tb-meta')).toHaveText(
     '14. Oktober 2026 · Anna',

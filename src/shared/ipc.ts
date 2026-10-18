@@ -22,6 +22,7 @@ export const Ch = {
   listSets: 'mdo:list-sets',
   readSetHeader: 'mdo:read-set-header',
   listProfiles: 'mdo:list-profiles',
+  createProfile: 'mdo:create-profile',
   noteMenu: 'mdo:note-menu',
   spellReplace: 'mdo:spell-replace',
   spellRecheck: 'mdo:spell-recheck',

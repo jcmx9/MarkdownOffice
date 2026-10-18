@@ -33,6 +33,7 @@ describe('allowedWithDialog', () => {
       'toggle-present',
       'new',
       'new-from-template',
+      'create-profile',
       'insert-header',
       'open',
       'close-tab',
