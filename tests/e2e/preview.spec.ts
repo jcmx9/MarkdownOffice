@@ -197,3 +197,58 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   await shot(page, 'highlight-code')
   await app.close()
 })
+
+test('heading gaps come from the heading, the same with or without blank lines', async () => {
+  // Like the PDF: the gap above a heading is larger than below, blank lines do not matter.
+  const body = [
+    'Absatz oben.',
+    '# Kapitel',
+    'Absatz eins.',
+    '## Mitte',
+    'Absatz zwei.',
+    '### Klein',
+    'Absatz Ende.',
+  ]
+  const measure = async (sep: string, name: string) => {
+    const dirs = await makeDirs()
+    const note = join(dirs.notes, `${name}.md`)
+    await writeFile(note, `${body.join(sep)}\n`)
+    const { app, page } = await launch({ dirs, args: [note] })
+    await page.locator('.cm-editor.mdo-preview').waitFor()
+    await expect(page.locator('.cm-line.mdo-h3')).toHaveCount(1)
+    await page.evaluate(() => document.fonts.ready)
+    // Text boxes, not line boxes: the heading line's padding is part of the gap.
+    const gaps = await page.evaluate(() => {
+      const text = (el: Element) => {
+        const r = document.createRange()
+        r.selectNodeContents(el)
+        return r.getBoundingClientRect()
+      }
+      const line = (t: string) => {
+        const el = [...document.querySelectorAll('.cm-line')].find((l) => l.textContent === t)
+        if (!el) throw new Error(`line ${t} missing`)
+        return text(el)
+      }
+      const pairs: Array<[string, string, string]> = [
+        ['.mdo-h1', 'Absatz oben.', 'Absatz eins.'],
+        ['.mdo-h2', 'Absatz eins.', 'Absatz zwei.'],
+        ['.mdo-h3', 'Absatz zwei.', 'Absatz Ende.'],
+      ]
+      return pairs.map(([sel, before, after]) => {
+        const h = text(document.querySelector(`.cm-line${sel}`) as Element)
+        return { above: h.top - line(before).bottom, below: line(after).top - h.bottom }
+      })
+    })
+    await shot(page, `heading-spacing-${name}`)
+    await app.close()
+    return gaps
+  }
+  const tight = await measure('\n', 'tight')
+  const blank = await measure('\n\n', 'blank')
+  for (const [i, g] of tight.entries()) {
+    const b = blank[i] as (typeof blank)[number]
+    expect(Math.abs(g.above - b.above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(g.below - b.below)).toBeLessThanOrEqual(1)
+    expect(g.above).toBeGreaterThan(g.below)
+  }
+})

@@ -122,6 +122,7 @@
 }
 .mdo-preview .cm-line.mdo-h1 {
   font-size: 1.4em;
+  /* the hairline sits close under the text, as memo.typ intends ("dicht darunter") */
   padding-bottom: 0.1em;
   border-bottom: 0.6pt solid var(--mdo-hairline);
 }
@@ -139,23 +140,42 @@
   font-style: italic;
 }
 
-/* Spacing like the PDF: blank lines carry the paragraph/heading gaps */
+/* Spacing like the PDF: a blank line between paragraphs carries the paragraph gap */
 .mdo-preview .cm-line:has(> br:only-child) {
   line-height: 1.1em;
 }
-.mdo-preview .cm-line:has(> br:only-child):has(+ .mdo-h1) {
-  line-height: 2em;
+
+/*
+ * Heading gaps come from the heading line itself, like the memo set's heading blocks
+ * (memo.typ: H1 above 2.0em, H2 1.5em, H3+ 1.25em; Typst resolves these em at the heading's
+ * own size, as CSS em does here). Blank lines next to a heading collapse (mdo-heading-gap,
+ * preview.ts), so the gap is the same with or without them in the source.
+ * padding-top = PDF baseline distance minus what the two line boxes already give:
+ *   PDF:    above + heading cap height (0.67em, Source Serif)
+ *   editor: heading ascent in its 1.5 line box (1.10em, Source Serif)
+ *           + body line box below the baseline (0.413 × body size, Source Sans)
+ * Below a heading the line boxes alone already match or slightly exceed the PDF's
+ * below spacing (0.55–0.7em), so there is no padding-bottom.
+ */
+.mdo-preview .cm-line.mdo-h1 {
+  padding-top: calc(1.57em - 0.413 * var(--mdo-body-size));
 }
-.mdo-preview .cm-line:has(> br:only-child):has(+ .mdo-h2) {
-  line-height: 1.5em;
+.mdo-preview .cm-line.mdo-h2 {
+  padding-top: calc(1.07em - 0.413 * var(--mdo-body-size));
 }
-.mdo-preview .cm-line:has(> br:only-child):has(+ :is(.mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6)) {
-  line-height: 1.25em;
+.mdo-preview .cm-line:is(.mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
+  padding-top: calc(0.82em - 0.413 * var(--mdo-body-size));
 }
+/* Typst drops a block's above spacing at the top of the page */
 .mdo-preview
-  .cm-line:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6)
-  + .cm-line:has(> br:only-child) {
-  line-height: 0.6em;
+  .cm-content
+  > .cm-line:first-child:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
+  padding-top: 0;
+}
+/* Collapsed blank line: no height, still a real line (arrow keys, selection). Once the
+   cursor is on it, preview.ts drops the class and it shows as a normal blank line. */
+.mdo-preview .cm-content > .cm-line.mdo-heading-gap {
+  line-height: 0;
 }
 
 /* Marks recede; inline styles as in the PDF */
