@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { createState } from '../../../src/renderer/editor/setup'
 import {
+  forgetDismissedNotices,
   offerDictionaryNotice,
   replaceWordAt,
   SpellLanguageTracker,
@@ -89,5 +90,19 @@ describe('offerDictionaryNotice', () => {
     [false, 'present', false],
   ] as const)('spellcheck %s, mode %s → %s', (on, mode, offered) => {
     expect(offerDictionaryNotice(on, mode)).toBe(offered)
+  })
+})
+
+describe('forgetDismissedNotices', () => {
+  it('forgets only the codes whose banner the app dismissed', () => {
+    const noticed = new Set(['fr', 'es'])
+    forgetDismissedNotices(noticed, ['dict-fr'])
+    expect([...noticed]).toEqual(['es'])
+  })
+
+  it('ignores foreign keys and unknown codes', () => {
+    const noticed = new Set(['fr'])
+    forgetDismissedNotices(noticed, ['other-fr', 'dict-it'])
+    expect([...noticed]).toEqual(['fr'])
   })
 })
