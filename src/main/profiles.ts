@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { copyFile, lstat, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, open, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { SET_NAME_RE } from '../shared/sets'
 import type { CreateProfileResult } from '../shared/types'
@@ -119,11 +119,17 @@ export async function createProfile(
       })
       created.push(dest)
     }
-    await writeFile(target, renameCompanionValues(yaml, renamed), { flag: 'wx' }).catch(
-      (err: unknown) => {
-        throw errorCode(err) === 'EEXIST' ? new Taken() : err
-      },
-    )
+    const fh = await open(target, 'wx').catch((err: unknown) => {
+      throw errorCode(err) === 'EEXIST' ? new Taken() : err
+    })
+    // Once the exclusive open succeeded the YAML is ours: a failed write (ENOSPC, EIO …) must
+    // remove it too, or a truncated profile would stay listed without its companions.
+    created.push(target)
+    try {
+      await fh.writeFile(renameCompanionValues(yaml, renamed))
+    } finally {
+      await fh.close()
+    }
   } catch (err) {
     // Only what this call created; a file that was there before is never touched.
     for (const p of created) await rm(p, { force: true }).catch(() => undefined)

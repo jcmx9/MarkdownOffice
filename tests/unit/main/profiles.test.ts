@@ -1,9 +1,25 @@
 import { mkdir, mkdtemp, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createProfile, renameCompanionValues } from '../../../src/main/profiles'
 import { listProfiles } from '../../../src/main/templates'
+
+// Lets one test make the write into an exclusively opened ('wx') file fail, as ENOSPC would.
+const failWx = vi.hoisted(() => ({ on: false }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs/promises')>()
+  const open: typeof real.open = async (...args) => {
+    const fh = await real.open(...args)
+    if (failWx.on && args[1] === 'wx') {
+      fh.writeFile = async () => {
+        throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' })
+      }
+    }
+    return fh
+  }
+  return { ...real, open }
+})
 
 const DIN = '---\n# Brief\ntemplate: din5008a\nprofile: beispiel   # Profil\n---\n'
 const EXAMPLE =
@@ -82,6 +98,22 @@ describe('createProfile', () => {
     })
     expect(await readdir(dir)).toEqual(['kanzlei-unterschrift.svg'])
     expect(await readFile(join(dir, 'kanzlei-unterschrift.svg'), 'utf8')).toBe('mine')
+  })
+
+  it('rolls back the YAML and its companions when writing the YAML fails', async () => {
+    const { sets, user } = await fixture()
+    failWx.on = true
+    try {
+      expect(await createProfile(sets, user, 'din5008a', 'kanzlei')).toMatchObject({
+        ok: false,
+        error: expect.stringContaining('ENOSPC'),
+      })
+    } finally {
+      failWx.on = false
+    }
+    expect(await readdir(join(user, 'din5008a', 'profiles'))).toEqual([])
+    // Nothing left behind, so the same name works on retry.
+    expect(await createProfile(sets, user, 'din5008a', 'kanzlei')).toMatchObject({ ok: true })
   })
 
   it('refuses a set without an example profile and an unknown set', async () => {
