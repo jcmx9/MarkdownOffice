@@ -101,8 +101,8 @@ Options:
 
 Optionale YAML-Frontmatter-Schluessel:
   title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
-  print_filename, lang, header, watermark, logo, logo-height, embed_source,
-  hard_breaks, template
+  print_filename, lang, header, watermark, logo, logo-height, profile,
+  embed_source, hard_breaks, template
 
 Environment:
   MDO_NO_OPEN=1             Das PDF nach dem Build nicht oeffnen (Batch/Cron)
@@ -381,6 +381,20 @@ function Get-TypstReadable {
   return $target
 }
 
+# Ordner fuer Typst lesbar machen (spiegelt Get-TypstReadable fuer einen ganzen Ordner):
+# liegt er auf einem anderen Laufwerk als die Typst-Wurzel, wird er komplett in den
+# Stage-Ordner kopiert. Das Profil braucht das, weil das Set Dateien daneben liest
+# (die Unterschrift).
+function Get-TypstReadableDir {
+  param([string]$Dir)
+  if (-not $Dir) { return $Dir }
+  if ([IO.Path]::GetPathRoot($Dir) -eq $script:TypstRoot) { return $Dir }
+  $script:StageCount++
+  $target = Join-Path $script:StageDir ('ordner-' + $script:StageCount)
+  Copy-Item -LiteralPath $Dir -Destination $target -Recurse -Force
+  return $target
+}
+
 # Vorlage aufloesen (spiegelt resolve_template in build.sh): leer -> memo;
 # ein Name (a-z, 0-9, _ und -) ist ein Set (Benutzerordner <name>.typ oder
 # <name>\<name>.typ vor den mitgelieferten Sets <MDO_SETS_DIR>\<name>\<name>.typ); ein Wert auf .typ eine
@@ -449,7 +463,7 @@ function Convert-One {
   # werden ignoriert, nie ein Fehler.
   $fmDate = ''; $fmIsodatePraefix = ''; $fmToc = 'auto'; $fmBreak = 'auto'; $fmShowname = 'true'; $fmLang = 'de'
   $fmHeader = ''; $fmWatermark = ''; $fmTitle = ''
-  $fmTemplate = ''; $fmSubtitle = ''; $fmClient = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
+  $fmTemplate = ''; $fmSubtitle = ''; $fmClient = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
   if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
     for ($i = 1; $i -lt $lines.Count; $i++) {
       if ($lines[$i].Trim() -in @('---', '...')) { break }
@@ -465,6 +479,7 @@ function Convert-One {
         'author'          { $fmAuthor = ConvertTo-YamlStr $raw }
         'logo'            { $fmLogo = ConvertTo-YamlStr $raw }
         'logo-height'     { $fmLogoHeight = ConvertTo-YamlStr $raw }
+        'profile'         { $fmProfile = ConvertTo-YamlStr $raw }
         'header'          { $fmHeader = ConvertTo-YamlStr $raw }
         'watermark'       { $fmWatermark = ConvertTo-YamlStr $raw }
         'lang'            { $v = ConvertTo-YamlStr $raw; if ($v) { $fmLang = $v } }
@@ -536,6 +551,37 @@ function Convert-One {
   # Vorlage aufloesen; eine Vorlage auf einem anderen Laufwerk wird bereitgestellt.
   $templateSrc = if ($CliTemplate) { Resolve-Template $CliTemplate (Get-Location).Path } else { Resolve-Template $fmTemplate $baseDir }
   $templateFile = Get-TypstReadable $templateSrc ([IO.Path]::GetFileName($templateSrc))
+  # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
+  # der Notiz (bzw. MDO_BASE_DIR), im Vorlagen-Ordner, im Ordner des Sets; sonst ein Pfad
+  # auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
+  $profileArg = ''
+  if ($fmProfile) {
+    if ($fmProfile -cmatch '^[a-z0-9_-]+$') {
+      $setDir = Split-Path -Parent $templateSrc
+      $dirs = @((Join-Path $baseDir 'profiles'))
+      if ($UserTemplates) { $dirs += (Join-Path $UserTemplates 'profiles') }
+      $dirs += (Join-Path $setDir 'profiles')
+      foreach ($d in $dirs) {
+        $cand = Join-Path $d "$fmProfile.yaml"
+        if (Test-Path -LiteralPath $cand -PathType Leaf) { $profileArg = $cand; break }
+      }
+      if (-not $profileArg) { throw "Profil nicht gefunden: $fmProfile (gesucht in $($dirs -join ', '))" }
+    } elseif ($fmProfile -match '\.ya?ml$') {
+      $pp = Expand-NotePath $fmProfile
+      if (-not [IO.Path]::IsPathRooted($pp)) { $pp = [IO.Path]::Combine($baseDir, $pp) }
+      $pp = [IO.Path]::GetFullPath($pp)
+      if (-not (Test-Path -LiteralPath $pp -PathType Leaf)) { throw "Profil nicht gefunden: $fmProfile" }
+      $profileArg = $pp
+    } else {
+      throw "ungueltiges Profil: $fmProfile (erlaubt: Name aus a-z, 0-9, _ und - oder eine .yaml-Datei)"
+    }
+  }
+  $typstProfile = ''
+  if ($profileArg) {
+    $readableDir = Get-TypstReadableDir (Split-Path -Parent $profileArg)
+    $typstProfile = Join-Path $readableDir (Split-Path -Leaf $profileArg)
+  }
+  $profileFwd = ConvertTo-TypstPath $typstProfile
   $typstSrc     = Get-TypstReadable $Src ([IO.Path]::GetFileName($Src))
   $typstLogo    = Get-TypstReadable $logoArg
   $typstBase    = if ([IO.Path]::GetPathRoot($baseDir) -eq $script:TypstRoot) { $baseDir } else { Split-Path -Parent $typstSrc }
@@ -552,6 +598,7 @@ function Convert-One {
     '--input', "author=$fmAuthor",
     '--input', "logo=$logoFwd",
     '--input', "logo_height=$fmLogoHeight",
+    '--input', "profile=$profileFwd",
     '--input', "source=$srcFwd",
     '--input', "attach=$attachFwd",
     '--input', "docdir=$srcDirTypst",

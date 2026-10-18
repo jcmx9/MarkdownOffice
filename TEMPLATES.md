@@ -65,6 +65,17 @@ typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-f
 
 Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote values (`http(s)://`, `//`, `data:`) are refused. Absolute (after `~`/variable expansion) → exactly that file. Relative → first existing of `<note folder or MDO_BASE_DIR>/`, `~/` (Windows `%USERPROFILE%`), the templates folder (`MDO_TEMPLATES`, default `~/Documents/Markdown Office/Vorlagen/`), `<pipeline>/`. Nothing found → `logo` input is empty, with a notice. The template never searches.
 
+### Profiles (decided by the script)
+
+A set that needs a sender (a letter) reads a profile: a YAML file plus the files next to it (signature, logo). The note names it with `profile:`; the script finds it and passes the absolute path as input `profile` (`""` without `profile:`). A set reads it with `yaml(sys.inputs.profile)` and further files relative to the profile's folder, e.g. `read(dir + "/" + data.signature)` with `dir` = the path up to the last `/`.
+
+| Value of `profile:` | Looked up |
+|---|---|
+| a name (`a-z`, `0-9`, `_`, `-`), e.g. `roland` | `profiles/<name>.yaml` 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 3. in the folder of the resolved set (its example profiles) – the first existing file wins |
+| a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
+
+A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. On Windows the profile's folder is copied as a whole to the staging folder when it is on another drive than Typst's root, so the signature stays readable.
+
 ## 3. Inputs (`sys.inputs`)
 
 All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter values arrive as `""`. Always read with `sys.inputs.at(key, default: …)`.
@@ -87,6 +98,7 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `hard_breaks` | Front matter `hard_breaks:`; `--hard-breaks` / `--soft-breaks` win | `true` / `false` | `true` |
 | `logo` | Resolved logo file (see §2) | absolute path | `""` = no logo |
 | `logo_height` | Front matter `logo-height:`, **raw**; the template validates it | e.g. `13mm`, `1.5cm`, `40pt` | `""` |
+| `profile` | Resolved sender profile (front matter `profile:`, see "Profiles" in §2); files next to it (signature, logo) are readable; on Windows forward slashes | absolute path | `""` = no `profile:` |
 | `source` | The Markdown source to render | absolute path | always set |
 | `attach` | File to embed as PDF attachment; `embed_source: false` or `--no-source` empties it | absolute path (= `source`) | `""` = do not embed |
 | `docdir` | Base folder for relative image paths: `MDO_BASE_DIR` or the source's folder | absolute path | always set |

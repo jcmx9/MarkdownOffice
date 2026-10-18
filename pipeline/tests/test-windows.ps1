@@ -346,6 +346,45 @@ if ($r.Code -ne 0) { Fail "eigenes memo: Exit $($r.Code)`n$($r.Text)" }
 elseif (-not (Test-PdfMarker (Join-Path $outDir 'schatten.pdf') 'SET-PROBE')) { Fail 'eigenes memo: Marker SET-PROBE fehlt, mitgeliefertes Set lief' }
 else { Ok 'Benutzerordner vor mitgelieferten Sets' }
 
+# Absender-Profil: Vorlagen-Ordner, Tippfehler -> Exit 1, Profil auf anderem Laufwerk.
+$profVorl = Join-Path $Work 'profil vorlagen'
+$profNote = Join-Path $Work 'profil notiz'
+New-Item -ItemType Directory -Force -Path (Join-Path $profVorl 'profiles'), (Join-Path $profNote 'profiles') | Out-Null
+Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\testprofil.yaml'), (Join-Path $Fixtures 'profiles\sig.svg') -Destination (Join-Path $profVorl 'profiles')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'templates\profile.typ') -Destination $profVorl
+$savedTemplates = $env:MDO_TEMPLATES
+$env:MDO_TEMPLATES = $profVorl
+$brief = Join-Path $profNote 'brief.md'
+[IO.File]::WriteAllText($brief, "---`ntemplate: profile`nprofile: testprofil`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+$p1 = Join-Path $outDir 'p1.pdf'
+$r = Invoke-Convert @($brief, $p1)
+if ($r.Code -ne 0) { Fail "profile: Vorlagen-Ordner: Exit $($r.Code)`n$($r.Text)" }
+elseif (-not (Test-PdfMarker $p1 'PROFILE-TEST')) { Fail 'profile: falsche Vorlage' }
+else { Ok 'profile: aus dem Vorlagen-Ordner' }
+[IO.File]::WriteAllText((Join-Path $profNote 'falsch.md'), "---`ntemplate: profile`nprofile: testprofli`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+$p5 = Join-Path $outDir 'p5.pdf'
+$r = Invoke-Convert @((Join-Path $profNote 'falsch.md'), $p5)
+if ($r.Code -ne 1 -or $r.Text -notmatch 'Profil nicht gefunden: testprofli') { Fail "profile: Tippfehler: Exit $($r.Code)`n$($r.Text)" }
+elseif (Test-PdfA $p5) { Fail 'profile: Tippfehler erzeugt trotzdem ein PDF' }
+else { Ok 'profile: Tippfehler -> Exit 1' }
+if ($OtherTemp) {
+  # Notiz und Profil auf einem anderen Laufwerk: der Profil-Ordner wird komplett bereitgestellt.
+  $pdrv = Join-Path $OtherTemp ('mdo profil platte ' + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Force -Path (Join-Path $pdrv 'profiles') | Out-Null
+  Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\testprofil.yaml'), (Join-Path $Fixtures 'profiles\sig.svg') -Destination (Join-Path $pdrv 'profiles')
+  $pdrvNote = Join-Path $pdrv 'brief.md'
+  [IO.File]::WriteAllText($pdrvNote, "---`ntemplate: profile`nprofile: testprofil`n---`n`nText.`n", (New-Object Text.UTF8Encoding $false))
+  $pdrvPdf = Join-Path $pdrv 'brief.pdf'
+  $r = Invoke-Convert @($pdrvNote, $pdrvPdf)
+  if ($r.Code -ne 0) { Fail "profile: anderes Laufwerk: Exit $($r.Code)`n$($r.Text)" }
+  elseif (-not (Test-PdfA $pdrvPdf)) { Fail 'profile: anderes Laufwerk: PDF fehlt' }
+  else { Ok 'profile: Profil auf anderem Laufwerk (Unterschrift aus dem bereitgestellten Ordner)' }
+  Remove-Item -LiteralPath $pdrv -Recurse -Force -ErrorAction SilentlyContinue
+} else {
+  Skip 'profile: anderes Laufwerk (kein Temp-Ordner auf einem anderen Laufwerk als das Repo)'
+}
+$env:MDO_TEMPLATES = $EmptyTemplates
+
 Set-Location $Repo
 Remove-Item -LiteralPath $EmptyTemplates -Recurse -Force -ErrorAction SilentlyContinue
 

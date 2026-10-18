@@ -231,6 +231,7 @@ hard_breaks: false           # line breaks become spaces
 | `watermark` | text | — | Diagonal light-grey watermark beneath everything. |
 | `logo` | file `.svg`/`.png`/`.jpg`/`.jpeg` | no logo | Logo in the header, only when set; see [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximum logo height (at most 25 mm); the logo keeps its proportions and is at most 60 mm wide. |
+| `profile` | name or `.yaml` path | no profile | Sender profile: a name looks for `profiles/<name>.yaml` next to the note, in the templates folder and in the set; a path to a `.yaml` file is relative to the note. Only for sets that use profiles (e.g. din5008a); not found: error, no PDF. |
 | `embed_source` | `true` / `false` | `true` | Embed the Markdown source as an attachment. |
 | `hard_breaks` | `true` / `false` | `true` | Every line break stays one (as typed in the editor), even without an entry. Only `false` switches to CommonMark: a single break becomes a space. |
 

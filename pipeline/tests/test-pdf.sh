@@ -689,7 +689,50 @@ test_templates() {
   ok "Fehlerfälle und --help"
 }
 
+test_profiles() {
+  local sets="${fixtures}/templates" pdir="${out_dir}/Profil Notiz" vorl="${out_dir}/Profil Vorlagen" text err code
+  mkdir -p "${pdir}/profiles" "${vorl}/profiles"
+  # Nur im Vorlagen-Ordner: gefunden über <templates>/profiles/<name>.yaml.
+  cp "${fixtures}/profiles/testprofil.yaml" "${fixtures}/profiles/sig.svg" "${vorl}/profiles/"
+  cp "${sets}/profile.typ" "${vorl}/"
+  printf -- '---\ntemplate: profile\nprofile: testprofil\n---\n\nText.\n' >"${pdir}/brief.md"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/brief.md" "${out_dir}/p1.pdf" >/dev/null 2>"${out_dir}/p1.err" ||
+    die "profile: Vorlagen-Ordner: $(cat "${out_dir}/p1.err")"
+  text="$(pdf_text "${out_dir}/p1.pdf")"
+  expect "profile: Vorlagen-Ordner" "${text}" "NAME=PROFIL-NAME" "SIG-OK"
+
+  # profiles/ neben der Notiz gewinnt.
+  sed 's/PROFIL-NAME/NOTIZ-PROFIL/' "${fixtures}/profiles/testprofil.yaml" >"${pdir}/profiles/testprofil.yaml"
+  cp "${fixtures}/profiles/sig.svg" "${pdir}/profiles/"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/brief.md" "${out_dir}/p2.pdf" >/dev/null 2>&1 ||
+    die "profile: Notizordner: Export fehlgeschlagen"
+  expect "profile: Notizordner" "$(pdf_text "${out_dir}/p2.pdf")" "NAME=NOTIZ-PROFIL"
+
+  # Als Pfad (relativ zur Notiz, mit ~ und $VAR) statt als Name.
+  printf -- '---\ntemplate: profile\nprofile: profiles/testprofil.yaml\n---\n\nText.\n' >"${pdir}/pfad.md"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/pfad.md" "${out_dir}/p3.pdf" >/dev/null 2>&1 ||
+    die "profile: Pfad: Export fehlgeschlagen"
+  expect "profile: Pfad" "$(pdf_text "${out_dir}/p3.pdf")" "NAME=NOTIZ-PROFIL"
+
+  # Ohne profile: leere Eingabe.
+  printf -- '---\ntemplate: profile\n---\n\nText.\n' >"${pdir}/ohne.md"
+  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/ohne.md" "${out_dir}/p4.pdf" >/dev/null 2>&1 ||
+    die "profile: ohne: Export fehlgeschlagen"
+  expect "profile: ohne" "$(pdf_text "${out_dir}/p4.pdf")" "KEIN-PROFIL"
+
+  # Tippfehler: Exit 1, klare Meldung mit den gesuchten Ordnern, kein PDF.
+  printf -- '---\ntemplate: profile\nprofile: testprofli\n---\n\nText.\n' >"${pdir}/falsch.md"
+  code=0
+  err="$(MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/falsch.md" "${out_dir}/p5.pdf" 2>&1 >/dev/null)" || code=$?
+  [[ "${code}" -eq 1 ]] || die "profile: Tippfehler liefert Exit ${code}"
+  grep -q "Profil nicht gefunden: testprofli" <<<"${err}" || die "profile: unklare Meldung: ${err}"
+  grep -q "${vorl}/profiles" <<<"${err}" || die "profile: Meldung nennt den Vorlagen-Ordner nicht: ${err}"
+  [[ ! -e "${out_dir}/p5.pdf" ]] || die "profile: Tippfehler erzeugt trotzdem ein PDF"
+  ok "profile: Notizordner → Vorlagen-Ordner → Set-Ordner, Pfad, Fehler bei Tippfehler"
+}
+
 test_fixtures
 test_interface
 test_templates
+test_profiles
 printf 'Alle Tests bestanden.\n'

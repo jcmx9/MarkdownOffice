@@ -95,8 +95,8 @@ Options:
 
 Optionale YAML-Frontmatter-Schlüssel:
   title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
-  print_filename, lang, header, watermark, logo, logo-height, embed_source,
-  hard_breaks, template
+  print_filename, lang, header, watermark, logo, logo-height, profile,
+  embed_source, hard_breaks, template
 
 Exit-Code 0 nur bei Erfolg; Fehler und Warnungen gehen auf stderr.
 
@@ -305,6 +305,7 @@ fm_client=""
 fm_author=""
 fm_logo=""
 fm_logo_height=""
+fm_profile=""
 fm_embed="true"
 fm_breaks="true"
 fm_template=""
@@ -334,6 +335,7 @@ if [[ "$(head -n 1 "${src}" | tr -d '\r')" == "---" ]]; then
       author:*)          fm_author="$(yaml_str "${line#author:}")" ;;
       logo:*)            fm_logo="$(yaml_str "${line#logo:}")" ;;
       logo-height:*)     fm_logo_height="$(yaml_str "${line#logo-height:}")" ;;
+      profile:*)         fm_profile="$(yaml_str "${line#profile:}")" ;;
       print_filename:*)
         if b="$(fm_bool print_filename "${line#print_filename:}")"; then fm_showname="${b}"; fi
         ;;
@@ -468,6 +470,40 @@ else
   template_file="$(resolve_template "${fm_template}" "${base_dir}")" || exit 1
 fi
 
+# Absender-Profil (profile:). Typst kann nicht prüfen, ob eine Datei existiert; daher sucht
+# das Skript, wie beim Logo, und übergibt den Pfad als Eingabe profile. Das Set liest die
+# YAML-Datei und Dateien daneben (z. B. die Unterschrift). Ein Name (a-z, 0-9, _ und -)
+# sucht profiles/<name>.yaml im Ordner der Notiz (bzw. MDO_BASE_DIR), dann im
+# Vorlagen-Ordner, dann im Ordner des Sets (Beispielprofile); ein Wert auf .yaml/.yml ist
+# ein Pfad (relativ zur Notiz, ~ und $VAR wie bei Bildern). Nicht gefunden -> Exit 1: ein
+# Brief ohne Absender wäre schlimmer als keiner.
+profile=""
+if [[ -n "${fm_profile}" ]]; then
+  if [[ "${fm_profile}" =~ ^[a-z0-9_-]+$ ]]; then
+    set_dir="$(dirname "${template_file}")"
+    for dir in "${base_dir}/profiles" "${user_templates}/profiles" "${set_dir}/profiles"; do
+      if [[ -f "${dir}/${fm_profile}.yaml" ]]; then profile="${dir}/${fm_profile}.yaml"; break; fi
+    done
+    if [[ -z "${profile}" ]]; then
+      echo "Error: Profil nicht gefunden: ${fm_profile} (gesucht in ${base_dir}/profiles, ${user_templates}/profiles und ${set_dir}/profiles)" >&2
+      exit 1
+    fi
+  else
+    case "$(printf '%s' "${fm_profile}" | tr '[:upper:]' '[:lower:]')" in
+      *.yaml|*.yml)
+        p="$(expand_path "${fm_profile}")"
+        case "${p}" in /*) ;; *) p="${base_dir}/${p}" ;; esac
+        if [[ ! -f "${p}" ]]; then echo "Error: Profil nicht gefunden: ${fm_profile}" >&2; exit 1; fi
+        profile="$(cd "$(dirname "${p}")" && pwd)/$(basename "${p}")"
+        ;;
+      *)
+        echo "Error: ungültiges Profil: ${fm_profile} (erlaubt: Name aus a-z, 0-9, _ und - oder eine .yaml-Datei)" >&2
+        exit 1
+        ;;
+    esac
+  fi
+fi
+
 # Laufzeit-Eingaben fürs Template. --root / : Typst behandelt absolute Pfade
 # projektwurzel-relativ und sperrt Lesezugriffe außerhalb; für Quelle, Bilder
 # und Logo (die überall liegen können) muss die Wurzel den absoluten Pfad umfassen.
@@ -481,6 +517,7 @@ typst_inputs=(
   --input "author=${fm_author}"
   --input "logo=${logo}"
   --input "logo_height=${fm_logo_height}"
+  --input "profile=${profile}"
   --input "source=${src_abs}"
   --input "attach=${attach}"
   --input "docdir=${base_dir}"
