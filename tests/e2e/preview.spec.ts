@@ -197,3 +197,42 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   await shot(page, 'highlight-code')
   await app.close()
 })
+
+test('external links get the link colour and a ↗ that is not document text', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Links.md')
+  const source =
+    'Siehe [Doku](https://example.com/doku) und [Kapitel](#kapitel).\n\n' +
+    '| Verweis | Art |\n|---|---|\n| [Tabelle](https://example.com/t) | extern |\n\nEnde\n'
+  await writeFile(note, source)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  const line = page.locator('.cm-line', { hasText: 'Siehe' })
+  const ext = line.locator('.mdo-link-ext')
+  await expect(ext).toHaveText('Doku')
+  await expect(ext).toHaveCSS('color', 'rgb(31, 111, 106)')
+  // Internal link: plain link look, no arrow.
+  await expect(line.locator('.mdo-link:not(.mdo-link-ext)')).toHaveText('Kapitel')
+  const arrows = line.locator('.mdo-link-arrow')
+  await expect(arrows).toHaveCount(1)
+  const arrow = await arrows.first().evaluate((el) => ({
+    glyph: getComputedStyle(el, '::before').content,
+    text: el.textContent,
+    inLink: el.closest('.mdo-link') !== null,
+  }))
+  // The glyph comes from CSS: the widget has no text and sits after, not inside, the link
+  // (so the underline stops before it).
+  expect(arrow).toEqual({ glyph: '"↗"', text: '', inLink: false })
+  // Table widget (cursor elsewhere): the same marker.
+  await expect(page.locator('table.mdo-table .mdo-link-ext')).toHaveText('Tabelle')
+  await expect(page.locator('table.mdo-table .mdo-link-arrow')).toHaveCount(1)
+  expect(await page.locator('.cm-content').textContent()).not.toContain('↗')
+  await shot(page, 'links-preview')
+  // Code view: raw source, no marker.
+  await clickMenu(app, 'toggle-view')
+  await page.locator('.cm-editor.mdo-code').waitFor()
+  await expect(page.locator('.mdo-link-arrow')).toHaveCount(0)
+  await page.waitForTimeout(1500)
+  expect((await readFile(note)).toString()).toBe(source)
+  await app.close()
+})

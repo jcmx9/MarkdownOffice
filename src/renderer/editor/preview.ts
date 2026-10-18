@@ -10,6 +10,7 @@ import {
 } from '@codemirror/view'
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common'
 import { frontmatterFields } from './frontmatter'
+import { EXTERNAL_DEST } from './inline-render'
 
 export type PreviewRange = { from: number; to: number }
 
@@ -26,6 +27,33 @@ const INLINE: Record<string, { cls: string; marks: string[] }> = {
   InlineCode: { cls: 'mdo-code-inline', marks: ['CodeMark'] },
   Link: { cls: 'mdo-link', marks: ['LinkMark', 'URL', 'LinkTitle', 'LinkLabel'] },
 }
+
+/** The destination of a `Link` or `Autolink` node if the set marks it as external. */
+function externalDest(state: EditorState, node: SyntaxNode): string | null {
+  const url = node.getChild('URL')
+  if (!url) return null
+  const dest = state.doc.sliceString(url.from, url.to)
+  return EXTERNAL_DEST.test(dest) ? dest : null
+}
+
+/**
+ * The small ↗ after an external link, like the set's PDF. A widget, so the arrow is never
+ * part of the document (byte-exact source); the glyph itself comes from CSS (`::before`),
+ * so copying the rendered text does not pick it up either.
+ */
+class LinkArrowWidget extends WidgetType {
+  override eq(): boolean {
+    return true
+  }
+  toDOM(): HTMLElement {
+    const s = document.createElement('span')
+    s.className = 'mdo-link-arrow'
+    s.setAttribute('aria-hidden', 'true')
+    return s
+  }
+}
+// side -1: the arrow belongs to the link's end, so a cursor right after the link sits behind it.
+const linkArrow = Decoration.widget({ widget: new LinkArrowWidget(), side: -1, rf: 'link-arrow' })
 
 /** Context passed to every node handler (Task 5 adds block handlers that use it too). */
 export interface PreviewCx {
@@ -111,7 +139,11 @@ export function visitInline(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefi
   }
   const inline = INLINE[name]
   if (inline) {
-    cx.out.push(markDeco(inline.cls).range(ref.from, ref.to))
+    const external = name === 'Link' && externalDest(cx.state, ref.node) !== null
+    cx.out.push(
+      markDeco(external ? `${inline.cls} mdo-link-ext` : inline.cls).range(ref.from, ref.to),
+    )
+    if (external) cx.out.push(linkArrow.range(ref.to))
     const reveal = cx.touches(ref.from, ref.to)
     for (const markName of inline.marks) {
       for (const m of ref.node.getChildren(markName)) cx.hideOrFaint(m.from, m.to, reveal)
@@ -123,7 +155,10 @@ export function visitInline(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefi
     return
   }
   if (name === 'Autolink') {
-    cx.out.push(markDeco('mdo-link').range(ref.from, ref.to))
+    // <https://…> is a real link in the PDF (and gets the ↗); a bare URL without <> is not.
+    const external = externalDest(cx.state, ref.node) !== null
+    cx.out.push(markDeco(external ? 'mdo-link mdo-link-ext' : 'mdo-link').range(ref.from, ref.to))
+    if (external) cx.out.push(linkArrow.range(ref.to))
     return false
   }
   if (name === 'Escape') {
