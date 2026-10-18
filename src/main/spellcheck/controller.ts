@@ -1,10 +1,16 @@
 import { join } from 'node:path'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, Session } from 'electron'
 import type { Settings } from '../../shared/types'
 import { installBundledDictionaries } from './dictionaries'
 
 /** A URL that never answers: Electron must never fetch a dictionary from Google's CDN. */
 export const DEAD_DOWNLOAD_URL = 'http://127.0.0.1:9/'
+
+/**
+ * Sessions that already carry the download-failure warning. Every window shares the default
+ * session, so a re-created window (macOS reopen) must not add the listener again.
+ */
+const warned = new WeakSet<Session>()
 
 export interface SpellcheckOptions {
   userData: string
@@ -38,10 +44,21 @@ export class SpellcheckController {
     if (this.hunspell) {
       // Set before anything can ask for a dictionary: a missing one fails instead of loading.
       s.setSpellCheckerDictionaryDownloadURL(DEAD_DOWNLOAD_URL)
-      s.on('spellcheck-dictionary-download-failure', (_e, code) =>
-        console.warn(`spellcheck: no dictionary for ${code} (offline by design)`),
-      )
-      if (this.opts.bundledDir) await installBundledDictionaries(this.opts.bundledDir, this.dictDir)
+      if (!warned.has(s)) {
+        warned.add(s)
+        s.on('spellcheck-dictionary-download-failure', (_e, code) =>
+          console.warn(`spellcheck: no dictionary for ${code} (offline by design)`),
+        )
+      }
+      // A failed install (disk full, permissions) must not skip the user's switch below: the
+      // window enables checking by default, so "off" would otherwise be ignored.
+      if (this.opts.bundledDir) {
+        try {
+          await installBundledDictionaries(this.opts.bundledDir, this.dictDir)
+        } catch (err) {
+          console.warn('spellcheck: bundled dictionaries could not be installed', err)
+        }
+      }
     }
     this.applySettings(this.opts.settings())
   }

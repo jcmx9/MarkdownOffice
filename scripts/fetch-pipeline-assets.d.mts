@@ -21,10 +21,15 @@ export type Manifest = {
     file: string
     url: string
     sha256: string
-    /** `encoding: 'base64'`: served base64-encoded; `sha256` pins the decoded text. */
-    license: { file: string; url: string; sha256: string; encoding?: 'base64' }
+    /**
+     * One licence file or several. `encoding: 'base64'`: served base64-encoded; `sha256` pins
+     * the decoded text.
+     */
+    license: DictLicense | DictLicense[]
   }[]
 }
+export type DictLicense = { file: string; url: string; sha256: string; encoding?: 'base64' }
+export function dictLicenses(dict: NonNullable<Manifest['dictionaries']>[number]): DictLicense[]
 export function folderName(target: string): string
 export function hostTarget(): string
 export function fetchAssets(o: {

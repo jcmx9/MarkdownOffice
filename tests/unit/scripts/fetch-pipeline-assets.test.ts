@@ -17,7 +17,7 @@ import { fetchAssets, folderName } from '../../../scripts/fetch-pipeline-assets.
 
 type SetEntry = Manifest['sets'][number]
 type FontLicense = Manifest['fonts'][number]['license']
-type DictLicense = NonNullable<Manifest['dictionaries']>[number]['license']
+type DictLicense = import('../../../scripts/fetch-pipeline-assets.mjs').DictLicense
 
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex')
 
@@ -74,6 +74,8 @@ function makeManifest() {
   // Served base64-encoded, like Gitiles' ?format=TEXT; the pin is the decoded text's hash.
   const deLicUrl = 'https://x.test/README_de_DE.txt?format=TEXT'
   const deLic = Buffer.from('LGPL de')
+  const lgplUrl = 'https://x.test/COPYING.LGPL'
+  const lgpl = Buffer.from('LGPL 2.1 text')
   const enUrl = 'https://x.test/dict/en-us-10-1.bdic'
   const en = Buffer.from('BDIC-EN')
   const enLicUrl = 'https://x.test/README_en_US.txt'
@@ -86,6 +88,7 @@ function makeManifest() {
     [pkgUrl, pkg],
     [deUrl, de],
     [deLicUrl, Buffer.from(deLic.toString('base64'))],
+    [lgplUrl, lgpl],
     [enUrl, en],
     [enLicUrl, enLic],
   ])
@@ -117,19 +120,20 @@ function makeManifest() {
         file: 'de-DE-3-0.bdic',
         url: deUrl,
         sha256: sha(de),
-        license: {
-          file: 'de-DE-LICENSE.txt',
-          url: deLicUrl,
-          encoding: 'base64',
-          sha256: sha(deLic),
-        } as DictLicense,
+        // Several licence files: the README naming the LGPL plus the LGPL text itself.
+        license: [
+          { file: 'de-DE-LICENSE.txt', url: deLicUrl, encoding: 'base64', sha256: sha(deLic) },
+          { file: 'de-DE-LGPL-2.1.txt', url: lgplUrl, sha256: sha(lgpl) },
+        ] as DictLicense | DictLicense[],
       },
       {
         code: 'en-US',
         file: 'en-US-10-1.bdic',
         url: enUrl,
         sha256: sha(en),
-        license: { file: 'en-US-LICENSE.txt', url: enLicUrl, sha256: sha(enLic) } as DictLicense,
+        license: { file: 'en-US-LICENSE.txt', url: enLicUrl, sha256: sha(enLic) } as
+          | DictLicense
+          | DictLicense[],
       },
     ],
   }
@@ -185,6 +189,7 @@ describe('fetchAssets', () => {
     expect(out('dictionaries/de-DE-3-0.bdic')).toBe('BDIC-DE')
     expect(out('dictionaries/en-US-10-1.bdic')).toBe('BDIC-EN')
     expect(out('licenses/dictionaries/de-DE-LICENSE.txt')).toBe('LGPL de')
+    expect(out('licenses/dictionaries/de-DE-LGPL-2.1.txt')).toBe('LGPL 2.1 text')
     expect(out('licenses/dictionaries/en-US-LICENSE.txt')).toBe('SCOWL en')
   })
 
@@ -198,11 +203,29 @@ describe('fetchAssets', () => {
 
   it('verifies a decoded licence against its pin', async () => {
     const manifest = makeManifest()
-    const de = manifest.dictionaries[0] as { license: DictLicense }
-    de.license = { ...de.license, sha256: '0'.repeat(64) }
+    const de = manifest.dictionaries[0] as { license: DictLicense[] }
+    de.license = [{ ...(de.license[0] as DictLicense), sha256: '0'.repeat(64) }]
     await expect(run(manifest)).rejects.toThrow(
       'Prüfsumme falsch: https://x.test/README_de_DE.txt?format=TEXT',
     )
+  })
+
+  it('verifies every licence of a multi-licence entry', async () => {
+    const manifest = makeManifest()
+    const de = manifest.dictionaries[0] as { license: DictLicense[] }
+    de.license = [
+      de.license[0] as DictLicense,
+      { ...(de.license[1] as DictLicense), sha256: '0'.repeat(64) },
+    ]
+    await expect(run(manifest)).rejects.toThrow('Prüfsumme falsch: https://x.test/COPYING.LGPL')
+  })
+
+  it('fetches a dictionary again when one of its licences is missing', async () => {
+    const manifest = makeManifest()
+    await run(manifest)
+    rmSync(join(outDir, 'licenses', 'dictionaries', 'de-DE-LGPL-2.1.txt'))
+    await run(manifest)
+    expect(existsSync(join(outDir, 'licenses', 'dictionaries', 'de-DE-LGPL-2.1.txt'))).toBe(true)
   })
 
   it('verifies a separately downloaded licence against its pin', async () => {
@@ -258,7 +281,7 @@ describe('fetchAssets', () => {
     const manifest = makeManifest()
     await run(manifest)
     const first = calls.length
-    expect(first).toBe(9)
+    expect(first).toBe(10)
     await run(manifest)
     expect(calls.length).toBe(first)
   })
@@ -268,7 +291,7 @@ describe('fetchAssets', () => {
     await run(manifest)
     rmSync(join(outDir, 'mac-arm64', 'typst'))
     await run(manifest)
-    expect(calls.length).toBe(10)
+    expect(calls.length).toBe(11)
   })
 })
 

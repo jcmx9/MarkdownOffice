@@ -110,12 +110,20 @@
       "file": "de-DE-3-0.bdic",
       "url": "https://redirector.gvt1.com/edgedl/chrome/dict/de-de-3-0.bdic",
       "sha256": "076a470700dbd0aa62bb8b3d24c34e1340bdfe83cbbcfc035ce972f23c140400",
-      "license": {
-        "file": "de-DE-LICENSE.txt",
-        "url": "https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/eb106bd524eea61487644fffeec0d229fa41791a/README_de_DE_neu.txt?format=TEXT",
-        "encoding": "base64",
-        "sha256": "9ef26e87938c4432ba4854663ba0196124880447a007c87d126fae87fdcade8c"
-      }
+      "license": [
+        {
+          "file": "de-DE-LICENSE.txt",
+          "url": "https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/eb106bd524eea61487644fffeec0d229fa41791a/README_de_DE_neu.txt?format=TEXT",
+          "encoding": "base64",
+          "sha256": "9ef26e87938c4432ba4854663ba0196124880447a007c87d126fae87fdcade8c"
+        },
+        {
+          "file": "de-DE-LGPL-2.1.txt",
+          "url": "https://chromium.googlesource.com/chromium/deps/hunspell_dictionaries/+/eb106bd524eea61487644fffeec0d229fa41791a/COPYING.LGPL?format=TEXT",
+          "encoding": "base64",
+          "sha256": "5bbcbb737e60fe9deba08ecbd00920cfcc3403ba2e534c64fdeea49d6bb87509"
+        }
+      ]
     },
     {
       "code": "en-US",

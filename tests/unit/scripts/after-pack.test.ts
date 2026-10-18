@@ -103,7 +103,13 @@ describe('manifestLicenses', () => {
         typst: { licenses: ['LICENSE', 'NOTICE'] },
         fonts: [{ license: { file: 'A-OFL.txt' } }],
         packages: [{ name: 'cm', license: 'LICENSE' }],
-        dictionaries: [{ file: 'de-DE-3-0.bdic', license: { file: 'de-DE-LICENSE.txt' } }],
+        dictionaries: [
+          {
+            file: 'de-DE-3-0.bdic',
+            license: [{ file: 'de-DE-LICENSE.txt' }, { file: 'de-DE-LGPL-2.1.txt' }],
+          },
+          { file: 'en-US-10-1.bdic', license: { file: 'en-US-LICENSE.txt' } },
+        ],
       }),
     ).toEqual([
       'typst/LICENSE',
@@ -111,6 +117,8 @@ describe('manifestLicenses', () => {
       'fonts/A-OFL.txt',
       'packages/cm/LICENSE',
       'dictionaries/de-DE-LICENSE.txt',
+      'dictionaries/de-DE-LGPL-2.1.txt',
+      'dictionaries/en-US-LICENSE.txt',
     ])
   })
 
@@ -121,9 +129,12 @@ describe('manifestLicenses', () => {
     const all = manifestLicenses(manifest)
     expect(all.filter((l) => l.startsWith('fonts/'))).toHaveLength(manifest.fonts.length)
     expect(all.filter((l) => l.startsWith('packages/'))).toHaveLength(manifest.packages.length)
-    expect(all.filter((l) => l.startsWith('dictionaries/'))).toHaveLength(
-      manifest.dictionaries.length,
+    const dictLicenses = manifest.dictionaries.flatMap((d: { license: unknown }) =>
+      Array.isArray(d.license) ? d.license : [d.license],
     )
+    expect(all.filter((l) => l.startsWith('dictionaries/'))).toHaveLength(dictLicenses.length)
+    // R5: the German dictionary (de_DE_neu, LGPL) ships the full LGPL text.
+    expect(all).toContain('dictionaries/de-DE-LGPL-2.1.txt')
     expect(all).toEqual(expect.arrayContaining(['typst/LICENSE', 'typst/NOTICE']))
   })
 })

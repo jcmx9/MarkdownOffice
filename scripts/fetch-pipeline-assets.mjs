@@ -38,7 +38,8 @@ import { fileURLToPath } from 'node:url'
  *   `encoding: 'base64'`: the server sends the text base64-encoded (Gitiles `?format=TEXT`);
  *   `sha256` pins the decoded text, i.e. the file that ships
  * @typedef {{ code: string, file: string, url: string, sha256: string,
- *   license: DictLicense }} DictionaryEntry
+ *   license: DictLicense | DictLicense[] }} DictionaryEntry
+ *   `license`: one licence file, or several (e.g. the README naming the LGPL plus its text)
  *   `file`: the canonical name Chromium expects in <userData>/Dictionaries (e.g. de-DE-3-0.bdic)
  * @typedef {{
  *   typst: { version: string, licenses: string[], targets: Record<string, TypstTarget> },
@@ -107,6 +108,15 @@ async function fetchLicenseText(download, license) {
   const decode = async (/** @type {string} */ url) =>
     new Uint8Array(Buffer.from(Buffer.from(await download(url)).toString('latin1'), 'base64'))
   return fetchVerified(decode, license.url, license.sha256)
+}
+
+/**
+ * The licence files of a dictionary entry: a single object and an array are both accepted.
+ * @param {DictionaryEntry} dict
+ * @returns {DictLicense[]}
+ */
+export function dictLicenses(dict) {
+  return Array.isArray(dict.license) ? dict.license : [dict.license]
 }
 
 /**
@@ -349,25 +359,29 @@ export async function fetchAssets(o) {
     // host so the licence check and the pinned files stay the same everywhere.
     const dictDir = join(outDir, 'dictionaries')
     for (const dict of manifest.dictionaries ?? []) {
-      const license = dict.license
-      if (!license?.file || !license.url || !license.sha256) {
+      const licenses = dictLicenses(dict)
+      if (!licenses.length || licenses.some((l) => !l?.file || !l.url || !l.sha256)) {
         throw new Error(`Wörterbuch ohne Lizenz im Manifest: ${dict.code}`)
       }
-      const licenseRel = `licenses/dictionaries/${license.file}`
+      const licenseRels = licenses.map((l) => `licenses/dictionaries/${l.file}`)
       await component(
         `dict-${dict.code}`,
-        `${dict.sha256}+${license.sha256}`,
-        [licenseRel],
+        // Every licence is part of the pin: a new or changed licence pin refreshes the entry.
+        [dict.sha256, ...licenses.map((l) => l.sha256)].join('+'),
+        licenseRels,
         async () => {
           const bytes = await fetchVerified(download, dict.url, dict.sha256)
           const staged = scratch()
           writeFileSync(join(staged, dict.file), bytes)
-          writeFileSync(join(staged, '.license'), await fetchLicenseText(download, license))
-          placeLicense(join(staged, '.license'), outDir, licenseRel)
+          for (const [i, license] of licenses.entries()) {
+            const src = join(staged, `.license-${i}`)
+            writeFileSync(src, await fetchLicenseText(download, license))
+            placeLicense(src, outDir, /** @type {string} */ (licenseRels[i]))
+          }
           mkdirSync(dictDir, { recursive: true })
           rmSync(join(dictDir, dict.file), { force: true })
           renameSync(join(staged, dict.file), join(dictDir, dict.file))
-          return [`dictionaries/${dict.file}`, licenseRel]
+          return [`dictionaries/${dict.file}`, ...licenseRels]
         },
         `Wörterbuch ${dict.code}`,
       )

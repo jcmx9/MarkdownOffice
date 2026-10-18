@@ -15,7 +15,7 @@ function fakeWindow() {
     setSpellCheckerEnabled: (on: boolean) => calls.push(`enabled ${on}`),
     on: (event: string) => calls.push(`on ${event}`),
   }
-  return { calls, win: { webContents: { session } } as unknown as BrowserWindow }
+  return { calls, session, win: { webContents: { session } } as unknown as BrowserWindow }
 }
 
 const dir = () => mkdtempSync(join(tmpdir(), 'mdo-spell-'))
@@ -61,5 +61,38 @@ describe('SpellcheckController', () => {
     })
     c.applySettings({ ...defaultSettings('/docs'), spellcheck: false })
     expect(calls).toEqual(['enabled false'])
+  })
+
+  it('applies the switch even when installing the bundled dictionaries fails', async () => {
+    const { calls, win } = fakeWindow()
+    // A file where the Dictionaries folder should go: mkdir fails like a permission error.
+    const userData = dir()
+    writeFileSync(join(userData, 'Dictionaries'), 'not a folder')
+    const bundled = dir()
+    writeFileSync(join(bundled, 'de-DE-3-0.bdic'), 'DE')
+    const c = new SpellcheckController(win, {
+      userData,
+      bundledDir: bundled,
+      platform: 'linux',
+      settings: () => ({ ...defaultSettings('/docs'), spellcheck: false }),
+    })
+    await expect(c.start()).resolves.toBeUndefined()
+    expect(calls).toContain('enabled false')
+  })
+
+  it('registers the download-failure warning once per session', async () => {
+    const { calls, session } = fakeWindow()
+    // Two windows on the shared default session (e.g. macOS reopen on a Linux-like setup).
+    for (let i = 0; i < 2; i++) {
+      const win = { webContents: { session } } as unknown as BrowserWindow
+      const c = new SpellcheckController(win, {
+        userData: dir(),
+        bundledDir: null,
+        platform: 'win32',
+        settings: () => defaultSettings('/docs'),
+      })
+      await c.start()
+    }
+    expect(calls.filter((c) => c === 'on spellcheck-dictionary-download-failure')).toHaveLength(1)
   })
 })

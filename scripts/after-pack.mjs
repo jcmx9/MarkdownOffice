@@ -51,7 +51,7 @@ export function checkPackedResources(o) {
  *   typst: { licenses: string[] },
  *   fonts: { file?: string, extract?: string[], license: { file: string } }[],
  *   packages: { name: string, license: string }[],
- *   dictionaries?: { file: string, license: { file: string } }[]
+ *   dictionaries?: { file: string, license: { file: string } | { file: string }[] }[]
  * }} PackManifest
  */
 
@@ -82,7 +82,10 @@ export function manifestLicenses(manifest) {
     ...manifest.fonts.map((f) => `fonts/${f.license.file}`),
     ...manifest.packages.map((p) => `packages/${p.name}/${p.license}`),
     // Shipped on every OS (the licences folder is common), even where no dictionary ships.
-    ...(manifest.dictionaries ?? []).map((d) => `dictionaries/${d.license.file}`),
+    // `license` is one object or an array of them (e.g. README plus LGPL text).
+    ...(manifest.dictionaries ?? []).flatMap((d) =>
+      (Array.isArray(d.license) ? d.license : [d.license]).map((l) => `dictionaries/${l.file}`),
+    ),
   ]
 }
 
