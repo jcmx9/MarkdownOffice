@@ -46,6 +46,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - **Breaking:** the front-matter key `client:` is renamed to `toptitle:` (pipeline, Windows pipeline, editor title block, snippets `:header`, `:meeting`, `:telefonnotiz`, docs); `client:` is no longer read, so rename it in existing notes. The Typst input `client` is now `toptitle`; own template sets must read `sys.inputs.toptitle`
 - Set `memo` 26.10.4: reads `toptitle` instead of `client` (small line above the title, footer, PDF keywords); its header file has `toptitle:`
+- Set `din5008a` 26.10.1: sender profiles get separate `zip` and optional `country` (default Germany) next to `city`, so the vCard QR code carries postal code, city and country in their own address fields (`ADR:;;<street>;<city>;;<zip>;<country>`, special characters escaped); the printed sender line stays `<zip> <city>`, and old profiles with `city: 33609 Bielefeld` print the same text (the QR splits off the leading postal code); an unquoted German `zip` read as a number is padded back to five digits; the example profile `beispiel` uses `zip` + `city`
 
 ### Fixed
 - Preview: heading spacing and the H1 hairline follow the `memo` PDF (baseline distances within 1pt) and no longer depend on blank lines in the source; blank lines next to a heading collapse until the cursor is on them
