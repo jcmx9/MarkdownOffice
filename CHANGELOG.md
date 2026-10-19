@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.0] - 2026-10-19
+
 ### Added
 - Editor: „Datei → Profil anlegen …“ copies the shown note's set example profile (with its companion files, renamed, and the YAML's references to them updated) to `Vorlagen/<set>/profiles/<name>.yaml`, sets `profile: <name>` in the note (one undo step) and opens the YAML as a tab; nothing is ever overwritten
 - Editor: YAML files (`.yaml`/`.yml`) open as tabs (also via „Öffnen …“): always the Code view with YAML highlighting, no spell checking; export, header insert/toggle and page breaks are refused there, and renaming keeps the YAML extension
