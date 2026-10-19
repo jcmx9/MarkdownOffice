@@ -4,9 +4,7 @@ Checkliste
 Checkliste
 
                   Aufgabe                       Status
-
  Ohne Zuständigkeit bleibt es eine Checkliste
-
  Erledigt                                         ✓
 
 

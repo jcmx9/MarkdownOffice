@@ -4,12 +4,15 @@ import { AppContext } from './context'
 import { handleFontProtocol, registerFontScheme } from './font-protocol'
 import { registerIpc } from './ipc'
 import { pipelinePaths } from './pipeline'
+import { enableExistingTextSpellcheck } from './spellcheck/features'
 import { userDataOverride } from './user-data'
 
 // Must run before requestSingleInstanceLock: the lock lives in userData.
 const userData = userDataOverride(process.env, app.isPackaged, app.getPath('appData'))
 if (userData) app.setPath('userData', userData)
 registerFontScheme()
+// Before ready: lets Chromium check the text of an opened note, not only typed words.
+enableExistingTextSpellcheck(app.commandLine)
 
 const cli = parseCli(argsFromArgv(process.argv, app.isPackaged), process.cwd())
 
@@ -61,6 +64,12 @@ function run(initial: string[]): void {
     // macOS shows "Version <app> (<build>)"; both are the package version, so drop the build.
     app.setAboutPanelOptions({ applicationVersion: app.getVersion(), version: '' })
     await ctx.load()
+    // Before handleFontProtocol: protocol.handle creates the default session, and with it
+    // Chromium's spellchecker, which must find the dictionaries and the dead download URL.
+    // A failure only logs: the window and its own guard (SpellcheckController) still start.
+    await ctx
+      .prepareSpellcheck()
+      .catch((err) => console.warn('spellcheck: preparation at start failed', err))
     handleFontProtocol(pipeline.paths.fonts)
     registerIpc(ctx)
     ctx.markInitialized()

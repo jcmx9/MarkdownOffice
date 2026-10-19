@@ -14,6 +14,15 @@ export interface Tab {
   headerHidden: boolean
 }
 
+/**
+ * A tab holds a Markdown note unless its file is YAML (a profile opened by „Profil anlegen …“).
+ * The one place that decides it: a YAML tab is shown in the Code view without spellcheck, and
+ * export, header insert and header toggle refuse it, since they only make sense for a note.
+ */
+export function isMarkdownTab(tab: Pick<Tab, 'path'>): boolean {
+  return !/\.ya?ml$/i.test(tab.path)
+}
+
 export interface NewTab {
   path: string
   state: EditorState

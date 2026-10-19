@@ -14,6 +14,10 @@
 #    never touched.
 set -euo pipefail
 
+# grep that reads its whole input: `cmd | grep -q` exits at the first match, cmd gets
+# SIGPIPE and pipefail turns that into a random failure.
+quiet_grep() { grep "$@" >/dev/null; }
+
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 release="${root}/scripts/release.sh"
 tmp="$(mktemp -d)"
@@ -411,12 +415,12 @@ FAKE_CHECKS_DELAY=2 run_release prod >"${tmp}/out.txt" 2>&1 || { cat "${tmp}/out
 expect_released "prod cycle 1" "26.10.0" "26.10.1-dev.0"
 expect_eq "prod cycle 1: checks were polled until registered" \
   "$(grep -c 'gh pr checks release/26.10.0 -R jcmx9/fake --json name' "${FAKE_STATE}/gh.log")" "3"
-if grep -v -- '-R jcmx9/fake' "${FAKE_STATE}/gh.log" | grep -qv 'auth status'; then fail "a gh call ran without -R"; fi
+if grep -v -- '-R jcmx9/fake' "${FAKE_STATE}/gh.log" | quiet_grep -v 'auth status'; then fail "a gh call ran without -R"; fi
 pass "every gh call uses -R"
-git -C "${FAKE_ORIGIN}" show main:CHANGELOG.md | grep -qx '## \[26.10.0\] - 2026-10-15' || fail "CHANGELOG not rolled on main"
-git -C "${FAKE_ORIGIN}" show main:CHANGELOG.md | grep -qx '## \[Unreleased\]' || fail "CHANGELOG lost [Unreleased]"
+git -C "${FAKE_ORIGIN}" show main:CHANGELOG.md | quiet_grep -x '## \[26.10.0\] - 2026-10-15' || fail "CHANGELOG not rolled on main"
+git -C "${FAKE_ORIGIN}" show main:CHANGELOG.md | quiet_grep -x '## \[Unreleased\]' || fail "CHANGELOG lost [Unreleased]"
 pass "prod cycle 1: CHANGELOG rolled ([Unreleased] kept, [26.10.0] added)"
-git -C "${FAKE_ORIGIN}" log -1 --format=%B main | grep -q '^Release-Source: ' || fail "release commit has no Release-Source"
+git -C "${FAKE_ORIGIN}" log -1 --format=%B main | quiet_grep '^Release-Source: ' || fail "release commit has no Release-Source"
 pass "prod cycle 1: release commit records its dev source"
 
 # dev cycle in between, plus a feature and a CHANGELOG entry
@@ -434,7 +438,7 @@ git -C "${FAKE_ORIGIN}" show main:c.txt >/dev/null 2>&1 || fail "prod cycle 2: f
 pass "prod cycle 2: new feature reached main"
 expect_eq "prod cycle 2: one snapshot commit per release on main" \
   "$(git -C "${FAKE_ORIGIN}" log --format=%s main | tr '\n' '|')" "release: 26.10.1|release: 26.10.0|init|"
-git -C "${FAKE_ORIGIN}" show main:CHANGELOG.md | grep -qx '## \[26.10.1\] - 2026-10-15' || fail "cycle 2 CHANGELOG not rolled"
+git -C "${FAKE_ORIGIN}" show main:CHANGELOG.md | quiet_grep -x '## \[26.10.1\] - 2026-10-15' || fail "cycle 2 CHANGELOG not rolled"
 pass "prod cycle 2: CHANGELOG rolled"
 
 # the version on dev is 26.10.2-dev.0; a release in November uses --new-month

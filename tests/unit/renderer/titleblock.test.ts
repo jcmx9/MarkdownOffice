@@ -23,9 +23,9 @@ describe('formatDate', () => {
 describe('titleBlockData', () => {
   it('builds the PDF title block parts', () => {
     const t =
-      '---\nclient: "Muster GmbH"\ntitle: "Kickoff"\nsubtitle: "Protokoll"\nauthor: [Anna, Ben]\ndate: 2026-10-14\n---'
+      '---\ntoptitle: "Muster GmbH"\ntitle: "Kickoff"\nsubtitle: "Protokoll"\nauthor: [Anna, Ben]\ndate: 2026-10-14\n---'
     expect(titleBlockData(doc(t))).toEqual({
-      client: 'Muster GmbH',
+      toptitle: 'Muster GmbH',
       title: 'Kickoff',
       subtitle: 'Protokoll',
       meta: '14. Oktober 2026 · Anna, Ben',
@@ -34,16 +34,16 @@ describe('titleBlockData', () => {
   it('omits the meta line without author (like the PDF)', () => {
     expect(titleBlockData(doc('---\ntitle: X\ndate: 2026-10-14\n---'))?.meta).toBe('')
   })
-  it('is null without any of client/title/subtitle/author', () => {
+  it('is null without any of toptitle/title/subtitle/author', () => {
     expect(titleBlockData(doc('---\ndate: 2026-10-14\ntoc: false\n---'))).toBeNull()
   })
 })
 
 describe('renderTitleBlock', () => {
   it('renders only the parts that are set, as text', () => {
-    const el = renderTitleBlock({ client: '<b>A</b>', title: 'T', subtitle: '', meta: '' })
+    const el = renderTitleBlock({ toptitle: '<b>A</b>', title: 'T', subtitle: '', meta: '' })
     expect(el.className).toBe('mdo-titleblock')
-    expect(el.querySelector('.mdo-tb-client')?.textContent).toBe('<b>A</b>')
+    expect(el.querySelector('.mdo-tb-toptitle')?.textContent).toBe('<b>A</b>')
     expect(el.querySelector('b')).toBeNull()
     expect(el.querySelector('.mdo-tb-subtitle')).toBeNull()
     expect(el.querySelector('.mdo-tb-title')?.textContent).toBe('T')

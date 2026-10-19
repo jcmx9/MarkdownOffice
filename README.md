@@ -2,7 +2,7 @@
 
 > Ruhiger Markdown-Editor mit eingebauter PDF/A-Pipeline: Die Notiz sieht schon beim Tippen aus wie das PDF.
 
-**Version:** 26.10.0-dev.0 · [English](README.en.md)
+**Version:** 26.10.0 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -92,7 +92,8 @@ Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdate
 
 | Kürzel | Aktion |
 |--------|--------|
-| Mod+N | Neue Notiz im Standardordner (`JJJJ-MM-TT_HH-mm-ss.md`) |
+| Mod+N | Neue Notiz im Standardordner (`JJJJ-MM-TT_HH-mm-ss.md`), beginnt mit dem YAML-Header des Sets `memo`; die Datei entsteht erst beim ersten Tippen |
+| Mod+Shift+N | Neu aus Vorlage …: anderes Vorlagen-Set (und ggf. Profil) wählen, neue Notiz mit dessen YAML-Header |
 | Mod+O | Öffnen |
 | Mod+Shift+R | Umbenennen |
 | Mod+W | Tab schließen |
@@ -110,15 +111,15 @@ Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdate
 
 `Mod` = Cmd unter macOS, sonst Ctrl. Die Auswahl mit Shift bzw. Mod+Shift und den Pfeiltasten übernimmt CodeMirror.
 
-Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, PDF exportieren und Tab schließen. Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht.
+Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, PDF exportieren und Tab schließen. Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Rechts daneben schalten `Gliederung` und `YAML` die Gliederung (Mod+Shift+O) und den YAML-Header der Vorschau (Mod+Shift+H) ein oder aus; ist ein Schalter hervorgehoben, ist er an. `YAML` ist ausgegraut, wenn die Notiz keinen Header hat oder die Code-Ansicht (dort ist der Header immer sichtbar) aktiv ist. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht.
 
 ### Einstellungen
 
-„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
+„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
 
 ### Gliederung
 
-Eine Seitenleiste rechts listet die Überschriften H1 und H2 der Notiz. Der Pfeil vor einem Eintrag mit Inhalt klappt den Abschnitt im Text und in der Gliederung gleichzeitig ein oder aus; „Alle ein-/ausklappen“ wirkt ebenso auf beide. Ein Klick auf einen Eintrag springt im Text zur Überschrift, der Fokus bleibt im Editor. Mod+Shift+O blendet die Gliederung ein oder aus; die Einstellung wird getrennt für Editor und Präsentation gemerkt.
+Eine Seitenleiste rechts listet die Überschriften H1 und H2 der Notiz. Die Einträge lesen sich als Liste: ein Kapitel mit Unterkapiteln zeigt einen Pfeil, ein Eintrag ohne Unterkapitel einen Aufzählungspunkt. Die höchste Überschriftenebene der Notiz bekommt die Optik der obersten Ebene; eine Notiz nur mit H2-Überschriften zeigt diese also als oberste Einträge. Der Pfeil klappt den Abschnitt im Text und in der Gliederung gleichzeitig ein oder aus; „Alle ein-/ausklappen“ wirkt ebenso auf beide. Ein Seitenumbruch oder Kommentar am Ende eines Abschnitts gehört zur nächsten Überschrift. Ein Klick auf einen Eintrag springt im Text zur Überschrift, der Fokus bleibt im Editor. Lange Überschriften enden mit „…“; mit der Maus darüber erscheint der volle Text. Die Breite lässt sich am linken Rand der Gliederung mit der Maus ziehen (Doppelklick: Standardbreite). Im Editor wird sie gemerkt; in der Präsentation startet die Gliederung jedes Mal mit der Standardbreite, eine gezogene Breite gilt nur bis zum Ende der Präsentation. Mod+Shift+O blendet die Gliederung ein oder aus; die Einstellung wird getrennt für Editor und Präsentation gemerkt.
 
 ### Snippets
 
@@ -134,9 +135,17 @@ In einem Snippet beendet Esc zuerst den Feldmodus; im Präsentationsmodus verlä
 | `:header` | YAML-Header mit allen Schlüsseln des Sets `memo` |
 | `:newpage` | Seitenumbruch `<!-- pagebreak -->` |
 
-Das Menü **Einfügen → YAML-Header (memo)** setzt die Frontmatter-Vorlage des Sets `memo` (`memo.header.md`) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten und Erklärungen. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
+Das Menü **Einfügen → YAML-Header …** fragt nach einem Vorlagen-Set (`memo` steht vorne und ist vorausgewählt) und setzt dessen Frontmatter-Vorlage (`name.header.md`, siehe [Vorlagen-Sets](#vorlagen-sets)) unverändert an den Anfang der Notiz: alle Schlüssel mit Standardwerten, je Schlüssel eine Zeile mit kurzem Kommentar. Der Cursor steht danach im Titel. Hat die Notiz schon einen Header, wird nichts eingefügt.
 
 Eigene Snippets sind Dateien `name.tpl.md` im Snippet-Ordner (Standard `~/Documents/Markdown Office/Snippets/`, Einstellung „Snippet-Ordner“). Ein eigenes Snippet mit demselben Namen ersetzt das eingebaute. Neue Dateien werden beim nächsten Fokus des Fensters erkannt. Unterstützte Syntax: `$1`, `${1:Vorgabe}`, `$0` (Endposition) sowie `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (auch in der Form `${CURRENT_YEAR}`). `\$` ergibt ein wörtliches `$`, `\\` einen Backslash, und in einer Vorgabe ergibt `\}` eine wörtliche geschweifte Klammer `}`.
+
+### Rechtschreibprüfung
+
+Der Schalter **Bearbeiten → Rechtschreibprüfung** (auch in den Einstellungen) prüft die Rechtschreibung im Editor. Geprüft wird nie in der Präsentation, in Codeblöcken oder im Frontmatter. Ein Rechtsklick auf ein unterstrichenes Wort bietet Vorschläge und „Zum Wörterbuch hinzufügen“; eigene Wörter lassen sich in den Einstellungen wieder entfernen.
+
+Die Sprache bestimmt `lang:` der Notiz, sonst die Systemsprache. macOS nutzt die Rechtschreibprüfung des Systems; Sprachen und Wörterbücher verwaltet macOS unter Systemeinstellungen → Tastatur → Texteingabe. Unter Windows und Linux arbeitet die Prüfung vollständig offline mit den mitgelieferten Wörterbüchern de-DE und en-US. Aktualisierungen und weitere Sprachen kommen ausschließlich aus dem Repository `jcmx9/MarkdownOffice-dictionaries`, jede Datei wird gegen ihre Prüfsumme verifiziert. Beim Start prüft der Editor höchstens einmal am Tag auf neue Wörterbücher (abschaltbar in den Einstellungen; „Jetzt prüfen“ fragt sofort nach). Ein aktualisiertes Wörterbuch wird nach einem Neustart aktiv, eine neu geladene Sprache sofort. Fehlt das Wörterbuch für die `lang:` einer Notiz, fragt ein Hinweis, ob es geladen werden soll – nur beim Bearbeiten mit eingeschalteter Prüfung, nie in der Präsentation.
+
+Lizenzen: Das deutsche Wörterbuch (aus Chromiums `de-DE-3-0.bdic`, entstanden aus `de_DE_neu` von „Lantol“) steht unter der LGPL; der Lizenztext und die README liegen bei. Das englische Wörterbuch basiert auf SCOWL und steht unter dessen freizügiger Lizenz (Kevin Atkinson, u. a.). Beide Dateien sind reine Daten und liegen getrennt von der Anwendung, die Texte unter `licenses/dictionaries/` im Pipeline-Ordner.
 
 ## Befehl markdown-office
 
@@ -189,13 +198,13 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/pfad/zur/notiz" markdown-office --no-source "/pfad/
 
 ## Frontmatter
 
-Ein YAML-Block am Dateianfang steuert einzelne Dokumente. Alle Schlüssel sind optional; die Frontmatter-Vorlage des Sets `memo` (Menü **Einfügen → YAML-Header (memo)** oder Snippet `:header`) enthält jeden Schlüssel mit Standardwert und Kommentar.
+Ein YAML-Block am Dateianfang steuert einzelne Dokumente. Alle Schlüssel sind optional; die Frontmatter-Vorlage des Sets `memo` (Menü **Einfügen → YAML-Header …** oder Snippet `:header`) enthält jeden Schlüssel mit Standardwert und Kommentar.
 
 ```yaml
 ---
 title: "Kick-off Relaunch"   # Titel: Titelblock, Kopfzeile, PDF-Titel
 subtitle: "Workshop"         # Untertitel
-client: "Muster GmbH"        # Kunde, klein und gesperrt über dem Titel
+toptitle: "Muster GmbH"      # Toptitel, klein und gesperrt über dem Titel
 author: [Anna, Ben]          # Autor(en): Zeile "Datum · Autor"
 date: 13.10.2026             # Datum (ISO oder T.M.JJJJ)
 lang: de                     # Sprache; Standard de
@@ -211,7 +220,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `template` | Set-Name oder `.typ`-Datei | `memo` | Vorlagen-Set des Dokuments, siehe [Vorlagen-Sets](#vorlagen-sets). |
 | `title` | Text | — | Titelblock oben, Kopfzeile ab Seite 1, PDF-Metadatentitel. Ohne `title` kein Titelblock; der PDF-Titel ist dann der Dateiname. `# …` im Text ist immer ein Kapitel, nie der Titel. |
 | `subtitle` | Text | — | Untertitel unter dem Titel. |
-| `client` | Text | — | Kunde/Firma, klein und gesperrt über dem Titel. |
+| `toptitle` | Text | — | Kleine, gesperrte Zeile über dem Titel, etwa Kunde oder Firma; auch vorn in der Fußzeile und in den PDF-Stichwörtern. |
 | `author` | Text oder `[A, B]` | — | Zeile unter dem Titel: „Datum · Autor“. |
 | `date` | `2026-10-13` oder `13.10.2026` | — | Datum unten rechts (nach `lang`), ISO-Präfix am Dateinamen, festes PDF-Datum. Ein nicht erkanntes Datum erscheint unverändert, ohne Präfix. |
 | `isodate_praefix` | `true` / `false` | `true` | ISO-Präfix am Dateinamen, wenn `date` gesetzt ist. |
@@ -219,10 +228,11 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `toc` | `auto` / `true` / `false` | `auto` | Inhaltsverzeichnis (nur H1 + H2); `auto` ab mehr als fünf H1/H2. |
 | `h1_break` | `auto` / `true` / `false` | `auto` | Jedes Kapitel (`#`) auf neuer Seite; `auto` wie bei `toc`. |
 | `header` | Text | — | Fester Kopfzeilentext ab Seite 1 statt des laufenden Kapitels. |
-| `print_filename` | `true` / `false` | `true` | Angabe unten links (Dateiname bzw. „Kunde · Titel“) ein-/ausblenden. |
+| `print_filename` | `true` / `false` | `true` | Angabe unten links (Dateiname bzw. „Toptitel · Titel“) ein-/ausblenden. |
 | `watermark` | Text | — | Diagonales, hellgraues Wasserzeichen unter allem. |
 | `logo` | Datei `.svg`/`.png`/`.jpg`/`.jpeg` | kein Logo | Logo im Kopf, nur wenn gesetzt; siehe [Logo](#logo). |
 | `logo-height` | `15mm`, `1.5cm`, `40pt`, … | `13mm` | Maximale Logohöhe (höchstens 25 mm); das Logo bleibt proportional und höchstens 60 mm breit. |
+| `profile` | Name oder `.yaml`-Pfad | kein Profil | Absender-Profil: ein Name sucht `<name>.yaml` in `profiles/` neben der Notiz, in `Vorlagen/<set>/profiles/`, in `Vorlagen/profiles/` und im Set; ein Pfad auf eine `.yaml`-Datei gilt relativ zur Notiz. Nur für Sets, die Profile nutzen (z. B. din5008a); nicht gefunden: Fehler, kein PDF. |
 | `embed_source` | `true` / `false` | `true` | Markdown-Quelle als Anhang ins PDF einbetten. |
 | `hard_breaks` | `true` / `false` | `true` | Jeder Zeilenumbruch bleibt einer (wie im Editor getippt), auch ohne Eintrag. Nur `false` setzt CommonMark: Ein einzelner Umbruch wird zum Leerzeichen. |
 
@@ -234,14 +244,14 @@ Ein Logo erscheint **nur**, wenn `logo:` gesetzt ist. Ohne den Schlüssel, mit l
 
 | Wert von `logo:` | Gesucht wird |
 |------------------|--------------|
-| `firma.svg`, `logos/firma.svg` | 1. im Ordner der Notiz (bzw. `MDO_BASE_DIR`), 2. im Benutzerordner (`~`, Windows `%USERPROFILE%`), 3. im Pipeline-Ordner der App – die erste vorhandene Datei gewinnt |
+| `firma.svg`, `logos/firma.svg` | 1. im Ordner der Notiz (bzw. `MDO_BASE_DIR`), 2. im Benutzerordner (`~`, Windows `%USERPROFILE%`), 3. im Vorlagen-Ordner (`~/Documents/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`), 4. im Pipeline-Ordner der App – die erste vorhandene Datei gewinnt |
 | `/Pfad/firma.svg`, `C:\Logos\firma.png` | genau diese Datei |
 | `~/firma.svg`, `$HOME/firma.svg`, `%USERPROFILE%\firma.svg` | genau diese Datei, Variablen ersetzt |
 
 - Erlaubt sind `.svg`, `.png`, `.jpg` und `.jpeg`.
 - Wird nichts gefunden (oder ist die Endung falsch, oder ist es eine Web-Adresse), entsteht das PDF **ohne Logo**, mit einem Hinweis, nie mit einem Fehler.
-- **Eigenes Logo für alle Dokumente:** einmal im Benutzerordner ablegen (`~/firma.svg`) und in jeder Notiz `logo: firma.svg` schreiben. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
-- Die App bringt das Markdown-Office-Zeichen als `logo.svg` mit: `logo: logo.svg` findet es, solange keine eigene `logo.svg` neben der Notiz oder im Benutzerordner liegt.
+- **Eigenes Logo für alle Dokumente:** einmal im Vorlagen-Ordner ablegen (`~/Documents/Markdown Office/Vorlagen/firma.svg`) und in jeder Notiz `logo: firma.svg` schreiben. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
+- Die App bringt das Markdown-Office-Zeichen als `logo.svg` mit: `logo: logo.svg` findet es, solange keine eigene `logo.svg` neben der Notiz, im Benutzerordner oder im Vorlagen-Ordner liegt.
 
 ## Markdown im PDF
 
@@ -264,7 +274,9 @@ Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu dre
 | `name.header.md` | Frontmatter-Vorlage mit allen Schlüsseln; enthält `template: name` | nein |
 | `name.css` | Aussehen im Editor (reserviert; der Editor liest es noch nicht) | nein |
 
-Mitgeliefert ist das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout. Eigene Sets liegen als `name.typ` im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
+Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
+
+Neue Notizen beginnen mit dem Header eines Sets: Mod+N mit `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit einem Set aus einer Auswahl aller übrigen Sets (mitgelieferte und eigene; je Set ein Hinweis aus der ersten `# …`-Kommentarzeile seiner Header-Datei). Der Editor liest dazu `name.header.md` neben der gewählten `name.typ`: bei einem eigenen Set als Datei also `Vorlagen/name.header.md`, als Ordner `Vorlagen/name/name.header.md`. Fehlt die Datei, beginnt die Notiz mit einem Header, der nur `template: name` enthält. Enthält der Header einen Schlüssel `profile:`, bietet die Auswahl zusätzlich die vorhandenen Profile an (siehe [Briefe](#briefe-din5008a)).
 
 Eine Notiz wählt ihr Set mit `template: name` im Frontmatter; ohne Schlüssel gilt `memo`. `template: ./angebot.typ` nimmt eine einzelne Vorlage relativ zur Notiz. `--template` überschreibt den Schlüssel. Ein unbekanntes Set bricht den Build mit einer Meldung ab.
 
@@ -280,12 +292,44 @@ Eine eigene Vorlage bekommt dieselben Eingaben (`sys.inputs`) wie `memo.typ`, da
 
 Bilder behandelt `memo.typ` mit einer eigenen Funktion (`safe-image`); eine eigene Vorlage ohne sie bricht bei einem fehlenden Bild ab.
 
+Wie man ein eigenes Set schreibt (alle Eingaben, die zu rendernden Elemente, PDF/A-Anforderungen, ein lauffähiges Grundgerüst), beschreibt [TEMPLATES.md](TEMPLATES.md) (Englisch).
+
+## Briefe (din5008a)
+
+Das Set `din5008a` setzt Briefe nach DIN 5008 Form A mit Absender-Profil, vCard-QR-Code und Unterschrift. Eine minimale Notiz:
+
+```markdown
+---
+template: din5008a
+profile: beispiel
+x-to:
+  - Beispiel GmbH
+  - Frau Muster
+  - Musterstraße 1
+  - 12345 Musterstadt
+x-subject: Anfrage zum Angebot
+x-closing: Mit freundlichen Grüßen
+---
+
+Sehr geehrte Frau Muster,
+
+vielen Dank für Ihr Angebot.
+```
+
+Einen Brief beginnt **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit dem Set `din5008a`: Die Auswahl bietet die gefundenen Absender-Profile an (eigene aus `Vorlagen/din5008a/profiles/` und `Vorlagen/profiles/` sowie die Beispielprofile des Sets, alphabetisch), und das gewählte Profil steht danach unter `profile:` im Header. Ohne gefundenes Profil bleibt der Wert aus der Header-Vorlage stehen.
+
+Eigene Absender-Profile liegen je Set als `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); der Ordner `Vorlagen/din5008a/` braucht dafür keine `din5008a.typ` und verdeckt das mitgelieferte Set nicht. Profile in `Vorlagen/profiles/` gelten weiterhin für alle Sets. Beim Export gewinnt das erste gefundene Profil: `profiles/` neben der Notiz, dann `Vorlagen/<set>/profiles/`, dann `Vorlagen/profiles/`, dann die Beispielprofile des Sets. Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
+
+Die Absender-Adresse besteht im Profil aus `street`, `zip` (Postleitzahl, in Anführungszeichen: `zip: "01067"`, sonst liest YAML die Zahl 1067), `city` und optional `country` (leer heißt Germany). Gedruckt wird `<zip> <city>` in einer Zeile, im vCard-QR-Code landen Postleitzahl, Ort und Land in eigenen Adressfeldern. Ältere Profile mit nur `city: 33609 Bielefeld` drucken unverändert; für den QR-Code trennt das Set eine führende vier- oder fünfstellige Postleitzahl ab.
+
+Ein eigenes Profil legt **Datei → Profil anlegen …** an: In einer Notiz mit `template: din5008a` (oder einem anderen Set mit Beispielprofil) fragt der Editor nach einem Namen (`a–z`, `0–9`, `-`, `_`), kopiert das Beispielprofil des Sets samt Begleitdateien nach `Vorlagen/<set>/profiles/<name>.yaml` (aus `beispiel-unterschrift.svg` wird `<name>-unterschrift.svg`, `signature:` zeigt auf die Kopie), setzt `profile: <name>` in der Notiz und öffnet die YAML-Datei als Tab zum Bearbeiten (Code-Ansicht, ohne Rechtschreibprüfung, kein PDF-Export). Vorhandene Dateien werden nie überschrieben: Gibt es den Namen schon, meldet der Editor das und ändert nichts.
+
 ## PDF/A, Quelle und Metadaten
 
 - **PDF/A-3b**, alle Schriften eingebettet.
 - Die **Markdown-Quelle** liegt als Anhang im PDF (unter ihrem Dateinamen, ohne lokalen Pfad) und lässt sich z. B. mit `mutool extract datei.pdf` wieder herauslösen. Abschalten mit `embed_source: false` oder `--no-source`.
 - Das **PDF-Datum** ist das `date:` der Notiz, sonst die Änderungszeit der Quelle, nie der Zeitpunkt des Builds.
-- **Weitere Metadaten:** Titel und Thema aus `title:`, Autor nur aus `author:`, Sprache aus `lang:`; die Stichwörter enthalten den Kunden und „Markdown Office <Version>“. Als erzeugendes Programm trägt Typst sich selbst ein.
+- **Weitere Metadaten:** Titel und Thema aus `title:`, Autor nur aus `author:`, Sprache aus `lang:`; die Stichwörter enthalten den Toptitel (`toptitle:`) und „Markdown Office <Version>“. Als erzeugendes Programm trägt Typst sich selbst ein.
 
 ## Schriften und Lizenzen
 
@@ -310,7 +354,7 @@ npm run dist                      # Paket für das aktuelle System nach dist/
 bash scripts/test-bootstrap.sh    # Installation, Update, Deinstallation mit dem Paket aus dist/
 ```
 
-`npm run assets` lädt die gepinnten Pipeline-Assets nach `build/pipeline-assets/`, prüft jede Datei gegen ihre SHA-256-Prüfsumme aus `scripts/pipeline-assets.json` und baut das Entwicklungs-Layout `build/pipeline-dev/`, das dem gepackten Layout der App entspricht. Solange das Set `memo` noch keine Prüfsumme hat, kommt es aus einem lokalen Checkout: `MDO_SET_MEMO_DIR=~/GitHub/MarkdownOffice-set-memo npm run assets` (siehe [CONTRIBUTING.md](CONTRIBUTING.md)). Unter Windows prüft `pipeline/tests/test-windows.ps1` die Pipeline (Windows PowerShell 5.1).
+`npm run assets` lädt die gepinnten Pipeline-Assets nach `build/pipeline-assets/`, prüft jede Datei gegen ihre SHA-256-Prüfsumme aus `scripts/pipeline-assets.json` und baut das Entwicklungs-Layout `build/pipeline-dev/`, das dem gepackten Layout der App entspricht. Unter Windows prüft `pipeline/tests/test-windows.ps1` die Pipeline (Windows PowerShell 5.1).
 
 In der Entwicklung nutzt die App einen eigenen App-Datenordner `Markdown Office Dev` neben `Markdown Office`. So teilen eine installierte App und die Entwicklungsversion nie Einstellungen, Sitzung oder Single-Instance-Sperre. `MDO_USER_DATA` (Tests) überschreibt den Ordner.
 

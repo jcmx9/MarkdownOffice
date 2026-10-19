@@ -65,7 +65,7 @@ test('the YAML header collapses, stays collapsed after restart, disk untouched',
   await expect(first.page.locator('.mdo-titleblock .mdo-tb-title')).toHaveText(
     'Kickoff Kaffeerösterei',
   )
-  await expect(first.page.locator('.mdo-titleblock .mdo-tb-client')).toHaveText('Muster GmbH')
+  await expect(first.page.locator('.mdo-titleblock .mdo-tb-toptitle')).toHaveText('Muster GmbH')
   await expect(first.page.locator('.mdo-titleblock .mdo-tb-subtitle')).toHaveText('Protokoll')
   await expect(first.page.locator('.mdo-titleblock .mdo-tb-meta')).toHaveText(
     '14. Oktober 2026 · Anna',
@@ -151,4 +151,163 @@ test('clicks and arrow keys hit the right line below the title block and a table
   expect(lines.find((l) => l.includes('X'))).toMatch(/^2\. Zweite/)
   expect(lines.find((l) => l.includes('Y'))).toBe('VorletzteY')
   await app.close()
+})
+
+test('YAML header, code blocks and Mermaid are highlighted in both views', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Farben.md')
+  await writeFile(
+    note,
+    [
+      '---',
+      'title: "Farben" # Kommentar',
+      'toc: auto',
+      '---',
+      '',
+      '```js',
+      'const answer = 42 // Kommentar',
+      '```',
+      '',
+      '```mermaid',
+      'flowchart LR',
+      '  A[Start] --> B[Ende]',
+      '```',
+      '',
+    ].join('\n'),
+  )
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  // The header may start collapsed: show it.
+  if ((await page.locator('.cm-line', { hasText: 'toc: auto' }).count()) === 0) {
+    await clickMenu(app, 'toggle-header')
+  }
+  // JavaScript is loaded on demand from a separate chunk (CSP script-src 'self').
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-number', { hasText: '42' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'flowchart' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: '-->' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-string', { hasText: '"Farben"' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-comment', { hasText: '# Kommentar' })).toBeVisible()
+  await shot(page, 'highlight-preview')
+  await clickMenu(app, 'toggle-view')
+  await page.locator('.cm-editor.mdo-code').waitFor()
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
+  await shot(page, 'highlight-code')
+  await app.close()
+})
+
+test('external links get an underline and a ↗ that is not document text', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Links.md')
+  const source =
+    'Siehe [Doku](https://example.com/doku) und [Kapitel](#kapitel).\n\n' +
+    '| Verweis | Art |\n|---|---|\n| [Tabelle](https://example.com/t) | extern |\n\nEnde\n'
+  await writeFile(note, source)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  const line = page.locator('.cm-line', { hasText: 'Siehe' })
+  const ext = line.locator('.mdo-link-ext')
+  await expect(ext).toHaveText('Doku')
+  // No colour of its own: the link keeps the text colour of its line, only the underline marks it.
+  expect(await ext.evaluate((el) => getComputedStyle(el).color)).toBe(
+    await line.evaluate((el) => getComputedStyle(el).color),
+  )
+  await expect(ext).toHaveCSS('text-decoration-style', 'solid')
+  // Internal link: plain link look, no arrow.
+  await expect(line.locator('.mdo-link:not(.mdo-link-ext)')).toHaveText('Kapitel')
+  const arrows = line.locator('.mdo-link-arrow')
+  await expect(arrows).toHaveCount(1)
+  const arrow = await arrows.first().evaluate((el) => ({
+    glyph: getComputedStyle(el, '::before').content,
+    text: el.textContent,
+    inLink: el.closest('.mdo-link') !== null,
+  }))
+  // The glyph comes from CSS: the widget has no text and sits after, not inside, the link
+  // (so the underline stops before it).
+  expect(arrow).toEqual({ glyph: '"↗"', text: '', inLink: false })
+  // Table widget (cursor elsewhere): the same marker.
+  await expect(page.locator('table.mdo-table .mdo-link-ext')).toHaveText('Tabelle')
+  await expect(page.locator('table.mdo-table .mdo-link-arrow')).toHaveCount(1)
+  expect(await page.locator('.cm-content').textContent()).not.toContain('↗')
+  await shot(page, 'links-preview')
+  // Code view: raw source, no marker.
+  await clickMenu(app, 'toggle-view')
+  await page.locator('.cm-editor.mdo-code').waitFor()
+  await expect(page.locator('.mdo-link-arrow')).toHaveCount(0)
+  await page.waitForTimeout(1500)
+  expect((await readFile(note)).toString()).toBe(source)
+  await app.close()
+})
+
+test('heading gaps match the memo PDF, the same with or without blank lines', async () => {
+  const body = [
+    'Absatz oben.',
+    '# Kapitel',
+    'Absatz eins.',
+    '## Mitte',
+    'Absatz zwei.',
+    '### Klein',
+    'Absatz Ende.',
+  ]
+  // Baseline-to-baseline distances in pt at body 10pt, measured in the memo set's PDF of
+  // this note: [above, below] per heading (H1 below includes its hairline).
+  const pdf: Array<[string, number, number]> = [
+    ['.mdo-h1', 37.4, 33.0],
+    ['.mdo-h2', 26.0, 15.0],
+    ['.mdo-h3', 19.2, 12.1],
+  ]
+  const measure = async (sep: string, name: string) => {
+    const dirs = await makeDirs()
+    const note = join(dirs.notes, `${name}.md`)
+    await writeFile(note, `${body.join(sep)}\n`)
+    const { app, page } = await launch({ dirs, args: [note] })
+    await page.locator('.cm-editor.mdo-preview').waitFor()
+    await expect(page.locator('.cm-line.mdo-h3')).toHaveCount(1)
+    await page.evaluate(() => document.fonts.ready)
+    const dists = await page.evaluate(
+      (sels) => {
+        // Text box bottom = baseline + descent (hhea): Source Serif 0.335em, Source Sans 0.326em.
+        const baseline = (el: Element, descent: number) => {
+          const r = document.createRange()
+          r.selectNodeContents(el)
+          return (
+            r.getBoundingClientRect().bottom - descent * parseFloat(getComputedStyle(el).fontSize)
+          )
+        }
+        const para = (t: string) => {
+          const el = [...document.querySelectorAll('.cm-line')].find((l) => l.textContent === t)
+          if (!el) throw new Error(`line ${t} missing`)
+          return { el, y: baseline(el, 0.326) }
+        }
+        // Normalise to body 10pt whatever the zoom: px per pt of the body text.
+        const unit = parseFloat(getComputedStyle(para('Absatz oben.').el).fontSize) / 10
+        const order = ['Absatz oben.', 'Absatz eins.', 'Absatz zwei.', 'Absatz Ende.']
+        return sels.map((sel, i) => {
+          const h = baseline(document.querySelector(`.cm-line${sel}`) as Element, 0.335)
+          return {
+            above: (h - para(order[i] as string).y) / unit,
+            below: (para(order[i + 1] as string).y - h) / unit,
+          }
+        })
+      },
+      pdf.map(([sel]) => sel),
+    )
+    await shot(page, `heading-spacing-${name}`)
+    await app.close()
+    return dists
+  }
+  const tight = await measure('\n', 'tight')
+  const blank = await measure('\n\n', 'blank')
+  for (const [i, [, above, below]] of pdf.entries()) {
+    const t = tight[i] as (typeof tight)[number]
+    const b = blank[i] as (typeof blank)[number]
+    // Blank lines next to a heading do not change the layout.
+    expect(Math.abs(t.above - b.above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(t.below - b.below)).toBeLessThanOrEqual(1)
+    // Within 1pt of the PDF.
+    expect(Math.abs(t.above - above)).toBeLessThanOrEqual(1)
+    expect(Math.abs(t.below - below)).toBeLessThanOrEqual(1)
+  }
 })

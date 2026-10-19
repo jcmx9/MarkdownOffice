@@ -4,6 +4,7 @@ import type {
   Settings,
   SettingsPatch,
   SettingsStatus,
+  UpdateResult,
 } from '../../shared/types'
 
 export interface SettingsDialogDeps {
@@ -11,6 +12,33 @@ export interface SettingsDialogDeps {
   /** Resolves while the dialog is open; the status block says so until then. */
   status: Promise<SettingsStatus>
   choose(kind: ChooseKind, current: string): Promise<string | null>
+  /** `process.platform` value; macOS uses the system spellchecker and has no update controls. */
+  platform: NodeJS.Platform | string
+  /** „Jetzt prüfen“: asks main to look for dictionary updates. */
+  checkDictionaries(): Promise<UpdateResult>
+  /** The user's own words. */
+  words(): Promise<string[]>
+  removeWord(word: string): Promise<boolean>
+}
+
+export const MAC_SPELL_HINT =
+  'Sprachen und Wörterbücher verwaltet macOS: Systemeinstellungen → Tastatur → Texteingabe'
+
+/** The status line after „Jetzt prüfen“. */
+export function updateResultText(r: UpdateResult): string {
+  switch (r.kind) {
+    case 'current':
+      return 'Wörterbücher aktuell'
+    case 'updated':
+      // Staged files replace open dictionaries only at the next start (Windows locks them).
+      return r.pending
+        ? `Aktualisiert auf ${r.version} – aktiv nach Neustart`
+        : `Aktualisiert auf ${r.version}`
+    case 'skipped':
+      return 'Prüfung übersprungen'
+    case 'failed':
+      return `Prüfung fehlgeschlagen: ${r.reason}`
+  }
 }
 
 const FACTOR_MIN = 1
@@ -80,6 +108,9 @@ const DROP_REASONS: Record<keyof Settings, string> = {
   snippetFolder: 'kein gültiger absoluter Pfad',
   presentFontFactor: 'ungültiger Wert',
   headerDefault: 'ungültiger Wert',
+  // The spellcheck switches are booleans; main rejects anything else.
+  spellcheck: 'ungültiger Wert',
+  dictionaryAutoUpdate: 'ungültiger Wert',
 }
 
 const FACTOR_LABEL = 'Schriftfaktor im Präsentationsmodus'
@@ -91,6 +122,9 @@ const FIELD_LABELS: Record<keyof Settings, string> = {
   >),
   presentFontFactor: FACTOR_LABEL,
   headerDefault: 'YAML-Header in der Vorschau',
+  // Labels for the spellcheck switches, so a refused value is named in the dialog's notice.
+  spellcheck: 'Rechtschreibprüfung',
+  dictionaryAutoUpdate: 'Wörterbücher automatisch aktualisieren',
 }
 
 /**
@@ -182,6 +216,83 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       header.append(label)
     }
 
+    // Spell checking: switches, update check (Windows/Linux only) and own words.
+    const spell = el('fieldset', { className: 'settings-spell' })
+    spell.append(el('legend', { textContent: 'Rechtschreibung' }))
+    const checkbox = (testid: string, text: string, checked: boolean) => {
+      const box = el('input', { type: 'checkbox', checked }, testid)
+      const label = el('label', { className: 'settings-radio' })
+      label.append(box, ` ${text}`)
+      spell.append(label)
+      return box
+    }
+    const spellBox = checkbox('set-spellcheck', 'Rechtschreibprüfung', settings.spellcheck)
+    let autoBox: HTMLInputElement | null = null
+    if (deps.platform === 'darwin') {
+      spell.append(
+        el('p', { className: 'settings-hint', textContent: MAC_SPELL_HINT }, 'set-mac-spell-hint'),
+      )
+    } else {
+      autoBox = checkbox(
+        'set-dict-auto',
+        'Wörterbücher automatisch aktualisieren',
+        settings.dictionaryAutoUpdate,
+      )
+      const check = el('button', { type: 'button', textContent: 'Jetzt prüfen' }, 'set-dict-check')
+      const dictStatus = el('span', { className: 'settings-hint' }, 'set-dict-status')
+      dictStatus.setAttribute('role', 'status')
+      check.addEventListener('click', () => {
+        check.disabled = true
+        dictStatus.textContent = 'Prüfe …'
+        deps
+          .checkDictionaries()
+          .then(
+            (r) => {
+              dictStatus.textContent = updateResultText(r)
+            },
+            (e: unknown) => {
+              dictStatus.textContent = `Prüfung fehlgeschlagen: ${e instanceof Error ? e.message : 'unbekannter Fehler'}`
+            },
+          )
+          .finally(() => {
+            check.disabled = false
+          })
+      })
+      const row = el('div', { className: 'settings-path' })
+      row.append(check, dictStatus)
+      spell.append(row)
+    }
+    const words = el('ul', { className: 'settings-words' }, 'set-words')
+    const addWordRow = (word: string, i: number) => {
+      const item = el('li')
+      const remove = el(
+        'button',
+        { type: 'button', textContent: 'Entfernen' },
+        `set-word-remove-${i}`,
+      )
+      remove.setAttribute('aria-label', `${word} entfernen`)
+      remove.addEventListener('click', () => {
+        remove.disabled = true
+        deps.removeWord(word).then(
+          (ok) => {
+            if (ok) item.remove()
+            else remove.disabled = false
+          },
+          () => {
+            remove.disabled = false
+          },
+        )
+      })
+      item.append(el('span', { textContent: word }), ' ', remove)
+      words.append(item)
+    }
+    spell.append(el('h3', { textContent: 'Eigene Wörter' }), words)
+    // A failed read leaves the list empty; the rest of the dialog still works.
+    deps.words().then(
+      (list) => list.forEach(addWordRow),
+      () => undefined,
+    )
+
     const status = el('div', { className: 'settings-status' })
     const pipeline = el(
       'div',
@@ -212,6 +323,7 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       ...rows,
       factorLabel,
       header,
+      spell,
       status,
       error,
       actions,
@@ -252,6 +364,9 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       if (n !== settings.presentFontFactor) patch.presentFontFactor = n
       const chosen = radios.get('titleblock')?.checked ? 'titleblock' : 'yaml'
       if (chosen !== settings.headerDefault) patch.headerDefault = chosen
+      if (spellBox.checked !== settings.spellcheck) patch.spellcheck = spellBox.checked
+      if (autoBox && autoBox.checked !== settings.dictionaryAutoUpdate)
+        patch.dictionaryAutoUpdate = autoBox.checked
       finish(patch)
     }
 

@@ -1,5 +1,5 @@
 ---
-client: "Muster Beratungsgesellschaft mbH"
+toptitle: "Muster Beratungsgesellschaft mbH"
 title: "Kick-off Relaunch der Unternehmenswebsite"
 subtitle: "Workshop"
 date: 2026-10-13

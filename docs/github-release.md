@@ -12,9 +12,6 @@ macOS (arm64 and x64 zips), Windows (x64 zip) and Linux (x64 AppImage), names th
 `markdown-office-26.10.0-mac-arm64.zip`, `markdown-office-26.10.0-linux-x86_64.AppImage`) and
 publishes them with a `SHA256SUMS` file (`<hash>  <file>` lines). `scripts/bootstrap.sh` and
 `scripts/bootstrap.ps1` download exactly these names and verify them against `SHA256SUMS`.
-Until the set `memo` is pinned by checksum in `scripts/pipeline-assets.json`, CI and the
-release workflow check out `jcmx9/MarkdownOffice-set-memo` at its tag into
-`build/set-memo` and pass it as `MDO_SET_MEMO_DIR`.
 
 ## Commands
 

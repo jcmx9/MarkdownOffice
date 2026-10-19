@@ -22,6 +22,16 @@ export class Notices {
     this.banners.delete(key)
   }
 
+  /**
+   * Removes every banner whose key starts with prefix (e.g. all `dict-` notices) and returns
+   * the keys it removed (banners the user already closed are not in the map).
+   */
+  dismissPrefix(prefix: string): string[] {
+    const keys = [...this.banners.keys()].filter((key) => key.startsWith(prefix))
+    for (const key of keys) this.dismiss(key)
+    return keys
+  }
+
   toast(message: string): void {
     const t = document.createElement('div')
     t.className = 'toast'

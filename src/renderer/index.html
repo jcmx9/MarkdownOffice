@@ -13,9 +13,18 @@
       <div id="tabbar" role="tablist"></div>
       <main id="workspace">
         <div id="editor"></div>
+        <hr
+          id="outline-grip"
+          aria-orientation="vertical"
+          aria-label="Breite der Gliederung (Doppelklick: Standard)"
+          aria-valuemin="10"
+          aria-valuemax="40"
+          aria-valuenow="18"
+          tabindex="0"
+          hidden
+        />
         <nav id="outline" aria-label="Gliederung" hidden></nav>
         <div id="empty" hidden>
-          <p>Keine Notiz geöffnet.</p>
           <button type="button" data-action="new">Neue Notiz</button>
           <button type="button" data-action="open">Öffnen …</button>
         </div>

@@ -1,12 +1,13 @@
-// Fetches the pinned pipeline assets (Typst per target, fonts, Typst packages, template sets)
-// into build/pipeline-assets/ and verifies every download against its SHA-256 pin from
+// Fetches the pinned pipeline assets (Typst per target, fonts, Typst packages, template sets,
+// Hunspell dictionaries for the Windows/Linux spellchecker) into build/pipeline-assets/ and verifies every download against its SHA-256 pin from
 // scripts/pipeline-assets.json. electron-builder maps the result into the packaged app
 // (electron-builder.yml `extraResources`). Not shipped: `files` only packs out/.
 //
 // The licence texts of everything redistributed land in build/pipeline-assets/licenses/
 // (shipped as <resources>/pipeline/licenses/): typst/ (LICENSE and NOTICE from the release
 // archive), fonts/ (from the font archive, or a separately pinned download for fonts without
-// one) and packages/<name>/ (from the package archive).
+// one), packages/<name>/ (from the package archive) and dictionaries/ (a separately pinned
+// download each).
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
@@ -22,7 +23,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
@@ -31,11 +32,24 @@ import { fileURLToPath } from 'node:url'
  *   `extract`: path (suffix) inside the font archive; else `url` + `sha256`
  * @typedef {{ url: string, sha256: string, extract?: string[], file?: string,
  *   license: FontLicense }} FontEntry
- * @typedef {{ name: string, version: string, sha256: string, license: string }} PackageEntry
+ * @typedef {{ name: string, version: string, sha256: string, license: string | string[],
+ *   store?: boolean }} PackageEntry
+ *   `license`: one licence file in the package archive, or several (e.g. LICENSE plus the
+ *   third-party NOTICE of what the package bundles); all ship in licenses/packages/<name>/
+ *   `store`: unpacked into Typst's package-cache layout vendor/packages/preview/<name>/<version>
+ *   (imported as `@preview/<name>:<version>`); otherwise into vendor/<name> (imported by path)
  * @typedef {{ name: string, repo: string, tag: string, sha256: string }} SetEntry
+ * @typedef {{ file: string, url: string, sha256: string, encoding?: 'base64' }} DictLicense
+ *   `encoding: 'base64'`: the server sends the text base64-encoded (Gitiles `?format=TEXT`);
+ *   `sha256` pins the decoded text, i.e. the file that ships
+ * @typedef {{ code: string, file: string, url: string, sha256: string,
+ *   license: DictLicense | DictLicense[] }} DictionaryEntry
+ *   `license`: one licence file, or several (e.g. the README naming the LGPL plus its text)
+ *   `file`: the canonical name Chromium expects in <userData>/Dictionaries (e.g. de-DE-3-0.bdic)
  * @typedef {{
  *   typst: { version: string, licenses: string[], targets: Record<string, TypstTarget> },
- *   fonts: FontEntry[], packages: PackageEntry[], sets: SetEntry[]
+ *   fonts: FontEntry[], packages: PackageEntry[], sets: SetEntry[],
+ *   dictionaries?: DictionaryEntry[]
  * }} Manifest
  */
 
@@ -85,6 +99,38 @@ async function fetchVerified(download, url, expected) {
   }
   if (sha256(bytes) !== expected) throw new Error(`Prüfsumme falsch: ${url}`)
   return bytes
+}
+
+/**
+ * Downloads a dictionary licence text; a base64-encoded answer is decoded before the check,
+ * so the pin always matches the shipped file.
+ * @param {(url: string) => Promise<Uint8Array>} download
+ * @param {DictLicense} license
+ * @returns {Promise<Uint8Array>}
+ */
+async function fetchLicenseText(download, license) {
+  if (license.encoding !== 'base64') return fetchVerified(download, license.url, license.sha256)
+  const decode = async (/** @type {string} */ url) =>
+    new Uint8Array(Buffer.from(Buffer.from(await download(url)).toString('latin1'), 'base64'))
+  return fetchVerified(decode, license.url, license.sha256)
+}
+
+/**
+ * The licence files of a dictionary entry: a single object and an array are both accepted.
+ * @param {DictionaryEntry} dict
+ * @returns {DictLicense[]}
+ */
+export function dictLicenses(dict) {
+  return Array.isArray(dict.license) ? dict.license : [dict.license]
+}
+
+/**
+ * The licence files of a package entry: a single name and an array are both accepted.
+ * @param {PackageEntry} pkg
+ * @returns {string[]}
+ */
+export function packageLicenses(pkg) {
+  return Array.isArray(pkg.license) ? pkg.license : [pkg.license]
 }
 
 /**
@@ -303,23 +349,79 @@ export async function fetchAssets(o) {
 
     for (const pkg of manifest.packages) {
       const url = `https://packages.typst.org/preview/${pkg.name}-${pkg.version}.tar.gz`
-      if (!pkg.license) throw new Error(`Paket ohne Lizenz im Manifest: ${pkg.name}`)
-      const licenseRel = `licenses/packages/${pkg.name}/${pkg.license}`
+      const licenses = packageLicenses(pkg)
+      if (!licenses.length || licenses.some((l) => !l)) {
+        throw new Error(`Paket ohne Lizenz im Manifest: ${pkg.name}`)
+      }
+      const licenseRels = licenses.map((l) => `licenses/packages/${pkg.name}/${l}`)
+      // Store packages keep Typst's package-cache layout (preview/<name>/<version>) so
+      // `#import "@preview/<name>:<version>"` resolves offline via --package-cache-path,
+      // including imports between packages (cades imports @preview/jogs). Other packages
+      // stay at vendor/<name> and are imported by path (mdo + "/vendor/<name>/lib.typ").
+      const rel = pkg.store
+        ? join('vendor', 'packages', 'preview', pkg.name, pkg.version)
+        : join('vendor', pkg.name)
+      const relPosix = rel.split(sep).join('/')
       await component(
-        `pkg-${pkg.name}`,
-        pkg.sha256,
-        [licenseRel],
+        // Store ids carry the version so a version bump refreshes the entry.
+        pkg.store ? `pkg-${pkg.name}-${pkg.version}` : `pkg-${pkg.name}`,
+        // The licence texts come from the pinned archive; their names are part of the pin
+        // (several only, so single-licence stamps stay valid) and every one must exist.
+        licenses.length > 1 ? `${pkg.sha256}+${licenses.join(',')}` : pkg.sha256,
+        licenseRels,
         async () => {
           const bytes = await fetchVerified(download, url, pkg.sha256)
           const staged = scratch()
           extractArchive(bytes, `${pkg.name}.tar.gz`, staged)
-          const src = join(staged, pkg.license)
-          if (!existsSync(src)) throw new Error(`Lizenz fehlt im Paket: ${pkg.license} (${url})`)
-          placeLicense(src, outDir, licenseRel)
-          swapIn(staged, join(outDir, 'vendor', pkg.name))
-          return [`vendor/${pkg.name}/typst.toml`, licenseRel]
+          for (const [i, l] of licenses.entries()) {
+            const src = join(staged, l)
+            if (!existsSync(src)) throw new Error(`Lizenz fehlt im Paket: ${l} (${url})`)
+            placeLicense(src, outDir, /** @type {string} */ (licenseRels[i]))
+          }
+          if (pkg.store) {
+            // Swap in the whole preview/<name> folder holding only the pinned version: an
+            // older version of the same package must not stay behind and ship.
+            const holder = scratch()
+            renameSync(staged, join(holder, pkg.version))
+            swapIn(holder, dirname(join(outDir, rel)))
+          } else {
+            swapIn(staged, join(outDir, rel))
+          }
+          return [`${relPosix}/typst.toml`, ...licenseRels]
         },
         `${pkg.name} ${pkg.version}`,
+      )
+    }
+
+    // Dictionaries: shipped on Windows/Linux only (electron-builder.yml), but fetched on every
+    // host so the licence check and the pinned files stay the same everywhere.
+    const dictDir = join(outDir, 'dictionaries')
+    for (const dict of manifest.dictionaries ?? []) {
+      const licenses = dictLicenses(dict)
+      if (!licenses.length || licenses.some((l) => !l?.file || !l.url || !l.sha256)) {
+        throw new Error(`Wörterbuch ohne Lizenz im Manifest: ${dict.code}`)
+      }
+      const licenseRels = licenses.map((l) => `licenses/dictionaries/${l.file}`)
+      await component(
+        `dict-${dict.code}`,
+        // Every licence is part of the pin: a new or changed licence pin refreshes the entry.
+        [dict.sha256, ...licenses.map((l) => l.sha256)].join('+'),
+        licenseRels,
+        async () => {
+          const bytes = await fetchVerified(download, dict.url, dict.sha256)
+          const staged = scratch()
+          writeFileSync(join(staged, dict.file), bytes)
+          for (const [i, license] of licenses.entries()) {
+            const src = join(staged, `.license-${i}`)
+            writeFileSync(src, await fetchLicenseText(download, license))
+            placeLicense(src, outDir, /** @type {string} */ (licenseRels[i]))
+          }
+          mkdirSync(dictDir, { recursive: true })
+          rmSync(join(dictDir, dict.file), { force: true })
+          renameSync(join(staged, dict.file), join(dictDir, dict.file))
+          return [`dictionaries/${dict.file}`, ...licenseRels]
+        },
+        `Wörterbuch ${dict.code}`,
       )
     }
 

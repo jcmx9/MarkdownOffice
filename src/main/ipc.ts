@@ -1,7 +1,14 @@
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { Ch } from '../shared/ipc'
-import type { NoteFile, RenameResult, SaveResult, SessionPatch } from '../shared/types'
+import { SET_NAME_RE } from '../shared/sets'
+import type {
+  CreateProfileResult,
+  NoteFile,
+  RenameResult,
+  SaveResult,
+  SessionPatch,
+} from '../shared/types'
 import { type AppContext, logSessionError } from './context'
 import {
   canonicalPath,
@@ -16,14 +23,19 @@ import {
   writeNoteBytes,
 } from './files'
 import { setWindowFullScreen } from './fullscreen'
-import { readHeaderTemplate } from './header-template'
 import { noteMenuTemplate } from './menu'
+import { createProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
+import { CODE_RE } from './spellcheck/languages'
+import { listProfiles, listSets, readSetHeader, userTemplatesDir } from './templates'
 
 const str = (v: unknown): string => {
   if (typeof v !== 'string') throw new TypeError('Ungültiger Parameter.')
   return v
 }
+/** A set name from the renderer: the pipeline's character rule, and short (no path, no abuse). */
+const setName = (v: unknown): v is string =>
+  typeof v === 'string' && v.length <= 64 && SET_NAME_RE.test(v)
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** Aborts a save before its rename because the disk no longer holds the tab's base. */
@@ -37,9 +49,65 @@ export function registerIpc(ctx: AppContext): void {
     if (!win) return
     Menu.buildFromTemplate(noteMenuTemplate((c) => ctx.send(Ch.menu, c))).popup({ window: win })
   })
-  ipcMain.handle(Ch.readHeaderTemplate, () =>
-    readHeaderTemplate(join(ctx.pipeline.paths.sets, 'memo', 'memo.header.md')),
+  // Template sets: the renderer only ever names a set (SET_NAME_RE, short), never a path; main
+  // resolves it like the pipeline. The templates folder is computed per call from MDO_TEMPLATES
+  // or the documents folder, exactly as an export would, so both always see the same sets.
+  const setsDir = () => ctx.pipeline.paths.sets
+  const userDir = () => userTemplatesDir(process.env, ctx.documentsDir)
+  ipcMain.handle(Ch.listSets, () => listSets(setsDir(), userDir()))
+  ipcMain.handle(Ch.readSetHeader, (_e, name: unknown) =>
+    setName(name) ? readSetHeader(setsDir(), userDir(), name) : null,
   )
+  ipcMain.handle(Ch.listProfiles, (_e, name: unknown) =>
+    setName(name) ? listProfiles(setsDir(), userDir(), name) : [],
+  )
+  // „Profil anlegen …“: both names are checked here (createProfile checks again); the renderer
+  // may only open the new YAML because main allows exactly that one created path.
+  ipcMain.handle(
+    Ch.createProfile,
+    async (_e, set: unknown, name: unknown): Promise<CreateProfileResult> => {
+      if (!setName(set)) return { ok: false, error: 'Ungültiger Set-Name.' }
+      if (!setName(name))
+        return {
+          ok: false,
+          error: `„${String(name).slice(0, 64)}“ ist kein gültiger Profilname: nur a–z, 0–9, - und _.`,
+        }
+      try {
+        const res = await createProfile(setsDir(), userDir(), set, name)
+        if (res.ok) ctx.allow([res.path])
+        return res
+      } catch (err) {
+        return { ok: false, error: `Profil ${name} konnte nicht angelegt werden: ${message(err)}` }
+      }
+    },
+  )
+  // Arguments come from the renderer: only short strings / plain language codes (CODE_RE) pass.
+  ipcMain.handle(Ch.spellLanguage, (_e, lang: unknown) =>
+    typeof lang === 'string' && lang.length <= 35
+      ? (ctx.spellcheck?.setLanguage(lang) ?? null)
+      : null,
+  )
+  ipcMain.handle(Ch.spellDownload, (_e, code: unknown) =>
+    typeof code === 'string' && CODE_RE.test(code)
+      ? (ctx.spellcheck?.downloadDictionary(code) ?? false)
+      : false,
+  )
+  ipcMain.handle(
+    Ch.spellCheckUpdates,
+    () => ctx.spellcheck?.checkNow() ?? ({ kind: 'skipped' } as const),
+  )
+  // Own words: the list is read from the session; a removal argument comes from the renderer,
+  // so only a string of 1-100 characters passes.
+  ipcMain.handle(Ch.spellWords, () => ctx.spellcheck?.listWords() ?? [])
+  ipcMain.handle(Ch.spellRemoveWord, (_e, word: unknown) =>
+    typeof word === 'string' && word.length >= 1 && word.length <= 100
+      ? (ctx.spellcheck?.removeWord(word) ?? false)
+      : false,
+  )
+  ipcMain.handle(Ch.spellDecline, async (_e, code: unknown) => {
+    if (typeof code === 'string' && CODE_RE.test(code))
+      await ctx.spellcheck?.declineDictionary(code)
+  })
   ipcMain.handle(Ch.settingsStatus, () => ctx.settingsStatus())
   ipcMain.handle(Ch.updateSettings, (_e, patch: unknown) => ctx.updateSettings(patch))
 
@@ -194,7 +262,10 @@ export function registerIpc(ctx: AppContext): void {
     const options: Electron.OpenDialogOptions = {
       properties: ['openFile', 'multiSelections'],
       defaultPath: ctx.settings.defaultFolder,
-      filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+      // YAML too: a profile („Profil anlegen …“) is edited in a tab like a note (Code view).
+      filters: [
+        { name: 'Markdown und Profile', extensions: ['md', 'markdown', 'txt', 'yaml', 'yml'] },
+      ],
     }
     const result = win
       ? await dialog.showOpenDialog(win, options)

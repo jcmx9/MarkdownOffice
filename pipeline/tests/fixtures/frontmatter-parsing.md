@@ -1,7 +1,7 @@
 ---
 title: "Titel mit Kommentar" # dieser Kommentar gehört nicht zum Titel
 subtitle: Ohne Anführungszeichen # auch dieser nicht
-client: 'Einfache Anführungszeichen'
+toptitle: 'Einfache Anführungszeichen'
 author: [Anna Beispiel, "Ben Probe"] # Liste
 toc: auto
 h1_break:
