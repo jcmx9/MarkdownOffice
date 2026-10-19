@@ -62,7 +62,16 @@ test('right click on a misspelled word offers suggestions; a click fixes exactly
   const note = join(dirs.notes, 'Fehler.md')
   // lang: de makes the real language path pick de-DE, whatever the runner's system language is.
   await writeFile(note, '---\nlang: de\n---\n\nEin Fehlr hier.\n')
-  const { app, page } = await launch({ dirs, args: [note], env: { MDO_E2E_MENUS: '1' } })
+  // No dictionary update check: like the other spellcheck tests, this one must not depend on
+  // the network. With the check on, CI asked the real GitHub release (and downloaded/staged
+  // files) while Chromium loaded de-DE for the first time, and on Windows the word was then
+  // sometimes never marked within 15 s (release/26.10.0, PR #34).
+  const { app, page } = await launch({
+    dirs,
+    args: [note],
+    settings: { dictionaryAutoUpdate: false },
+    env: { MDO_E2E_MENUS: '1' },
+  })
   // The real language path (lang: de -> renderer -> main) must have activated checking.
   await expect.poll(() => spellLanguages(app)).toEqual(['de-DE'])
   expect(await app.evaluate(({ session }) => session.defaultSession.isSpellCheckerEnabled())).toBe(
