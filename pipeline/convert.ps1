@@ -100,9 +100,9 @@ Options:
   -Help,    --help      Diese Hilfe ausgeben und beenden
 
 Optionale YAML-Frontmatter-Schluessel:
-  title, subtitle, client, author, date, isodate_praefix, toc, h1_break,
-  print_filename, lang, header, watermark, logo, logo-height, embed_source,
-  hard_breaks, template
+  title, subtitle, toptitle, author, date, isodate_praefix, toc, h1_break,
+  print_filename, lang, header, watermark, logo, logo-height, profile,
+  embed_source, hard_breaks, template
 
 Environment:
   MDO_NO_OPEN=1             Das PDF nach dem Build nicht oeffnen (Batch/Cron)
@@ -368,6 +368,33 @@ function Initialize-Stage {
     ($cands -join ', ') + ')')
 }
 
+# Kein Netz, nie (2/2, spiegelt build.sh): was der Textscan der Vorlage nicht sieht (z. B.
+# eine per Verkettung gebaute Paketangabe), stoppt ein unerreichbarer Proxy fuer die
+# Typst-Aufrufe; ein Download scheitert, bevor etwas in die Ablage geschrieben wird.
+# NO_PROXY leer: keine Ausnahmen. Enable-NoNetwork setzt die Variablen NUR um einen
+# Typst-Aufruf herum und gibt die alten Werte zurueck; Restore-Network stellt sie in einem
+# finally wieder her, damit weder der PDF-Betrachter (Start-Process) noch ein Aufrufer im
+# selben Prozess sie erbt. (Unter Windows sind HTTPS_PROXY und https_proxy dieselbe
+# Variable; das Speichern in fester Reihenfolge und Wiederherstellen in umgekehrter
+# Reihenfolge stellt den urspruenglichen Wert her.)
+$script:NoNetVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'NO_PROXY', 'no_proxy')
+function Enable-NoNetwork {
+  $saved = [ordered]@{}
+  foreach ($v in $script:NoNetVars) { $saved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+  foreach ($v in $script:NoNetVars) {
+    $val = if ($v -like '*no_proxy') { $null } else { 'http://127.0.0.1:9' }
+    [Environment]::SetEnvironmentVariable($v, $val, 'Process')
+  }
+  return $saved
+}
+function Restore-Network {
+  param($Saved)
+  if (-not $Saved) { return }
+  $names = @($Saved.Keys)
+  [array]::Reverse($names)
+  foreach ($v in $names) { [Environment]::SetEnvironmentVariable($v, $Saved[$v], 'Process') }
+}
+
 function Get-TypstReadable {
   param([string]$Path, [string]$Name = '')
   if (-not $Path) { return $Path }
@@ -381,16 +408,42 @@ function Get-TypstReadable {
   return $target
 }
 
+# Ordner fuer Typst lesbar machen (spiegelt Get-TypstReadable fuer einen Ordner): liegt er
+# auf einem anderen Laufwerk als die Typst-Wurzel, werden NUR seine Dateien auf oberster
+# Ebene (keine Unterordner) in den Stage-Ordner kopiert. Das Profil braucht das, weil das Set
+# Dateien daneben liest (die Unterschrift, direkt neben dem Profil). Ein Laufwerks-
+# Wurzelverzeichnis wird abgelehnt, damit nie ein ganzes Laufwerk kopiert wird.
+function Get-TypstReadableDir {
+  param([string]$Dir)
+  if (-not $Dir) { return $Dir }
+  if ([IO.Path]::GetPathRoot($Dir) -eq $script:TypstRoot) { return $Dir }
+  if ($Dir.TrimEnd('\', '/') -eq [IO.Path]::GetPathRoot($Dir).TrimEnd('\', '/')) {
+    throw "Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen: $Dir"
+  }
+  $script:StageCount++
+  $target = Join-Path $script:StageDir ('ordner-' + $script:StageCount)
+  New-Item -ItemType Directory -Force -Path $target | Out-Null
+  Get-ChildItem -LiteralPath $Dir -File -Force | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+  }
+  return $target
+}
+
 # Vorlage aufloesen (spiegelt resolve_template in build.sh): leer -> memo;
-# ein Name (a-z, 0-9, _ und -) ist ein Set (Benutzerordner <name>.typ vor den
-# mitgelieferten Sets <MDO_SETS_DIR>\<name>\<name>.typ); ein Wert auf .typ eine
+# ein Name (a-z, 0-9, _ und -) ist ein Set (Benutzerordner <name>.typ oder
+# <name>\<name>.typ vor den mitgelieferten Sets <MDO_SETS_DIR>\<name>\<name>.typ); ein Wert auf .typ eine
 # einzelne Datei relativ zu $Base.
 function Resolve-Template {
   param([string]$Value, [string]$Base)
   if (-not $Value) { $Value = 'memo' }
   if ($Value -cmatch '^[a-z0-9_-]+$') {
+    # Benutzerordner zuerst: <name>.typ, dann ein Set-Ordner <name>\<name>.typ (geklontes
+    # oder aus dem Katalog installiertes Set-Repo), danach die mitgelieferten Sets.
     $cands = @()
-    if ($UserTemplates) { $cands += (Join-Path $UserTemplates "$Value.typ") }
+    if ($UserTemplates) {
+      $cands += (Join-Path $UserTemplates "$Value.typ")
+      $cands += (Join-Path (Join-Path $UserTemplates $Value) "$Value.typ")
+    }
     $cands += (Join-Path (Join-Path $SetsDir $Value) "$Value.typ")
     foreach ($cand in $cands) {
       if (Test-Path -LiteralPath $cand -PathType Leaf) { return $cand }
@@ -444,7 +497,7 @@ function Convert-One {
   # werden ignoriert, nie ein Fehler.
   $fmDate = ''; $fmIsodatePraefix = ''; $fmToc = 'auto'; $fmBreak = 'auto'; $fmShowname = 'true'; $fmLang = 'de'
   $fmHeader = ''; $fmWatermark = ''; $fmTitle = ''
-  $fmTemplate = ''; $fmSubtitle = ''; $fmClient = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
+  $fmTemplate = ''; $fmSubtitle = ''; $fmToptitle = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
   if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
     for ($i = 1; $i -lt $lines.Count; $i++) {
       if ($lines[$i].Trim() -in @('---', '...')) { break }
@@ -456,10 +509,11 @@ function Convert-One {
         'title'           { $fmTitle = ConvertTo-YamlStr $raw }
         'template'        { $fmTemplate = ConvertTo-YamlStr $raw }
         'subtitle'        { $fmSubtitle = ConvertTo-YamlStr $raw }
-        'client'          { $fmClient = ConvertTo-YamlStr $raw }
+        'toptitle'        { $fmToptitle = ConvertTo-YamlStr $raw }
         'author'          { $fmAuthor = ConvertTo-YamlStr $raw }
         'logo'            { $fmLogo = ConvertTo-YamlStr $raw }
         'logo-height'     { $fmLogoHeight = ConvertTo-YamlStr $raw }
+        'profile'         { $fmProfile = ConvertTo-YamlStr $raw }
         'header'          { $fmHeader = ConvertTo-YamlStr $raw }
         'watermark'       { $fmWatermark = ConvertTo-YamlStr $raw }
         'lang'            { $v = ConvertTo-YamlStr $raw; if ($v) { $fmLang = $v } }
@@ -492,7 +546,8 @@ function Convert-One {
   # Logo nur mit logo: im Frontmatter (ohne Schluessel oder leer: kein Logo).
   # Der Wert ist eine Datei .svg/.png/.jpg/.jpeg. Absolut (auch ueber ~,
   # %USERPROFILE% oder $HOME) -> genau diese Datei; relativ -> zuerst im Ordner
-  # der Notiz (bzw. MDO_BASE_DIR), dann im Benutzerordner, dann im Pipeline-Ordner.
+  # der Notiz (bzw. MDO_BASE_DIR), dann im Benutzerordner, dann im Vorlagen-Ordner
+  # (MDO_TEMPLATES bzw. Dokumente\Markdown Office\Vorlagen), dann im Pipeline-Ordner.
   # Nichts gefunden -> ohne Logo, nur ein Hinweis, nie ein Fehler.
   $logoArg = ''
   if ($fmLogo) {
@@ -505,7 +560,7 @@ function Convert-One {
       if ([IO.Path]::IsPathRooted($noteLogo)) {
         if (Test-Path -LiteralPath $noteLogo -PathType Leaf) { $logoArg = $noteLogo }
       } else {
-        foreach ($dir in @($baseDir, (Get-EnvFallback 'USERPROFILE'), $PipelineRoot)) {
+        foreach ($dir in @($baseDir, (Get-EnvFallback 'USERPROFILE'), $UserTemplates, $PipelineRoot)) {
           if (-not $dir) { continue }
           $cand = [IO.Path]::Combine($dir, $noteLogo)
           if (Test-Path -LiteralPath $cand -PathType Leaf) { $logoArg = $cand; break }
@@ -530,6 +585,80 @@ function Convert-One {
   # Vorlage aufloesen; eine Vorlage auf einem anderen Laufwerk wird bereitgestellt.
   $templateSrc = if ($CliTemplate) { Resolve-Template $CliTemplate (Get-Location).Path } else { Resolve-Template $fmTemplate $baseDir }
   $templateFile = Get-TypstReadable $templateSrc ([IO.Path]::GetFileName($templateSrc))
+  # Offline-Paketablage (spiegelt build.sh): @preview-Pakete aus vendor\packages im
+  # Cache-Layout preview\<name>\<version>, nie aus dem Netz; --package-path auf einen Ordner,
+  # der nicht mitgeliefert wird (keine @local-Pakete des Rechners). Die Pfade muessen nicht
+  # unter --root liegen (Pakete haben eine eigene Wurzel), daher der Original-Pipeline-Ordner
+  # auch dann, wenn lib\ und vendor\ auf ein anderes Laufwerk bereitgestellt wurden.
+  $pkgArgs = @('--package-cache-path', (Join-Path $PipelineRoot 'vendor\packages'),
+               '--package-path', (Join-Path $PipelineRoot 'vendor\local-packages'))
+  # Kein Netz, nie (1/2, spiegelt build.sh): jeder @preview-Import, der nicht in der Ablage
+  # liegt, liesse Typst einen Download in die Ablage versuchen. Abbruch mit Meldung (Exit 1),
+  # bevor Typst laeuft. Fail closed: JEDES Vorkommen von @preview/ bis zum Anfuehrungszeichen
+  # oder Leerraum zaehlt, auch in Kommentaren, und alles, was kein vorhandener Ablage-Ordner
+  # <name>\<version> ist (auch ungueltige Angaben mit Grossbuchstaben oder _), wird
+  # abgewiesen. Geprueft wird die Vorlage; ist sie ein Set-Ordner <name>\<name>.typ, jede .typ
+  # darin (auch Unterordner), weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen
+  # .typ nur diese, weil ihre Nachbarn andere Sets sein koennen.
+  $tplDir = Split-Path -Parent $templateSrc
+  $scan = if ((Split-Path -Leaf $tplDir) -eq [IO.Path]::GetFileNameWithoutExtension($templateSrc)) {
+    @(Get-ChildItem -LiteralPath $tplDir -Recurse -File -Force -Filter '*.typ' | ForEach-Object { $_.FullName })
+  } else { @($templateSrc) }
+  foreach ($f in $scan) {
+    foreach ($m in [regex]::Matches([IO.File]::ReadAllText($f), '@preview/[^"\s]*')) {
+      $spec = $m.Value.Substring('@preview/'.Length)
+      $ok = $spec -cmatch '^([a-z0-9-]+):([0-9]+\.[0-9]+\.[0-9]+)$'
+      if ($ok) {
+        $dir = Join-Path $PipelineRoot ('vendor\packages\preview\' + $Matches[1] + '\' + $Matches[2])
+        $ok = Test-Path -LiteralPath $dir -PathType Container
+      }
+      if (-not $ok) { throw "Paket nicht mitgeliefert: @preview/$spec (Vorlage $templateSrc)" }
+    }
+  }
+  # Kein Netz, nie (2/2): beide Typst-Aufrufe unten laufen hinter einem unerreichbaren
+  # Proxy (siehe Enable-NoNetwork).
+  # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
+  # der Notiz (bzw. MDO_BASE_DIR), in Vorlagen\<set>\profiles (Profile des Sets, auch fuer
+  # mitgelieferte Sets; nur bei einem Set-Namen, nicht bei einer .typ-Datei), im gemeinsamen
+  # Vorlagen\profiles (Rueckfall), im Ordner des Sets (Beispielprofile); erster Treffer
+  # gewinnt. Sonst ein Pfad auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
+  $templateValue = if ($CliTemplate) { $CliTemplate } else { $fmTemplate }
+  $setName = if (-not $templateValue) { 'memo' } elseif ($templateValue -cmatch '^[a-z0-9_-]+$') { $templateValue } else { '' }
+  $profileArg = ''
+  if ($fmProfile) {
+    if ($fmProfile -cmatch '^[a-z0-9_-]+$') {
+      $setDir = Split-Path -Parent $templateSrc
+      $dirs = @((Join-Path $baseDir 'profiles'))
+      $userSetProfiles = ''
+      if ($UserTemplates -and $setName) {
+        $userSetProfiles = Join-Path (Join-Path $UserTemplates $setName) 'profiles'
+        $dirs += $userSetProfiles
+      }
+      if ($UserTemplates) { $dirs += (Join-Path $UserTemplates 'profiles') }
+      # Ein Set-Ordner im Vorlagen-Ordner ist schon als Vorlagen\<set>\profiles dabei.
+      $setProfiles = Join-Path $setDir 'profiles'
+      if ($setProfiles -ne $userSetProfiles) { $dirs += $setProfiles }
+      foreach ($d in $dirs) {
+        $cand = Join-Path $d "$fmProfile.yaml"
+        if (Test-Path -LiteralPath $cand -PathType Leaf) { $profileArg = $cand; break }
+      }
+      if (-not $profileArg) { throw "Profil nicht gefunden: $fmProfile (gesucht in $($dirs -join ', '))" }
+    } elseif ($fmProfile -match '\.ya?ml$') {
+      $pp = Expand-NotePath $fmProfile
+      if (-not [IO.Path]::IsPathRooted($pp)) { $pp = [IO.Path]::Combine($baseDir, $pp) }
+      $pp = [IO.Path]::GetFullPath($pp)
+      if (-not (Test-Path -LiteralPath $pp -PathType Leaf)) { throw "Profil nicht gefunden: $fmProfile" }
+      $profileArg = $pp
+    } else {
+      throw "ungueltiges Profil: $fmProfile (erlaubt: Name aus a-z, 0-9, _ und - oder eine .yaml-Datei)"
+    }
+  }
+  $typstProfile = ''
+  if ($profileArg) {
+    $readableDir = Get-TypstReadableDir (Split-Path -Parent $profileArg)
+    $typstProfile = Join-Path $readableDir (Split-Path -Leaf $profileArg)
+  }
+  $profileFwd = ConvertTo-TypstPath $typstProfile
   $typstSrc     = Get-TypstReadable $Src ([IO.Path]::GetFileName($Src))
   $typstLogo    = Get-TypstReadable $logoArg
   $typstBase    = if ([IO.Path]::GetPathRoot($baseDir) -eq $script:TypstRoot) { $baseDir } else { Split-Path -Parent $typstSrc }
@@ -542,10 +671,11 @@ function Convert-One {
     '--input', "title=$base",
     '--input', "doctitle=$fmTitle",
     '--input', "subtitle=$fmSubtitle",
-    '--input', "client=$fmClient",
+    '--input', "toptitle=$fmToptitle",
     '--input', "author=$fmAuthor",
     '--input', "logo=$logoFwd",
     '--input', "logo_height=$fmLogoHeight",
+    '--input', "profile=$profileFwd",
     '--input', "source=$srcFwd",
     '--input', "attach=$attachFwd",
     '--input', "docdir=$srcDirTypst",
@@ -580,8 +710,12 @@ function Convert-One {
   # Der Ausdruck enthaelt bewusst KEINE doppelten Anfuehrungszeichen:
   # Windows PowerShell 5.1 reicht sie an externe Programme nicht korrekt weiter.
   $probeExpr = '(str(query(<mdo-remote-skip>).len()),) + query(<mdo-image>).map(m => m.value).dedup()'
-  $probeJson = & $TypstExe eval --in $templateFile $probeExpr `
-    --font-path $FontDir --ignore-system-fonts --root $script:TypstRoot @inputs --input probe=true 2>$null
+  $noNet = Enable-NoNetwork
+  try {
+    $probeJson = & $TypstExe eval --in $templateFile $probeExpr `
+      --font-path $FontDir --ignore-system-fonts @pkgArgs --root $script:TypstRoot @inputs --input probe=true 2>$null
+  }
+  finally { Restore-Network $noNet }
   $probe = @()
   try { $probe = @((($probeJson -join "`n") | ConvertFrom-Json) | ForEach-Object { $_ }) } catch { $probe = @() }
   $stripped = 0
@@ -607,15 +741,19 @@ function Convert-One {
   [IO.File]::WriteAllText($imagesJson, ($imageMap | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
   $inputs += @('--input', ('images=' + (ConvertTo-TypstPath $imagesJson)))
 
+  $noNet = $null
   try {
+    $noNet = Enable-NoNetwork
     & $TypstExe compile $templateFile $outPdf `
       --font-path $FontDir --ignore-system-fonts `
+      @pkgArgs `
       --root $script:TypstRoot `
       --pdf-standard a-3b `
       @inputs
     if ($LASTEXITCODE) { throw "typst-Fehler ($LASTEXITCODE)" }
   }
   finally {
+    Restore-Network $noNet
     if ($script:StageDir) { Remove-Item -LiteralPath $script:StageDir -Recurse -Force -ErrorAction SilentlyContinue }
   }
 

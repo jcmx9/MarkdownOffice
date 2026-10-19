@@ -35,6 +35,15 @@ describe('validateNewName', () => {
   ])('%j → %j', (input, out) => expect(validateNewName(input)).toBe(out))
 
   it.each([
+    ['kanzlei2', '/p/kanzlei.yaml', 'kanzlei2.yaml'],
+    ['kanzlei2', '/p/kanzlei.yml', 'kanzlei2.yml'],
+    ['kanzlei2.yml', '/p/kanzlei.yaml', 'kanzlei2.yml'],
+    ['notiz', '/p/a.md', 'notiz.md'],
+  ])('%j renaming %j → %j (a profile stays YAML)', (input, from, out) =>
+    expect(validateNewName(input, from)).toBe(out),
+  )
+
+  it.each([
     '',
     '   ',
     '.',

@@ -223,7 +223,7 @@ test('entering Present with the cursor in the header moves it out; typing spares
   const headerEnd = original.indexOf('\n---\n') + 5
   await clickMenu(app, 'toggle-view')
   await expect(page.locator('.cm-editor.mdo-code')).toBeVisible()
-  await page.locator('.cm-line', { hasText: 'client:' }).click()
+  await page.locator('.cm-line', { hasText: 'toptitle:' }).click()
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('.cm-editor.mdo-present .mdo-tb-title')).toBeVisible()
   await page.keyboard.type('Zwischenruf')

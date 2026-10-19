@@ -22,7 +22,22 @@ describe('settings', () => {
       snippetFolder: join(docs, 'Markdown Office', 'Snippets'),
       presentFontFactor: 1.6,
       headerDefault: 'yaml',
+      spellcheck: true,
+      dictionaryAutoUpdate: true,
     })
+  })
+
+  it('spellcheck switches: default on, booleans kept, anything else → default', () => {
+    const d = defaultSettings('/docs')
+    expect(d.spellcheck).toBe(true)
+    expect(d.dictionaryAutoUpdate).toBe(true)
+    expect(sanitizeSettings({ spellcheck: false, dictionaryAutoUpdate: false }, d)).toMatchObject({
+      spellcheck: false,
+      dictionaryAutoUpdate: false,
+    })
+    expect(sanitizeSettings({ spellcheck: 'no' }, d).spellcheck).toBe(true)
+    expect(settingsPatch(d, { spellcheck: false }).spellcheck).toBe(false)
+    expect(settingsPatch(d, { spellcheck: 0 }).spellcheck).toBe(true)
   })
 
   it('keeps a known header default and drops an unknown one', () => {
@@ -68,12 +83,16 @@ describe('settingsPatch', () => {
         snippetFolder: snippets,
         presentFontFactor: 2.2,
         headerDefault: 'titleblock',
+        spellcheck: false,
+        dictionaryAutoUpdate: false,
       }),
     ).toEqual({
       defaultFolder: folder,
       snippetFolder: snippets,
       presentFontFactor: 2.2,
       headerDefault: 'titleblock',
+      spellcheck: false,
+      dictionaryAutoUpdate: false,
     })
   })
 
@@ -127,6 +146,15 @@ describe('session', () => {
     expect(s.recent).toHaveLength(10)
   })
 
+  it('outlineWidth: missing or invalid → null (default width), numbers clamped to 10–40em', () => {
+    expect(DEFAULT_SESSION.outlineWidth).toBeNull()
+    expect(sanitizeSession({}).outlineWidth).toBeNull()
+    expect(sanitizeSession({ outlineWidth: 22.5 }).outlineWidth).toBe(22.5)
+    expect(sanitizeSession({ outlineWidth: 3 }).outlineWidth).toBe(10)
+    expect(sanitizeSession({ outlineWidth: 99 }).outlineWidth).toBe(40)
+    expect(sanitizeSession({ outlineWidth: '20' }).outlineWidth).toBeNull()
+    expect(sanitizeSession({ outlineWidth: Number.NaN }).outlineWidth).toBeNull()
+  })
   it('outline: missing → both off, booleans kept, anything else → off', () => {
     expect(DEFAULT_SESSION.outline).toEqual({ edit: false, present: false })
     expect(sanitizeSession({}).outline).toEqual({ edit: false, present: false })

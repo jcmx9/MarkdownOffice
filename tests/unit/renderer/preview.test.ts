@@ -24,6 +24,38 @@ describe('headings', () => {
   })
 })
 
+describe('blank lines next to headings', () => {
+  const gaps = (d: string[]) => d.filter((x) => x.startsWith('line:mdo-heading-gap'))
+  it('collapses every blank line directly before and after a heading', () => {
+    // "Text" 0-4, blank 5, blank 6, "## H" 7-11, blank 12, "Mehr" 13-17
+    expect(gaps(rf('Text\n\n\n## H\n\nMehr'))).toEqual([
+      'line:mdo-heading-gap@5-5',
+      'line:mdo-heading-gap@6-6',
+      'line:mdo-heading-gap@12-12',
+    ])
+  })
+  it('leaves blank lines between paragraphs alone', () => {
+    expect(gaps(rf('Eins\n\nZwei'))).toEqual([])
+  })
+  it('collapses a blank line between two headings once', () => {
+    // rf() appends "\n\nende": the blank line after "## B" (10) collapses too
+    expect(gaps(rf('# A\n\n## B'))).toEqual([
+      'line:mdo-heading-gap@4-4',
+      'line:mdo-heading-gap@10-10',
+    ])
+  })
+  it('collapses whitespace-only lines and the blank lines around setext headings', () => {
+    // "Text" 0-4, "  " 5-7, "Titel" 8-13, "===" 14-17, blank 18
+    expect(gaps(rf('Text\n  \nTitel\n===\n\nMehr'))).toEqual([
+      'line:mdo-heading-gap@5-5',
+      'line:mdo-heading-gap@18-18',
+    ])
+  })
+  it('keeps the blank line holding the cursor at full height', () => {
+    expect(gaps(rf('Text\n\n## H\n\nMehr', 5))).toEqual(['line:mdo-heading-gap@11-11'])
+  })
+})
+
 describe('inline elements', () => {
   it('strong: style and hide **', () => {
     expect(rf('**fett**')).toEqual(
@@ -51,7 +83,7 @@ describe('inline elements', () => {
   it('link: keeps the text, hides brackets and URL', () => {
     expect(rf('[Text](https://x.de)')).toEqual(
       expect.arrayContaining([
-        'mark:mdo-link@0-20',
+        'mark:mdo-link mdo-link-ext@0-20',
         'hide@0-1',
         'hide@5-6',
         'hide@6-7',
@@ -64,6 +96,32 @@ describe('inline elements', () => {
     const d = rf('siehe https://x.de')
     expect(d).toContain('mark:mdo-link@6-18')
     expect(d.filter((x) => x.startsWith('hide'))).toEqual([])
+  })
+  it.each([
+    ['[Text](https://x.de)', 20],
+    ['[Text](http://x.de)', 19],
+    ['[Mail](mailto:a@x.de)', 21],
+  ])('external link %s: link colour class and the arrow after it', (doc, end) => {
+    const d = rf(doc)
+    expect(d).toContain(`mark:mdo-link mdo-link-ext@0-${end}`)
+    expect(d).toContain(`link-arrow@${end}-${end}`)
+  })
+  it.each(['[Kapitel](#kapitel)', '[Datei](docs/a.md)', '[Groß](HTTPS://x.de)'])(
+    'internal or relative link %s: no arrow, plain link look',
+    (doc) => {
+      const d = rf(doc)
+      expect(d).toContain(`mark:mdo-link@0-${doc.length}`)
+      expect(d.some((x) => x.startsWith('link-arrow'))).toBe(false)
+    },
+  )
+  it('autolink <https://…> gets the arrow, a bare URL does not (as in the PDF)', () => {
+    expect(rf('<https://x.de>')).toEqual(
+      expect.arrayContaining(['mark:mdo-link mdo-link-ext@0-14', 'link-arrow@14-14']),
+    )
+    expect(rf('siehe https://x.de').some((x) => x.startsWith('link-arrow'))).toBe(false)
+  })
+  it('keeps the arrow while the link is revealed', () => {
+    expect(rf('[Text](https://x.de)', 3)).toContain('link-arrow@20-20')
   })
 })
 

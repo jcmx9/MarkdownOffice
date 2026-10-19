@@ -14,9 +14,7 @@ He said “hello” – it’s fine… and ‘single’.
 
 Tasks
        Task           Owner       Due     Status
-
  Draft the sitemap   jcmx9       17 Oct
-
  Share the access    Ben Probe               ✓
 
 

@@ -47,8 +47,8 @@ describe('headerFold', () => {
   })
   it('follows unfiltered edits (e.g. undo) that change the header length', () => {
     const s = make(DOC, true, DOC.length)
-    const next = s.update({ changes: { from: 4, insert: 'client: A\n' }, filter: false }).state
-    expect(collapsed(next)).toEqual([`header-fold@0-${END + 10}`])
+    const next = s.update({ changes: { from: 4, insert: 'toptitle: A\n' }, filter: false }).state
+    expect(collapsed(next)).toEqual([`header-fold@0-${END + 12}`])
   })
 })
 

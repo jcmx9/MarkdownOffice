@@ -259,11 +259,21 @@ export class RenameError extends Error {
   }
 }
 
-export function validateNewName(name: string): string {
+/** A YAML profile opened in a tab („Profil anlegen …“); every other file is a note. */
+const YAML_EXT = /\.ya?ml$/i
+
+/**
+ * The new file name: `.md` appended unless given. A YAML profile keeps being YAML (its own
+ * extension appended unless `.yaml`/`.yml` is given), so renaming it never turns it into a note
+ * the pipeline would no longer find as a profile.
+ */
+export function validateNewName(name: string, from = ''): string {
   const trimmed = name.trim()
   if (trimmed === '' || trimmed === '.' || trimmed === '..' || INVALID_NAME.test(trimmed)) {
     throw new RenameError(`„${name}“ ist kein gültiger Dateiname.`)
   }
+  const yaml = YAML_EXT.exec(from)?.[0]
+  if (yaml) return YAML_EXT.test(trimmed) ? trimmed : `${trimmed}${yaml}`
   return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`
 }
 
@@ -306,7 +316,7 @@ export async function renameNote(
   newName: string,
   sleep: AtomicDeps['sleep'] = defaultDeps.sleep,
 ): Promise<string> {
-  const name = validateNewName(newName)
+  const name = validateNewName(newName, from)
   const to = join(dirname(from), name)
   if (to === from) return from
   const taken = () => new RenameError(`„${name}“ existiert bereits.`)

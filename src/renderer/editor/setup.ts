@@ -1,5 +1,5 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { yaml } from '@codemirror/lang-yaml'
 import { codeFolding, foldGutter, foldKeymap, unfoldAll } from '@codemirror/language'
 import { languages } from '@codemirror/language-data'
 import {
@@ -12,14 +12,17 @@ import {
 } from '@codemirror/state'
 import { drawSelection, EditorView, type KeyBinding, keymap, lineNumbers } from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
-import { Frontmatter, frontmatterRange } from './frontmatter'
+import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
 import { mdoHighlight } from './highlight'
+import { mdoMarkdown } from './markdown'
+import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
 import { previewPlugin } from './preview'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
+import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
 import { tableField } from './tables'
 
 export const viewCompartment = new Compartment()
@@ -78,13 +81,19 @@ export function viewExtensions(view: View): Extension {
       ]
 }
 
+/** What a tab holds: a Markdown note, or a YAML profile opened for editing („Profil anlegen …“). */
+export type DocKind = 'markdown' | 'yaml'
+
 export function createState(
   text: string,
   eol: Eol,
   view: View,
   headerHiddenInit = false,
   mode: Mode = 'edit',
+  spellcheck = false,
+  kind: DocKind = 'markdown',
 ): EditorState {
+  const md = kind === 'markdown'
   const state = EditorState.create({
     doc: text,
     extensions: [
@@ -92,16 +101,19 @@ export function createState(
       history(),
       drawSelection(),
       codeFolding(),
-      snippetExtensions,
-      pageBreakKeymap,
+      // A profile is YAML: no snippets or page breaks, and YAML highlighting, so a `# comment`
+      // line is not taken for a heading (outline, section folds).
+      md ? [snippetExtensions, pageBreakKeymap] : [],
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
-      markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [Frontmatter] }),
+      md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
       EditorView.lineWrapping,
       viewCompartment.of(viewExtensions(view)),
       modeCompartment.of(modeExtensions(mode)),
+      // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
+      spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
     ],
   })

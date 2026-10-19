@@ -45,7 +45,7 @@ describe('frontmatterFields', () => {
       '---',
       'title: "Kickoff Firma X"   # Titel',
       "subtitle: 'Protokoll'",
-      'client: Muster GmbH  # Kunde',
+      'toptitle: Muster GmbH  # Kunde',
       'author: [Anna, "Ben"]',
       'date: 2026-10-14',
       'leer:',
@@ -54,7 +54,7 @@ describe('frontmatterFields', () => {
     expect(frontmatterFields(doc(t))).toEqual({
       title: 'Kickoff Firma X',
       subtitle: 'Protokoll',
-      client: 'Muster GmbH',
+      toptitle: 'Muster GmbH',
       author: 'Anna, Ben',
       date: '2026-10-14',
       leer: '',

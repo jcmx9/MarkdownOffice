@@ -1,7 +1,9 @@
 // electron-builder `afterPack` hook (build-time only). electron-builder merely warns when an
 // extraResources source folder is missing, so an incomplete asset fetch would ship an app
 // without Typst. This hook fails the build instead. It also requires the licence texts of the
-// redistributed Typst, fonts and Typst packages (<resources>/pipeline/licenses/).
+// redistributed Typst, fonts, Typst packages and dictionaries (<resources>/pipeline/licenses/),
+// every pinned Typst package (store packages in their package-cache layout), and on
+// Windows/Linux the bundled Hunspell dictionaries (<resources>/dictionaries/).
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,9 +12,12 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Throws a German error naming the first missing item of the packed resources.
- * @param {{ resourcesDir: string, platform: string, fonts: string[], licenses: string[] }} o
+ * @param {{ resourcesDir: string, platform: string, fonts: string[], licenses: string[],
+ *   packages: PackPackage[], dictionaries?: string[] }} o
  *   platform is the node platform name (`darwin`, `win32`, `linux`); licenses are paths
- *   relative to pipeline/licenses
+ *   relative to pipeline/licenses; dictionaries are .bdic file names, required on Windows/Linux
+ *   only (macOS uses the system spellchecker and ships none); packages are the manifest's
+ *   package entries
  * @returns {void}
  */
 export function checkPackedResources(o) {
@@ -33,20 +38,30 @@ export function checkPackedResources(o) {
   }
   const required = [
     ...o.fonts.map((f) => join('pipeline', 'fonts', f)),
-    ...['cmarker', 'mitex', 'mmdr'].map((p) => join('pipeline', 'vendor', p)),
+    // Every pinned package must be in the packed app, store packages in their cache layout
+    // (build.sh/convert.ps1 pass vendor/packages as --package-cache-path).
+    ...o.packages.map((p) =>
+      p.store
+        ? join('pipeline', 'vendor', 'packages', 'preview', p.name, p.version)
+        : join('pipeline', 'vendor', p.name),
+    ),
     join('sets', 'memo', 'memo.typ'),
+    join('sets', 'din5008a', 'din5008a.typ'),
     join('pipeline', win ? 'convert.ps1' : 'build.sh'),
     join('pipeline', 'cli.js'),
     ...o.licenses.map((l) => join('pipeline', 'licenses', ...l.split('/'))),
+    ...(platform === 'darwin' ? [] : (o.dictionaries ?? []).map((f) => join('dictionaries', f))),
   ]
   for (const rel of required) if (!existsSync(join(resourcesDir, rel))) fail(rel)
 }
 
 /**
+ * @typedef {{ name: string, version: string, store?: boolean }} PackPackage
  * @typedef {{
  *   typst: { licenses: string[] },
  *   fonts: { file?: string, extract?: string[], license: { file: string } }[],
- *   packages: { name: string, license: string }[]
+ *   packages: (PackPackage & { license: string | string[] })[],
+ *   dictionaries?: { file: string, license: { file: string } | { file: string }[] }[]
  * }} PackManifest
  */
 
@@ -75,7 +90,15 @@ export function manifestLicenses(manifest) {
   return [
     ...manifest.typst.licenses.map((l) => `typst/${l}`),
     ...manifest.fonts.map((f) => `fonts/${f.license.file}`),
-    ...manifest.packages.map((p) => `packages/${p.name}/${p.license}`),
+    // `license` is one file name or several (LICENSE plus the bundled third-party notices).
+    ...manifest.packages.flatMap((p) =>
+      (Array.isArray(p.license) ? p.license : [p.license]).map((l) => `packages/${p.name}/${l}`),
+    ),
+    // Shipped on every OS (the licences folder is common), even where no dictionary ships.
+    // `license` is one object or an array of them (e.g. README plus LGPL text).
+    ...(manifest.dictionaries ?? []).flatMap((d) =>
+      (Array.isArray(d.license) ? d.license : [d.license]).map((l) => `dictionaries/${l.file}`),
+    ),
   ]
 }
 
@@ -101,5 +124,7 @@ export default async function afterPack(context) {
     platform,
     fonts: manifestFonts(manifest),
     licenses: manifestLicenses(manifest),
+    packages: manifest.packages,
+    dictionaries: (manifest.dictionaries ?? []).map((d) => d.file),
   })
 }

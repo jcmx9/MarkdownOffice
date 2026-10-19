@@ -1,7 +1,7 @@
 ---
 title: "Beispiel: von Markdown zu PDF/A"
 subtitle: "Rundgang durch alle Funktionen"
-client: "Markdown Office"
+toptitle: "Markdown Office"
 author: [Anna Beispiel, Ben Probe]
 date: 2026-10-13
 lang: de
@@ -22,16 +22,16 @@ Die Markdown-Quelle liegt als Anhang im PDF und lässt sich jederzeit wieder her
 
 # Kopf, Titel und Fuß
 
-Der **Titelblock** oben entsteht aus dem Frontmatter: `client` (klein, gesperrt), `title`,
+Der **Titelblock** oben entsteht aus dem Frontmatter: `toptitle` (klein, gesperrt), `title`,
 `subtitle` und die Zeile „Datum · Autor“ aus `date` und `author`. Die **Kopfzeile** zeigt ab
 Seite 1 das aktuelle Kapitel, rechts das Logo aus `logo:` (höchstens 13 × 60 mm). Die **Fußzeile** zeigt
-links „Kunde · Titel“ (weil `client` gesetzt ist), in der Mitte die Seitenzahl und rechts das
+links „Toptitel · Titel“ (weil `toptitle` gesetzt ist), in der Mitte die Seitenzahl und rechts das
 Datum. Das **Wasserzeichen** „BEISPIEL“ liegt unter allem.
 
 Varianten, die dieses Dokument nicht zeigt:
 
 - `header: "Vertraulich"` ersetzt das laufende Kapitel durch festen Text.
-- Ohne `client` und `subtitle` steht links unten der Dateiname; `print_filename: false` blendet
+- Ohne `toptitle` und `subtitle` steht links unten der Dateiname; `print_filename: false` blendet
   ihn aus.
 - `lang: en` stellt Datum, Beschriftungen und Anführungszeichen auf Englisch um.
 - Ohne `logo:` bleibt der Kopf ohne Logo. `logo: kunde.png` sucht die Datei neben der Notiz,

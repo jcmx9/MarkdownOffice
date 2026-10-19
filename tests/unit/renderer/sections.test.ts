@@ -1,16 +1,15 @@
 // @vitest-environment happy-dom
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { codeFolding, ensureSyntaxTree, foldEffect, foldedRanges } from '@codemirror/language'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
-import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
 import { headerFold, headerHidden } from '../../../src/renderer/editor/header'
+import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
 import { sectionFoldRanges, unfoldOnCursor } from '../../../src/renderer/editor/sections'
 
 function state(doc: string): EditorState {
   const s = EditorState.create({
     doc,
-    extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+    extensions: mdoMarkdown(),
   })
   ensureSyntaxTree(s, s.doc.length, 5000)
   return s
@@ -35,6 +34,27 @@ describe('sectionFoldRanges', () => {
   it('is empty without headings', () => {
     expect(sectionFoldRanges(state('nur text\n\n- liste'))).toEqual([])
   })
+  it('a trailing page break belongs to the next heading, not to the section', () => {
+    const doc = '# A\n## M2\n\n<!-- pagebreak -->\n\n## M3\n'
+    const r = sectionFoldRanges(state(doc))
+    // A spans its H2s; M2 has only the page break and is empty; M3 is empty.
+    expect(r).toHaveLength(1)
+    expect(r[0]?.from).toBe(3)
+  })
+  it('the fold ends after the last visible block, before trailing comments', () => {
+    const doc =
+      '## M2\ntext\n\n<!-- pagebreak -->\n\n<!--\nnotiz\n-->\n\n[//]: # (notiz)\n\n## M3\n'
+    const [m2] = sectionFoldRanges(state(doc))
+    expect(m2).toEqual({ from: doc.indexOf('\ntext'), to: doc.indexOf('text') + 4 })
+  })
+  it('a comment between visible blocks stays inside the section', () => {
+    const doc = '## M2\neins\n\n<!-- pagebreak -->\n\nzwei\n## M3\n'
+    const [m2] = sectionFoldRanges(state(doc))
+    expect(m2?.to).toBe(doc.indexOf('zwei') + 4)
+  })
+  it('a section of only comments is empty', () => {
+    expect(sectionFoldRanges(state('# A\n<!-- x -->\n\n[//]: # (y)\n'))).toEqual([])
+  })
 })
 
 describe('unfoldOnCursor', () => {
@@ -42,12 +62,7 @@ describe('unfoldOnCursor', () => {
   const make = (doc = DOC, extra: unknown[] = [], ext: unknown[] = [unfoldOnCursor]) => {
     const s = EditorState.create({
       doc,
-      extensions: [
-        codeFolding(),
-        ...(ext as []),
-        markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
-        ...(extra as []),
-      ],
+      extensions: [codeFolding(), ...(ext as []), mdoMarkdown(), ...(extra as [])],
     })
     ensureSyntaxTree(s, s.doc.length, 5000)
     return s

@@ -70,6 +70,13 @@ export interface RunOptions {
   timeoutMs?: number
   /** The runtime for cli.js; default: this process's own binary (Electron as Node). */
   execPath?: string
+  /**
+   * The user's templates folder as main resolved it (absolute), passed as MDO_TEMPLATES. Without
+   * it the pipeline derives its own (`$HOME/Documents/…` in build.sh, a relative MDO_TEMPLATES
+   * from the note's folder), which can differ from the folder the set picker listed — e.g. on
+   * Linux with a localised XDG documents folder (`~/Dokumente`).
+   */
+  templatesDir?: string
 }
 
 /**
@@ -96,6 +103,7 @@ export function runPipeline(note: string, opts: RunOptions): Promise<ExportResul
         MDO_PIPELINE_ROOT: opts.paths.root,
         MDO_SETS_DIR: opts.paths.sets,
         MDO_VERSION: opts.version,
+        ...(opts.templatesDir ? { MDO_TEMPLATES: opts.templatesDir } : {}),
       },
       windowsHide: true,
       detached: process.platform !== 'win32',

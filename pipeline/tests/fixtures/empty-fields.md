@@ -1,5 +1,5 @@
 ---
-client: Muster GmbH
+toptitle: Muster GmbH
 subtitle: ""
 author: ""
 logo: ""

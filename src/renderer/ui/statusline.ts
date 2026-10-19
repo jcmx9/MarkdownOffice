@@ -11,19 +11,28 @@ export const SAVE_STATE_LABEL: Record<SaveState, string> = {
 
 import type { View } from '../../shared/types'
 import { Clock } from './clock'
-import { type Mode, ModeSwitches } from './switches'
+import {
+  type Mode,
+  ModeSwitches,
+  StatusToggles,
+  type ToggleActions,
+  type ToggleState,
+} from './switches'
 
-export interface StatusActions {
+export interface StatusActions extends ToggleActions {
   /** Right click on the file name: the note's context menu (rename, export, close). */
   noteMenu(): void
   setMode(mode: Mode): void
   setView(view: View): void
 }
 
+const DEFAULT_TOGGLES = { outline: false, hasHeader: false, yamlOn: false }
+
 /** Edit's bottom line: clock, mode and view switches, file name, save state, export progress. */
 export class StatusLine {
   private readonly clock: Clock
   private readonly switches: ModeSwitches
+  private readonly toggles: StatusToggles
   private readonly name = document.createElement('span')
   private readonly state = document.createElement('span')
   private readonly exportState = document.createElement('span')
@@ -32,6 +41,7 @@ export class StatusLine {
   constructor(el: HTMLElement, actions: StatusActions, now: () => Date = () => new Date()) {
     this.clock = new Clock('clock', 'status-clock', now)
     this.switches = new ModeSwitches('status', actions)
+    this.toggles = new StatusToggles('status', actions)
     this.name.className = 'file'
     this.state.className = 'state'
     this.state.dataset.testid = 'status-state'
@@ -45,7 +55,14 @@ export class StatusLine {
     this.exportState.dataset.testid = 'status-export'
     this.exportState.textContent = 'PDF wird erstellt …'
     this.setExporting(false)
-    el.append(this.clock.el, this.switches.el, this.name, this.state, this.exportState)
+    el.append(
+      this.clock.el,
+      this.switches.el,
+      this.toggles.el,
+      this.name,
+      this.state,
+      this.exportState,
+    )
     this.clock.start()
   }
 
@@ -58,8 +75,15 @@ export class StatusLine {
     return this.busy
   }
 
-  render(file: string | null, state: SaveState, error: string | null, view: View): void {
+  render(
+    file: string | null,
+    state: SaveState,
+    error: string | null,
+    view: View,
+    toggles: Omit<ToggleState, 'hasNote' | 'code'> = DEFAULT_TOGGLES,
+  ): void {
     this.switches.render('edit', view, file !== null)
+    this.toggles.render({ ...toggles, hasNote: file !== null, code: view === 'code' })
     this.name.textContent = file ?? ''
     this.state.textContent = saveText(state, error)
     // A hold is as prominent as a failed save.
