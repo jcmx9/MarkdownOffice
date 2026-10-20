@@ -6,6 +6,8 @@ const quit = vi.fn()
 /** A BrowserWindow stand-in: close() emits a preventable 'close', then 'closed'. */
 class FakeWindow extends EventEmitter {
   destroyed = false
+  full = false
+  readonly fullScreenCalls: boolean[] = []
   readonly sent: string[] = []
   readonly webContents = Object.assign(new EventEmitter(), {
     send: (ch: string) => this.sent.push(ch),
@@ -19,6 +21,12 @@ class FakeWindow extends EventEmitter {
   }
   isDestroyed(): boolean {
     return this.destroyed
+  }
+  isFullScreen(): boolean {
+    return this.full
+  }
+  setFullScreen(on: boolean): void {
+    this.fullScreenCalls.push(on)
   }
 }
 
@@ -91,5 +99,23 @@ describe('AppContext close handshake', () => {
     ctx.closeReady(true) // late, unrelated
     expect(win.destroyed).toBe(false)
     expect(quit).not.toHaveBeenCalled()
+  })
+
+  it('a fullscreen window leaves fullscreen first and closes (and quits) after the leave', async () => {
+    const win = windows[0] as FakeWindow
+    win.full = true
+    ctx.markQuitting()
+    win.close()
+    ctx.closeReady(true)
+    expect(win.fullScreenCalls).toEqual([false])
+    expect(win.destroyed).toBe(false)
+    expect(quit).not.toHaveBeenCalled()
+    win.full = false
+    win.emit('leave-full-screen')
+    await Promise.resolve()
+    expect(win.destroyed).toBe(true)
+    expect(quit).toHaveBeenCalledTimes(1)
+    // The app's own leave never reached the renderer as an OS leave.
+    expect(win.sent).not.toContain(Ch.fullScreenLeft)
   })
 })

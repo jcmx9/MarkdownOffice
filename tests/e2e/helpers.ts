@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,12 +19,41 @@ export interface Dirs {
   templates: string
 }
 
-const launched: ElectronApplication[] = []
+/** Every app `launch` started in the current test, with its process (taken at launch:
+ * `app.process()` throws once the app is closed). */
+const launched: { app: ElectronApplication; proc: ChildProcess }[] = []
+
+/** How long a test's leftover app may take to close before its process is killed. */
+const CLOSE_TIMEOUT_MS = 10_000
+
+/**
+ * Closes an app the test left running (a failed assertion skips the test's own close), and
+ * kills its process when the close hangs: no window may outlive its test.
+ */
+async function shutDown(app: ElectronApplication, proc: ChildProcess): Promise<void> {
+  const running = () => proc.exitCode === null && proc.signalCode === null
+  if (!running()) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('close timed out')), CLOSE_TIMEOUT_MS)
+      }),
+    ])
+  } catch {
+    // hung or already gone: killed below
+  } finally {
+    clearTimeout(timer)
+  }
+  if (running()) proc.kill('SIGKILL')
+}
 
 /**
  * Drop-in replacement for Playwright's `test`: every app started via `launch` is traced,
  * and the trace is written to test-results/traces/<test title>.zip only when the test failed.
  * (The built-in `use.trace` does not apply to apps started with `_electron.launch`.)
+ * Afterwards every app still running is closed, or killed if that hangs.
  */
 export const test = base.extend<{ electronTraces: undefined }>({
   electronTraces: [
@@ -38,13 +68,14 @@ export const test = base.extend<{ electronTraces: undefined }>({
         .replace(/[^\w.-]+/g, '_')
         .slice(0, 120)
       let index = 0
-      for (const app of launched.splice(0)) {
+      for (const { app, proc } of launched.splice(0)) {
         const path = join('test-results', 'traces', `${name}${index++ ? `-${index}` : ''}.zip`)
         try {
           await app.context().tracing.stop(failed ? { path } : undefined)
         } catch {
           // app already closed by the test: nothing to stop
         }
+        await shutDown(app, proc)
       }
     },
     { auto: true },
@@ -97,11 +128,14 @@ export async function launch(
     MDO_USER_DATA: dirs.userData,
     MDO_NO_OPEN: '1',
     MDO_TEMPLATES: dirs.templates,
+    // Locally the fullscreen is only simulated: a failed or killed run must never leave a
+    // real macOS fullscreen Space on the developer's screen. CI tests the real one.
+    ...(process.env.CI ? {} : { MDO_E2E_FAKE_FULLSCREEN: '1' }),
     ...opts.env,
   } as Record<string, string>
   const app = await electron.launch({ args: ['.', ...(opts.args ?? [])], env })
   await app.context().tracing.start({ screenshots: true, snapshots: true })
-  launched.push(app)
+  launched.push({ app, proc: app.process() })
   const page = await app.firstWindow()
   await page.locator('.cm-editor').waitFor()
   await page.locator('[data-testid=tab]').first().waitFor()

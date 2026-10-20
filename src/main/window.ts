@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
+import { fakeFullScreen } from './fullscreen'
 
 /**
  * `beforeLoad` runs before the renderer loads (the spellchecker's dictionaries must be in
@@ -25,6 +26,8 @@ export function createMainWindow(
       spellcheck: true,
     },
   })
+  // Test hook: local e2e runs never put a real window into a macOS fullscreen Space.
+  if (process.env.MDO_E2E_FAKE_FULLSCREEN === '1') fakeFullScreen(win)
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.once('ready-to-show', () => win.show())
