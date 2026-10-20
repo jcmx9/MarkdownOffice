@@ -163,10 +163,12 @@ detect_platform() {
   record="${state_dir}/${record_name}"
   workflow_path=""
   pdf_desktop_path=""
+  mimeapps_path=""
   if [[ "${os}" == "Darwin" ]]; then
     workflow_path="${HOME}/Library/Services/${pdf_action}.workflow"
   else
     pdf_desktop_path="${data_home}/applications/markdown-office-pdf.desktop"
+    mimeapps_path="${XDG_CONFIG_HOME:-${HOME}/.config}/mimeapps.list"
   fi
 }
 
@@ -554,6 +556,7 @@ write_desktop_entry() {
 # The record lists what the install created outside the app, one "<kind> <path>" per line:
 #   F  a file it wrote (removed only while it carries pdf_tag)
 #   W  the Quick Action bundle (removed only while its document.wflow carries pdf_tag)
+#   M  the mimeapps.list that got the editor as Markdown default (only that line is removed)
 #   D  a folder it had to create (removed only when empty again)
 # Uninstall removes exactly these; an update keeps the D entries of earlier runs.
 record_add() {
@@ -948,12 +951,59 @@ write_fm_scripts() {
   done < <(fm_script_paths)
 }
 
+# Linux: the editor's entry and Markdown-PDF both claim text/markdown. Without a chosen default
+# the desktop picks one of them in no defined order (GIO took Markdown-PDF in CI), so a
+# double-click could convert a note instead of opening it. When the user has no default for
+# text/markdown yet, the editor becomes it explicitly (mimeapps.list, [Default Applications]);
+# recorded as "M <file>", and uninstall removes exactly this line again. A default the user
+# chose is never touched.
+readonly mime_default_line="text/markdown=markdown-office.desktop"
+
+has_markdown_default() {
+  [[ -f "${mimeapps_path}" ]] &&
+    awk '/^\[/ { s = ($0 == "[Default Applications]") } s && /^text\/markdown=/ { f = 1 } END { exit !f }' \
+      "${mimeapps_path}"
+}
+
+pin_editor_default() {
+  [[ -n "${mimeapps_path}" ]] || return 0
+  is_own_file "${desktop_path}" "${desktop_tag}" || return 0
+  has_markdown_default && return 0
+  make_dir_recorded "$(dirname "${mimeapps_path}")" || return 0
+  local new
+  if [[ -f "${mimeapps_path}" ]] && grep -qxF '[Default Applications]' "${mimeapps_path}"; then
+    new="$(awk -v line="${mime_default_line}" '{ print } $0 == "[Default Applications]" && !done { print line; done = 1 }' "${mimeapps_path}")"
+  elif [[ -s "${mimeapps_path}" ]]; then
+    new="$(cat "${mimeapps_path}")"$'\n\n[Default Applications]\n'"${mime_default_line}"
+  else
+    new="[Default Applications]"$'\n'"${mime_default_line}"
+  fi
+  # Written in place, so a symlinked mimeapps.list (dotfiles) stays a symlink.
+  printf '%s\n' "${new}" >"${mimeapps_path}" || return 0
+  record_add "M ${mimeapps_path}"
+}
+
+# Removes the line pin_editor_default added (only that exact line in [Default Applications]);
+# a file left with nothing but that empty section goes too.
+unpin_editor_default() {
+  local path="$1" new
+  [[ -f "${path}" ]] || return 0
+  new="$(awk -v line="${mime_default_line}" '/^\[/ { s = ($0 == "[Default Applications]") } !(s && $0 == line) { print }' "${path}")"
+  if ! grep -qv -e '^[[:space:]]*$' -e '^\[Default Applications\]$' <<<"${new}"; then
+    rm -f "${path}"
+  else
+    printf '%s\n' "${new}" >"${path}"
+  fi
+  say "Standardprogramm-Eintrag für Markdown entfernt: ${path}"
+}
+
 write_file_manager() {
   write_pdf_script || return 0
   if [[ "${os}" == "Darwin" ]]; then
     write_workflow
   else
     write_pdf_desktop_entry
+    pin_editor_default
     write_fm_scripts
   fi
 }
@@ -983,18 +1033,19 @@ remove_recorded() {
         warn "${path} stammt nicht von Markdown Office – bleibt."
       fi
       ;;
+    "M:mimeapps.list") unpin_editor_default "${path}" ;;
     D:*) rmdir "${path}" 2>/dev/null || true ;;
     *) warn "Unbekannter Eintrag in ${record} – übergangen: ${kind} ${path}" ;;
   esac
 }
 
-# Files and bundles first, then the created folders, deepest first. Without a record (an install
+# Files, bundles and the default line first, then the created folders, deepest first. Without a record (an install
 # from before this feature, or a lost record) the default places are checked, each removed only
 # while it carries the tag.
 remove_file_manager() {
   local line
   {
-    [[ ! -f "${record}" ]] || grep -E '^[FW] ' "${record}" || true
+    [[ ! -f "${record}" ]] || grep -E '^[FWM] ' "${record}" || true
     printf 'F %s\n' "${pdf_script}"
     [[ -z "${workflow_path}" ]] || printf 'W %s\n' "${workflow_path}"
     [[ -z "${pdf_desktop_path}" ]] || printf 'F %s\n' "${pdf_desktop_path}"

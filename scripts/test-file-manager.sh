@@ -101,6 +101,8 @@ expect_run() {
 if [[ "${os_name}" == "Linux" ]]; then
   # Nautilus is "there" (its data folder exists), Nemo not: only the Nautilus script appears.
   mkdir -p "${data_home}/nautilus"
+  # The editor's own entry, as the bootstrap writes it before: the Markdown default goes to it.
+  write_desktop_entry
 fi
 write_file_manager
 
@@ -218,6 +220,35 @@ else
   # shellcheck disable=SC2016 # expanded by the inner bash
   expect_run 0 "normal|Notiz eins.pdf erstellt." bash -c 'cd "$1" && "$2" "Notiz eins.md"' _ "${notes}" "${nautilus}"
   pass "Nautilus script (only for a file manager that is there): relative names from its folder work"
+
+  # No Markdown default yet: the editor becomes it, recorded with the ~/.config the install made.
+  [[ "$(cat "${mimeapps_path}")" == $'[Default Applications]\ntext/markdown=markdown-office.desktop' ]] ||
+    fail "mimeapps.list: $(cat "${mimeapps_path}")"
+  grep -qxF "M ${mimeapps_path}" "${record}" || fail "record lacks the mimeapps.list line"
+  grep -qxF "D ${HOME}/.config" "${record}" || fail "record lacks the created ~/.config"
+  # A user's own file: our line goes into its [Default Applications] and comes out again; a
+  # default the user chose is never replaced.
+  remove_file_manager
+  [[ ! -e "${HOME}/.config" ]] || fail "uninstall left the ~/.config it created"
+  mkdir -p "$(dirname "${mimeapps_path}")"
+  printf '[Default Applications]\ntext/plain=editor.desktop\n\n[Added Associations]\ntext/plain=editor.desktop;\n' >"${mimeapps_path}"
+  own_mimeapps="$(cat "${mimeapps_path}")"
+  write_file_manager
+  [[ "$(sed -n 2p "${mimeapps_path}")" == "text/markdown=markdown-office.desktop" ]] ||
+    fail "default line not in [Default Applications]: $(cat "${mimeapps_path}")"
+  remove_file_manager
+  [[ "$(cat "${mimeapps_path}")" == "${own_mimeapps}" ]] || fail "uninstall changed the user's mimeapps.list: $(cat "${mimeapps_path}")"
+  printf '[Default Applications]\ntext/markdown=other.desktop\n' >"${mimeapps_path}"
+  write_file_manager
+  [[ "$(cat "${mimeapps_path}")" == $'[Default Applications]\ntext/markdown=other.desktop' ]] ||
+    fail "install replaced the user's Markdown default"
+  ! grep -q '^M ' "${record}" || fail "recorded a default line it did not write"
+  remove_file_manager
+  [[ "$(cat "${mimeapps_path}")" == $'[Default Applications]\ntext/markdown=other.desktop' ]] ||
+    fail "uninstall touched the user's Markdown default"
+  rm -rf "${HOME}/.config"
+  write_file_manager
+  pass "Markdown default: set to the editor only when none is chosen, removed again exactly"
 fi
 
 # --- Idempotent update, foreign files, uninstall ------------------------------------
@@ -262,6 +293,7 @@ else
   [[ ! -e "${pdf_desktop_path}" ]] || fail ".desktop entry still there"
   [[ ! -e "${data_home}/nautilus/scripts" ]] || fail "the scripts folder the install created is still there"
   [[ -d "${data_home}/nautilus" ]] || fail "uninstall removed the nautilus folder it did not create"
+  [[ ! -e "${HOME}/.config" ]] || fail "the ~/.config (mimeapps.list) the install created is still there"
 fi
 pass "uninstall: entries, script, record, log and the folders the install created are gone"
 

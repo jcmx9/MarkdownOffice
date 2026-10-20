@@ -481,6 +481,8 @@ if [[ "${os}" == "Darwin" ]]; then
 else
   [[ ! -e "${HOME}/.local/share/nautilus/scripts" ]] || fail "the scripts folder the install created is still there"
   [[ -d "${HOME}/.local/share/nautilus" ]] || fail "uninstall removed the nautilus folder it did not create"
+  ! grep -qs '^text/markdown=markdown-office.desktop$' "${HOME}/.config/mimeapps.list" ||
+    fail "uninstall left the editor as Markdown default in mimeapps.list"
 fi
 for f in Notiz.md Vorlagen/eigenes/eigenes.typ Snippets/eigenes.md; do
   [[ -f "${documents}/${f}" ]] || fail "uninstall touched the documents: ${f}"
