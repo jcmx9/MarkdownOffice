@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Outline: entries without sub-chapters no longer show a bullet (•); the slot stays empty, so their titles still line up with the chapters that have a fold arrow
 
 ### Fixed
+- Editor preview, Present and table widget: a citation like `[21]` or `[1], [2]` (no link destination, no matching `[label]: …` definition) keeps its brackets as text, as in the PDF; only inline links, autolinks and references with a definition (label matched case-insensitively, whitespace collapsed) hide their brackets and get the link look
 - Editor: closing the window or quitting during Present (or while its fullscreen still animates) leaves fullscreen first and only then closes; on macOS a window closed in fullscreen could leave a black fullscreen Space in front of everything after the app was gone
 - e2e tests: every app a test started is closed afterwards, also after a failed assertion, and killed when the close hangs; local runs (outside CI) only simulate the fullscreen (`MDO_E2E_FAKE_FULLSCREEN=1`), CI tests the real one
 
