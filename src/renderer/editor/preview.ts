@@ -11,6 +11,7 @@ import {
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common'
 import { frontmatterFields } from './frontmatter'
 import { EXTERNAL_DEST } from './inline-render'
+import { isRealLink, referenceLabels } from './link-refs'
 
 export type PreviewRange = { from: number; to: number }
 
@@ -69,6 +70,8 @@ export interface PreviewCx {
   onLine(pos: number): boolean
   lines(from: number, to: number, d: Decoration): void
   hideOrFaint(from: number, to: number, reveal: boolean): void
+  /** True if a `Link` node is a real link, not literal brackets like the citation `[21]`. */
+  isLink(node: SyntaxNode): boolean
 }
 
 function makeCx(
@@ -79,6 +82,10 @@ function makeCx(
   const doc = state.doc
   const touches = (from: number, to: number) =>
     state.selection.ranges.some((r) => r.from <= to && r.to >= from)
+  const slice = (from: number, to: number) => doc.sliceString(from, to)
+  // Definitions may sit anywhere (usually at the end, outside the viewport): collected from
+  // the whole tree, once per pass and only when a link without destination needs them.
+  let labels: Set<string> | undefined
   return {
     state,
     out,
@@ -110,6 +117,10 @@ function makeCx(
         if (end > pos) out.push(faint.range(pos, end))
         pos = l.to + 1
       }
+    },
+    isLink(node) {
+      labels ??= referenceLabels(syntaxTree(state), slice)
+      return isRealLink(node, slice, labels)
     },
   }
 }
@@ -173,6 +184,9 @@ export function visitInline(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefi
     cx.lines(ref.from, ref.to, lineDeco('mdo-frontmatter'))
     return false
   }
+  // `[21]` without destination or definition is text (CommonMark, PDF): keep its brackets,
+  // no link look; the children (e.g. `[**21**]`) are still styled.
+  if (name === 'Link' && !cx.isLink(ref.node)) return
   const inline = INLINE[name]
   if (inline) {
     const external = name === 'Link' && externalDest(cx.state, ref.node) !== null

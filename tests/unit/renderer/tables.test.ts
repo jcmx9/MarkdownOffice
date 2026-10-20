@@ -139,4 +139,21 @@ describe('tableField', () => {
     expect(rows[0]?.children[2]?.classList.contains('mdo-al-right')).toBe(true)
     expect(rows[0]?.children[1]?.classList.contains('mdo-al-center')).toBe(true)
   })
+  it('keeps citations in cells as text unless the document defines the label', () => {
+    const doc = '| Quelle | Wert |\n|---|---|\n| [21] | [def] |\n\n[DEF]: https://x.de\n\nende'
+    const [first] = tables(make(doc, doc.length))
+    const dom = first?.widget.toDOM({} as EditorView) as HTMLElement
+    const cells = [...dom.querySelectorAll('tbody td')]
+    expect(cells.map((c) => c.textContent)).toEqual(['[21]', 'def'])
+    expect(cells[0]?.querySelector('.mdo-link')).toBeNull()
+    expect(cells[1]?.querySelector('.mdo-link')?.textContent).toBe('def')
+  })
+  it('redraws the table when a reference definition changes', () => {
+    const doc = '| a |\n|---|\n| [21] |\n\nende'
+    const before = make(doc, doc.length)
+    const after = before.update({ changes: { from: doc.length, insert: '\n\n[21]: /u' } }).state
+    const [w1] = tables(before)
+    const [w2] = tables(after)
+    expect(w2?.widget.eq(w1?.widget as WidgetType)).toBe(false)
+  })
 })

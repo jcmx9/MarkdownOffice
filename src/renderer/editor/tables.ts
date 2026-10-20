@@ -2,6 +2,7 @@ import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Range, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 import { renderInline } from './inline-render'
+import { referenceLabels } from './link-refs'
 
 export type Align = 'left' | 'center' | 'right'
 export interface TableModel {
@@ -59,15 +60,21 @@ export function tableModel(lines: string[]): TableModel {
   return { head, rows, aligns }
 }
 
+function sameLabels(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((l) => b.has(l))
+}
+
 class TableWidget extends WidgetType {
   constructor(
     readonly model: TableModel,
     readonly source: string,
+    /** The document's reference labels: a cell `[21]` is a link only if one matches. */
+    readonly labels: ReadonlySet<string>,
   ) {
     super()
   }
   override eq(other: TableWidget): boolean {
-    return other.source === this.source
+    return other.source === this.source && sameLabels(other.labels, this.labels)
   }
   override toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div')
@@ -77,7 +84,7 @@ class TableWidget extends WidgetType {
     const thead = table.createTHead().insertRow()
     for (const cell of this.model.head) {
       const th = document.createElement('th')
-      renderInline(cell, th)
+      renderInline(cell, th, this.labels)
       thead.append(th)
     }
     const body = table.createTBody()
@@ -88,7 +95,7 @@ class TableWidget extends WidgetType {
       cells.forEach((cell, i) => {
         const td = tr.insertCell()
         td.className = `mdo-al-${this.model.aligns[i] ?? 'left'}`
-        renderInline(cell, td)
+        renderInline(cell, td, this.labels)
       })
     })
     wrap.append(table)
@@ -110,7 +117,10 @@ class TableWidget extends WidgetType {
 function build(state: EditorState): DecorationSet {
   const out: Range<Decoration>[] = []
   const doc = state.doc
-  syntaxTree(state).iterate({
+  const tree = syntaxTree(state)
+  // Collected once per build and only if a table is shown as widget.
+  let labels: Set<string> | undefined
+  tree.iterate({
     enter: (n) => {
       // Only top-level tables (direct children of Document): no deep walk into other blocks,
       // so tables inside blockquotes and list items stay raw.
@@ -121,9 +131,10 @@ function build(state: EditorState): DecorationSet {
       const touched = state.selection.ranges.some((r) => r.from <= to && r.to >= from)
       if (!touched) {
         const source = doc.sliceString(from, to)
+        labels ??= referenceLabels(tree, (a, b) => doc.sliceString(a, b))
         out.push(
           Decoration.replace({
-            widget: new TableWidget(tableModel(source.split('\n')), source),
+            widget: new TableWidget(tableModel(source.split('\n')), source, labels),
             block: true,
             rf: 'table',
           }).range(from, to),

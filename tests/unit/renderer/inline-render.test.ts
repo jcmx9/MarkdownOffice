@@ -53,4 +53,19 @@ describe('renderInline', () => {
       'und kursiv',
     )
   })
+  it('keeps citations without a definition as plain text with brackets', () => {
+    const el = render('[21] und [1], [2] und [a][b] und [**c**]')
+    expect(el.textContent).toBe('[21] und [1], [2] und [a][b] und [c]')
+    expect(el.querySelector('.mdo-link')).toBeNull()
+    expect(el.querySelector('strong.mdo-strong')?.textContent).toBe('c')
+  })
+  it('renders references as links when the document defines the label', () => {
+    const el = document.createElement('div')
+    renderInline('[21] und [x][Foo  BAR] und [9]', el, new Set(['21', 'FOO BAR']))
+    expect(el.textContent).toBe('21 und x und [9]')
+    expect([...el.querySelectorAll('.mdo-link')].map((e) => e.textContent)).toEqual(['21', 'x'])
+  })
+  it('an inline link with an empty destination is still a link', () => {
+    expect(render('[x]()').querySelector('.mdo-link')?.textContent).toBe('x')
+  })
 })

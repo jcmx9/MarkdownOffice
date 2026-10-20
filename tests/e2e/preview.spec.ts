@@ -202,8 +202,8 @@ test('external links get an underline and a ↗ that is not document text', asyn
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Links.md')
   const source =
-    'Siehe [Doku](https://example.com/doku) und [Kapitel](#kapitel).\n\n' +
-    '| Verweis | Art |\n|---|---|\n| [Tabelle](https://example.com/t) | extern |\n\nEnde\n'
+    'Siehe [Doku](https://example.com/doku) und [Kapitel](#kapitel), Quelle [21].\n\n' +
+    '| Verweis | Art |\n|---|---|\n| [Tabelle](https://example.com/t) | extern [1], [2] |\n\nEnde\n'
   await writeFile(note, source)
   const { app, page } = await launch({ dirs, args: [note] })
   await page.locator('.cm-editor.mdo-preview').waitFor()
@@ -217,6 +217,8 @@ test('external links get an underline and a ↗ that is not document text', asyn
   await expect(ext).toHaveCSS('text-decoration-style', 'solid')
   // Internal link: plain link look, no arrow.
   await expect(line.locator('.mdo-link:not(.mdo-link-ext)')).toHaveText('Kapitel')
+  // A citation without a reference definition is text (CommonMark, as in the PDF): brackets stay.
+  await expect(line).toContainText('Quelle [21].')
   const arrows = line.locator('.mdo-link-arrow')
   await expect(arrows).toHaveCount(1)
   const arrow = await arrows.first().evaluate((el) => ({
@@ -230,6 +232,7 @@ test('external links get an underline and a ↗ that is not document text', asyn
   // Table widget (cursor elsewhere): the same marker.
   await expect(page.locator('table.mdo-table .mdo-link-ext')).toHaveText('Tabelle')
   await expect(page.locator('table.mdo-table .mdo-link-arrow')).toHaveCount(1)
+  await expect(page.locator('table.mdo-table td').nth(1)).toHaveText('extern [1], [2]')
   expect(await page.locator('.cm-content').textContent()).not.toContain('↗')
   await shot(page, 'links-preview')
   // Code view: raw source, no marker.
