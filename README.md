@@ -5,7 +5,7 @@
 **Version:** 26.10.1-dev.0 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 ## Beschreibung
 
@@ -389,4 +389,6 @@ Siehe [CHANGELOG.md](CHANGELOG.md).
 
 ## Lizenz
 
-MIT – siehe [LICENSE](LICENSE). Mitgelieferte Schriften, Typst und Typst-Packages stehen unter ihren eigenen Lizenzen (siehe [Schriften und Lizenzen](#schriften-und-lizenzen)).
+Copyright © 2026 jcmx9. Markdown Office ist freie Software unter der **GNU Affero General Public License, Version 3 oder später** (AGPL-3.0-or-later), siehe [LICENSE](LICENSE). Du darfst das Programm nutzen, auch geschäftlich, es verändern und weitergeben. Wer eine veränderte Fassung weitergibt oder als Netzwerkdienst anbietet, muss deren vollständigen Quelltext unter derselben Lizenz offenlegen. Für eine Nutzung außerhalb der AGPL, etwa in einem geschlossenen Produkt, ist eine gesonderte kommerzielle Lizenz möglich; Anfragen über ein Issue im Repository. Das Programm wird ohne jede Gewährleistung bereitgestellt.
+
+Versionen bis einschließlich 26.10.0 wurden unter der MIT-Lizenz veröffentlicht; ab 26.10.1 gilt die AGPL. Die Vorlagen-Sets (`memo`, `din5008a`) bleiben unter MIT, damit für die erzeugten Dokumente keine Pflichten entstehen. Mitgelieferte Schriften, Typst und Typst-Packages stehen unter ihren eigenen Lizenzen (siehe [Schriften und Lizenzen](#schriften-und-lizenzen)).

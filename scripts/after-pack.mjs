@@ -49,6 +49,8 @@ export function checkPackedResources(o) {
     join('sets', 'din5008a', 'din5008a.typ'),
     join('pipeline', win ? 'convert.ps1' : 'build.sh'),
     join('pipeline', 'cli.js'),
+    // The app's own licence text (AGPL-3.0-or-later): it must travel with every copy.
+    'LICENSE',
     ...o.licenses.map((l) => join('pipeline', 'licenses', ...l.split('/'))),
     ...(platform === 'darwin' ? [] : (o.dictionaries ?? []).map((f) => join('dictionaries', f))),
   ]

@@ -3,7 +3,7 @@
   "productName": "Markdown Office",
   "version": "26.10.1-dev.0",
   "description": "Calm Markdown editor with a bundled Markdown-to-PDF/A pipeline; the editor looks like the PDF while you type.",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "author": "jcmx9",
   "homepage": "https://github.com/jcmx9/MarkdownOffice",
   "repository": {
