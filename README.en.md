@@ -5,7 +5,7 @@
 **Version:** 26.10.1-dev.0 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 ## Description
 
@@ -389,4 +389,6 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT – see [LICENSE](LICENSE). Bundled fonts, Typst and Typst packages are under their own licences (see [Fonts and licences](#fonts-and-licences)).
+Copyright © 2026 jcmx9. Markdown Office is free software under the **GNU Affero General Public License, version 3 or later** (AGPL-3.0-or-later), see [LICENSE](LICENSE). You may use the program, commercially too, modify it and pass it on. Whoever passes on a modified version or offers it as a network service must publish its complete source code under the same licence. For use outside the AGPL, e.g. in a closed product, a separate commercial licence is possible; ask via an issue in the repository. The program comes without any warranty.
+
+Versions up to and including 26.10.0 were released under the MIT licence; from 26.10.1 on the AGPL applies. The template sets (`memo`, `din5008a`) stay under MIT, so the documents they produce carry no obligations. Bundled fonts, Typst and Typst packages are under their own licences (see [Fonts and licences](#fonts-and-licences)).

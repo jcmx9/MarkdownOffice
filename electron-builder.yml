@@ -20,6 +20,9 @@ extraResources:
     to: pipeline/vendor
   - from: build/pipeline-assets/licenses
     to: pipeline/licenses
+  # The app's own licence (AGPL-3.0-or-later) travels with every copy: <resources>/LICENSE.
+  - from: LICENSE
+    to: LICENSE
   - from: build/pipeline-assets/sets
     to: sets
   # Allowlist: the entry (cli.js), both pipeline scripts, the Typst building blocks (lib/), the

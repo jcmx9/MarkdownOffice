@@ -195,6 +195,23 @@ describe('buildMenuTemplate', () => {
     click(header)
   })
 
+  // AGPL §5 d): every interactive UI shows the legal notices; the About panel carries them.
+  it.each(['win32', 'linux'] as const)(
+    '%s: Hilfe → Über Markdown Office opens the About panel',
+    (platform) => {
+      const menus = buildMenuTemplate(deps({ platform }))
+      const help = menus.at(-1)
+      expect(help?.label).toBe('Hilfe')
+      expect(help?.submenu).toEqual([{ role: 'about', label: 'Über Markdown Office' }])
+    },
+  )
+
+  it('darwin: About stays in the app menu, no extra Hilfe menu', () => {
+    const menus = buildMenuTemplate(deps())
+    expect(menus.some((m) => m.label === 'Hilfe')).toBe(false)
+    expect(flatten(menus).some((i) => i.role === 'about')).toBe(true)
+  })
+
   it('labels the outline toggle in German', () => {
     expect(byId(buildMenuTemplate(deps()), 'toggle-outline')?.label).toBe('Gliederung ein/aus')
   })
