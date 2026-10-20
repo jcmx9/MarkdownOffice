@@ -67,15 +67,48 @@ export function spellcheckExtensions(on: boolean, mode: Mode): Extension {
   ]
 }
 
+/** Chromium's per-document custom dictionary (Blink feature, enabled for the window). */
+interface SpellCheckCustomDictionary {
+  removeWords(words: string[]): void
+}
+
 /**
- * Makes Chromium check the editor's text again with the dictionaries active now: switching
- * `spellcheck` off removes the old markers (and the checker's progress), switching it on
- * checks the whole editable again. Chromium does neither by itself when the dictionaries
- * change (see SpellcheckController.recheckOnNewDictionary). Nothing happens while checking
- * is off or in Present, so this never switches checking on.
+ * Drops the spelling result Chromium cached for the last checked text (see
+ * SPELLCHECK_BLINK_FEATURES in src/main/spellcheck/features.ts): without this, checking the
+ * unchanged text again after a language switch returns the old language's result on Windows.
+ * Removing no words changes nothing but clears that cache. Returns false when the API is
+ * missing (feature not enabled, or a Chromium without it).
+ */
+export function clearSpellcheckCache(doc: Document): boolean {
+  const dict = (doc as Document & { spellCheckCustomDictionary?: SpellCheckCustomDictionary })
+    .spellCheckCustomDictionary
+  if (!dict) return false
+  dict.removeWords([])
+  return true
+}
+
+let warnedNoCacheClear = false
+
+/**
+ * Delay of the second recheck after a newly loaded dictionary (app.ts, onSpellRecheck): the
+ * dictionary reaches the renderer on a channel of its own, usually within milliseconds.
+ */
+export const SPELL_RECHECK_FOLLOW_UP_MS = 500
+
+/**
+ * Makes Chromium check the editor's text again with the dictionaries active now: first its
+ * cached result for this text is dropped (clearSpellcheckCache), then switching `spellcheck`
+ * off removes the old markers (and the checker's progress) and switching it on checks the
+ * whole editable again. Chromium does none of this by itself when the dictionaries change
+ * (see SpellcheckController.recheckOnNewDictionary). Nothing happens while checking is off or
+ * in Present, so this never switches checking on.
  */
 export function recheckSpelling(view: EditorView, on: boolean, mode: Mode): void {
   if (!on || mode !== 'edit') return
+  if (!clearSpellcheckCache(view.dom.ownerDocument) && !warnedNoCacheClear) {
+    warnedNoCacheClear = true
+    console.warn('spellcheck: document.spellCheckCustomDictionary missing; recheck may be stale')
+  }
   view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(false, mode)) })
   view.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(true, mode)) })
 }

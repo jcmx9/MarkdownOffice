@@ -37,6 +37,7 @@ import {
   offerDictionaryNotice,
   recheckSpelling,
   replaceWordAt,
+  SPELL_RECHECK_FOLLOW_UP_MS,
   SpellLanguageTracker,
   spellAnswerCurrent,
   spellcheckCompartment,
@@ -129,6 +130,8 @@ export class App {
   /** Last lang: reported to main, so unchanged values cause no IPC. */
   private readonly spellLang = new SpellLanguageTracker()
   private spellLangTimer: ReturnType<typeof setTimeout> | null = null
+  /** The follow-up recheck after a newly loaded dictionary (see onSpellRecheck). */
+  private spellRecheckTimer: ReturnType<typeof setTimeout> | null = null
   /** Dictionaries whose „fehlt“ notice was already shown this session. */
   private readonly dictNoticed = new Set<string>()
   private readonly saveErrors = new Map<number, string>()
@@ -237,10 +240,22 @@ export class App {
       replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
     })
     this.mdo.onSpellRecheck(() => {
-      // A shown profile (YAML) stays unchecked; a later switch to a note reconfigures anyway.
-      const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
-      const on = this.spellcheckOn && (!shown || isMarkdownTab(shown))
-      recheckSpelling(this.editor, on, this.mode)
+      const recheck = () => {
+        // A shown profile (YAML) stays unchecked; a later switch to a note reconfigures anyway.
+        const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
+        const on = this.spellcheckOn && (!shown || isMarkdownTab(shown))
+        recheckSpelling(this.editor, on, this.mode)
+      }
+      recheck()
+      // Chromium hands the renderer the new dictionary on a Mojo pipe of its own, which is not
+      // ordered with this IPC message: the first recheck can still run with the old languages
+      // (Windows CI: English suggestions in a German note even after the recheck, PR #45; a
+      // second recheck seconds later fixed it). So once more, after a short delay.
+      if (this.spellRecheckTimer) clearTimeout(this.spellRecheckTimer)
+      this.spellRecheckTimer = setTimeout(() => {
+        this.spellRecheckTimer = null
+        recheck()
+      }, SPELL_RECHECK_FOLLOW_UP_MS)
     })
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))

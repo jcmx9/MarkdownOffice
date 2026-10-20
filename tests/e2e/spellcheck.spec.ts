@@ -40,6 +40,9 @@ test('spellcheck follows the switch and Present; never in code', async () => {
   const { app, page } = await launch({ dirs, args: [note] })
   const content = page.locator('.cm-content')
   await expect(content).toHaveAttribute('spellcheck', 'true')
+  // The recheck after a language switch clears Chromium's cached result through this API
+  // (src/main/spellcheck/features.ts); an Electron without it would bring stale marks back.
+  expect(await page.evaluate(() => 'spellCheckCustomDictionary' in document)).toBe(true)
   await expect(page.locator('.cm-line[spellcheck="false"]', { hasText: 'konst' })).toHaveCount(1)
   await clickMenu(app, 'toggle-spellcheck')
   await expect(content).toHaveAttribute('spellcheck', 'false')
@@ -63,9 +66,11 @@ test('right click on a misspelled word offers suggestions; a click fixes exactly
   // lang: de makes the real language path pick de-DE, whatever the runner's system language is.
   await writeFile(note, '---\nlang: de\n---\n\nEin Fehlr hier.\n')
   // No dictionary update check: like the other spellcheck tests, this one must not depend on
-  // the network. With the check on, CI asked the real GitHub release (and downloaded/staged
-  // files) while Chromium loaded de-DE for the first time, and on Windows the word was then
-  // sometimes never marked within 15 s (release/26.10.0, PR #34).
+  // the network. The Windows runs where the word was never marked (or got English
+  // suggestions) had another cause: the app starts with the system language (en-US, which
+  // the Windows spellchecker serves), and the recheck after the switch to de-DE got
+  // Chromium's cached en-US result for the unchanged text (src/main/spellcheck/features.ts,
+  // PR #45).
   const { app, page } = await launch({
     dirs,
     args: [note],
