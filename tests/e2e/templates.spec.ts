@@ -33,6 +33,19 @@ test('Mod+N starts with the memo header; nothing is written until typed', async 
   await app.close()
 })
 
+test("the start screen's „Neues Memo …“ starts a note with the memo header", async () => {
+  const { app, page, notes } = await launch()
+  await clickMenu(app, 'close-tab')
+  await expect(tabs(page)).toHaveCount(0)
+  const button = page.locator('#empty [data-action=new]')
+  await expect(button).toHaveText('Neues Memo …')
+  await button.click()
+  await expect(tabs(page)).toHaveCount(1)
+  await expect(page.locator('.cm-content')).toContainText('template: memo')
+  expect(await readdir(notes)).toEqual([])
+  await app.close()
+})
+
 test('Mod+N note emptied again leaves no file behind', async () => {
   const { app, page, notes } = await launch()
   await clickMenu(app, 'new')
@@ -51,7 +64,7 @@ test('Mod+N note emptied again leaves no file behind', async () => {
   await app.close()
 })
 
-test('Neu aus Vorlage: din5008a with a user profile, memo not offered', async () => {
+test('Neu aus Vorlage: memo first and preselected, din5008a with a user profile', async () => {
   const dirs = await makeDirs()
   await mkdir(join(dirs.templates, 'profiles'))
   await writeFile(join(dirs.templates, 'profiles', 'kanzlei.yaml'), 'name: Kanzlei\n')
@@ -59,7 +72,12 @@ test('Neu aus Vorlage: din5008a with a user profile, memo not offered', async ()
   await clickMenu(app, 'new-from-template')
   await expect(picker(page)).toBeVisible()
   await expect(page.getByTestId('tpl-row-din5008a')).toContainText('mitgeliefert')
-  await expect(page.getByTestId('tpl-row-memo')).toHaveCount(0)
+  // memo is offered too, first and preselected: one Enter makes the usual note.
+  await expect(page.locator('[data-testid^=tpl-row-]').first()).toHaveAttribute(
+    'data-testid',
+    'tpl-row-memo',
+  )
+  await expect(page.getByTestId('tpl-set-memo')).toBeChecked()
 
   await page.getByTestId('tpl-set-din5008a').check()
   const select = page.getByTestId('tpl-profile')

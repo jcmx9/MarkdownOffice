@@ -52,11 +52,11 @@ afterEach(() => {
 })
 
 describe('pickerSets', () => {
-  it('leaves the default set out for „Neu aus Vorlage …“', () => {
-    expect(pickerSets([BRIEF, EIGEN, MEMO], false)).toEqual([BRIEF, EIGEN])
+  it("puts the default set first, the others keep main's order", () => {
+    expect(pickerSets([BRIEF, EIGEN, MEMO])).toEqual([MEMO, BRIEF, EIGEN])
   })
-  it('puts the default set first for the header insert', () => {
-    expect(pickerSets([BRIEF, EIGEN, MEMO], true)).toEqual([MEMO, BRIEF, EIGEN])
+  it('lists only the others when the default set is missing', () => {
+    expect(pickerSets([BRIEF, EIGEN])).toEqual([BRIEF, EIGEN])
   })
 })
 

@@ -561,14 +561,9 @@ export class App {
     await this.newNote(header ?? undefined)
   }
 
-  /** „Neu aus Vorlage …“: every set except the default, then a new note with its header. */
+  /** „Neu aus Vorlage …“: every set (default first), then a new note with its header. */
   private async newFromTemplate(): Promise<void> {
-    const header = await this.chosenHeader(
-      'Neu aus Vorlage',
-      'Erstellen',
-      false,
-      () => !this.closing,
-    )
+    const header = await this.chosenHeader('Neu aus Vorlage', 'Erstellen', () => !this.closing)
     if (header !== null) await this.newNote(header)
   }
 
@@ -633,10 +628,9 @@ export class App {
   private async chosenHeader(
     title: string,
     confirm: string,
-    withDefault: boolean,
     still: () => boolean,
   ): Promise<string | null> {
-    const choice = await this.chooseTemplate(title, confirm, withDefault, still)
+    const choice = await this.chooseTemplate(title, confirm, still)
     if (!choice || !still()) return null
     let header: string | null = null
     try {
@@ -655,7 +649,6 @@ export class App {
   private async chooseTemplate(
     title: string,
     confirm: string,
-    withDefault: boolean,
     still: () => boolean,
   ): Promise<TemplateChoice | null> {
     if (this.pickerOpen || this.settingsOpen || document.querySelector('dialog[open]')) return null
@@ -666,8 +659,8 @@ export class App {
       return await pickTemplate({
         title,
         confirm,
-        sets: pickerSets(sets, withDefault),
-        selected: withDefault ? DEFAULT_SET : undefined,
+        sets: pickerSets(sets),
+        selected: DEFAULT_SET,
         header: (name) => this.mdo.readSetHeader(name),
         profiles: (name) => this.mdo.listProfiles(name),
       })
@@ -872,7 +865,6 @@ export class App {
     const template = await this.chosenHeader(
       'YAML-Header einfügen',
       'Einfügen',
-      true,
       () => !this.closing && this.shownId === tab.id,
     )
     if (template === null) return
