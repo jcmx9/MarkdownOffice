@@ -314,3 +314,29 @@ test('heading gaps match the memo PDF, the same with or without blank lines', as
     expect(Math.abs(t.below - below)).toBeLessThanOrEqual(1)
   }
 })
+
+test('text and tables are as wide as the memo PDF text block (145 mm)', async () => {
+  const { app, page } = await openFixture()
+  await page.evaluate(() => document.fonts.ready)
+  const widths = await page.evaluate(() => {
+    // Content box: the width the text actually breaks in (CodeMirror pads lines and content).
+    const box = (el: Element) => {
+      const s = getComputedStyle(el)
+      return (
+        el.getBoundingClientRect().width -
+        Number.parseFloat(s.paddingLeft) -
+        Number.parseFloat(s.paddingRight)
+      )
+    }
+    const line = [...document.querySelectorAll('.cm-line')].find((l) =>
+      l.textContent?.startsWith('Ein Absatz mit'),
+    )
+    const table = document.querySelector('.mdo-table-wrap')
+    return { line: line ? box(line) : 0, table: table ? box(table) : 0 }
+  })
+  // memo: A4 (210 mm) minus margins 35 mm + 30 mm = 145 mm = 548.0 CSS px at 100 % zoom.
+  const pdf = (145 / 25.4) * 96
+  expect(widths.line).toBeCloseTo(pdf, 0)
+  expect(widths.table).toBeCloseTo(pdf, 0)
+  await app.close()
+})
