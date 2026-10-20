@@ -382,6 +382,14 @@
   text-align: left;
   hyphens: manual;
 }
+/* Column widths as Typst's auto columns (tables.ts typstAutoColumns): measured with
+   .mdo-table-measure (auto layout at max-content), then fixed via <col> widths. */
+.mdo-preview table.mdo-table.mdo-table-fitted {
+  table-layout: fixed;
+}
+.mdo-preview table.mdo-table.mdo-table-measure {
+  table-layout: auto;
+}
 .mdo-preview table.mdo-table :is(th, td) {
   /* Same cell inset as memo 26.10.3 (y 5pt, x 5pt), so rows match the PDF */
   padding: 5pt;

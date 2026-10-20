@@ -332,11 +332,110 @@ test('text and tables are as wide as the memo PDF text block (145 mm)', async ()
       l.textContent?.startsWith('Ein Absatz mit'),
     )
     const table = document.querySelector('.mdo-table-wrap')
-    return { line: line ? box(line) : 0, table: table ? box(table) : 0 }
+    const inner = document.querySelector('table.mdo-table')
+    return {
+      line: line ? box(line) : 0,
+      table: table ? box(table) : 0,
+      inner: inner ? inner.getBoundingClientRect().width : 0,
+    }
   })
   // memo: A4 (210 mm) minus margins 35 mm + 30 mm = 145 mm = 548.0 CSS px at 100 % zoom.
   const pdf = (145 / 25.4) * 96
   expect(widths.line).toBeCloseTo(pdf, 0)
   expect(widths.table).toBeCloseTo(pdf, 0)
+  // Typst's auto columns do not stretch: the small fixture table stays as wide as its content.
+  expect(widths.inner).toBeGreaterThan(0)
+  expect(widths.inner).toBeLessThan(pdf / 2)
+  await app.close()
+})
+
+test('table columns are as wide as Typst makes them in the memo PDF', async () => {
+  // Short first and last column, long text in the middle: the browser's auto layout would
+  // squeeze "Objekt" and "Quelle" until they wrap; Typst's auto columns keep them whole.
+  const long =
+    'Einbauküche mit Induktionsfeld, Geschirrspüler und Backofen auf Arbeitshöhe, ' +
+    'dazu ein raumhoher Einbauschrank im Flur und Parkett in allen Wohnräumen'
+  const source = [
+    '# Ausstattung',
+    '',
+    '| Objekt | Beschreibung | Quelle |',
+    '|---|---|---|',
+    `| Wohnung Erdgeschoss | ${long} | Exposé 2024 |`,
+    `| Keller | ${long.slice(0, 60)} | Begehung |`,
+    '',
+    'Ende.',
+    '',
+  ].join('\n')
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Tabelle.md')
+  await writeFile(note, source)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  await expect(page.locator('table.mdo-table.mdo-table-fitted')).toHaveCount(1)
+  const m = await page.evaluate(() => {
+    const wrap = document.querySelector('.mdo-table-wrap') as HTMLElement
+    const table = wrap.querySelector('table') as HTMLTableElement
+    const s = getComputedStyle(wrap)
+    const available =
+      wrap.clientWidth - Number.parseFloat(s.paddingLeft) - Number.parseFloat(s.paddingRight)
+    // Natural widths independently of the widget: a clone in auto layout at max-content.
+    const clone = table.cloneNode(true) as HTMLTableElement
+    clone.querySelector('colgroup')?.remove()
+    clone.classList.remove('mdo-table-fitted')
+    Object.assign(clone.style, {
+      width: 'max-content',
+      tableLayout: 'auto',
+      position: 'absolute',
+      visibility: 'hidden',
+    })
+    wrap.append(clone)
+    const natural = [...(clone.tHead?.rows[0]?.cells ?? [])].map(
+      (c) => c.getBoundingClientRect().width,
+    )
+    clone.remove()
+    const widths = [...(table.tHead?.rows[0]?.cells ?? [])].map(
+      (c) => c.getBoundingClientRect().width,
+    )
+    // Lines per data cell: distinct line tops of the cell's text.
+    const lines = [...(table.tBodies[0]?.rows ?? [])].map((r) =>
+      [...r.cells].map((c) => {
+        const range = document.createRange()
+        range.selectNodeContents(c)
+        return new Set([...range.getClientRects()].map((q) => Math.round(q.top))).size
+      }),
+    )
+    return { available, natural, widths, lines }
+  })
+  // Typst (grid layouter shrink_auto_columns), restated here so the test checks the widget.
+  const capped = m.natural.map((w) => Math.min(w, m.available))
+  let fair = Number.NEGATIVE_INFINITY
+  let rest = m.available
+  let open = capped.length
+  for (let changed = true; changed && open > 0; ) {
+    changed = false
+    const last = fair
+    fair = rest / open
+    for (const w of capped) {
+      if (w <= fair && w > last) {
+        rest -= w
+        open--
+        changed = true
+      }
+    }
+  }
+  const want = capped.map((w) => Math.min(w, fair))
+  console.log('table columns', JSON.stringify({ ...m, want }))
+  expect(m.natural[1] as number).toBeGreaterThan(m.available)
+  for (const [i, w] of want.entries()) {
+    expect(Math.abs((m.widths[i] as number) - w)).toBeLessThanOrEqual(1)
+  }
+  // Short columns stay one line high; only the long description wraps.
+  for (const row of m.lines) {
+    expect(row[0]).toBe(1)
+    expect(row[2]).toBe(1)
+  }
+  expect(m.lines[0]?.[1] as number).toBeGreaterThan(1)
+  await shot(page, 'table-columns')
   await app.close()
 })
