@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- README: the front matter section explains when values need quotes (free text in quotes, fixed values without, and why)
 - Licence: Markdown Office is now licensed under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later) instead of MIT; versions up to 26.10.0 stay MIT. Contributions come with a contributor agreement that keeps a commercial licence possible (CONTRIBUTING.md). The template sets stay MIT. The About panel shows copyright, licence and the no-warranty note; on Windows and Linux it opens from the new menu Hilfe → Über Markdown Office
 - Outline: entries without sub-chapters no longer show a bullet (•); the slot stays empty, so their titles still line up with the chapters that have a fold arrow
 

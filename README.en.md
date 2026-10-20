@@ -200,6 +200,8 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/path/to/note" markdown-office --no-source "/path/no
 
 A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → YAML-Header …** or the `:header` snippet) contains every key with its default value and a comment.
 
+**Quotes:** free text goes in quotes (`title: "Kick-off: relaunch"`), fixed values go without (`lang: de`, `toc: auto`, `true`, `13mm`). Without quotes YAML misreads text containing `: ` or ` #` (everything from `#` on becomes a comment), words like `no`, `yes`, `on`, `off` (booleans), numbers with a leading zero like `01067` (becomes 1067) and text starting with `[`, `{`, `*`, `&`, `!`, `@`, `` ` ``, `|`, `>` or `%`. `""` explicitly means empty. A date like `date: 2026-10-20` may stay unquoted.
+
 ```yaml
 ---
 title: "Kick-off relaunch"   # title: title block, header, PDF title

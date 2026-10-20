@@ -200,6 +200,8 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/pfad/zur/notiz" markdown-office --no-source "/pfad/
 
 Ein YAML-Block am Dateianfang steuert einzelne Dokumente. Alle Schlüssel sind optional; die Frontmatter-Vorlage des Sets `memo` (Menü **Einfügen → YAML-Header …** oder Snippet `:header`) enthält jeden Schlüssel mit Standardwert und Kommentar.
 
+**Anführungszeichen:** Freitext steht in Anführungszeichen (`title: "Kick-off: Relaunch"`), feste Werte ohne (`lang: de`, `toc: auto`, `true`, `13mm`). Ohne Anführungszeichen missversteht YAML Text mit `: ` oder ` #` (alles ab `#` wird Kommentar), Wörter wie `no`, `yes`, `on`, `off` (Wahrheitswerte), Zahlen mit führender Null wie `01067` (wird 1067) und Text, der mit `[`, `{`, `*`, `&`, `!`, `@`, `` ` ``, `|`, `>` oder `%` beginnt. `""` heißt ausdrücklich leer. Ein Datum wie `date: 2026-10-20` darf ohne Anführungszeichen stehen.
+
 ```yaml
 ---
 title: "Kick-off Relaunch"   # Titel: Titelblock, Kopfzeile, PDF-Titel
