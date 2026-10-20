@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Outline: entries without sub-chapters no longer show a bullet (•); the slot stays empty, so their titles still line up with the chapters that have a fold arrow
+
 ### Fixed
 - Editor: closing the window or quitting during Present (or while its fullscreen still animates) leaves fullscreen first and only then closes; on macOS a window closed in fullscreen could leave a black fullscreen Space in front of everything after the app was gone
 - e2e tests: every app a test started is closed afterwards, also after a failed assertion, and killed when the close hangs; local runs (outside CI) only simulate the fullscreen (`MDO_E2E_FAKE_FULLSCREEN=1`), CI tests the real one

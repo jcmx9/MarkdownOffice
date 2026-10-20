@@ -306,7 +306,7 @@ body.mdo-ol-resizing {
   color: var(--chrome-muted);
 }
 #outline .mdo-ol-chevron,
-#outline .mdo-ol-marker {
+#outline .mdo-ol-spacer {
   flex: none;
   width: calc(18px * var(--mdo-ol-zoom, 1));
   text-align: center;
@@ -319,14 +319,6 @@ body.mdo-ol-resizing {
   line-height: 1;
   color: var(--mdo-faint);
   transition: transform 0.12s ease;
-}
-/* List marker for entries without children: same slot and colour as the arrow. */
-#outline .mdo-ol-marker {
-  font-family: var(--mdo-font-sans);
-  font-size: calc(19px * var(--mdo-ol-zoom, 1));
-  line-height: 1;
-  color: var(--mdo-faint);
-  user-select: none;
 }
 #outline .mdo-ol-chevron:hover {
   color: var(--chrome-fg);
