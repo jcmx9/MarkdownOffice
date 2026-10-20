@@ -8,8 +8,8 @@ export interface OutlineHandlers {
 interface Row {
   li: HTMLLIElement
   chevron: HTMLButtonElement
-  /** List marker for an entry without children; same slot as the chevron. */
-  marker: HTMLSpanElement
+  /** Empty slot for an entry without children, so its label lines up with the chevron rows. */
+  spacer: HTMLSpanElement
   label: HTMLButtonElement
   /** Children list of an H1, present only while the H1 is expanded. */
   sub: HTMLUListElement | null
@@ -121,13 +121,13 @@ export class Outline {
     row.li.classList.toggle('mdo-ol-top', top)
     row.li.classList.toggle('mdo-ol-sub', !top)
     // A chevron only where it shows something: an entry with children. Every other entry
-    // gets a list marker in the same slot, so the outline reads as a list.
+    // keeps the slot empty (no bullet: the owner found the bullets restless, 2026-10-20).
     const hasFold = e.fold !== null && e.children.length > 0
     // parentNode, not isConnected: the list may be detached while it is being built.
     if ((row.chevron.parentNode !== null) !== hasFold) {
-      // Chevron and marker occupy the same slot.
-      if (hasFold) row.marker.replaceWith(row.chevron)
-      else row.chevron.replaceWith(row.marker)
+      // Chevron and spacer occupy the same slot.
+      if (hasFold) row.spacer.replaceWith(row.chevron)
+      else row.chevron.replaceWith(row.spacer)
     }
     row.chevron.setAttribute('aria-expanded', String(!e.folded))
     row.chevron.setAttribute(
@@ -154,12 +154,11 @@ export class Outline {
     const li = document.createElement('li')
     li.className = `mdo-ol-item mdo-ol-h${e.level} ${e.level === this.topLevel ? 'mdo-ol-top' : 'mdo-ol-sub'}`
     const chevron = this.button('mdo-ol-chevron', '▸')
-    const marker = document.createElement('span')
-    marker.className = 'mdo-ol-marker'
-    marker.setAttribute('aria-hidden', 'true')
-    marker.textContent = '\u2022'
+    const spacer = document.createElement('span')
+    spacer.className = 'mdo-ol-spacer'
+    spacer.setAttribute('aria-hidden', 'true')
     const label = this.button('mdo-ol-label', e.text)
-    const row: Row = { li, chevron, marker, label, sub: null, entry: e }
+    const row: Row = { li, chevron, spacer, label, sub: null, entry: e }
     chevron.addEventListener('click', (ev) => {
       if (ev.button === 0) this.handlers.toggle(row.entry)
     })
@@ -168,7 +167,7 @@ export class Outline {
     })
     label.addEventListener('mouseenter', () => this.showTip(row))
     label.addEventListener('mouseleave', () => this.hideTip())
-    li.append(e.fold && e.children.length > 0 ? chevron : marker, label)
+    li.append(e.fold && e.children.length > 0 ? chevron : spacer, label)
     return row
   }
 
