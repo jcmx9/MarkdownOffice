@@ -55,7 +55,7 @@ trap cleanup EXIT
 # Isolated profile: HOME, XDG and the install folder all live in the temp dir.
 export HOME="${work}/home"
 mkdir -p "${HOME}"
-unset XDG_DATA_HOME
+unset XDG_DATA_HOME XDG_CONFIG_HOME
 # The PDF viewer must not open during the conversion check.
 export MDO_NO_OPEN=1
 # With spaces, like "Markdown Office.app" itself: every path in the command must stay quoted.

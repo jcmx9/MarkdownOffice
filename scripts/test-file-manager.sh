@@ -31,7 +31,7 @@ trap 'rm -rf "${work}"' EXIT
 
 export HOME="${work}/home"
 mkdir -p "${HOME}"
-unset XDG_DATA_HOME
+unset XDG_DATA_HOME XDG_CONFIG_HOME
 # Quotes, $, & and < in the folder name: every generated file must keep the path intact.
 export MDO_HOME="${work}/state 'q' \$x & <y>"
 export MDO_NOTIFY_LOG="${work}/notify.log"
