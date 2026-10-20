@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { createState } from '../../../src/renderer/editor/setup'
 import {
+  clearSpellcheckCache,
   forgetDismissedNotices,
   offerDictionaryNotice,
   recheckSpelling,
@@ -61,6 +62,32 @@ describe('recheckSpelling', () => {
     // true -> false -> true: it really went through off before it ended on again.
     expect(oldValues(v, () => recheckSpelling(v, true, 'edit'))).toEqual(['true', 'false'])
     expect(attr(v)).toBe('true')
+  })
+
+  it("drops Chromium's cached result before the text is checked again", () => {
+    const v = view('Ein Fehlr hier\n')
+    v.dispatch({ effects: spellcheckCompartment.reconfigure(spellcheckExtensions(true, 'edit')) })
+    const calls: string[] = []
+    const doc = document as Document & { spellCheckCustomDictionary?: unknown }
+    doc.spellCheckCustomDictionary = {
+      removeWords: (words: string[]) => calls.push(`removeWords(${JSON.stringify(words)})`),
+    }
+    const mo = new MutationObserver((records) => {
+      for (const r of records) calls.push(`spellcheck ${r.oldValue}`)
+    })
+    try {
+      mo.observe(v.contentDOM, { attributeFilter: ['spellcheck'], attributeOldValue: true })
+      recheckSpelling(v, true, 'edit')
+      for (const r of mo.takeRecords()) calls.push(`spellcheck ${r.oldValue}`)
+    } finally {
+      mo.disconnect()
+      delete doc.spellCheckCustomDictionary
+    }
+    expect(calls).toEqual(['removeWords([])', 'spellcheck true', 'spellcheck false'])
+  })
+
+  it('clearSpellcheckCache reports a missing API', () => {
+    expect(clearSpellcheckCache(document)).toBe(false)
   })
 
   it.each([
