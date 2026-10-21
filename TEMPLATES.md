@@ -244,6 +244,43 @@ The editor reads the header file of every set: Mod+N starts a note with `memo.he
 - A column-0 `profile:` key enables the profile choice: the picker lists the `*.yaml` names (matching the name rule) from `<MDO_TEMPLATES>/<name>/profiles/`, `<MDO_TEMPLATES>/profiles/` and `<set folder>/profiles/`, deduplicated and sorted (the same folders the pipeline searches, minus the note's own), and writes the chosen name into that line, keeping its alignment and comment.
 - For the merge, every column-0 `key:` line is one key; the indented lines (or column-0 `- ` items) below it belong to it and are copied with it, so a list default such as `x-to:` arrives complete. Comment lines between the keys are not copied, so put each key's explanation as a trailing `# …` comment on its own line.
 
+### Schema (`<name>.schema.yaml`)
+
+The editor's *Bearbeiten → YAML prüfen …* and `markdown-office validate` check a note's front matter against two layers of rules:
+
+1. `pipeline/lib/frontmatter.schema.yaml` ships with the app and describes the keys the pipeline reads itself (`title`, `date`, `toc`, `logo-height`, …).
+2. An optional `<name>.schema.yaml` next to `<name>.typ` (same folder as `<name>.header.md`) describes the keys only the set reads (`x-…`) and may restrict a pipeline key. A rule of the set **replaces** the pipeline's rule of the same key.
+
+Keys that no schema lists are always allowed, so a note may carry extra keys. Only column-0 keys are checked, like the scripts do; a nested value is only checked for its top-level shape. A set without a schema file is checked against the pipeline layer only; missing keys are still offered from `<name>.header.md`.
+
+```yaml
+# memo.schema.yaml (excerpt)
+schema: 1
+keys:
+  lang:          { type: enum, values: [de, en] }   # restricts the pipeline's `lang`
+  logo-height:   { type: length, max: 25mm }
+  x-to:          { type: lines, max: 6 }
+  x-sign:        { type: bool }
+  x-attachments: { type: list }
+```
+
+`schema: 1` and `keys:` are required; a key name matches `^[A-Za-z0-9_-]+$`. The types:
+
+| Type | Accepts | Options |
+|---|---|---|
+| `text` | any text; a scalar or an inline list of scalars (joined, as `author`) | |
+| `bool` | `true/false` (also `yes/no/on/off/ja/nein/1/0`, any case; non-canonical spellings are fixable) | |
+| `enum` | one of the listed values (case-insensitive, fixable to the canonical one) | `values` (required) |
+| `date` | `2026-10-20`, `20.10.2026` and similar | `empty: today` or `none`: what an empty value means for the set (documentation; an empty value is never a finding) |
+| `length` | a number with unit `mm`, `cm`, `pt`, `in` | `min`, `max`, each with a unit |
+| `list` | inline `[A, B]` or a block list | |
+| `lines` | a block list of text lines | `max`: number of lines |
+| `file` | a file name | `ext`: allowed extensions, with the dot |
+| `name` | `^[a-z0-9_-]+$` | |
+| `lang` | a BCP-47 language code such as `de`, `en`, `pt-BR` | |
+
+A broken schema (unknown type, not YAML, larger than 64 KiB) never stops the editor: users get a neutral notice and validation falls back to the pipeline layer. Test your schema with `markdown-office validate` on a note made from your header.
+
 ## 7. PDF requirements
 
 Every set must produce a valid **PDF/A-3b** with the source attached, like `memo`:
@@ -415,6 +452,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
+- [ ] Ships `<name>.schema.yaml` for its `x-` keys (section 6, *Schema*).
 - [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
 - [ ] Repo `MarkdownOffice-set-<name>`, CalVer tag `vYY.M.MICRO`; for bundling, manifest entry with the archive's SHA-256.
