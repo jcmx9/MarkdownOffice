@@ -34,7 +34,7 @@ export function userTemplatesDir(env: NodeJS.ProcessEnv, documentsDir: string): 
   return join(documentsDir, 'Markdown Office', 'Vorlagen')
 }
 
-async function isFile(p: string): Promise<boolean> {
+export async function isFile(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isFile()
   } catch (err) {

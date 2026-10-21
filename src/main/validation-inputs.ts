@@ -1,21 +1,28 @@
-import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { ProfileLookup } from '../core/frontmatter-validate'
 import { SET_NAME_RE } from '../core/sets'
 import type { ValidationInputs } from '../core/validation-context'
-import { listSets, readSetHeader, readSetSchema, resolveSet } from './templates'
+import { isFile, listSets, readSetHeader, readSetSchema, resolveSet } from './templates'
 
 // No `electron` import: the CLI bundles this file with Node built-ins only.
 
 const DEFAULT_SET = 'memo'
 
-async function isFile(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isFile()
-  } catch {
-    return false
+/**
+ * Folder of a `template: x.typ` value, resolved like `resolve_template` in build.sh (`~`
+ * expanded, relative to the note's folder); build.sh searches `<that folder>/profiles` too.
+ * null when it cannot be resolved here (relative without a note folder, or variables).
+ */
+function typFolder(value: string, noteDir: string | null): string | null {
+  if (/[$%]/.test(value)) return null
+  let p = value
+  if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) p = homedir() + p.slice(1)
+  if (!isAbsolute(p)) {
+    if (noteDir === null) return null
+    p = resolve(noteDir, p)
   }
+  return dirname(p)
 }
 
 /**
@@ -76,11 +83,17 @@ export async function validationInputs(o: {
   const resolved = isPath ? null : await resolveSet(o.setsDir, o.userDir, set)
   const header = resolved ? await readSetHeader(o.setsDir, o.userDir, set) : null
   const schemaText = resolved ? await readSetSchema(o.setsDir, o.userDir, set) : null
-  const profile = await lookupProfile(o.profile, {
-    userDir: o.userDir,
-    noteDir: o.noteDir,
-    set,
-    setDir: resolved ? dirname(resolved.typ) : null,
-  })
+  // A single .typ has no set name, but its own folder is still a search location. If that
+  // folder is unknown, a profile *name* cannot be judged: not checked, never a false missing.
+  const typDir = isPath ? typFolder(o.template, o.noteDir) : null
+  const profile =
+    isPath && typDir === null && SET_NAME_RE.test(o.profile)
+      ? null
+      : await lookupProfile(o.profile, {
+          userDir: o.userDir,
+          noteDir: o.noteDir,
+          set,
+          setDir: resolved ? dirname(resolved.typ) : typDir,
+        })
   return { set, sets, header, schemaText, profile }
 }

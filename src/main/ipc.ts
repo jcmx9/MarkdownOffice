@@ -64,7 +64,9 @@ export function registerIpc(ctx: AppContext): void {
   )
   // „YAML prüfen“ inputs. The renderer names the note by a path main already allowed (null =
   // unsaved note) and passes the note's raw `template:`/`profile:` values; these only select
-  // names and a lookup, main never reads a path the renderer invents.
+  // names and a lookup, main never reads a path the renderer invents. An absolute or `~`
+  // profile value makes main only stat (existence check) a path named in the user's own note,
+  // it never reads it.
   ipcMain.handle(
     Ch.validationInputs,
     async (_e, path: unknown, template: unknown, profile: unknown) => {

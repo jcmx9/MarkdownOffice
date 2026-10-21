@@ -123,3 +123,34 @@ describe('validationInputs: profile search', () => {
     expect((await run('memo', 'p.yaml', null)).profile).toBeNull()
   })
 })
+
+describe('validationInputs: single .typ template', () => {
+  it('searches <dir of the .typ>/profiles (build.sh does, without a set name)', async () => {
+    await put(join(noteDir, 'brief.typ'))
+    expect((await run('brief.typ', 'ich')).profile).toMatchObject({ status: 'missing' })
+    await put(join(noteDir, 'profiles', 'ich.yaml'))
+    expect((await run('brief.typ', 'ich')).profile).toEqual({ status: 'found' })
+    // Relative to the note's folder, like build.sh: ../brief.typ from notiz/sub.
+    expect((await run('../brief.typ', 'ich', join(noteDir, 'sub'))).profile).toEqual({
+      status: 'found',
+    })
+  })
+
+  it('lists that folder in searched when the profile is missing', async () => {
+    const r = await run('vorl/brief.typ', 'ich')
+    expect(r.profile).toEqual({
+      status: 'missing',
+      searched: [
+        join(noteDir, 'profiles'),
+        join(user, 'profiles'),
+        join(noteDir, 'vorl', 'profiles'),
+      ],
+    })
+  })
+
+  it('does not judge a profile name when the .typ folder is unknown', async () => {
+    expect((await run('brief.typ', 'ich', null)).profile).toBeNull()
+    expect((await run('$HOME/brief.typ', 'ich')).profile).toBeNull()
+    expect((await run('brief.typ', 'p.yaml', null)).profile).toBeNull()
+  })
+})
