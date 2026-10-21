@@ -18,9 +18,11 @@ const MESSAGES: Record<FindingCode, (f: Finding) => string> = {
   'validate.date.impossible': (f) =>
     `„${f.key}“: „${f.params.value ?? ''}“ gibt es im Kalender nicht.`,
   'validate.length': (f) =>
-    `„${f.key}“: „${f.params.value ?? ''}“ ist keine Länge; erwartet wird eine Zahl mit Einheit (mm, cm, pt, in), etwa 15mm.`,
+    `„${f.key}“: „${f.params.value ?? ''}“ ist nicht als Länge geschrieben; erwartet wird eine Zahl mit Einheit ohne Leerzeichen (mm, cm, pt, in), etwa 15mm.`,
   'validate.length.max': (f) =>
     `„${f.key}“: ${f.params.value ?? ''} ist größer als der Höchstwert ${f.params.max ?? ''}.`,
+  'validate.length.min': (f) =>
+    `„${f.key}“: ${f.params.value ?? ''} ist kleiner als der Mindestwert ${f.params.min ?? ''}.`,
   'validate.list': (f) =>
     `„${f.key}“ erwartet eine Liste, gefunden: ${f.params.value ?? ''}. In eckigen Klammern wird daraus eine Liste.`,
   'validate.lines.max': (f) =>

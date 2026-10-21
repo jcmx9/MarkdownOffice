@@ -115,6 +115,21 @@ describe('bool', () => {
   it('accepts true and false', () => {
     expect(check(note('hard_breaks: true', 'embed_source: false'))).toEqual([])
   })
+
+  // build.sh reads y/n as a bool; a set reads its keys with Typst's yaml(), where y and n stay
+  // text (din5008a's flag() takes `x-sign: y` as false).
+  it.each([
+    ['x-sign: y', 'true'],
+    ['x-sign: N', 'false'],
+  ])('set key %s is an error', (line, suggestion) => {
+    const f = one(line, setCtx)
+    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.bool', 'error', suggestion])
+  })
+
+  it('pipeline key y stays a warning', () => {
+    const f = one('hard_breaks: y')
+    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.bool', 'warning', 'true'])
+  })
 })
 
 describe('enum', () => {
@@ -211,9 +226,16 @@ describe('date', () => {
 })
 
 describe('length', () => {
+  // memo's own check accepts `15 mm` and the export works: not canonical, so a warning.
+  it('takes a space before the unit as a warning', () => {
+    const f = one('logo-height: 15 mm')
+    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.length', 'warning', '15mm'])
+    expect(applyChanges(note('logo-height: 15 mm'), f.changes)).toBe(note('logo-height: 15mm'))
+  })
+
   it.each([
-    ['logo-height: 15 mm', '15mm'],
     ['logo-height: 15', '15mm'],
+    ['logo-height: 15MM', '15mm'],
     ['logo-height: 1,5cm', '1.5cm'],
   ])('%s is written canonically', (line, suggestion) => {
     const f = one(line)
@@ -244,6 +266,21 @@ describe('length', () => {
 
   it('accepts a value in range', () => {
     expect(check(note('logo-height: 15mm'))).toEqual([])
+  })
+
+  it('warns when under the minimum', () => {
+    const ctx = {
+      ...pipelineCtx,
+      schema: combineSchemas(PIPELINE_SCHEMA, {
+        keys: { 'x-gap': { type: 'length', min: '5mm', max: '2cm' } },
+      }),
+    }
+    const f = one('x-gap: 0.2cm', ctx)
+    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.length.min', 'warning', '5mm'])
+    expect(f.params).toEqual({ value: '0.2cm', min: '5mm' })
+    expect(applyChanges(note('x-gap: 0.2cm'), f.changes)).toBe(note('x-gap: 5mm'))
+    expect(check(note('x-gap: 5mm'), ctx)).toEqual([])
+    expect(one('x-gap: 3cm', ctx).code).toBe('validate.length.max')
   })
 })
 
@@ -294,28 +331,54 @@ describe('list and lines', () => {
 })
 
 describe('text', () => {
+  // A set key is read by Typst's yaml() (YAML 1.2): a value it types otherwise is an error.
   it.each([
-    ['title: no', pipelineCtx, '"no"'],
-    ['zip: 01067', setCtx, '"01067"'],
-    ['subtitle: ~', pipelineCtx, '"~"'],
-  ])('%s is read as another type', (line, ctx, suggestion) => {
-    const f = one(line, ctx)
+    ['zip: 01067', '"01067"'],
+    ['zip: true', '"true"'],
+    ['zip: ~', '"~"'],
+  ])('set key %s is read as another type', (line, suggestion) => {
+    const f = one(line, setCtx)
     expect([f.code, f.severity, f.suggestion]).toEqual(['validate.text.quote', 'error', suggestion])
     const key = line.split(':')[0]
     expect(applyChanges(note(line), f.changes)).toBe(note(`${key}: ${suggestion}`))
   })
 
-  it.each(['title: 2026', 'author: [Anna, Ben]', 'title: "no"', "title: 'no'", 'title: Hello'])(
-    '%s is fine',
-    (line) => {
-      expect(check(note(line))).toEqual([])
-    },
-  )
+  // build.sh passes a pipeline key on as raw text: never misread, so a warning at most.
+  it.each([
+    ['subtitle: ~', '"~"'],
+    ['title: true', '"true"'],
+  ])('pipeline key %s is only a warning', (line, suggestion) => {
+    const f = one(line)
+    expect([f.code, f.severity, f.suggestion]).toEqual([
+      'validate.text.quote',
+      'warning',
+      suggestion,
+    ])
+  })
+
+  // YAML 1.1 words and sexagesimals are plain strings in YAML 1.2, as both readers see them.
+  it.each([
+    'title: no',
+    'subtitle: 12:30',
+    'toptitle: on',
+    'title: Y',
+    'title: 2026',
+    'author: [Anna, Ben]',
+    'title: "true"',
+    "title: 'true'",
+    'title: Hello',
+  ])('%s is fine', (line) => {
+    expect(check(note(line))).toEqual([])
+  })
+
+  it.each(['zip: no', 'zip: 12:30', 'zip: yes'])('set key %s is fine', (line) => {
+    expect(check(note(line), setCtx)).toEqual([])
+  })
 
   it('keeps the comment of a rewritten value', () => {
-    const text = note('title: no   # shown on top')
-    const f = one('title: no   # shown on top')
-    expect(applyChanges(text, f.changes)).toBe(note('title: "no" # shown on top'))
+    const text = note('zip: 01067   # postcode')
+    const f = one('zip: 01067   # postcode', setCtx)
+    expect(applyChanges(text, f.changes)).toBe(note('zip: "01067" # postcode'))
   })
 })
 
@@ -385,7 +448,7 @@ describe('structure of the findings', () => {
   })
 
   it('preselects only findings with a fix', () => {
-    const [a, b] = check(note('toc: ja', 'hard_breaks: maybe'))
+    const [a, b] = check(note('toc: ja', 'toc2: x', 'hard_breaks: maybe'))
     expect(a?.preselected).toBe(true)
     expect(b?.preselected).toBe(false)
   })
@@ -403,9 +466,9 @@ describe('structure of the findings', () => {
   })
 
   it('does not touch the bytes around a fix', () => {
-    const text = note('title: A', 'toc: ja', 'zebra: B')
+    const text = note('title: A', 'toc: ja', 'title2: B')
     const f = check(text)[0] as Finding
-    expect(applyChanges(text, f.changes)).toBe(note('title: A', 'toc: true', 'zebra: B'))
+    expect(applyChanges(text, f.changes)).toBe(note('title: A', 'toc: true', 'title2: B'))
   })
 })
 
@@ -446,6 +509,7 @@ describe('helpers', () => {
     expect(noteSet(note('title: x'))).toBe('memo')
     expect(noteSet('plain')).toBe('memo')
     expect(noteSet(note('template: ./my.typ'))).toBe('')
+    expect(noteSet(note('template: ./My.TYP'))).toBe('')
   })
 })
 
@@ -532,6 +596,7 @@ describe('template and profile', () => {
     const f = one('template: zzzzzz', sets)
     expect([f.code, f.suggestion, f.changes]).toEqual(['validate.template.unknown', null, []])
     expect(check(note('template: brief.typ'), sets)).toEqual([])
+    expect(check(note('template: Brief.TYP'), sets)).toEqual([])
     expect(check(note('template: memmo'), pipelineCtx)).toEqual([])
     expect(check(note('template: memo'), sets)).toEqual([])
   })
@@ -572,6 +637,42 @@ describe('key typos', () => {
 
   it('allows x- keys and distant keys', () => {
     expect(check(note('x-titel: A', 'foo: B', 'something: C'))).toEqual([])
+  })
+
+  // Renaming `titel` would duplicate the `title` that is already there.
+  it('skips a key whose similar key is already present', () => {
+    expect(check(note('titel: X', 'title: Y'))).toEqual([])
+    expect(check(note('title: Y', 'titel: X'))).toEqual([])
+  })
+
+  it('skips a schema key with a number appended', () => {
+    expect(check(note('title2: A', 'toc2: B', 'subtitle10: C'))).toEqual([])
+  })
+})
+
+// Keys named like Object.prototype members must be plain keys, never the prototype's.
+describe('prototype key names', () => {
+  it.each(['constructor: x', 'toString: y', '__proto__: z', 'hasOwnProperty: w', 'valueOf: 1'])(
+    '%s is no finding and no crash',
+    (line) => {
+      expect(check(note('title: T', line))).toEqual([])
+    },
+  )
+
+  it('never takes a prototype member as a known value', () => {
+    expect(one('isodate_praefix: constructor').suggestion).toBeNull()
+    expect(one('date: 1. constructor 2026').code).toBe('validate.date.invalid')
+  })
+
+  it('checks a __proto__ key declared in a set schema', () => {
+    const set = parseSchema('schema: 1\nkeys:\n  __proto__: { type: bool }\n')
+    if (!set.ok) throw new Error(set.error)
+    expect(Object.hasOwn(set.schema.keys, '__proto__')).toBe(true)
+    const schema = combineSchemas(PIPELINE_SCHEMA, set.schema)
+    expect(Object.hasOwn(schema.keys, '__proto__')).toBe(true)
+    expect(Object.hasOwn(schema.keys, 'title')).toBe(true)
+    const f = one('__proto__: ja', { ...pipelineCtx, schema })
+    expect([f.code, f.suggestion]).toEqual(['validate.bool', 'true'])
   })
 })
 
@@ -660,7 +761,7 @@ describe('overlapping fixes', () => {
 })
 
 describe('selectedChanges and errorCount', () => {
-  const text = note('title: A', 'toc: ja', 'toc: true', 'date: 20.10.26', 'lang: DE', 'titel: B')
+  const text = note('title: A', 'toc: ja', 'toc: true', 'date: 20.10.26', 'lang: DE', 'subtile: B')
   const ctx = { ...pipelineCtx, header: MEMO }
   const r = result(text, ctx)
 
@@ -675,7 +776,7 @@ describe('selectedChanges and errorCount', () => {
     expect(combined).toContain('date: 2026-10-20')
     expect(combined).toContain('lang: de')
     expect(combined).toContain('template: memo')
-    expect(combined).toContain('titel: B') // a hint is not preselected
+    expect(combined).toContain('subtile: B') // a hint is not preselected
   })
 
   it('selects by id and skips the missing keys unless asked', () => {
@@ -705,6 +806,7 @@ describe('findingMessage', () => {
     'validate.date.impossible',
     'validate.length',
     'validate.length.max',
+    'validate.length.min',
     'validate.list',
     'validate.lines.max',
     'validate.text.quote',

@@ -43,6 +43,7 @@ export interface FieldRule {
 }
 
 export interface Schema {
+  /** Look rules up with `ruleOf` (or `Object.hasOwn`): a note may name a key `constructor`. */
   keys: Record<string, FieldRule>
 }
 
@@ -54,6 +55,14 @@ const LENGTH_RE = /^\d+(\.\d+)?(mm|cm|pt|in)$/
 const MAX_SCHEMA_BYTES = 64 * 1024
 
 const fail = (error: string): SchemaLoad => ({ ok: false, error })
+// Key maps without a prototype: a key named `__proto__` or `constructor` (in a schema or a
+// note) is a plain entry, never Object.prototype's member.
+const keyMap = (): Record<string, FieldRule> => Object.create(null) as Record<string, FieldRule>
+
+/** The schema's own rule of `key`, never an inherited member such as `constructor`. */
+export function ruleOf(schema: Schema, key: string): FieldRule | undefined {
+  return Object.hasOwn(schema.keys, key) ? schema.keys[key] : undefined
+}
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const isStrings = (v: unknown): v is string[] =>
@@ -121,7 +130,7 @@ export function parseSchema(text: string): SchemaLoad {
   if (!isObject(doc)) return fail('schema must be a YAML map')
   if (doc.schema !== 1) return fail(`unsupported schema version '${String(doc.schema)}'`)
   if (!isObject(doc.keys)) return fail("schema has no 'keys' map")
-  const keys: Record<string, FieldRule> = {}
+  const keys = keyMap()
   for (const [key, raw] of Object.entries(doc.keys)) {
     if (!KEY_RE.test(key)) return fail(`invalid key name '${key}'`)
     const rule = parseRule(key, raw)
@@ -133,7 +142,7 @@ export function parseSchema(text: string): SchemaLoad {
 
 /** The set's rule replaces the pipeline's rule of the same key (a set may restrict a key). */
 export function combineSchemas(pipeline: Schema, set: Schema | null): Schema {
-  return { keys: { ...pipeline.keys, ...(set?.keys ?? {}) } }
+  return { keys: Object.assign(keyMap(), pipeline.keys, set?.keys ?? {}) }
 }
 
 function loadPipelineSchema(): Schema {

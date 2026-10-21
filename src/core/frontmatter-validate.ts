@@ -12,8 +12,8 @@
  * (the pipeline ignores them). Only column-0 keys count; nested lines are only looked at to
  * count the items of a block list.
  */
-import { load, YAML11_SCHEMA, YAMLException } from 'js-yaml'
-import type { FieldRule, Schema } from './frontmatter-schema'
+import { CORE_SCHEMA, load, YAMLException } from 'js-yaml'
+import { type FieldRule, PIPELINE_SCHEMA, ruleOf, type Schema } from './frontmatter-schema'
 import {
   closingFence,
   isValidDate,
@@ -40,6 +40,7 @@ export type Severity = 'error' | 'warning' | 'hint'
  * - validate.date.impossible: `value`
  * - validate.length: `value`
  * - validate.length.max: `value`, `max`
+ * - validate.length.min: `value`, `min`
  * - validate.list: `value`
  * - validate.lines.max: `count`, `max`
  * - validate.text.quote: `value`, `as` (bool | null | number)
@@ -60,6 +61,7 @@ export type FindingCode =
   | 'validate.date.impossible'
   | 'validate.length'
   | 'validate.length.max'
+  | 'validate.length.min'
   | 'validate.list'
   | 'validate.lines.max'
   | 'validate.text.quote'
@@ -199,6 +201,9 @@ export function topLevelValue(note: string, key: string): string | null {
   return last ? splitValue(last.raw).value.trim() : null
 }
 
+// build.sh and the main process test the extension case-insensitively (`Brief.TYP` is a path).
+const isTypPath = (value: string): boolean => /\.typ$/i.test(value)
+
 /**
  * The set a note selects: `template:` or the pipeline's default when empty or missing; '' when
  * `template:` is a path to a `.typ` file (no set, so no set files to look up).
@@ -206,7 +211,7 @@ export function topLevelValue(note: string, key: string): string | null {
 export function noteSet(note: string): string {
   const value = topLevelValue(note, 'template')
   if (!value) return DEFAULT_SET
-  return value.endsWith('.typ') ? '' : value
+  return isTypPath(value) ? '' : value
 }
 
 /** A double-quoted YAML scalar; only `\` and `"` need escaping for the plain text we write. */
@@ -224,6 +229,11 @@ interface Subject {
   value: string
   /** The value was written in quotes. */
   quoted: boolean
+  /**
+   * The rule is the pipeline's own (the set does not override it): build.sh reads the value as
+   * raw text with its own bool words. A set's key is read by Typst's yaml() (YAML 1.2) instead.
+   */
+  pipeline: boolean
 }
 
 /** A check's verdict; `write` is the new value as written into the line (null = no fix). */
@@ -242,6 +252,10 @@ const verdict = (
   suggestion: string | null = null,
   write: string | undefined = suggestion ?? undefined,
 ): Verdict => ({ code, severity, params, suggestion, write })
+
+/** `map[key]` only for the map's own entries (a value may be `constructor`). */
+const own = <T>(map: Record<string, T>, key: string): T | undefined =>
+  Object.hasOwn(map, key) ? map[key] : undefined
 
 // The words the pipeline reads as a boolean (build.sh), any case.
 const BOOL_ALIASES: Record<string, 'true' | 'false'> = {
@@ -267,9 +281,11 @@ function boolVerdict(code: 'validate.bool' | 'validate.enum', s: Subject): Verdi
   const lower = s.value.toLowerCase()
   if (s.value === 'true' || s.value === 'false') return 'ok'
   const params = { value: s.value }
-  const alias = BOOL_ALIASES[lower]
-  if (alias) return verdict(code, 'warning', params, alias)
-  const guess = BOOL_GUESSES[lower]
+  const alias = own(BOOL_ALIASES, lower)
+  // Typst's yaml() keeps y/n as text, so a set reading its own key would not see a bool.
+  const setMisreads = !s.pipeline && (lower === 'y' || lower === 'n')
+  if (alias) return verdict(code, setMisreads ? 'error' : 'warning', params, alias)
+  const guess = own(BOOL_GUESSES, lower)
   if (guess) return verdict(code, 'error', params, guess)
   return verdict(code, 'error', params)
 }
@@ -354,7 +370,7 @@ function checkDate(s: Subject): Verdict | null {
   } else if (de2) {
     ;[d, m, y] = [Number(de2[1]), Number(de2[2]), 2000 + Number(de2[3])]
   } else if (word) {
-    const month = MONTHS[(word[2] ?? '').toLowerCase()]
+    const month = own(MONTHS, (word[2] ?? '').toLowerCase())
     if (!month) return invalid
     ;[d, m, y] = [Number(word[1]), month, Number(word[3])]
   } else if (slash) {
@@ -387,13 +403,24 @@ function checkLength(s: Subject): Verdict | null {
   if (!m) return verdict('validate.length', 'error', params)
   const unit = (m[2] ?? 'mm').toLowerCase()
   const canonical = `${(m[1] ?? '').replace(',', '.')}${unit}`
-  // The notation first: after its fix the next check sees the canonical value.
-  if (canonical !== s.value) return verdict('validate.length', 'error', params, canonical)
+  // The notation first: after its fix the next check sees the canonical value. Only a space
+  // (`15 mm`) is read by the sets as well (memo's own pattern allows it), so that is a warning;
+  // a missing unit, an upper-case unit or a decimal comma is not read.
+  if (canonical !== s.value) {
+    const spaced = s.value.replace(/\s+/g, '') === canonical
+    return verdict('validate.length', spaced ? 'warning' : 'error', params, canonical)
+  }
+  const mm = toMm(canonical)
+  if (mm === null) return null
   const max = typeof s.rule.max === 'string' ? s.rule.max : null
   const maxMm = max ? toMm(max) : null
-  const mm = toMm(canonical)
-  if (max && maxMm !== null && mm !== null && mm > maxMm + 1e-9) {
+  if (max && maxMm !== null && mm > maxMm + 1e-9) {
     return verdict('validate.length.max', 'warning', { value: s.value, max }, max)
+  }
+  const min = s.rule.min ?? null
+  const minMm = min ? toMm(min) : null
+  if (min && minMm !== null && mm < minMm - 1e-9) {
+    return verdict('validate.length.min', 'warning', { value: s.value, min }, min)
   }
   return null
 }
@@ -436,12 +463,17 @@ function checkLines(s: Subject): Verdict | null {
   return verdict('validate.lines.max', 'error', { count: String(count), max: String(max) })
 }
 
-/** Plain scalars YAML 1.1 reads as something else than text (the pipeline's reader does). */
+/**
+ * Plain scalars YAML reads as something else than text. The readers are build.sh (raw text) and
+ * Typst's yaml() (YAML 1.2 core, where `no`, `on`, `12:30` stay text), so the check uses the
+ * 1.2 core schema. A set's key is then misread (error); a pipeline key never is, as build.sh
+ * passes it on as text, so quoting it is only canonical (warning).
+ */
 function checkText(s: Subject): Verdict | null {
   if (s.quoted || s.value === '' || /^[[{|>]/.test(s.value)) return null
   let parsed: unknown
   try {
-    parsed = load(s.value, { schema: YAML11_SCHEMA })
+    parsed = load(s.value, { schema: CORE_SCHEMA })
   } catch {
     return null // a syntax matter, not a type matter
   }
@@ -450,7 +482,8 @@ function checkText(s: Subject): Verdict | null {
   else if (parsed === null) as = 'null'
   else if (typeof parsed === 'number' && String(parsed) !== s.value) as = 'number'
   if (!as) return null
-  return verdict('validate.text.quote', 'error', { value: s.value, as }, quoteYaml(s.value))
+  const severity = s.pipeline ? 'warning' : 'error'
+  return verdict('validate.text.quote', severity, { value: s.value, as }, quoteYaml(s.value))
 }
 
 function checkFile(s: Subject): Verdict | null {
@@ -544,15 +577,16 @@ function toFinding(entry: Entry, v: Verdict): Finding {
 function valueFindings(entries: readonly Entry[], schema: Schema): Finding[] {
   const out: Finding[] = []
   for (const entry of lastEntries(entries)) {
-    const rule = schema.keys[entry.key]
+    const rule = ruleOf(schema, entry.key)
     if (!rule) continue
+    const pipeline = rule === ruleOf(PIPELINE_SCHEMA, entry.key)
     const { lead, value } = splitValue(entry.raw)
     const plain = value.trim()
     const quoted = /^["']/.test(entry.raw.slice(lead.length))
     // Empty values are ignored by the pipeline; a `|`/`>` block scalar is a shape we do not judge.
     if (plain === '' && !(rule.type === 'lines' && entry.block.length > 0)) continue
     if (!quoted && /^[|>]/.test(plain)) continue
-    const v = CHECKS[rule.type]({ entry, rule, value: plain, quoted })
+    const v = CHECKS[rule.type]({ entry, rule, value: plain, quoted, pipeline })
     if (v) out.push(toFinding(entry, v))
   }
   return out
@@ -679,14 +713,21 @@ function nearest(word: string, candidates: readonly string[], max: number): stri
   return best
 }
 
-/** Keys that look like a misspelt schema key (hint). `x-` keys and distant keys are the user's. */
+/**
+ * Keys that look like a misspelt schema key (hint). `x-` keys and distant keys are the user's;
+ * so is a schema key with a number appended (`title2`). No hint when the similar key is already
+ * in the header: renaming would only make a duplicate.
+ */
 function typoFindings(entries: readonly Entry[], schema: Schema): Finding[] {
   const known = Object.keys(schema.keys)
+  const present = new Set(entries.map((e) => e.key))
   const out: Finding[] = []
   for (const e of lastEntries(entries)) {
-    if (e.key.length < 4 || e.key.startsWith('x-') || schema.keys[e.key]) continue
+    if (e.key.length < 4 || e.key.startsWith('x-') || ruleOf(schema, e.key)) continue
+    const stem = e.key.replace(/\d+$/, '')
+    if (stem !== e.key && ruleOf(schema, stem)) continue
     const similar = nearest(e.key, known, 2)
-    if (!similar) continue
+    if (!similar || present.has(similar)) continue
     const to = e.start + e.key.length
     out.push(
       makeFinding('validate.key.typo', 'hint', e.index + 1, e.key, { similar }, similar, [
@@ -703,7 +744,7 @@ function templateFindings(entries: readonly Entry[], sets: readonly string[] | n
   const e = lastEntries(entries).find((x) => x.key === 'template')
   if (!e) return []
   const value = splitValue(e.raw).value.trim()
-  if (value === '' || value.endsWith('.typ') || sets.includes(value)) return []
+  if (value === '' || isTypPath(value) || sets.includes(value)) return []
   const similar = nearest(value, sets, 2)
   const changes = similar ? [rewriteChange(e, similar)] : []
   return [
