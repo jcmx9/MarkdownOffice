@@ -106,8 +106,8 @@ The preview uses the PDF's bundled fonts; if a font file is missing, it falls ba
 
 | Shortcut | Action |
 |----------|--------|
-| Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`), starting with the YAML header of the set `memo`; the file is only created once you type |
-| Mod+Shift+N | Neu aus Vorlage …: pick another template set (and a profile, if any), new note with its YAML header |
+| Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`), starting with the YAML header of the set `memo`; the file is only created once you type. Without an open note the button „Neues Memo …“ does the same |
+| Mod+Shift+N | Neu aus Vorlage …: pick a template set (`memo` first and preselected, with a profile if any), new note with its YAML header |
 | Mod+O | Open |
 | Mod+Shift+R | Rename |
 | Mod+W | Close tab |
@@ -292,7 +292,7 @@ A template set defines how a document looks. It consists of up to three files sh
 
 The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
-New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all other sets (bundled and your own; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
+New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all sets (`memo` first and preselected, then bundled and your own alphabetically; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
 
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 
