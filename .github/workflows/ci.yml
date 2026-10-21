@@ -53,6 +53,18 @@ jobs:
           scripts/check-changelog.sh
       - run: npm run typecheck
 
+      # The file-manager entry "Markdown-PDF" that the bootstrap writes (Quick Action, .desktop
+      # entry, Nautilus script, markdown-pdf.sh), against a stand-in command; Windows is covered
+      # end to end by test-bootstrap.ps1.
+      - name: File-manager entry generators (test-file-manager.sh)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          if [ "$(uname -s)" = Linux ]; then
+            command -v desktop-file-validate >/dev/null || { sudo apt-get update && sudo apt-get install -y desktop-file-utils; }
+          fi
+          bash scripts/test-file-manager.sh
+
       # Before the unit tests: the :header snippet test reads the memo set from the assets,
       # and npm run assets also builds the dev layout the e2e exports use.
       - name: Cache pipeline assets
@@ -220,7 +232,9 @@ jobs:
   # Installs the freshly packaged app with scripts/bootstrap.{sh,ps1} (MDO_ARCHIVE) into an
   # isolated temp profile, checks the installed markdown-office command (PDF from a note in a
   # folder with spaces, --app; on Windows the .cmd shim's argument passing and the detached
-  # editor start), update, refusal of unmarked folders and uninstall. The download path is covered on macOS/Linux with a fake GitHub. On Windows
+  # editor start), the file-manager entry "Markdown-PDF" (Quick Action / .desktop + Nautilus
+  # script / Explorer verb, run on a note like the file manager would), update, refusal of
+  # unmarked folders and uninstall. The download path is covered on macOS/Linux with a fake GitHub. On Windows
   # the documented one-liners (irm | iex, script block with -Uninstall) run from the local file.
   bootstrap:
     name: bootstrap (${{ matrix.os }})
@@ -254,7 +268,9 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64
+          # desktop-file-utils + libglib2.0-bin: validate the Markdown-PDF .desktop entry and check
+          # that a double-click on .md still opens the editor (gio mime).
+          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64 desktop-file-utils libglib2.0-bin
 
       - name: Bootstrap install / update / uninstall (Linux)
         if: runner.os == 'Linux'

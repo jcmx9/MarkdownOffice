@@ -41,6 +41,20 @@ The script downloads the matching archive of the latest stable GitHub release, v
 
 The app is unsigned. On macOS it is ad-hoc signed (the bundled Typst too) and the script removes the quarantine flag, so Gatekeeper does not block it. On Windows, SmartScreen may warn. On Linux the script extracts the AppImage once, so `libfuse2` is not needed. On Ubuntu 24.04 and newer, AppArmor blocks the unprivileged user namespaces Electron's sandbox needs; the editor then does not start (PDF generation still works). The script warns in that case and prints an AppArmor profile for Markdown Office only (creating it needs sudo). The editor's launch log is at `~/.local/share/markdown-office/launch.log`.
 
+### Right-click "Markdown-PDF"
+
+The installation also adds a file-manager entry "Markdown-PDF": right-click a Markdown file and the PDF appears next to it, without starting the editor. It calls the `markdown-office` command, so the same output name applies (ISO prefix from `date:`), and the PDF then opens in the default viewer.
+
+| System | Where | What gets created |
+|--------|-------|-------------------|
+| macOS | Finder → right-click → Quick Actions → Markdown-PDF (only for `.md`/`.markdown`) | Quick Action `~/Library/Services/Markdown-PDF.workflow` |
+| Linux | File manager → right-click → Open With → Markdown-PDF; in Nautilus and Nemo also under Scripts | `~/.local/share/applications/markdown-office-pdf.desktop`, with Nautilus/Nemo present `~/.local/share/nautilus/scripts/Markdown-PDF` or `…/nemo/scripts/Markdown-PDF` |
+| Windows | Explorer → right-click on `.md`/`.markdown` → Markdown-PDF (Windows 11: under "Show more options") | Registry key `HKCU\Software\Classes\SystemFileAssociations\.md\shell\Markdown-PDF` (and `.markdown`), helper script `markdown-pdf.js` in the install folder |
+
+On macOS and Linux the entries call `~/.local/share/markdown-office/markdown-pdf.sh`. The result appears as a notification (macOS: Notification Centre, Linux: `notify-send` if available); several selected files are converted one after the other, other files are skipped. On Windows the entry starts without a console window (via `wscript.exe`; an error appears as a message box), which needs Windows Script Host to be enabled. The output of the last run is in `markdown-pdf.log` next to the script. On Linux the editor and "Markdown-PDF" both claim the type `text/markdown`; so that a double-click still opens the note in the editor instead of converting it, the installation sets Markdown Office as the default application for Markdown in `~/.config/mimeapps.list`, only if none is chosen there yet.
+
+What of this was created is listed in `.mdo-file-manager` next to the install marker; update and uninstall replace or remove exactly that. An entry of the same name that does not come from Markdown Office is left untouched.
+
 ## Update
 
 Run the install command again. The installed version is replaced; if the download fails, the old version stays as it is. A specific version: `... | bash -s -- --version 26.10.0`, or `-Version 26.10.0` on Windows.
@@ -59,7 +73,7 @@ Windows (PowerShell):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jcmx9/MarkdownOffice/main/scripts/bootstrap.ps1))) -Uninstall
 ```
 
-Only what the installation created is removed (recognised by its install marker): app, command, Start-menu or desktop entry. Documents, your own template sets, snippets and settings are left untouched.
+Only what the installation created is removed (recognised by its install marker): app, command, Start-menu or desktop entry and the file-manager entry "Markdown-PDF" (with the folders and registry keys created only for it). Documents, your own template sets, snippets and settings are left untouched.
 
 ## Test version
 
@@ -354,6 +368,7 @@ bash pipeline/tests/test-pdf.sh          # pipeline: PDFs of the test notes and 
 bash pipeline/tests/test-equivalence.sh  # pipeline: set memo against the reference PDFs
 npm run dist                      # package for the current system into dist/
 bash scripts/test-bootstrap.sh    # install, update, uninstall with the package from dist/
+bash scripts/test-file-manager.sh # "Markdown-PDF" file-manager entry (generators, no build needed)
 ```
 
 `npm run assets` downloads the pinned pipeline assets into `build/pipeline-assets/`, verifies every file against its SHA-256 checksum from `scripts/pipeline-assets.json` and builds the development layout `build/pipeline-dev/`, which matches the app's packaged layout. On Windows, `pipeline/tests/test-windows.ps1` checks the pipeline (Windows PowerShell 5.1).

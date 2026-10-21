@@ -15,6 +15,10 @@
   Startmenue-Verknuepfung an:
     markdown-office notiz.md [ziel.pdf] [Optionen]   PDF erzeugen (Pipeline)
     markdown-office --app [notiz.md ...]             Editor starten
+  Dazu der Explorer-Kontextmenue-Eintrag "Markdown-PDF" fuer .md/.markdown (unter
+  HKCU\Software\Classes\SystemFileAssociations; Windows 11: "Weitere Optionen anzeigen"):
+  PDF neben der Notiz, ohne den Editor. Was angelegt wurde, steht in .mdo-file-manager
+  neben dem Marker; nur das entfernt die Deinstallation.
   Dokumente, Vorlagen-Sets, Snippets und Einstellungen werden nie angetastet.
 
   Umgebung (fuer Tests):
@@ -78,6 +82,17 @@ try {
     $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
     $Shortcut  = Join-Path $StartMenu 'Markdown Office.lnk'
     $WantVersion = $Version.TrimStart('v')
+    # Explorer context-menu entry "Markdown-PDF" for .md/.markdown (see Write-MdoContextMenu).
+    # The helper and the record of the created registry keys live in the install folder, next
+    # to the marker; MDO_CLASSES_KEY (tests) moves the keys away from HKCU\Software\Classes.
+    $PdfAction     = 'Markdown-PDF'
+    $PdfTag        = 'Markdown-PDF (Markdown Office bootstrap)'
+    $PdfHelper     = Join-Path $InstallDir 'markdown-pdf.js'
+    $RecordPath    = Join-Path $InstallDir '.mdo-file-manager'
+    $PdfExtensions = @('.md', '.markdown')
+    $ClassesKey    = 'Software\Classes'
+    if ($env:MDO_CLASSES_KEY) { $ClassesKey = $env:MDO_CLASSES_KEY.Trim('\') }
+    $WScriptExe    = Join-Path $env:SystemRoot 'System32\wscript.exe'
 
     function Write-Step([string]$Message) { Write-Host "-> $Message" }
     function Write-Ok([string]$Message) { Write-Host "OK  $Message" -ForegroundColor Green }
@@ -413,6 +428,239 @@ try {
       }
     }
 
+    # --- Explorer context-menu entry "Markdown-PDF" ----------------------------
+    # Right-click a .md/.markdown file -> "Markdown-PDF": the note becomes a PDF next to it,
+    # without the editor (the predecessor real-fast-document had this as a SendTo shortcut).
+    # A shell verb under HKCU\Software\Classes\SystemFileAssociations\<ext>\shell needs no admin
+    # rights and, unlike SendTo, appears only for Markdown files and right in the context menu
+    # (Windows 11: under "Weitere Optionen anzeigen"; the new menu would need a packaged app).
+    # The verb runs markdown-pdf.js with wscript.exe: wscript and Markdown Office.exe are both
+    # GUI programs, so no console window flashes up, which the .cmd command or powershell.exe
+    # (even with -WindowStyle Hidden) would open. Everything here is a convenience: a failure
+    # only warns, the install itself is complete at this point.
+    #
+    # The record (.mdo-file-manager) lists "K <key>" for each verb key written and "E <key>" for
+    # each key the install had to create; uninstall removes exactly these (verbs only while they
+    # carry the tag, created keys only when empty again).
+
+    function Get-MdoVerbKeys {
+      foreach ($ext in $PdfExtensions) { "$ClassesKey\SystemFileAssociations\$ext\shell\$PdfAction" }
+    }
+
+    function Test-OwnVerb([string]$SubKey) {
+      $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($SubKey)
+      if ($null -eq $key) { return $false }
+      try { return ([string]$key.GetValue('MarkdownOfficeBootstrap') -eq $PdfTag) } finally { $key.Close() }
+    }
+
+    function Test-MdoKey([string]$SubKey) {
+      $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($SubKey)
+      if ($null -eq $key) { return $false }
+      $key.Close()
+      return $true
+    }
+
+    function Read-MdoRecord {
+      if (-not (Test-Path -LiteralPath $RecordPath -PathType Leaf)) { return @() }
+      return @(Get-Content -LiteralPath $RecordPath | Where-Object { $_ })
+    }
+
+    # Opens (or creates) a key below HKCU with every missing parent, recording each key it had
+    # to create. RegistryKey.CreateSubKey never clears an existing key (New-Item -Force would).
+    function New-MdoRegKey([string]$SubKey, [System.Collections.ArrayList]$Record) {
+      $hkcu = [Microsoft.Win32.Registry]::CurrentUser
+      $path = ''
+      foreach ($part in $SubKey.Split('\')) {
+        if ($path) { $path = "$path\$part" } else { $path = $part }
+        if (Test-MdoKey $path) { continue }
+        $hkcu.CreateSubKey($path).Close()
+        if ($Record -notcontains "E $path") { [void]$Record.Add("E $path") }
+      }
+      return $hkcu.CreateSubKey($SubKey)
+    }
+
+    # The helper finds the app next to itself, so it holds no path and stays ASCII (WSH reads
+    # a .js file without BOM in the ANSI code page). The messages use \u escapes for umlauts.
+    function Write-MdoPdfHelper {
+      $js = @'
+// Markdown-PDF (Markdown Office bootstrap)
+// Explorer's context-menu entry "Markdown-PDF" runs this file with wscript.exe for the selected
+// Markdown file. wscript.exe and Markdown Office.exe are GUI programs: no console window opens.
+// The app's binary runs the pipeline CLI as Node (ELECTRON_RUN_AS_NODE), as the markdown-office
+// command does; cli.js starts PowerShell hidden. Success shows as the opened PDF, an error as a
+// message box; the output of the last run stays in markdown-pdf.log next to this file.
+// Written by the Markdown Office bootstrap; update and uninstall replace or remove it.
+var shell = WScript.CreateObject('WScript.Shell');
+var fso = WScript.CreateObject('Scripting.FileSystemObject');
+var dir = fso.GetParentFolderName(WScript.ScriptFullName);
+var exe = fso.BuildPath(dir, 'Markdown Office.exe');
+var cli = fso.BuildPath(dir, 'resources\\pipeline\\cli.js');
+var logPath = fso.BuildPath(dir, 'markdown-pdf.log');
+var title = 'Markdown-PDF';
+var env = shell.Environment('Process');
+
+// Test hook (MDO_NOTIFY_LOG): collect the messages in a file instead of showing them.
+function report(message, isError) {
+  var target = env.Item('MDO_NOTIFY_LOG');
+  if (target) {
+    var f = fso.FileExists(target) ? fso.OpenTextFile(target, 8, false, -1) : fso.CreateTextFile(target, false, true);
+    f.WriteLine((isError ? 'critical|' : 'normal|') + message);
+    f.Close();
+  } else if (isError) {
+    shell.Popup(message, 0, title, 16);
+  }
+}
+
+function isMarkdown(path) {
+  return /\.(md|markdown)$/i.test(path);
+}
+
+// The line that says why a conversion failed: the first error line, else the last line.
+function reasonOf(text) {
+  var lines = text.split(/\r?\n/);
+  var last = '';
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].replace(/^\s+|\s+$/g, '');
+    if (/^(error|fehler)/i.test(line)) return line;
+    if (line) last = line;
+  }
+  return last;
+}
+
+// ReadAll fails on an empty stream; AtEndOfStream waits for data or the end of the pipe.
+function readAll(stream) {
+  var text = '';
+  while (!stream.AtEndOfStream) text += stream.ReadAll();
+  return text;
+}
+
+// Windows paths cannot contain a double quote, so quoting is enough.
+function quote(arg) {
+  return '"' + arg + '"';
+}
+
+if (!fso.FileExists(exe) || !fso.FileExists(cli)) {
+  report('Markdown Office ist nicht vollst\u00e4ndig installiert (' + exe + ' fehlt).', true);
+  WScript.Quit(1);
+}
+env.Item('ELECTRON_RUN_AS_NODE') = '1';
+var log = fso.CreateTextFile(logPath, true, true);
+var converted = 0;
+var failed = 0;
+var errors = [];
+for (var i = 0; i < WScript.Arguments.length; i++) {
+  var note = WScript.Arguments.Item(i);
+  if (!isMarkdown(note)) {
+    log.WriteLine('\u00dcbersprungen (keine Markdown-Datei): ' + note);
+    continue;
+  }
+  log.WriteLine('== ' + note);
+  var proc = shell.Exec(quote(exe) + ' ' + quote(cli) + ' ' + quote(note));
+  proc.StdIn.Close();
+  // stderr first: a long error goes there, stdout only carries a few lines.
+  var err = readAll(proc.StdErr);
+  var out = readAll(proc.StdOut);
+  while (proc.Status === 0) WScript.Sleep(50);
+  log.WriteLine(out);
+  log.WriteLine(err);
+  if (proc.ExitCode === 0) {
+    converted++;
+  } else {
+    failed++;
+    errors.push(fso.GetFileName(note) + ': ' + reasonOf(err + '\n' + out));
+  }
+}
+log.Close();
+if (converted + failed === 0) {
+  report('Keine Markdown-Datei ausgew\u00e4hlt (.md, .markdown).', true);
+  WScript.Quit(1);
+}
+if (failed > 0) {
+  var head = converted > 0 ? converted + ' PDF(s) erstellt, ' + failed + ' fehlgeschlagen.' : 'Das PDF konnte nicht erstellt werden.';
+  report(head + '\n\n' + errors.join('\n') + '\n\nProtokoll: ' + logPath, true);
+  WScript.Quit(1);
+}
+report(converted === 1 ? 'PDF erstellt.' : converted + ' PDFs erstellt.', false);
+WScript.Quit(0);
+'@
+      [IO.File]::WriteAllText($PdfHelper, ($js -replace "`r?`n", "`r`n"), [Text.Encoding]::ASCII)
+    }
+
+    # $Previous: the record of the install this one replaces (its folder is gone by now), so keys
+    # created back then are still removed on uninstall.
+    function Write-MdoContextMenu([string[]]$Previous) {
+      try {
+        $record = New-Object System.Collections.ArrayList
+        foreach ($line in @($Previous)) {
+          if (($line -like 'E *' -or $line -like 'K *') -and $record -notcontains $line) { [void]$record.Add($line) }
+        }
+        Write-MdoPdfHelper
+        $command = '"{0}" //B //NoLogo //E:JScript "{1}" "%1"' -f $WScriptExe, $PdfHelper
+        foreach ($sub in @(Get-MdoVerbKeys)) {
+          if ((Test-MdoKey $sub) -and -not (Test-OwnVerb $sub)) {
+            Write-Warn "HKCU\$sub stammt nicht von Markdown Office - Kontextmenue-Eintrag dort nicht angelegt."
+            continue
+          }
+          $key = New-MdoRegKey $sub $record
+          try {
+            $key.SetValue('', $PdfAction)
+            $key.SetValue('MUIVerb', $PdfAction)
+            $key.SetValue('Icon', "$Exe,0")
+            $key.SetValue('MarkdownOfficeBootstrap', $PdfTag)
+            $commandKey = $key.CreateSubKey('command')
+            try { $commandKey.SetValue('', $command) } finally { $commandKey.Close() }
+          } finally {
+            $key.Close()
+          }
+          if ($record -notcontains "K $sub") { [void]$record.Add("K $sub") }
+        }
+        [IO.File]::WriteAllLines($RecordPath, [string[]]$record.ToArray(), (New-Object System.Text.UTF8Encoding $false))
+      } catch {
+        Write-Warn "Kontextmenue-Eintrag $PdfAction konnte nicht angelegt werden ($($_.Exception.Message)). Markdown Office ist trotzdem installiert."
+      }
+    }
+
+    # Verb keys go only while they carry the tag; created keys only when empty and only if they
+    # lie above a verb key, so an edited record cannot point anywhere else. Without a record
+    # (an install from before this entry) the default verb keys are still checked.
+    function Remove-MdoContextMenu([string[]]$Lines) {
+      $hkcu = [Microsoft.Win32.Registry]::CurrentUser
+      $verbs = New-Object System.Collections.ArrayList
+      foreach ($sub in @(Get-MdoVerbKeys)) { [void]$verbs.Add($sub) }
+      foreach ($line in @($Lines)) {
+        if ($line -like 'K *' -and $line.EndsWith("\shell\$PdfAction") -and $verbs -notcontains $line.Substring(2)) {
+          [void]$verbs.Add($line.Substring(2))
+        }
+      }
+      foreach ($sub in $verbs) {
+        if (Test-OwnVerb $sub) {
+          try {
+            $hkcu.DeleteSubKeyTree($sub, $false)
+            Write-Step "Kontextmenue-Eintrag entfernt: HKCU\$sub"
+          } catch {
+            Write-Warn "Kontextmenue-Eintrag konnte nicht entfernt werden: HKCU\$sub ($($_.Exception.Message))"
+          }
+        } elseif (Test-MdoKey $sub) {
+          Write-Warn "HKCU\$sub stammt nicht von Markdown Office - bleibt."
+        }
+      }
+      $created = @(@($Lines) | Where-Object { $_ -like 'E *' } | ForEach-Object { $_.Substring(2) } | Sort-Object -Property Length -Descending)
+      foreach ($sub in $created) {
+        $above = $false
+        foreach ($verb in $verbs) {
+          if ($verb -eq $sub -or $verb.StartsWith("$sub\", [StringComparison]::OrdinalIgnoreCase)) { $above = $true }
+        }
+        if (-not $above) { continue }
+        $key = $hkcu.OpenSubKey($sub)
+        if ($null -eq $key) { continue }
+        $empty = ($key.SubKeyCount -eq 0 -and $key.ValueCount -eq 0)
+        $key.Close()
+        if ($empty) {
+          try { $hkcu.DeleteSubKey($sub, $false) } catch { Write-Warn "Leerer Schluessel bleibt: HKCU\$sub" }
+        }
+      }
+    }
+
     function Test-MdoPath {
       $dirs = @($env:Path -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
       if ($dirs -notcontains $WinApps.TrimEnd('\')) {
@@ -426,6 +674,8 @@ try {
       if ((Test-Path -LiteralPath $InstallDir) -and -not (Test-MdoOwned $InstallDir)) {
         Stop-Foreign $InstallDir
       }
+      # Read before the old folder (and the record in it) is replaced.
+      $previousRecord = @(Read-MdoRecord)
       $tempDir = Join-Path ([IO.Path]::GetTempPath()) ('markdown-office-bootstrap-' + [guid]::NewGuid().ToString('N'))
       New-Item -ItemType Directory -Path $tempDir | Out-Null
       [void]$MdoCleanup.Add($tempDir)
@@ -447,8 +697,10 @@ try {
       Install-MdoStage $root
       Write-MdoLauncher
       Write-MdoShortcut
+      Write-MdoContextMenu $previousRecord
       Write-Ok "Markdown Office installiert: $InstallDir"
       Write-Ok "Befehl: $CmdPath"
+      Write-Ok "Explorer: Rechtsklick auf eine .md-Datei -> $PdfAction (Windows 11: Weitere Optionen anzeigen)"
       Test-MdoPath
       Write-Host 'Fertig. Editor: markdown-office --app [notiz.md] oder Startmenue -> Markdown Office; PDF: markdown-office notiz.md'
     }
@@ -475,9 +727,12 @@ try {
         Write-Host "Nichts zu deinstallieren: $InstallDir existiert nicht."
         Remove-MdoOld
         Remove-MdoEntry
+        Remove-MdoContextMenu @()
         return
       }
       if (-not (Test-MdoOwned $InstallDir)) { Stop-Foreign $InstallDir }
+      # Read before the folder (and the record in it) is renamed and deleted.
+      $record = @(Read-MdoRecord)
       # Rename first, before anything else is touched: it fails as a whole while the app
       # has files open, so a refusal changes nothing. Leftovers, launcher and shortcut go
       # only after the folder is gone.
@@ -492,6 +747,7 @@ try {
       }
       Remove-MdoOld
       Remove-MdoEntry
+      Remove-MdoContextMenu $record
       Write-Ok 'Markdown Office deinstalliert. Dokumente, Vorlagen-Sets, Snippets und Einstellungen bleiben unangetastet.'
     }
 
