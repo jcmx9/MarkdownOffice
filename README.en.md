@@ -177,6 +177,7 @@ markdown-office --soft-breaks note.md        # line breaks become spaces
 markdown-office --template my-set note.md    # another template set
 markdown-office --help                       # all options
 markdown-office --app [note.md …]            # open the editor
+markdown-office validate note.md              # check the YAML header
 ```
 
 Without an argument the command prints its help.
@@ -202,6 +203,17 @@ On Windows the same options apply, plus `-Version` and `-Help`. There the comman
 | `MDO_TEMPLATES=folder` | Folder with your own template sets instead of `~/Documents/Markdown Office/Vorlagen` |
 | `TYPST=/path/typst` | Use a specific Typst binary instead of the bundled one (≥ 0.15) |
 | `SOURCE_DATE_EPOCH` | Fix the PDF date when no `date:` is set |
+
+### Check YAML
+
+```bash
+markdown-office validate note.md                   # print findings, change nothing
+markdown-office validate note.md --fix             # write the corrections
+markdown-office validate note.md --add-missing     # add the set's missing keys
+markdown-office validate note.md --json            # result as JSON
+```
+
+The command checks the YAML header with the same rules as **Bearbeiten → „YAML prüfen …“** in the editor (see [Front matter](#front-matter)). `--fix` writes the suggested corrections (never typo guesses), `--add-missing` appends the set's missing keys; both change only the lines concerned, line endings and BOM stay. Exit code: `0` no errors (warnings and hints do not count), `1` errors or an unclosed header, `2` wrong usage or the file cannot be read or written.
 
 ### From other programs
 
@@ -259,6 +271,8 @@ hard_breaks: false           # line breaks become spaces
 | `hard_breaks` | `true` / `false` | `true` | Every line break stays one (as typed in the editor), even without an entry. Only `false` switches to CommonMark: a single break becomes a space. |
 
 **Rules:** empty values (`subtitle: ""` or just `subtitle:`) are ignored, never an error. Yes/no keys accept `true`/`false`, `yes`/`no`, `on`/`off` in any case; an unrecognised value produces a warning and the default applies. Comments (`# …`) may stand on their own lines and after values. In paths (`logo:`, images) `~`, `$VAR`, `${VAR}` and `%VAR%` are expanded.
+
+**Check YAML:** the menu **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) checks the note's header against the rules of the pipeline and of the chosen set: invalid values (for example `toc: ja`, `date: 20.10.26`, an unknown set or a `profile:` that is not found), repeated keys and presumed typos. Extra keys of your own are always allowed. The dialog shows every finding with a suggested fix; „Übernehmen“ writes the ticked fixes as **one** undo step, everything else in the note stays byte for byte. „Fehlende ergänzen“ appends the set's keys the header does not have yet (off by default). Without findings „YAML in Ordnung“ appears. On export the app checks the header silently first; with errors a notice „YAML hat n Fehler“ offers „Prüfen …“, and the export runs anyway. The same goes for „Einfügen → Vorlage …“. Which keys and values a set expects is described in its `name.schema.yaml`, see [TEMPLATES.md](TEMPLATES.md). The same check exists in the terminal: [`markdown-office validate`](#check-yaml).
 
 ### Logo
 

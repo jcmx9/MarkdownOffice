@@ -1,11 +1,6 @@
 import { isolateHistory } from '@codemirror/commands'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
-import {
-  mergeHeader,
-  setDate,
-  type TemplateChoiceInput,
-  type TextChange,
-} from '../../core/header-merge'
+import { mergeHeader, type TemplateChoiceInput, type TextChange } from '../../core/header-merge'
 
 /**
  * A template's header in the line break `nl` (trailing blank lines dropped) and where the
@@ -67,17 +62,6 @@ export function insertTemplate(
     spec.selection = { anchor: title >= 0 ? title + 'title: "'.length : afterFence(text) }
   }
   return { kind: 'changed', spec, inserted, added: inserted ? [] : res.added }
-}
-
-/**
- * The date fix of the notice („In <heute> ändern“): every column-0 `date:` gets `iso`, comment
- * column kept. Its own undo step on purpose (isolated), so undo takes back only the date.
- * null when the note has no `date:` to change (any more).
- */
-export function dateFixSpec(state: EditorState, iso: string): TransactionSpec | null {
-  const changes = setDate(state.doc.toString(), iso)
-  if (changes.length === 0) return null
-  return { changes, userEvent: 'input', annotations: isolateHistory.of('full') }
 }
 
 /**

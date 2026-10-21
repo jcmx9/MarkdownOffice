@@ -177,6 +177,7 @@ markdown-office --soft-breaks notiz.md        # Umbrüche werden Leerzeichen
 markdown-office --template mein-set notiz.md  # anderes Vorlagen-Set
 markdown-office --help                        # alle Optionen
 markdown-office --app [notiz.md …]            # Editor öffnen
+markdown-office validate notiz.md             # YAML-Header prüfen
 ```
 
 Ohne Argument gibt der Befehl die Hilfe aus.
@@ -202,6 +203,17 @@ Unter Windows gelten dieselben Optionen, zusätzlich `-Version` und `-Help`. Der
 | `MDO_TEMPLATES=ordner` | Ordner mit eigenen Vorlagen-Sets statt `~/Documents/Markdown Office/Vorlagen` |
 | `TYPST=/pfad/typst` | bestimmtes Typst-Binary statt des mitgelieferten verwenden (≥ 0.15) |
 | `SOURCE_DATE_EPOCH` | PDF-Datum festlegen, wenn kein `date:` gesetzt ist |
+
+### YAML prüfen
+
+```bash
+markdown-office validate notiz.md                  # Befunde ausgeben, nichts ändern
+markdown-office validate notiz.md --fix            # Korrekturen schreiben
+markdown-office validate notiz.md --add-missing    # fehlende Schlüssel des Sets ergänzen
+markdown-office validate notiz.md --json           # Ergebnis als JSON
+```
+
+Der Befehl prüft den YAML-Header mit denselben Regeln wie **Bearbeiten → „YAML prüfen …“** im Editor (siehe [Frontmatter](#frontmatter)). `--fix` schreibt die vorgeschlagenen Korrekturen (Tippfehler-Vermutungen nie), `--add-missing` hängt die fehlenden Schlüssel des Sets an; beide ändern nur die betroffenen Zeilen, Zeilenenden und BOM bleiben. Exit-Code: `0` keine Fehler (Warnungen und Hinweise zählen nicht), `1` Fehler oder nicht geschlossener Header, `2` falscher Aufruf oder Datei nicht les- bzw. schreibbar.
 
 ### Aus anderen Programmen
 
@@ -259,6 +271,8 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `hard_breaks` | `true` / `false` | `true` | Jeder Zeilenumbruch bleibt einer (wie im Editor getippt), auch ohne Eintrag. Nur `false` setzt CommonMark: Ein einzelner Umbruch wird zum Leerzeichen. |
 
 **Regeln:** Leere Werte (`subtitle: ""` oder nur `subtitle:`) werden ignoriert, nie ein Fehler. Ja/Nein-Schlüssel verstehen `true`/`false`, `yes`/`no`, `on`/`off` in jeder Schreibweise; ein nicht erkannter Wert erzeugt eine Warnung, der Standard bleibt. Kommentare (`# …`) dürfen auf eigenen Zeilen und hinter Werten stehen. In Pfaden (`logo:`, Bilder) werden `~`, `$VAR`, `${VAR}` und `%VAR%` ersetzt.
+
+**YAML prüfen:** Das Menü **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) prüft den Header der Notiz gegen die Regeln der Pipeline und des gewählten Sets: ungültige Werte (etwa `toc: ja`, `date: 20.10.26`, ein unbekanntes Set oder ein nicht gefundenes `profile:`), mehrfach vorkommende Schlüssel und vermutete Tippfehler. Zusätzliche eigene Schlüssel sind immer erlaubt. Der Dialog zeigt jeden Befund mit einem Korrekturvorschlag; „Übernehmen“ schreibt die angehakten Korrekturen als **einen** Undo-Schritt, alles andere in der Notiz bleibt Byte für Byte. „Fehlende ergänzen“ hängt die Schlüssel des Sets an, die der Header noch nicht hat (standardmäßig aus). Ohne Befund erscheint „YAML in Ordnung“. Beim Export prüft die App den Header still vorab; bei Fehlern meldet ein Hinweis „YAML hat n Fehler“ mit „Prüfen …“, der Export läuft trotzdem. Das gilt auch nach „Einfügen → Vorlage …“. Welche Schlüssel und Werte ein Set erwartet, steht in seiner `name.schema.yaml`, siehe [TEMPLATES.md](TEMPLATES.md) (Englisch). Dieselbe Prüfung gibt es im Terminal: [`markdown-office validate`](#yaml-prüfen).
 
 ### Logo
 

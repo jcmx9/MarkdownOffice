@@ -176,7 +176,7 @@ test('Einfügen → Vorlage …: no header → the chosen set goes on top; again
   await app.close()
 })
 
-test('Einfügen → Vorlage …: merges into a CRLF header, date fix on click, each one undo step', async () => {
+test('Einfügen → Vorlage …: merges into a CRLF header, YAML check offers the date fix, each one undo step', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Fremd.md')
   const original =
@@ -201,20 +201,23 @@ test('Einfügen → Vorlage …: merges into a CRLF header, date fix on click, e
   expect(merged.replace(/\r\n/g, '')).not.toContain('\n')
   expect(merged.endsWith('---\r\n\r\nText\r\n')).toBe(true)
 
-  // The wrong date notation is offered a fix; nothing changes until the click.
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  const iso = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-  const fix = page.getByRole('button', { name: `In ${iso} ändern` })
-  await expect(fix).toBeVisible()
-  await shot(page, 'insert-template-date')
-  await fix.click()
+  // The silent YAML check names the wrong date; nothing changes until „Übernehmen“.
+  const banner = page.locator('.banner')
+  await expect(banner).toContainText('YAML hat 1 Fehler')
+  await shot(page, 'insert-template-yaml')
+  await banner.getByRole('button', { name: 'Prüfen …' }).click()
+  const row = page.getByTestId('validate-row')
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('date')
+  await expect(row).toContainText('→ 2026-10-13')
+  await page.getByTestId('validate-apply').click()
+  await expect(page.getByTestId('validate-dialog')).toHaveCount(0)
   const fixed = (
-    await waitForFile(note, (b) => b.toString('utf8').includes(`date: ${iso}`))
+    await waitForFile(note, (b) => b.toString('utf8').includes('date: 2026-10-13'))
   ).toString('utf8')
-  expect(fixed).toBe(merged.replace('date: 13/10/2026', `date: ${iso}`))
+  expect(fixed).toBe(merged.replace('date: 13/10/2026', 'date: 2026-10-13'))
 
-  // Undo: first the date fix alone, then the whole merge in one step.
+  // Undo: first the fix alone, then the whole merge in one step.
   await clickMenu(app, 'undo')
   await waitForFile(note, (b) => b.toString('utf8') === merged)
   await clickMenu(app, 'undo')

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { expect } from '@playwright/test'
 import { clickMenu, launch, makeDirs, shot, test } from './helpers'
 
-// Both tests run the real bundled pipeline from the dev layout (npm run assets builds it).
+// All tests run the real bundled pipeline from the dev layout (npm run assets builds it).
 
 test('shows the pipeline’s message when the export fails', async () => {
   test.setTimeout(120_000)
@@ -34,5 +34,19 @@ test('exports a real PDF through the bundled pipeline', async () => {
   expect(pdfs).toEqual(['Echter Export.pdf'])
   const pdf = await readFile(join(dirs.notes, pdfs[0] as string))
   expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+  await app.close()
+})
+
+test('exports anyway and names the YAML errors in a banner', async () => {
+  test.setTimeout(180_000)
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Mit Fehler.md')
+  await writeFile(note, '---\ntitle: "E2E"\ntoc: ja\n---\n\n# Test\n')
+  const { app, page } = await launch({ dirs, args: [note] })
+  await clickMenu(app, 'export')
+  await expect(page.locator('.banner')).toContainText('YAML hat 1 Fehler')
+  await expect(page.locator('.toast, .panel').first()).toBeVisible({ timeout: 150_000 })
+  expect(await page.locator('.panel').allTextContents()).toEqual([])
+  expect((await readdir(dirs.notes)).filter((f) => f.endsWith('.pdf'))).toEqual(['Mit Fehler.pdf'])
   await app.close()
 })

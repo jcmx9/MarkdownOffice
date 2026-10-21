@@ -5,12 +5,12 @@ import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { PIPELINE_SCHEMA } from '../core/frontmatter-schema'
 import {
+  errorCount,
   noteSet,
   topLevelValue,
   type ValidationContext,
   validateFrontmatter,
 } from '../core/frontmatter-validate'
-import { dateIssue } from '../core/header-merge'
 import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../core/sets'
 import { validationContext } from '../core/validation-context'
 import type {
@@ -25,7 +25,7 @@ import type {
 import { AutosaveScheduler } from './editor/autosave'
 import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
-import { dateFixSpec, headerNote, insertTemplate } from './editor/insert-header'
+import { headerNote, insertTemplate } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
@@ -77,13 +77,6 @@ const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheid
 const MAX_SAVE_ROUNDS = 3
 
 const MARKDOWN_ONLY = 'Nur in Markdown-Notizen verfügbar.'
-
-/** Today in the editor's local time as `YYYY-MM-DD` (the date fix writes ISO, the pipeline's first notation). */
-function todayIso(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
 
 const docKind = (path: string): DocKind => (isMarkdownTab({ path }) ? 'markdown' : 'yaml')
 
@@ -920,7 +913,7 @@ export class App {
         this.syncMain()
       }
     }
-    this.offerDateFix(tab.id)
+    void this.offerYamlCheck(tab.id)
     this.editor.focus()
   }
 
@@ -1014,39 +1007,43 @@ export class App {
   }
 
   /**
-   * A `date:` in a notation the pipeline and the owner do not accept gets a notice; only its
-   * button changes the note (to today, ISO), as an undo step of its own. The fix goes to the
-   * tab's stored state when the note is no longer shown, and re-reads the date at click time,
-   * so a date corrected by hand meanwhile is left alone.
+   * The silent YAML check after an export's save or a template insert: only errors (what the
+   * pipeline or the set would ignore, misread or fail on) raise a banner; the export itself
+   * never waits for it. „Prüfen …“ opens the dialog of that tab when it is shown, else it
+   * switches to the tab first (`activate` is synchronous), so the dialog never checks another
+   * note than the banner counted. Any failure is only logged: a check must not disturb work.
    */
-  private offerDateFix(tabId: number): void {
-    const issue = dateIssue(this.editor.state.doc.toString())
-    if (!issue) return
-    const iso = todayIso()
-    this.notices.banner(
-      `Das Datum „${issue.value}“ ist ungültig geschrieben (erlaubt: JJJJ-MM-TT, T.M.JJJJ oder leer).`,
-      [
-        {
-          label: `In ${iso} ändern`,
-          run: () => {
-            const live = this.store.get(tabId)
-            if (!live || this.closing) return
-            const shown = live.id === this.shownId
-            const current = shown ? this.editor.state : live.state
-            if (!dateIssue(current.doc.toString())) return
-            const spec = dateFixSpec(current, iso)
-            if (!spec) return
-            if (shown) this.editor.dispatch(spec)
-            else {
-              this.store.updateState(live.id, live.state.update(spec).state)
-              this.autosave.touch()
-            }
+  private async offerYamlCheck(tabId: number): Promise<void> {
+    try {
+      const tab = this.store.get(tabId)
+      if (!tab || !isMarkdownTab(tab) || this.closing) return
+      const { ctx } = await this.validationFor(tab)
+      const live = this.store.get(tabId)
+      if (!live || this.closing) return
+      const text =
+        live.id === this.shownId ? this.editor.state.doc.toString() : live.state.doc.toString()
+      const result = validateFrontmatter(text, ctx)
+      const n = errorCount(result)
+      if (n === 0) return
+      this.notices.banner(
+        `YAML hat ${n === 1 ? '1 Fehler' : `${n} Fehler`}`,
+        [
+          {
+            label: 'Prüfen …',
+            run: () => {
+              const index = this.store.all.findIndex((t) => t.id === tabId)
+              if (index < 0 || this.closing) return
+              if (this.shownId !== tabId) this.activate(index)
+              void this.validateYaml()
+            },
           },
-        },
-        { label: 'Behalten', run: () => undefined },
-      ],
-      `date:${tabId}`,
-    )
+          { label: 'Schließen', run: () => undefined },
+        ],
+        `yaml:${tabId}`,
+      )
+    } catch (e) {
+      console.warn('YAML check failed', e)
+    }
   }
 
   private toggleHeader(): void {
@@ -1192,6 +1189,7 @@ export class App {
         )
         return
       }
+      void this.offerYamlCheck(tab.id)
       this.showExport(await this.mdo.exportPdf(tab.path))
     } catch (e) {
       this.notices.panel('Export fehlgeschlagen', e instanceof Error ? e.message : String(e))
