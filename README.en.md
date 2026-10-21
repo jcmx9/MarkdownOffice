@@ -139,17 +139,23 @@ A sidebar on the right lists the note's H1 and H2 headings. Entries read as a li
 
 Type `:` at the start of a line or after a space, plus at least one letter (e.g. `:mee`), and the snippet list appears; Ctrl+Space after a single `:` shows all of them. On macOS, Ctrl+Space may be taken by the input-source switch; then just type `:` and a letter. Enter or Tab inserts the snippet, Tab / Shift+Tab jump through the fields. Prose such as `Hinweis:`, `10:30` or `:D` triggers nothing.
 
-Inside a snippet, Esc first leaves field mode; in presentation mode only a further Esc leaves Present. Header snippets (`:meeting`, `:telefonnotiz`, `:header`) keep the YAML header open in presentation mode while a field inside it is active; afterwards it collapses into the title block. Follow-up lines of a multi-line snippet take over the indentation of the current line, and tabs at the start of a template line become two spaces.
+Inside a snippet, Esc first leaves field mode; in presentation mode only a further Esc leaves Present. Header snippets (`:meeting`, `:telefonnotiz`) keep the YAML header open in presentation mode while a field inside it is active; afterwards it collapses into the title block. Follow-up lines of a multi-line snippet take over the indentation of the current line, and tabs at the start of a template line become two spaces.
 
 | Snippet | Content |
 |---------|---------|
 | `:meeting` | Meeting note with header, participants, agenda, minutes and tasks |
 | `:telefonnotiz` | Phone note |
 | `:aufgabe` | Task line `- [ ] Aufgabe – Name, bis Datum` |
-| `:header` | YAML header with all keys of the set `memo` |
 | `:newpage` | Page break `<!-- pagebreak -->` |
 
-The menu **Einfügen → YAML-Header …** asks for a template set (`memo` comes first and is preselected) and puts its front-matter template (`name.header.md`, see [Template sets](#template-sets)) unchanged at the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title. A note that already has a header is left unchanged.
+The menu **Einfügen → Vorlage …** turns a note from elsewhere into a note of a template set. With the same picker as „Neu aus Vorlage …“ it asks for the set (`memo` comes first and is preselected) and, when its header has `profile:`, for the profile. Then:
+
+- Without a YAML header the set's front-matter template (`name.header.md`, see [Template sets](#template-sets)) goes to the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title.
+- With a YAML header both are merged: existing keys keep their values, the set's missing keys are added at the bottom of the header with default value and comment; nothing is duplicated, existing comments and the order stay unchanged.
+- `template:` gets the chosen set (in place, else added at the bottom), and `profile:` the chosen profile likewise.
+- `date:` is checked: valid are `YYYY-MM-DD`, `D.M.YYYY` (also `DD.MM.YYYY`) or empty. Another notation brings up a notice with the button „In YYYY-MM-DD ändern“ (today's date); the date only changes on that click.
+
+The merge is a single undo step, the date change one of its own; the note's line endings (LF/CRLF) and BOM are kept. When the header already has every key of the set, a short notice says there was nothing to add.
 
 Your own snippets are files `name.tpl.md` in the snippet folder (default `~/Documents/Markdown Office/Snippets/`, setting „Snippet-Ordner“). Your own snippet with the same name replaces the built-in one. New files are picked up the next time the window gets focus. Supported syntax: `$1`, `${1:default}`, `$0` (final position) and `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (also in the form `${CURRENT_YEAR}`). `\$` gives a literal `$`, `\\` a backslash, and inside a default `\}` gives a literal `}`.
 
@@ -212,7 +218,7 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/path/to/note" markdown-office --no-source "/path/no
 
 ## Front matter
 
-A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → YAML-Header …** or the `:header` snippet) contains every key with its default value and a comment.
+A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → Vorlage …**) contains every key with its default value and a comment.
 
 **Quotes:** free text goes in quotes (`title: "Kick-off: relaunch"`), fixed values go without (`lang: de`, `toc: auto`, `true`, `13mm`). Without quotes YAML misreads text containing `: ` or ` #` (everything from `#` on becomes a comment), words like `no`, `yes`, `on`, `off` (booleans), numbers with a leading zero like `01067` (becomes 1067) and text starting with `[`, `{`, `*`, `&`, `!`, `@`, `` ` ``, `|`, `>` or `%`. `""` explicitly means empty. A date like `date: 2026-10-20` may stay unquoted.
 
@@ -292,7 +298,7 @@ A template set defines how a document looks. It consists of up to three files sh
 
 The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
-New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all sets (`memo` first and preselected, then bundled and your own alphabetically; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
+New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all sets (`memo` first and preselected, then bundled and your own alphabetically; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. **Einfügen → Vorlage …** merges the same header into an existing note (see [Snippets](#snippets)). When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
 
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 

@@ -100,10 +100,9 @@ describe('toCmTemplate', () => {
 })
 
 describe('BUILTIN_SNIPPETS', () => {
-  it('lists the five templates sorted by name', () => {
+  it('lists the four templates (no memo-specific :header) sorted by name', () => {
     expect(BUILTIN_SNIPPETS.map((s) => s.name)).toEqual([
       'aufgabe',
-      'header',
       'meeting',
       'newpage',
       'telefonnotiz',

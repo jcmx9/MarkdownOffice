@@ -102,7 +102,7 @@ export type MenuCommand =
   | 'redo'
   | 'select-all'
   | 'insert-pagebreak'
-  | 'insert-header'
+  | 'insert-template'
   | 'toggle-present'
   | 'toggle-view'
   | 'toggle-header'

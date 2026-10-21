@@ -36,7 +36,7 @@ function stripCr(line: string): string {
  * mirroring `yaml_str` in build.sh: a quoted value ends at its closing quote, a plain value
  * at whitespace followed by `#`.
  */
-function splitValue(raw: string): { lead: string; value: string; tail: string } {
+export function splitValue(raw: string): { lead: string; value: string; tail: string } {
   const lead = raw.match(/^[ \t]*/)?.[0] ?? ''
   const rest = raw.slice(lead.length)
   const q = rest[0]
@@ -80,26 +80,40 @@ export function headerProfile(header: string): string | null {
  */
 export function withProfile(header: string, name: string): string {
   if (!SET_NAME_RE.test(name)) return header
+  return withValue(header, 'profile', name)
+}
+
+/** Keys `withValue` may set: only values the caller validated (set names, ISO dates). */
+export type ValueKey = 'profile' | 'template' | 'date'
+
+/**
+ * The header with the first column-0 `<key>:` value replaced by `value` (plain, unquoted), the
+ * comment kept in its column as `withProfile` describes; unchanged without such a key. Shared
+ * by the profile choice and the template insert (src/shared/header-merge.ts), so every rewritten
+ * header line looks the same. The caller validates `value`: it is written as is.
+ */
+export function withValue(header: string, key: ValueKey, value: string): string {
+  const re = new RegExp(`^${key}:(.*)$`)
   const lines = header.split('\n')
   const [from, to] = frontMatterRange(lines)
   for (let i = from; i < to; i++) {
     const line = lines[i] ?? ''
     const cr = line.endsWith('\r') ? '\r' : ''
-    const m = PROFILE_LINE_RE.exec(stripCr(line))
+    const m = re.exec(stripCr(line))
     if (!m) continue
     const raw = m[1] ?? ''
     const { lead, tail } = splitValue(raw)
     const comment = tail.replace(/^[ \t]+/, '')
     let next: string
     if (comment.startsWith('#')) {
-      // Old width from after `profile:` up to the `#`; keep the comment there when it fits.
+      // Old width from after `<key>:` up to the `#`; keep the comment there when it fits.
       const width = raw.length - comment.length
-      const head = `${lead || ' '}${name}`
+      const head = `${lead || ' '}${value}`
       next = `${head}${' '.repeat(Math.max(1, width - head.length))}${comment}`
     } else {
-      next = `${lead || ' '}${name}`
+      next = `${lead || ' '}${value}`
     }
-    lines[i] = `profile:${next}${cr}`
+    lines[i] = `${key}:${next}${cr}`
     return lines.join('\n')
   }
   return header
