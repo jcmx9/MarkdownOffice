@@ -182,7 +182,7 @@ describe('buildMenuTemplate', () => {
     }
   })
 
-  it('puts "Neu aus Vorlage …" right below "Neu" and labels the header insert set-neutral', () => {
+  it('puts "Neu aus Vorlage …" right below "Neu" and labels the template insert set-neutral', () => {
     const file = buildMenuTemplate(deps()).find((m) => m.label === 'Datei')
     const ids = ((file?.submenu ?? []) as { id?: string }[]).map((i) => i.id)
     expect(ids.slice(0, 3)).toEqual(['new', 'new-from-template', 'create-profile'])
@@ -190,9 +190,10 @@ describe('buildMenuTemplate', () => {
     expect(profile?.label).toBe('Profil anlegen …')
     expect(profile?.accelerator).toBeUndefined()
     expect(byId(buildMenuTemplate(deps()), 'new-from-template')?.label).toBe('Neu aus Vorlage …')
-    const header = byId(buildMenuTemplate(deps()), 'insert-header')
-    expect(header?.label).toBe('YAML-Header …')
-    click(header)
+    const insert = byId(buildMenuTemplate(deps()), 'insert-template')
+    expect(insert?.label).toBe('Vorlage …')
+    expect(byId(buildMenuTemplate(deps()), 'insert-header')).toBeUndefined()
+    click(insert)
   })
 
   // AGPL §5 d): every interactive UI shows the legal notices; the About panel carries them.

@@ -3,6 +3,7 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { dateIssue } from '../shared/header-merge'
 import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../shared/sets'
 import type {
   ExportResult,
@@ -16,7 +17,7 @@ import type {
 import { AutosaveScheduler } from './editor/autosave'
 import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
-import { headerNote, insertHeader } from './editor/insert-header'
+import { dateFixSpec, headerNote, insertTemplate } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
@@ -65,8 +66,14 @@ const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheid
 
 const MAX_SAVE_ROUNDS = 3
 
-const HEADER_EXISTS = 'Die Notiz hat schon einen YAML-Header.'
 const MARKDOWN_ONLY = 'Nur in Markdown-Notizen verfügbar.'
+
+/** Today in the editor's local time as `YYYY-MM-DD` (the date fix writes ISO, the pipeline's first notation). */
+function todayIso(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
 
 const docKind = (path: string): DocKind => (isMarkdownTab({ path }) ? 'markdown' : 'yaml')
 
@@ -304,7 +311,7 @@ export class App {
       this.mode === 'present' &&
       (cmd === 'export' ||
         cmd === 'toggle-header' ||
-        cmd === 'insert-header' ||
+        cmd === 'insert-template' ||
         cmd === 'create-profile' ||
         cmd === 'settings')
     ) {
@@ -347,8 +354,8 @@ export class App {
         // A page break is Markdown; a profile tab (YAML) ignores the shortcut like its keymap does.
         if (this.store.active && !isMarkdownTab(this.store.active)) return
         return this.editCommand('insertPageBreak', insertPageBreak)
-      case 'insert-header':
-        return this.insertHeaderTemplate()
+      case 'insert-template':
+        return this.insertTemplate()
       case 'toggle-view':
         if (this.mode === 'present') return this.presentToCode()
         return this.setView(this.view === 'code' ? 'preview' : 'code')
@@ -847,41 +854,94 @@ export class App {
     })
   }
 
-  /** Einfügen → „YAML-Header …“: a set's header (default set first) at the top of the note. */
-  private async insertHeaderTemplate(): Promise<void> {
+  /**
+   * Einfügen → „Vorlage …“: for notes that came from elsewhere. The same picker as „Neu aus
+   * Vorlage …“ (set, and profile when the set's header has `profile:`); the set's header is
+   * merged into the note by src/shared/header-merge.ts (no header → on top; else missing keys
+   * appended, `template:`/`profile:` set, everything else untouched) as one undo step.
+   * Afterwards a wrongly written `date:` gets a notice whose button fixes it (own undo step).
+   */
+  private async insertTemplate(): Promise<void> {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
     if (!isMarkdownTab(tab)) {
       this.notices.toast(MARKDOWN_ONLY)
       return
     }
-    // Refused before the picker opens: choosing a set for nothing would only annoy. Checked
-    // again by insertHeader below, the note may change while the picker is open.
-    if (frontmatterRange(this.editor.state.doc)) {
-      this.notices.toast(HEADER_EXISTS)
-      return
-    }
     // The user may switch tabs or start closing while the picker is open or main reads a file.
-    const template = await this.chosenHeader(
-      'YAML-Header einfügen',
-      'Einfügen',
-      () => !this.closing && this.shownId === tab.id,
-    )
-    if (template === null) return
-    const state = this.editor.state
-    const res = insertHeader(state, template)
-    if ('refused' in res) {
-      this.notices.toast(HEADER_EXISTS)
+    const still = () => !this.closing && this.shownId === tab.id
+    const choice = await this.chooseTemplate('Vorlage einfügen', 'Einfügen', still)
+    if (!choice || !still()) return
+    let header: string | null = null
+    try {
+      header = await this.mdo.readSetHeader(choice.name)
+    } catch (e) {
+      console.warn('readSetHeader failed', e)
+    }
+    if (!still()) return
+    if (header === null) {
+      this.notices.toast(`Vorlage ${choice.name} nicht gefunden.`)
       return
     }
-    // The cursor lands in the header: a collapsed header is shown, never hiding the cursor.
-    const show = state.field(headerHidden) ? headerToggleSpec(state, false).effects : undefined
-    this.editor.dispatch({ ...res.spec, effects: show })
-    if (show) {
-      tab.headerHidden = false
-      this.syncMain()
+    // Merged against the note as it is now: it may have changed while the picker was open.
+    const state = this.editor.state
+    const res = insertTemplate(state, header, { template: choice.name, profile: choice.profile })
+    if (res.kind === 'unclosed') {
+      this.notices.toast('Der YAML-Header der Notiz ist nicht geschlossen (---).')
+      return
     }
+    if (res.kind === 'unchanged') {
+      this.notices.toast(`Der YAML-Header hat schon alle Schlüssel von ${choice.name}.`)
+    } else {
+      // A header put on top takes the cursor: a collapsed header is shown, never hiding it.
+      const show =
+        res.inserted && state.field(headerHidden)
+          ? headerToggleSpec(state, false).effects
+          : undefined
+      this.editor.dispatch({ ...res.spec, effects: show })
+      if (show) {
+        tab.headerHidden = false
+        this.syncMain()
+      }
+    }
+    this.offerDateFix(tab.id)
     this.editor.focus()
+  }
+
+  /**
+   * A `date:` in a notation the pipeline and the owner do not accept gets a notice; only its
+   * button changes the note (to today, ISO), as an undo step of its own. The fix goes to the
+   * tab's stored state when the note is no longer shown, and re-reads the date at click time,
+   * so a date corrected by hand meanwhile is left alone.
+   */
+  private offerDateFix(tabId: number): void {
+    const issue = dateIssue(this.editor.state.doc.toString())
+    if (!issue) return
+    const iso = todayIso()
+    this.notices.banner(
+      `Das Datum „${issue.value}“ ist ungültig geschrieben (erlaubt: JJJJ-MM-TT, T.M.JJJJ oder leer).`,
+      [
+        {
+          label: `In ${iso} ändern`,
+          run: () => {
+            const live = this.store.get(tabId)
+            if (!live || this.closing) return
+            const shown = live.id === this.shownId
+            const current = shown ? this.editor.state : live.state
+            if (!dateIssue(current.doc.toString())) return
+            const spec = dateFixSpec(current, iso)
+            if (!spec) return
+            if (shown) this.editor.dispatch(spec)
+            else {
+              this.store.updateState(live.id, live.state.update(spec).state)
+              this.autosave.touch()
+            }
+          },
+        },
+        { label: 'Behalten', run: () => undefined },
+      ],
+      `date:${tabId}`,
+    )
   }
 
   private toggleHeader(): void {

@@ -7,6 +7,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Installer: a file-manager entry „Markdown-PDF“ turns a selected Markdown file into a PDF next to it through the `markdown-office` command, without opening the editor (real-fast-document had this; it was lost in the migration). macOS: Finder Quick Action for `.md`/`.markdown` (`~/Library/Services/Markdown-PDF.workflow`, result as a notification); Linux: „Öffnen mit → Markdown-PDF“ (`.desktop` entry for `text/markdown`) plus a Nautilus/Nemo script when those are present, result via `notify-send`; since both Linux entries claim `text/markdown`, the editor becomes the Markdown default in `~/.config/mimeapps.list` when none is chosen, so a double-click never converts; Windows: Explorer context-menu verb under `HKCU\Software\Classes\SystemFileAssociations` for `.md`/`.markdown`, started through `wscript.exe` so no console window flashes up, errors as a message box. Install and update write it, uninstall removes exactly what the install recorded in `.mdo-file-manager` next to the marker (including folders and registry keys created only for it); an entry of the same name that is not Markdown Office's is never touched. New `scripts/test-file-manager.sh` tests the generators; the bootstrap tests run each entry's command line on a note in a folder with spaces
+- Editor: „Einfügen → Vorlage …“ replaces „Einfügen → YAML-Header …“ and makes a note from elsewhere a note of a template set, with the same picker as „Neu aus Vorlage …“ (set, and profile when the set's header has `profile:`). Without front matter the set's header goes on top; an existing header is merged: existing keys keep their values, the set's missing keys are appended at the bottom with default value and comment, no duplicates, comments and order untouched; `template:` (and `profile:` when one is chosen) is set in place or appended. One undo step; line endings and BOM stay as they were. The merge is a pure module (`src/shared/header-merge.ts`) for a later shared core of CLI and MCP
+- Editor: after „Vorlage …“ a `date:` in a notation other than `YYYY-MM-DD`, `D.M.YYYY`/`DD.MM.YYYY` or empty gets a notice with the button „In <today> ändern“; the date only changes on that click, as an undo step of its own
 
 ### Changed
 - Editor: the start screen's button „Neue Notiz“ is now „Neues Memo …“, since it starts a note with the `memo` header like Mod+N
@@ -14,6 +16,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - README: the front matter section explains when values need quotes (free text in quotes, fixed values without, and why)
 - Licence: Markdown Office is now licensed under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later) instead of MIT; versions up to 26.10.0 stay MIT. Contributions come with a contributor agreement that keeps a commercial licence possible (CONTRIBUTING.md). The template sets stay MIT. The About panel shows copyright, licence and the no-warranty note; on Windows and Linux it opens from the new menu Hilfe → Über Markdown Office
 - Outline: entries without sub-chapters no longer show a bullet (•); the slot stays empty, so their titles still line up with the chapters that have a fold arrow
+
+### Removed
+- Snippet `:header` (memo-specific; „Einfügen → Vorlage …“ covers every set)
 
 ### Fixed
 - Editor preview and Present: table column widths follow Typst's auto columns like the memo PDF (each column as wide as its widest cell; if the table is too wide, columns that fit their fair share keep their width and only the oversized ones share the rest); the browser's own table layout squeezed short columns such as "Objekt" or "Quelle" until they wrapped. Small tables still stay as wide as their content

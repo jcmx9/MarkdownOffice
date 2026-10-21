@@ -11,7 +11,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 | File | Required | Read by | Purpose |
 |------|----------|---------|---------|
 | `<name>.typ` | yes | pipeline (Typst) | Builds the whole PDF: page layout, metadata, and the body via cmarker |
-| `<name>.header.md` | no | editor (new notes, *Einfügen → YAML-Header …*) | Front-matter template with every key the set understands |
+| `<name>.header.md` | no | editor (new notes, *Einfügen → Vorlage …*) | Front-matter template with every key the set understands |
 | `<name>.css` | no | nobody yet (reserved) | Editor preview overrides |
 
 **Name rule:** `^[a-z0-9_-]+$` (lowercase letters, digits, `_`, `-`). Anything else is not treated as a set name. A value ending in `.typ` (case-insensitive) is a single template file instead.
@@ -235,13 +235,14 @@ hard_breaks: true       # jede Zeile bleibt eine Zeile
 ---
 ```
 
-The editor reads the header file of every set: Mod+N starts a note with `memo.header.md`, *Datei → Neu aus Vorlage …* and *Einfügen → YAML-Header …* with the header of the set picked in a dialog. Where it looks:
+The editor reads the header file of every set: Mod+N starts a note with `memo.header.md`, *Datei → Neu aus Vorlage …* with the header of the set picked in a dialog, and *Einfügen → Vorlage …* merges that header into an existing note (missing keys are appended with their default value and comment, existing keys keep their values, `template:`/`profile:` are set). Where it looks:
 
 - The set is resolved like the pipeline does (§2): `<MDO_TEMPLATES>/<name>.typ`, `<MDO_TEMPLATES>/<name>/<name>.typ`, `<sets>/<name>/<name>.typ`; the first hit wins, so a user set shadows a bundled one.
 - The header file is `<name>.header.md` in the folder of the winning `.typ`; for a flat user set that is `<MDO_TEMPLATES>/<name>.header.md`.
 - Without a header file (or one that is not a regular file, not valid UTF-8 or larger than 64 KiB) the note starts with `---`, `template: <name>`, `---`.
 - The first `# …` comment line of the header file, trimmed to 80 characters, is the set's hint in the picker; choose it so a user can tell the sets apart.
 - A column-0 `profile:` key enables the profile choice: the picker lists the `*.yaml` names (matching the name rule) from `<MDO_TEMPLATES>/<name>/profiles/`, `<MDO_TEMPLATES>/profiles/` and `<set folder>/profiles/`, deduplicated and sorted (the same folders the pipeline searches, minus the note's own), and writes the chosen name into that line, keeping its alignment and comment.
+- For the merge, every column-0 `key:` line is one key; the indented lines (or column-0 `- ` items) below it belong to it and are copied with it, so a list default such as `x-to:` arrives complete. Comment lines between the keys are not copied, so put each key's explanation as a trailing `# …` comment on its own line.
 
 ## 7. PDF requirements
 

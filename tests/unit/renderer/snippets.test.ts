@@ -37,20 +37,15 @@ describe('snippetSource', () => {
   })
 
   it('a bare colon offers all on explicit request (Ctrl+Space)', () => {
-    expect(labels(':', true)).toEqual([
-      ':aufgabe',
-      ':header',
-      ':meeting',
-      ':newpage',
-      ':telefonnotiz',
-    ])
+    expect(labels(':', true)).toEqual([':aufgabe', ':meeting', ':newpage', ':telefonnotiz'])
   })
 
   it.each([
     ['Super :D', null],
     [':P', null],
     [':me', [':meeting']],
-    [':H', [':header']],
+    // The memo-specific :header snippet is gone (Einfügen → Vorlage … replaces it).
+    [':H', null],
   ])('prefix filter %j -> %j', (doc, expected) => {
     expect(labels(doc)).toEqual(expected)
   })
@@ -303,11 +298,8 @@ describe('header snippets in Present', () => {
     view.destroy()
   })
 
-  it(':telefonnotiz and :header also stay reachable', async () => {
-    for (const [trigger, first, second] of [
-      [':tel', 'Firma', 'Name'],
-      [':hea', 'Titel', ''],
-    ] as const) {
+  it(':telefonnotiz also stays reachable', async () => {
+    for (const [trigger, first, second] of [[':tel', 'Firma', 'Name']] as const) {
       const view = mount('', 'present')
       type(view, trigger)
       startCompletion(view)
