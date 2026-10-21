@@ -118,6 +118,10 @@ describe('validationInputs: profile search', () => {
       status: 'missing',
       searched: [join(homedir(), 'mdo-test-none.yml')],
     })
+    expect((await run('memo', '~\\mdo-test-none.yml')).profile).toEqual({
+      status: 'missing',
+      searched: [join(homedir(), 'mdo-test-none.yml')],
+    })
     // An absolute path needs no note folder; a relative one cannot be checked without it.
     expect((await run('memo', join(noteDir, 'p.yaml'), null)).profile).toEqual({ status: 'found' })
     expect((await run('memo', 'p.yaml', null)).profile).toBeNull()

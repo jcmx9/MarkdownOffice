@@ -10,6 +10,17 @@ import { isFile, listSets, readSetHeader, readSetSchema, resolveSet } from './te
 const DEFAULT_SET = 'memo'
 
 /**
+ * `~`, `~/x` and `~\x` -> `join(homedir(), x)`. Joined, not concatenated: on Windows a plain
+ * `homedir() + '/x'` mixes separators (`C:\\Users\\me/x`), which then differs from the path
+ * build.sh/convert.ps1 report and from what `join` yields elsewhere.
+ */
+function expandHome(p: string): string {
+  if (p === '~') return homedir()
+  if (p.startsWith('~/') || p.startsWith('~\\')) return join(homedir(), p.slice(2))
+  return p
+}
+
+/**
  * Folder of a `template: x.typ` value, resolved like `resolve_template` in build.sh (`~`
  * expanded, relative to the note's folder); build.sh searches `<that folder>/profiles` too.
  * null when it cannot be resolved here (relative without a note folder, or variables).
@@ -17,7 +28,7 @@ const DEFAULT_SET = 'memo'
 function typFolder(value: string, noteDir: string | null): string | null {
   if (/[$%]/.test(value)) return null
   let p = value
-  if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) p = homedir() + p.slice(1)
+  p = expandHome(p)
   if (!isAbsolute(p)) {
     if (noteDir === null) return null
     p = resolve(noteDir, p)
@@ -54,7 +65,7 @@ async function lookupProfile(
   if (/\.ya?ml$/i.test(value)) {
     if (/[$%]/.test(value)) return null
     let p = value
-    if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) p = homedir() + p.slice(1)
+    p = expandHome(p)
     if (!isAbsolute(p)) {
       // Without a note folder (unsaved note) a relative path cannot be resolved: not checked.
       if (o.noteDir === null) return null

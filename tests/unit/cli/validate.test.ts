@@ -47,6 +47,11 @@ async function run(args: string[]) {
   return { code, out, err }
 }
 
+// Paths go into RegExps below; on Windows `\\n`, `\\U` would otherwise act as escapes.
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 describe('validate: usage', () => {
   it.each([[[]], [['a.md', 'b.md']], [['a.md', '--nope']]])(
     'exit 2 with usage for %j',
@@ -71,7 +76,7 @@ describe('validate: report', () => {
     const f = note('---\ntitle: A\ndate: 31.04.2026\n---\n')
     const r = await run([f])
     expect(r.code).toBe(1)
-    expect(r.out).toMatch(new RegExp(`^${f}:3: Fehler: .*date`, 'm'))
+    expect(r.out).toMatch(new RegExp(`^${escapeRegExp(f)}:3: Fehler: .*date`, 'm'))
     expect(r.out).toContain('Fehlende Schlüssel (memo): ')
   })
   it('warnings only: exit 0', async () => {
