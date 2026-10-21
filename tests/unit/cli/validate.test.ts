@@ -1,10 +1,12 @@
 import {
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -149,6 +151,19 @@ describe('validate: --fix / --add-missing', () => {
       '---\r\ntitle: A\r\ntemplate: memo\r\nsubtitle:\r\n---\r\nBody\r\n',
     )
     expect(JSON.parse(r.out).missing).toEqual([])
+  })
+  // Editor parity: the write goes through the link to its target, the link stays a link.
+  it('--fix writes through a symlinked note', async () => {
+    mkdirSync(path.join(dir, 'real'))
+    const target = note('---\ntitle: A\ntoc: Yes\n---\n', 'real/t.md')
+    const link = path.join(dir, 'link.md')
+    symlinkSync(target, link)
+    const r = await run([link, '--fix'])
+    expect(r.code).toBe(0)
+    expect(lstatSync(link).isSymbolicLink()).toBe(true)
+    expect(readFileSync(target, 'utf8')).toBe('---\ntitle: A\ntoc: true\n---\n')
+    expect(readdirSync(dir).filter((n) => n.includes('mdo-tmp'))).toEqual([])
+    expect(readdirSync(path.join(dir, 'real'))).toEqual(['t.md'])
   })
   it('the exit code reflects the re-validated result', async () => {
     const f = note('---\ntitle: A\nsubtitle: B\ndate: 31.04.2026\n---\n')

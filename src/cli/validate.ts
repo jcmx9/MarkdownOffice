@@ -52,8 +52,13 @@ function parseArgs(args: string[]): Options | null {
   return files === 1 ? o : null
 }
 
-/** temp file in the same folder + rename; the original's permissions are kept. */
-function writeAtomic(file: string, bytes: Uint8Array): void {
+/**
+ * temp file in the same folder + rename; the original's permissions are kept. A symlinked note
+ * is written through to its target (as the editor does): renaming onto the link itself would
+ * replace the link with a regular file and leave the real note unchanged.
+ */
+function writeAtomic(link: string, bytes: Uint8Array): void {
+  const file = fs.realpathSync(link)
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.mdo-tmp`)
   try {
     fs.writeFileSync(tmp, bytes, { mode: fs.statSync(file).mode & 0o777 })
