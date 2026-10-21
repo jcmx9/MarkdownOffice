@@ -89,7 +89,7 @@ export type ValueKey = 'profile' | 'template' | 'date'
 /**
  * The header with the first column-0 `<key>:` value replaced by `value` (plain, unquoted), the
  * comment kept in its column as `withProfile` describes; unchanged without such a key. Shared
- * by the profile choice and the template insert (src/shared/header-merge.ts), so every rewritten
+ * by the profile choice and the template insert (src/core/header-merge.ts), so every rewritten
  * header line looks the same. The caller validates `value`: it is written as is.
  */
 export function withValue(header: string, key: ValueKey, value: string): string {

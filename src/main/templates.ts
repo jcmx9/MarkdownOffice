@@ -1,7 +1,7 @@
 import { constants } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { headerHint, headerProfile, minimalHeader, SET_NAME_RE } from '../shared/sets'
+import { headerHint, headerProfile, minimalHeader, SET_NAME_RE } from '../core/sets'
 import type { SetInfo } from '../shared/types'
 
 /** A header file larger than this is not a header (protects the renderer), as for snippets. */

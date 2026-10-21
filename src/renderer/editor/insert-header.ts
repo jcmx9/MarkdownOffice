@@ -5,7 +5,7 @@ import {
   setDate,
   type TemplateChoiceInput,
   type TextChange,
-} from '../../shared/header-merge'
+} from '../../core/header-merge'
 
 /**
  * A template's header in the line break `nl` (trailing blank lines dropped) and where the
@@ -38,7 +38,7 @@ export type InsertTemplateResult =
 
 /**
  * Einfügen → „Vorlage …“: the set's header merged into the note by the pure rules of
- * src/shared/header-merge.ts. The editor's doc joins lines with `\n` (a CRLF note gets its CRLF
+ * src/core/header-merge.ts. The editor's doc joins lines with `\n` (a CRLF note gets its CRLF
  * back from serializeDoc, a mixed note keeps `\r` in its lines), which is exactly the text the
  * merge expects, so its changes apply as they are. The whole merge is one transaction and
  * isolated in the history: one undo step, never joined with typing right before or after it.

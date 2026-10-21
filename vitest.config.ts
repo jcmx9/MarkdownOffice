@@ -7,7 +7,12 @@ export default defineConfig({
     testTimeout: 15_000,
     coverage: {
       provider: 'v8',
-      include: ['src/main/**/*.ts', 'src/renderer/**/*.ts', 'src/shared/**/*.ts'],
+      include: [
+        'src/main/**/*.ts',
+        'src/renderer/**/*.ts',
+        'src/shared/**/*.ts',
+        'src/core/**/*.ts',
+      ],
       // Electron/DOM wiring is covered by the Playwright suite.
       exclude: [
         'src/main/index.ts',

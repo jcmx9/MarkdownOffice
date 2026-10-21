@@ -1,4 +1,4 @@
-import { DEFAULT_SET, headerProfile } from '../../shared/sets'
+import { DEFAULT_SET, headerProfile } from '../../core/sets'
 import type { SetInfo } from '../../shared/types'
 
 export interface TemplatePickerDeps {
