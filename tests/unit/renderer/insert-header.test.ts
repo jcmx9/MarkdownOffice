@@ -2,7 +2,7 @@ import { undo } from '@codemirror/commands'
 import type { EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 import { frontmatterRange } from '../../../src/renderer/editor/frontmatter'
-import { dateFixSpec, headerNote, insertTemplate } from '../../../src/renderer/editor/insert-header'
+import { headerNote, insertTemplate } from '../../../src/renderer/editor/insert-header'
 import { createState, serializeDoc } from '../../../src/renderer/editor/setup'
 import type { Eol } from '../../../src/shared/types'
 
@@ -86,23 +86,6 @@ describe('insertTemplate', () => {
     if (res.kind !== 'changed') return
     const after = typed.update(res.spec).state
     expect(undone(after).doc.toString()).toBe('---\nlang: enx\n---\n')
-  })
-})
-
-describe('dateFixSpec', () => {
-  it('writes the date as its own undo step', () => {
-    const { state } = run('---\ndate: 20/10/2026   # Datum\n---\n')
-    const spec = dateFixSpec(state, '2026-10-20')
-    expect(spec).not.toBeNull()
-    if (!spec) return
-    const fixed = state.update(spec).state
-    expect(fixed.doc.toString()).toMatch(/^date: 2026-10-20 +# Datum$/m)
-    // Undo takes back only the date fix, the merge stays.
-    expect(undone(fixed).doc.toString()).toBe(state.doc.toString())
-  })
-
-  it('is null when there is no date to change', () => {
-    expect(dateFixSpec(createState('Text', '\n', 'code'), '2026-10-20')).toBeNull()
   })
 })
 

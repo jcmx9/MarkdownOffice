@@ -93,30 +93,42 @@ export type ValueKey = 'profile' | 'template' | 'date'
  * header line looks the same. The caller validates `value`: it is written as is.
  */
 export function withValue(header: string, key: ValueKey, value: string): string {
-  const re = new RegExp(`^${key}:(.*)$`)
   const lines = header.split('\n')
   const [from, to] = frontMatterRange(lines)
   for (let i = from; i < to; i++) {
     const line = lines[i] ?? ''
-    const cr = line.endsWith('\r') ? '\r' : ''
-    const m = re.exec(stripCr(line))
-    if (!m) continue
-    const raw = m[1] ?? ''
-    const { lead, tail } = splitValue(raw)
-    const comment = tail.replace(/^[ \t]+/, '')
-    let next: string
-    if (comment.startsWith('#')) {
-      // Old width from after `<key>:` up to the `#`; keep the comment there when it fits.
-      const width = raw.length - comment.length
-      const head = `${lead || ' '}${value}`
-      next = `${head}${' '.repeat(Math.max(1, width - head.length))}${comment}`
-    } else {
-      next = `${lead || ' '}${value}`
-    }
-    lines[i] = `${key}:${next}${cr}`
+    if (!stripCr(line).startsWith(`${key}:`)) continue
+    lines[i] = rewriteValue(line, key, value)
     return lines.join('\n')
   }
   return header
+}
+
+/**
+ * One line `<key>: …` with its value replaced by `value` (written as is, so the caller quotes
+ * it when needed). The line's own `\r` and a trailing `# comment` keep their place: the comment
+ * stays in its column when the new value fits, else one space follows the value. A quoted old
+ * value is cut at its closing quote (`splitValue`), so a `#` inside quotes is never a comment.
+ * The line is returned unchanged when it is not a `<key>:` line. This is the one rewrite rule
+ * of `withValue` and of the validator's fixes, so every changed line looks the same.
+ */
+export function rewriteValue(line: string, key: string, value: string): string {
+  const cr = line.endsWith('\r') ? '\r' : ''
+  const bare = stripCr(line)
+  if (!bare.startsWith(`${key}:`)) return line
+  const raw = bare.slice(key.length + 1)
+  const { lead, tail } = splitValue(raw)
+  const comment = tail.replace(/^[ \t]+/, '')
+  let next: string
+  if (comment.startsWith('#')) {
+    // Old width from after `<key>:` up to the `#`; keep the comment there when it fits.
+    const width = raw.length - comment.length
+    const head = `${lead || ' '}${value}`
+    next = `${head}${' '.repeat(Math.max(1, width - head.length))}${comment}`
+  } else {
+    next = `${lead || ' '}${value}`
+  }
+  return `${key}:${next}${cr}`
 }
 
 /**

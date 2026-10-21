@@ -31,6 +31,7 @@ const MEMO = '---\ntemplate: memo  # Vorlage\n---\n'
 let root: string
 let sets: string
 let documents: string
+let app: InstanceType<typeof AppContext>
 const savedTemplates = process.env.MDO_TEMPLATES
 
 beforeEach(async () => {
@@ -44,7 +45,8 @@ beforeEach(async () => {
   delete process.env.MDO_TEMPLATES
   handlers.clear()
   const paths = { root: join(root, 'p'), sets, cli: '', fonts: '' }
-  registerIpc(new AppContext(join(root, 'user-data'), documents, { paths, version: 'dev' }))
+  app = new AppContext(join(root, 'user-data'), documents, { paths, version: 'dev' })
+  registerIpc(app)
 })
 
 afterEach(() => {
@@ -129,6 +131,44 @@ describe('template IPC', () => {
     ['memo', null],
   ])('refuses createProfile(%j, %j)', async (set, name) => {
     expect(await invoke(Ch.createProfile, set, name)).toMatchObject({ ok: false })
+  })
+
+  it('answers the validation inputs for an allowed note and for an unsaved one', async () => {
+    const dir = join(root, 'notizen')
+    await mkdir(join(dir, 'profiles'), { recursive: true })
+    await writeFile(join(dir, 'profiles', 'ich.yaml'), 'name: x\n')
+    const note = join(dir, 'a.md')
+    await writeFile(note, '')
+    app.allow([note])
+    expect(await invoke(Ch.validationInputs, note, 'memo', 'ich')).toMatchObject({
+      set: 'memo',
+      sets: ['memo'],
+      profile: { status: 'found' },
+    })
+    expect(await invoke(Ch.validationInputs, null, '', 'ich')).toMatchObject({
+      set: 'memo',
+      profile: { status: 'missing' },
+    })
+  })
+
+  it.each([
+    ['not allowed path', () => join(root, 'fremd.md'), 'memo', ''],
+    ['bad template', () => null, '../memo', ''],
+    ['bad template type', () => null, 42, ''],
+    ['long profile', () => null, 'memo', 'a'.repeat(257)],
+    ['bad profile type', () => null, 'memo', null],
+    ['bad path type', () => 42, 'memo', ''],
+  ])('rejects validationInputs with a %s', async (_n, path, template, profile) => {
+    await writeFile(join(root, 'fremd.md'), '')
+    await expect(invoke(Ch.validationInputs, path(), template, profile)).rejects.toThrow()
+  })
+
+  it('accepts a .typ path as template', async () => {
+    expect(await invoke(Ch.validationInputs, null, '/x/y.typ', '')).toMatchObject({
+      set: '',
+      header: null,
+      schemaText: null,
+    })
   })
 
   it('no longer offers the old memo-only channel', () => {

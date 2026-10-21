@@ -25,10 +25,14 @@ describe('src/core purity', () => {
   it('contains modules', () => {
     expect(files.length).toBeGreaterThan(0)
   })
-  it.each(files)('%s has no electron, node: or DOM usage', (file) => {
+  it.each(files)('%s has no electron, node:, require or DOM usage', (file) => {
     const src = readFileSync(file, 'utf8')
     expect(src).not.toMatch(/from ['"]electron['"]/)
     expect(src).not.toMatch(/from ['"]node:/)
     expect(src).not.toMatch(/\b(document|window)\./)
+    expect(src).not.toMatch(/\brequire\(/)
+    expect(src).not.toMatch(/\bglobalThis\.(document|window)\b/)
+    // A bare `import 'x'` runs code for its side effect; a `?raw` import has a binding and is fine.
+    expect(src).not.toMatch(/^import ['"]/m)
   })
 })

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  applyChanges,
-  dateIssue,
-  isValidDate,
-  mergeHeader,
-  setDate,
-} from '../../../src/core/header-merge'
+import { applyChanges, isValidDate, mergeHeader } from '../../../src/core/header-merge'
 
 const MEMO = [
   '---',
@@ -237,34 +231,6 @@ describe('isValidDate', () => {
     ['2024-02-29', true],
   ])('%j -> %s', (value, ok) => {
     expect(isValidDate(value)).toBe(ok)
-  })
-})
-
-describe('dateIssue / setDate', () => {
-  it('is null for a valid, empty or missing date and without front matter', () => {
-    expect(dateIssue('---\ndate: 2026-10-20   # x\n---\n')).toBeNull()
-    expect(dateIssue('---\ndate: ""\n---\n')).toBeNull()
-    expect(dateIssue("---\ndate: '20.10.2026'\n---\n")).toBeNull()
-    expect(dateIssue('---\ndate:\n---\n')).toBeNull()
-    expect(dateIssue('---\ntitle: a\n---\n')).toBeNull()
-    expect(dateIssue('date: 20/10/2026\n')).toBeNull()
-  })
-
-  it('names a wrong notation (quotes and comment stripped; the last date: counts)', () => {
-    expect(dateIssue('---\ndate: "20/10/2026"   # Datum\n---\n')).toEqual({ value: '20/10/2026' })
-    expect(dateIssue('---\ndate: 2026-10-20\ndate: Oktober\n---\n')).toEqual({ value: 'Oktober' })
-  })
-
-  it('setDate replaces the value in place, keeping comment and line ending', () => {
-    const note = '---\r\ndate: "20/10/2026"   # Datum\r\n---\r\n'
-    expect(applyChanges(note, setDate(note, '2026-10-20'))).toBe(
-      '---\r\ndate: 2026-10-20     # Datum\r\n---\r\n',
-    )
-  })
-
-  it('setDate changes nothing without front matter or date:', () => {
-    expect(setDate('Text', '2026-10-20')).toEqual([])
-    expect(setDate('---\ntitle: a\n---\n', '2026-10-20')).toEqual([])
   })
 })
 

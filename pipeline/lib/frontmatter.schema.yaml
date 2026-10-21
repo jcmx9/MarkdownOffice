@@ -1,0 +1,30 @@
+# Front matter schema of the Markdown Office pipeline: the keys that pipeline/build.sh and
+# pipeline/convert.ps1 read themselves (README, section "Frontmatter"). Those two scripts are
+# the authority: when a key, its accepted values or its default changes there, change this file
+# in the same commit. The editor's "YAML prüfen" and `markdown-office validate` check a note
+# against it; a set adds its own x- keys (and restrictions of these) in <name>.schema.yaml
+# next to <name>.typ. Format: TEMPLATES.md, section 6, "Schema".
+#
+# Only column-0 keys count (the scripts ignore indented lines); keys not listed here are
+# always allowed. `empty` documents what an empty value does for the set; it never makes an
+# empty value a finding, as the pipeline ignores empty values.
+schema: 1
+keys:
+  template:        { type: text }
+  title:           { type: text }
+  subtitle:        { type: text }
+  toptitle:        { type: text }
+  author:          { type: text }
+  header:          { type: text }
+  watermark:       { type: text }
+  profile:         { type: text }
+  date:            { type: date, empty: none }
+  isodate_praefix: { type: bool }
+  print_filename:  { type: bool }
+  embed_source:    { type: bool }
+  hard_breaks:     { type: bool }
+  lang:            { type: lang }
+  toc:             { type: enum, values: [auto, true, false] }
+  h1_break:        { type: enum, values: [auto, true, false] }
+  logo:            { type: file, ext: [.svg, .png, .jpg, .jpeg] }
+  logo-height:     { type: length, max: 25mm }

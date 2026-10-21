@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { FIELD_TYPES } from '../../src/core/frontmatter-schema'
 
 // TEMPLATES.md documents every Typst input (`sys.inputs`) a template set receives. This test
 // keeps the guide in sync with the inputs that build.sh and convert.ps1 really pass.
@@ -37,5 +38,9 @@ describe('TEMPLATES.md', () => {
 
   it.each(bash)('documents the input `%s`', (name) => {
     expect(guide).toContain(`\`${name}\``)
+  })
+
+  it.each(FIELD_TYPES)('documents the schema type `%s`', (type) => {
+    expect(guide).toContain(`\`${type}\``)
   })
 })

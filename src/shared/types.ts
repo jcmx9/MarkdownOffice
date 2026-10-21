@@ -1,3 +1,5 @@
+import type { ValidationInputs } from '../core/validation-context'
+
 /** Line-ending style of a note. 'mixed' keeps every byte as found. */
 export type Eol = '\n' | '\r\n' | 'mixed'
 
@@ -108,6 +110,7 @@ export type MenuCommand =
   | 'toggle-header'
   | 'toggle-outline'
   | 'toggle-spellcheck'
+  | 'validate-yaml'
   | 'fold'
   | 'unfold'
   | 'fold-all'
@@ -178,6 +181,16 @@ export interface MdoApi {
    * `Vorlagen/<set>/profiles/<name>.yaml`; never overwrites. Main validates both names.
    */
   createProfile(set: string, name: string): Promise<CreateProfileResult>
+  /**
+   * Disk inputs of „YAML prüfen“ for a note: installed sets, the set's header and schema, and
+   * the `profile:` lookup. `path` is the note's file (null = unsaved, no note folder); main
+   * rejects a path it did not allow. `template`/`profile` are the note's raw values.
+   */
+  validationInputs(
+    path: string | null,
+    template: string,
+    profile: string,
+  ): Promise<ValidationInputs>
   /** Shows the shown note's context menu (rename, export, close) at the mouse. */
   showNoteMenu(): Promise<void>
   getSettingsStatus(): Promise<SettingsStatus>

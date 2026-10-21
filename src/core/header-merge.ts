@@ -14,10 +14,10 @@
  *    comment, in the set's order; no duplicates; existing comments and order untouched.
  * 3. `template:` is set to the chosen set: in place if present (every column-0 occurrence, so
  *    whichever one a reader takes is right), else appended.
- * 4. `date:` is checked separately (`dateIssue`); a fix (`setDate`) is a change of its own.
+ * 4. `date:` is checked by the YAML validator (src/core/frontmatter-validate.ts), not here.
  * 5. A chosen profile sets `profile:` like rule 3.
  */
-import { SET_NAME_RE, splitValue, type ValueKey, withValue } from './sets'
+import { SET_NAME_RE, type ValueKey, withValue } from './sets'
 
 export interface TextChange {
   from: number
@@ -44,20 +44,20 @@ export type MergeResult =
 const OPEN = /^---\s*$/
 const CLOSE = /^(---|\.\.\.)\s*$/
 /** A top-level key: column 0, like the pipeline's front-matter reader; indented keys are nested. */
-const KEY = /^([A-Za-z0-9_-]+):/
+export const KEY = /^([A-Za-z0-9_-]+):/
 
-const stripCr = (line: string): string => (line.endsWith('\r') ? line.slice(0, -1) : line)
+export const stripCr = (line: string): string => (line.endsWith('\r') ? line.slice(0, -1) : line)
 const crOf = (line: string): string => (line.endsWith('\r') ? '\r' : '')
 
 /** Index of the closing fence, -1 when the text has an unclosed header, null without one. */
-function closingFence(lines: readonly string[]): number | null {
+export function closingFence(lines: readonly string[]): number | null {
   if (lines.length < 2 || !OPEN.test(lines[0] ?? '')) return null
   for (let i = 1; i < lines.length; i++) if (CLOSE.test(lines[i] ?? '')) return i
   return -1
 }
 
 /** Start offset of every line in `text` split by `\n`. */
-function lineStarts(lines: readonly string[]): number[] {
+export function lineStarts(lines: readonly string[]): number[] {
   const out: number[] = []
   let pos = 0
   for (const l of lines) {
@@ -226,41 +226,4 @@ export function isValidDate(value: string): boolean {
   else return false
   const day = new Date(Date.UTC(y, m - 1, d))
   return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d
-}
-
-/** Indices of the front matter's column-0 `date:` lines (none without a closed header). */
-function dateLines(lines: readonly string[]): number[] {
-  const close = closingFence(lines)
-  if (close === null || close < 0) return []
-  const out: number[] = []
-  for (let i = 1; i < close; i++) if (stripCr(lines[i] ?? '').startsWith('date:')) out.push(i)
-  return out
-}
-
-/**
- * The wrongly written date of the note's header, or null when it is valid, empty or missing.
- * The last `date:` counts, as in the pipeline (its reader overwrites earlier ones).
- */
-export function dateIssue(note: string): { value: string } | null {
-  const lines = note.split('\n')
-  const last = dateLines(lines).at(-1)
-  if (last === undefined) return null
-  const raw = stripCr(lines[last] ?? '').slice('date:'.length)
-  const value = splitValue(raw).value.trim()
-  return isValidDate(value) ? null : { value }
-}
-
-/** The changes that write `iso` into every column-0 `date:` of the header (comment kept). */
-export function setDate(note: string, iso: string): TextChange[] {
-  if (!ISO.test(iso)) return []
-  const lines = note.split('\n')
-  const starts = lineStarts(lines)
-  const changes: TextChange[] = []
-  for (const i of dateLines(lines)) {
-    const line = lines[i] ?? ''
-    const next = setLine(line, 'date', iso)
-    const from = starts[i] ?? 0
-    if (next !== line) changes.push({ from, to: from + line.length, insert: next })
-  }
-  return changes
 }
