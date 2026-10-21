@@ -64,6 +64,11 @@ export default defineConfig({
   plugins: [devLayoutCopy()],
   publicDir: false,
   logLevel: 'warn',
+  // Bundled dependencies (js-yaml, for `validate`) must resolve to their Node build. A client-style
+  // build (Vite's default) prefers the "browser" export condition/field, which can pull a
+  // browser bundle that touches `window` or ships different code than the Node one. Replacing the
+  // default conditions with `node` + `module` (ESM, bundled by Rollup) keeps `browser` out.
+  resolve: { conditions: ['node', 'module'], mainFields: ['module', 'main'] },
   build: {
     target: 'node24',
     outDir: path.join(root, 'out', 'cli'),

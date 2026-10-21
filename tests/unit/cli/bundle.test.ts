@@ -54,6 +54,34 @@ describe('bundle', () => {
   })
 })
 
+describe('cli.js validate', () => {
+  // The bundle carries the pipeline schema (?raw import) and js-yaml, so this runs without
+  // node_modules; no pipeline script is involved.
+  it('checks a note end to end: broken date -> exit 1 and the message', () => {
+    const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'mdo cli validate ')))
+    try {
+      const note = path.join(dir, 'n.md')
+      writeFileSync(note, '---\ntitle: A\ndate: 31.04.2026\n---\n')
+      const clean = { ...process.env }
+      for (const k of Object.keys(clean)) if (k.startsWith('MDO_')) delete clean[k]
+      const r = spawnSync(process.execPath, [CLI, 'validate', note], {
+        env: {
+          ...clean,
+          ELECTRON_RUN_AS_NODE: '1',
+          MDO_SETS_DIR: path.join(dir, 'sets'),
+          MDO_TEMPLATES: path.join(dir, 'user'),
+        },
+        encoding: 'utf8',
+        cwd: dir,
+      })
+      expect(r.status).toBe(1)
+      expect(r.stdout).toContain(`${note}:3: Fehler: „date“`)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('cli.js', () => {
   let dir = ''
   let real = ''
