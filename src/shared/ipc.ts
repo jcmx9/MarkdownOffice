@@ -23,6 +23,7 @@ export const Ch = {
   readSetHeader: 'mdo:read-set-header',
   listProfiles: 'mdo:list-profiles',
   createProfile: 'mdo:create-profile',
+  validationInputs: 'mdo:validation-inputs',
   noteMenu: 'mdo:note-menu',
   spellReplace: 'mdo:spell-replace',
   spellRecheck: 'mdo:spell-recheck',

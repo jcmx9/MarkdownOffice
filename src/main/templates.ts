@@ -52,7 +52,7 @@ interface ResolvedSet {
  * Same order as `build.sh resolve_template`: `<user>/<n>.typ`, `<user>/<n>/<n>.typ`,
  * `<sets>/<n>/<n>.typ`; the first regular file wins, so a user set shadows a bundled one.
  */
-async function resolveSet(
+export async function resolveSet(
   setsDir: string,
   userDir: string,
   name: string,
@@ -112,6 +112,19 @@ export async function setExampleProfile(
   if (!example || !SET_NAME_RE.test(example)) return null
   const dir = join(dirname(set.typ), 'profiles')
   return (await isFile(join(dir, `${example}${PROFILE_EXT}`))) ? { dir, example } : null
+}
+
+/**
+ * The set's `<name>.schema.yaml` next to the winning `<name>.typ` (front matter checks of the
+ * set's own keys). null when the set or the file is missing, or it is not a small UTF-8 file.
+ */
+export async function readSetSchema(
+  setsDir: string,
+  userDir: string,
+  name: string,
+): Promise<string | null> {
+  const set = await resolveSet(setsDir, userDir, name)
+  return set ? readSmallText(join(dirname(set.typ), `${name}.schema.yaml`)) : null
 }
 
 /** `<dir of the winning .typ>/<n>.header.md` (a flat user set: `Vorlagen/<n>.header.md`). */
