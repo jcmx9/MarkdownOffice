@@ -93,7 +93,7 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `toptitle` | Front matter `toptitle:` | text | `""` |
 | `author` | Front matter `author:`; an inline list `[A, B]` becomes `A, B` | comma-separated text | `""` |
 | `date` | Front matter `date:`, **raw** (not normalised) | `2026-10-13`, `13.10.2026` or free text | `""` |
-| `lang` | Front matter `lang:` | `de`, `en`, … | `de` |
+| `lang` | Front matter `lang:` | `de`, `en`, `de-AT`, … (may carry a region: split it off before `text(lang:)`, see §9) | `de` |
 | `toc` | Front matter `toc:` | `auto` / `true` / `false` | `auto` |
 | `h1_break` | Front matter `h1_break:` | `auto` / `true` / `false` | `auto` |
 | `showname` | Front matter `print_filename:` | `true` / `false` | `true` |
@@ -254,7 +254,7 @@ The editor's *Bearbeiten → YAML prüfen …* and `markdown-office validate` ch
 Keys that no schema lists are always allowed, so a note may carry extra keys. Only column-0 keys are checked, like the scripts do; a nested value is only checked for its top-level shape. A set without a schema file is checked against the pipeline layer only; missing keys are still offered from `<name>.header.md`.
 
 ```yaml
-# memo.schema.yaml (excerpt)
+# example.schema.yaml
 schema: 1
 keys:
   lang:          { type: enum, values: [de, en] }   # restricts the pipeline's `lang`
@@ -268,16 +268,16 @@ keys:
 
 | Type | Accepts | Options |
 |---|---|---|
-| `text` | any text; a scalar or an inline list of scalars (joined, as `author`) | |
-| `bool` | `true/false` (also `yes/no/on/off/ja/nein/1/0`, any case; non-canonical spellings are fixable) | |
-| `enum` | one of the listed values (case-insensitive, fixable to the canonical one) | `values` (required) |
+| `text` | any text; a scalar or an inline list of scalars (joined, as `author`). A plain value that YAML 1.2 reads as another type (`true`, `~`, `01067`) needs quotes: an error for a set's key (Typst's `yaml()` would see a bool, nothing or a number), a warning for a pipeline key (the pipeline passes it on as text) | |
+| `bool` | `true` or `false`. `yes/no/on/off/y/n` (any case) work for the pipeline's keys and are a warning, fixable; for a set's own key `y`/`n` are an error (Typst's `yaml()` reads them as text). `ja/nein/1/0` are errors, fixable | |
+| `enum` | exactly one of the listed values; a case slip is an error, fixable to the listed spelling (only `Auto` for `toc`/`h1_break` is a warning: the pipeline lower-cases those two) | `values` (required) |
 | `date` | `2026-10-20`, `20.10.2026` and similar | `empty: today` or `none`: what an empty value means for the set (documentation; an empty value is never a finding) |
-| `length` | a number with unit `mm`, `cm`, `pt`, `in` | `min`, `max`, each with a unit |
+| `length` | a number with unit `mm`, `cm`, `pt`, `in`, like `15mm`; `15 mm` is a warning, a missing or upper-case unit or a decimal comma an error (each fixable) | `min`, `max`, each with a unit; a value outside is a warning, fixable to the bound |
 | `list` | inline `[A, B]` or a block list | |
 | `lines` | a block list of text lines | `max`: number of lines |
 | `file` | a file name | `ext`: allowed extensions, with the dot |
 | `name` | `^[a-z0-9_-]+$` | |
-| `lang` | a BCP-47 language code such as `de`, `en`, `pt-BR` | |
+| `lang` | a BCP-47 language code such as `de`, `en`, `pt-BR`. Typst's `text(lang:)` takes only the language: a set must split off the region (`de-AT` → `lang: "de"`, `region: "AT"`) or the export fails (§9) | |
 
 A broken schema (unknown type, not YAML, larger than 64 KiB) never stops the editor: users get a neutral notice and validation falls back to the pipeline layer. Test your schema with `markdown-office validate` on a note made from your header.
 
@@ -310,6 +310,9 @@ Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task ta
 
 #let inp(key, default: "") = sys.inputs.at(key, default: default)
 #let lang = inp("lang", default: "de")
+// `lang:` may carry a region (de-AT); text(lang:) refuses that, it takes the region separately.
+#let lang-code = lang.split("-").first()
+#let lang-region = lang.split("-").at(1, default: none)
 #let doctitle = inp("doctitle")
 #let source = inp("source", default: none)
 #let attach = inp("attach")
@@ -339,7 +342,8 @@ Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task ta
 
 #set page(paper: "a4", margin: 25mm,
   footer: context align(center, text(9pt, counter(page).display("1 / 1", both: true))))
-#set text(font: ("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2"), size: 10.5pt, lang: lang)
+#set text(font: ("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2"), size: 10.5pt,
+  lang: lang-code, region: lang-region)
 #set par(justify: true)
 #show heading: set text(font: "Source Serif 4")
 #show raw: set text(font: "SourceCodeVF")

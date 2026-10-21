@@ -177,7 +177,7 @@ markdown-office --soft-breaks note.md        # line breaks become spaces
 markdown-office --template my-set note.md    # another template set
 markdown-office --help                       # all options
 markdown-office --app [note.md …]            # open the editor
-markdown-office validate note.md              # check the YAML header
+markdown-office validate note.md             # check the YAML header
 ```
 
 Without an argument the command prints its help.

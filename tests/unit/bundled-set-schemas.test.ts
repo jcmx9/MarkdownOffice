@@ -36,7 +36,7 @@ describe('bundled set schemas', () => {
     if (header === null) return
     expect(errorCount(validateFrontmatter(header, ctx))).toBe(0)
   })
-  // memo takes the first two letters of `lang`, so regional codes must stay valid.
+  // memo splits the region off `lang` before text(lang:), so regional codes must stay valid.
   it.skipIf(!withSchema.includes('memo'))(
     'memo accepts a regional lang such as de-AT',
     async () => {
