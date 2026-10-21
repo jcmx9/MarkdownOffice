@@ -6,7 +6,7 @@ import {
   minimalHeader,
   SET_NAME_RE,
   withProfile,
-} from '../../../src/shared/sets'
+} from '../../../src/core/sets'
 
 const DIN = [
   '---',

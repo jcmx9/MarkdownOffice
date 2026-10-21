@@ -11,7 +11,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 | File | Required | Read by | Purpose |
 |------|----------|---------|---------|
 | `<name>.typ` | yes | pipeline (Typst) | Builds the whole PDF: page layout, metadata, and the body via cmarker |
-| `<name>.header.md` | no | editor (new notes, *Einfügen → YAML-Header …*) | Front-matter template with every key the set understands |
+| `<name>.header.md` | no | editor (new notes, *Einfügen → Vorlage …*) | Front-matter template with every key the set understands |
 | `<name>.css` | no | nobody yet (reserved) | Editor preview overrides |
 
 **Name rule:** `^[a-z0-9_-]+$` (lowercase letters, digits, `_`, `-`). Anything else is not treated as a set name. A value ending in `.typ` (case-insensitive) is a single template file instead.
@@ -93,7 +93,7 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `toptitle` | Front matter `toptitle:` | text | `""` |
 | `author` | Front matter `author:`; an inline list `[A, B]` becomes `A, B` | comma-separated text | `""` |
 | `date` | Front matter `date:`, **raw** (not normalised) | `2026-10-13`, `13.10.2026` or free text | `""` |
-| `lang` | Front matter `lang:` | `de`, `en`, … | `de` |
+| `lang` | Front matter `lang:` | `de`, `en`, `de-AT`, … (may carry a region: split it off before `text(lang:)`, see §9) | `de` |
 | `toc` | Front matter `toc:` | `auto` / `true` / `false` | `auto` |
 | `h1_break` | Front matter `h1_break:` | `auto` / `true` / `false` | `auto` |
 | `showname` | Front matter `print_filename:` | `true` / `false` | `true` |
@@ -235,13 +235,51 @@ hard_breaks: true       # jede Zeile bleibt eine Zeile
 ---
 ```
 
-The editor reads the header file of every set: Mod+N starts a note with `memo.header.md`, *Datei → Neu aus Vorlage …* and *Einfügen → YAML-Header …* with the header of the set picked in a dialog. Where it looks:
+The editor reads the header file of every set: Mod+N starts a note with `memo.header.md`, *Datei → Neu aus Vorlage …* with the header of the set picked in a dialog, and *Einfügen → Vorlage …* merges that header into an existing note (missing keys are appended with their default value and comment, existing keys keep their values, `template:`/`profile:` are set). Where it looks:
 
 - The set is resolved like the pipeline does (§2): `<MDO_TEMPLATES>/<name>.typ`, `<MDO_TEMPLATES>/<name>/<name>.typ`, `<sets>/<name>/<name>.typ`; the first hit wins, so a user set shadows a bundled one.
 - The header file is `<name>.header.md` in the folder of the winning `.typ`; for a flat user set that is `<MDO_TEMPLATES>/<name>.header.md`.
 - Without a header file (or one that is not a regular file, not valid UTF-8 or larger than 64 KiB) the note starts with `---`, `template: <name>`, `---`.
 - The first `# …` comment line of the header file, trimmed to 80 characters, is the set's hint in the picker; choose it so a user can tell the sets apart.
 - A column-0 `profile:` key enables the profile choice: the picker lists the `*.yaml` names (matching the name rule) from `<MDO_TEMPLATES>/<name>/profiles/`, `<MDO_TEMPLATES>/profiles/` and `<set folder>/profiles/`, deduplicated and sorted (the same folders the pipeline searches, minus the note's own), and writes the chosen name into that line, keeping its alignment and comment.
+- For the merge, every column-0 `key:` line is one key; the indented lines (or column-0 `- ` items) below it belong to it and are copied with it, so a list default such as `x-to:` arrives complete. Comment lines between the keys are not copied, so put each key's explanation as a trailing `# …` comment on its own line.
+
+### Schema (`<name>.schema.yaml`)
+
+The editor's *Bearbeiten → YAML prüfen …* and `markdown-office validate` check a note's front matter against two layers of rules:
+
+1. `pipeline/lib/frontmatter.schema.yaml` ships with the app and describes the keys the pipeline reads itself (`title`, `date`, `toc`, `logo-height`, …).
+2. An optional `<name>.schema.yaml` next to `<name>.typ` (same folder as `<name>.header.md`) describes the keys only the set reads (`x-…`) and may restrict a pipeline key. A rule of the set **replaces** the pipeline's rule of the same key.
+
+Keys that no schema lists are always allowed, so a note may carry extra keys. Only column-0 keys are checked, like the scripts do; a nested value is only checked for its top-level shape. A set without a schema file is checked against the pipeline layer only; missing keys are still offered from `<name>.header.md`.
+
+```yaml
+# example.schema.yaml
+schema: 1
+keys:
+  lang:          { type: enum, values: [de, en] }   # restricts the pipeline's `lang`
+  logo-height:   { type: length, max: 25mm }
+  x-to:          { type: lines, max: 6 }
+  x-sign:        { type: bool }
+  x-attachments: { type: list }
+```
+
+`schema: 1` and `keys:` are required; a key name matches `^[A-Za-z0-9_-]+$`. The types:
+
+| Type | Accepts | Options |
+|---|---|---|
+| `text` | any text; a scalar or an inline list of scalars (joined, as `author`). A plain value that YAML 1.2 reads as another type (`true`, `~`, `01067`) needs quotes: an error for a set's key (Typst's `yaml()` would see a bool, nothing or a number), a warning for a pipeline key (the pipeline passes it on as text) | |
+| `bool` | `true` or `false`. `yes/no/on/off/y/n` (any case) work for the pipeline's keys and are a warning, fixable; for a set's own key `y`/`n` are an error (Typst's `yaml()` reads them as text). `ja/nein/1/0` are errors, fixable | |
+| `enum` | exactly one of the listed values; a case slip is an error, fixable to the listed spelling (only `Auto` for `toc`/`h1_break` is a warning: the pipeline lower-cases those two) | `values` (required) |
+| `date` | `2026-10-20`, `20.10.2026` and similar | `empty: today` or `none`: what an empty value means for the set (documentation; an empty value is never a finding) |
+| `length` | a number with unit `mm`, `cm`, `pt`, `in`, like `15mm`; `15 mm` is a warning, a missing or upper-case unit or a decimal comma an error (each fixable) | `min`, `max`, each with a unit; a value outside is a warning, fixable to the bound |
+| `list` | inline `[A, B]` or a block list | |
+| `lines` | a block list of text lines | `max`: number of lines |
+| `file` | a file name | `ext`: allowed extensions, with the dot |
+| `name` | `^[a-z0-9_-]+$` | |
+| `lang` | a BCP-47 language code such as `de`, `en`, `pt-BR`. Typst's `text(lang:)` takes only the language: a set must split off the region (`de-AT` → `lang: "de"`, `region: "AT"`) or the export fails (§9) | |
+
+A broken schema (unknown type, not YAML, larger than 64 KiB) never stops the editor: users get a neutral notice and validation falls back to the pipeline layer. Test your schema with `markdown-office validate` on a note made from your header.
 
 ## 7. PDF requirements
 
@@ -272,6 +310,10 @@ Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task ta
 
 #let inp(key, default: "") = sys.inputs.at(key, default: default)
 #let lang = inp("lang", default: "de")
+// `lang:` may carry a region (de-AT); text(lang:) refuses that, it takes the region separately.
+#let lang-code = lang.split("-").first()
+// The region is the two-letter part (de-AT); a script subtag such as zh-Hant is not one.
+#let lang-region = lang.split("-").slice(1).find(p => p.len() == 2)
 #let doctitle = inp("doctitle")
 #let source = inp("source", default: none)
 #let attach = inp("attach")
@@ -301,7 +343,8 @@ Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task ta
 
 #set page(paper: "a4", margin: 25mm,
   footer: context align(center, text(9pt, counter(page).display("1 / 1", both: true))))
-#set text(font: ("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2"), size: 10.5pt, lang: lang)
+#set text(font: ("SourceSans3VF", "Noto Emoji", "Noto Sans Symbols 2"), size: 10.5pt,
+  lang: lang-code, region: lang-region)
 #set par(justify: true)
 #show heading: set text(font: "Source Serif 4")
 #show raw: set text(font: "SourceCodeVF")
@@ -414,6 +457,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
+- [ ] Ships `<name>.schema.yaml` for its `x-` keys (section 6, *Schema*).
 - [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
 - [ ] Repo `MarkdownOffice-set-<name>`, CalVer tag `vYY.M.MICRO`; for bundling, manifest entry with the archive's SHA-256.

@@ -3,7 +3,16 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../shared/sets'
+import { PIPELINE_SCHEMA } from '../core/frontmatter-schema'
+import {
+  errorCount,
+  noteSet,
+  topLevelValue,
+  type ValidationContext,
+  validateFrontmatter,
+} from '../core/frontmatter-validate'
+import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../core/sets'
+import { validationContext } from '../core/validation-context'
 import type {
   ExportResult,
   ExternalChange,
@@ -16,7 +25,7 @@ import type {
 import { AutosaveScheduler } from './editor/autosave'
 import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
-import { headerNote, insertHeader } from './editor/insert-header'
+import { headerNote, insertTemplate } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
@@ -37,11 +46,13 @@ import {
   offerDictionaryNotice,
   recheckSpelling,
   replaceWordAt,
+  SPELL_RECHECK_FOLLOW_UP_MS,
   SpellLanguageTracker,
   spellAnswerCurrent,
   spellcheckCompartment,
   spellcheckExtensions,
 } from './editor/spellcheck'
+import { choiceSpec } from './editor/validate'
 import { isMarkdownTab, type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
@@ -53,6 +64,7 @@ import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './u
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
 import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
+import { openValidateDialog } from './ui/validate-dialog'
 import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
@@ -64,7 +76,6 @@ const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheid
 
 const MAX_SAVE_ROUNDS = 3
 
-const HEADER_EXISTS = 'Die Notiz hat schon einen YAML-Header.'
 const MARKDOWN_ONLY = 'Nur in Markdown-Notizen verfügbar.'
 
 const docKind = (path: string): DocKind => (isMarkdownTab({ path }) ? 'markdown' : 'yaml')
@@ -107,7 +118,10 @@ export class App {
   private presentFactor = 1.6
   private settings: Settings | null = null
   private settingsOpen = false
-  /** The template picker is open or loading its list (Mod+Shift+N twice opens it once). */
+  /**
+   * The template picker or „YAML prüfen …“ is open or loading its inputs (Mod+Shift+N or
+   * Mod+Shift+Y twice opens it once).
+   */
   private pickerOpen = false
   /** Spell checking switch (Settings.spellcheck); applied only in Edit mode. */
   private spellcheckOn = true
@@ -129,6 +143,8 @@ export class App {
   /** Last lang: reported to main, so unchanged values cause no IPC. */
   private readonly spellLang = new SpellLanguageTracker()
   private spellLangTimer: ReturnType<typeof setTimeout> | null = null
+  /** The follow-up recheck after a newly loaded dictionary (see onSpellRecheck). */
+  private spellRecheckTimer: ReturnType<typeof setTimeout> | null = null
   /** Dictionaries whose „fehlt“ notice was already shown this session. */
   private readonly dictNoticed = new Set<string>()
   private readonly saveErrors = new Map<number, string>()
@@ -237,10 +253,22 @@ export class App {
       replaceWordAt(this.editor, this.editor.posAtCoords({ x, y }), word, replacement)
     })
     this.mdo.onSpellRecheck(() => {
-      // A shown profile (YAML) stays unchecked; a later switch to a note reconfigures anyway.
-      const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
-      const on = this.spellcheckOn && (!shown || isMarkdownTab(shown))
-      recheckSpelling(this.editor, on, this.mode)
+      const recheck = () => {
+        // A shown profile (YAML) stays unchecked; a later switch to a note reconfigures anyway.
+        const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
+        const on = this.spellcheckOn && (!shown || isMarkdownTab(shown))
+        recheckSpelling(this.editor, on, this.mode)
+      }
+      recheck()
+      // Chromium hands the renderer the new dictionary on a Mojo pipe of its own, which is not
+      // ordered with this IPC message: the first recheck can still run with the old languages
+      // (Windows CI: English suggestions in a German note even after the recheck, PR #45; a
+      // second recheck seconds later fixed it). So once more, after a short delay.
+      if (this.spellRecheckTimer) clearTimeout(this.spellRecheckTimer)
+      this.spellRecheckTimer = setTimeout(() => {
+        this.spellRecheckTimer = null
+        recheck()
+      }, SPELL_RECHECK_FOLLOW_UP_MS)
     })
     this.mdo.onOpenPaths((paths) => void this.openPaths(paths))
     this.mdo.onExternalChange((change) => this.externalChange(change))
@@ -289,7 +317,8 @@ export class App {
       this.mode === 'present' &&
       (cmd === 'export' ||
         cmd === 'toggle-header' ||
-        cmd === 'insert-header' ||
+        cmd === 'insert-template' ||
+        cmd === 'validate-yaml' ||
         cmd === 'create-profile' ||
         cmd === 'settings')
     ) {
@@ -332,8 +361,10 @@ export class App {
         // A page break is Markdown; a profile tab (YAML) ignores the shortcut like its keymap does.
         if (this.store.active && !isMarkdownTab(this.store.active)) return
         return this.editCommand('insertPageBreak', insertPageBreak)
-      case 'insert-header':
-        return this.insertHeaderTemplate()
+      case 'insert-template':
+        return this.insertTemplate()
+      case 'validate-yaml':
+        return this.validateYaml()
       case 'toggle-view':
         if (this.mode === 'present') return this.presentToCode()
         return this.setView(this.view === 'code' ? 'preview' : 'code')
@@ -546,14 +577,9 @@ export class App {
     await this.newNote(header ?? undefined)
   }
 
-  /** „Neu aus Vorlage …“: every set except the default, then a new note with its header. */
+  /** „Neu aus Vorlage …“: every set (default first), then a new note with its header. */
   private async newFromTemplate(): Promise<void> {
-    const header = await this.chosenHeader(
-      'Neu aus Vorlage',
-      'Erstellen',
-      false,
-      () => !this.closing,
-    )
+    const header = await this.chosenHeader('Neu aus Vorlage', 'Erstellen', () => !this.closing)
     if (header !== null) await this.newNote(header)
   }
 
@@ -618,10 +644,9 @@ export class App {
   private async chosenHeader(
     title: string,
     confirm: string,
-    withDefault: boolean,
     still: () => boolean,
   ): Promise<string | null> {
-    const choice = await this.chooseTemplate(title, confirm, withDefault, still)
+    const choice = await this.chooseTemplate(title, confirm, still)
     if (!choice || !still()) return null
     let header: string | null = null
     try {
@@ -640,7 +665,6 @@ export class App {
   private async chooseTemplate(
     title: string,
     confirm: string,
-    withDefault: boolean,
     still: () => boolean,
   ): Promise<TemplateChoice | null> {
     if (this.pickerOpen || this.settingsOpen || document.querySelector('dialog[open]')) return null
@@ -651,8 +675,8 @@ export class App {
       return await pickTemplate({
         title,
         confirm,
-        sets: pickerSets(sets, withDefault),
-        selected: withDefault ? DEFAULT_SET : undefined,
+        sets: pickerSets(sets),
+        selected: DEFAULT_SET,
         header: (name) => this.mdo.readSetHeader(name),
         profiles: (name) => this.mdo.listProfiles(name),
       })
@@ -839,42 +863,187 @@ export class App {
     })
   }
 
-  /** Einfügen → „YAML-Header …“: a set's header (default set first) at the top of the note. */
-  private async insertHeaderTemplate(): Promise<void> {
+  /**
+   * Einfügen → „Vorlage …“: for notes that came from elsewhere. The same picker as „Neu aus
+   * Vorlage …“ (set, and profile when the set's header has `profile:`); the set's header is
+   * merged into the note by src/core/header-merge.ts (no header → on top; else missing keys
+   * appended, `template:`/`profile:` set, everything else untouched) as one undo step.
+   * Afterwards a wrongly written `date:` gets a notice whose button fixes it (own undo step).
+   */
+  private async insertTemplate(): Promise<void> {
     const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
     if (!tab) return
     if (!isMarkdownTab(tab)) {
       this.notices.toast(MARKDOWN_ONLY)
       return
     }
-    // Refused before the picker opens: choosing a set for nothing would only annoy. Checked
-    // again by insertHeader below, the note may change while the picker is open.
-    if (frontmatterRange(this.editor.state.doc)) {
-      this.notices.toast(HEADER_EXISTS)
-      return
-    }
     // The user may switch tabs or start closing while the picker is open or main reads a file.
-    const template = await this.chosenHeader(
-      'YAML-Header einfügen',
-      'Einfügen',
-      true,
-      () => !this.closing && this.shownId === tab.id,
-    )
-    if (template === null) return
-    const state = this.editor.state
-    const res = insertHeader(state, template)
-    if ('refused' in res) {
-      this.notices.toast(HEADER_EXISTS)
+    const still = () => !this.closing && this.shownId === tab.id
+    const choice = await this.chooseTemplate('Vorlage einfügen', 'Einfügen', still)
+    if (!choice || !still()) return
+    let header: string | null = null
+    try {
+      header = await this.mdo.readSetHeader(choice.name)
+    } catch (e) {
+      console.warn('readSetHeader failed', e)
+    }
+    if (!still()) return
+    if (header === null) {
+      this.notices.toast(`Vorlage ${choice.name} nicht gefunden.`)
       return
     }
-    // The cursor lands in the header: a collapsed header is shown, never hiding the cursor.
-    const show = state.field(headerHidden) ? headerToggleSpec(state, false).effects : undefined
-    this.editor.dispatch({ ...res.spec, effects: show })
-    if (show) {
-      tab.headerHidden = false
-      this.syncMain()
+    // Merged against the note as it is now: it may have changed while the picker was open.
+    const state = this.editor.state
+    const res = insertTemplate(state, header, { template: choice.name, profile: choice.profile })
+    if (res.kind === 'unclosed') {
+      this.notices.toast('Der YAML-Header der Notiz ist nicht geschlossen (---).')
+      return
     }
+    if (res.kind === 'unchanged') {
+      this.notices.toast(`Der YAML-Header hat schon alle Schlüssel von ${choice.name}.`)
+    } else {
+      // A header put on top takes the cursor: a collapsed header is shown, never hiding it.
+      const show =
+        res.inserted && state.field(headerHidden)
+          ? headerToggleSpec(state, false).effects
+          : undefined
+      this.editor.dispatch({ ...res.spec, effects: show })
+      if (show) {
+        tab.headerHidden = false
+        this.syncMain()
+      }
+    }
+    void this.offerYamlCheck(tab.id)
     this.editor.focus()
+  }
+
+  /**
+   * Bearbeiten → „YAML prüfen …“: the shown note's front matter checked against the pipeline's
+   * and its set's schema (src/core/frontmatter-validate.ts). No findings → a toast; else the
+   * dialog, whose choice is applied as one undo step to the note as it is when the dialog
+   * closes (choiceSpec validates again, so a note changed meanwhile never gets stale offsets).
+   */
+  private async validateYaml(): Promise<void> {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab || this.pickerOpen || this.settingsOpen) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
+    // The user may switch tabs or start closing while main reads the set files.
+    const still = () => !this.closing && this.shownId === tab.id
+    this.pickerOpen = true
+    try {
+      const { ctx, set, notice } = await this.validationFor(tab)
+      if (!still() || document.querySelector('dialog[open]')) return
+      // Validated after the await: the text main's inputs belong to may have been typed on.
+      const result = validateFrontmatter(this.editor.state.doc.toString(), ctx)
+      if (result.kind === 'none') {
+        this.notices.toast('Die Notiz hat keinen YAML-Header.')
+        return
+      }
+      if (result.kind === 'unclosed') {
+        this.notices.toast('Der YAML-Header der Notiz ist nicht geschlossen (---).')
+        return
+      }
+      if (result.findings.length === 0 && result.missing.length === 0) {
+        if (notice) this.notices.toast(notice)
+        this.notices.toast('YAML in Ordnung')
+        return
+      }
+      const choice = await openValidateDialog({ set, result, notice })
+      if (!choice || !still()) return
+      const spec = choiceSpec(this.editor.state, ctx, choice)
+      if (spec) this.editor.dispatch(spec)
+    } finally {
+      this.pickerOpen = false
+      if (this.shownId !== null) this.editor.focus()
+    }
+  }
+
+  /**
+   * The validator's context for a tab's note, from main's disk inputs. Never throws: when main
+   * cannot answer, the note is checked against the pipeline layer alone (no set, no profile).
+   * `notice` is the neutral hint for a broken set schema.
+   */
+  private async validationFor(
+    tab: Tab,
+  ): Promise<{ ctx: ValidationContext; set: string; notice: string | null }> {
+    const text =
+      tab.id === this.shownId ? this.editor.state.doc.toString() : tab.state.doc.toString()
+    const set = noteSet(text)
+    const template = topLevelValue(text, 'template') ?? ''
+    const profile = topLevelValue(text, 'profile') ?? ''
+    // Main refuses a template that is neither a set name nor a .typ path (and over-long
+    // values). Such a note is still checked: the installed sets come with the default request
+    // (for the unknown-set finding), but none of the default set's files or profile lookup.
+    const named =
+      template === '' ||
+      (template.length <= 256 && template.toLowerCase().endsWith('.typ')) ||
+      (template.length <= 64 && SET_NAME_RE.test(template))
+    try {
+      const inputs = await this.mdo.validationInputs(
+        tab.onDisk ? tab.path : null,
+        named ? template : '',
+        profile.length <= 256 ? profile : '',
+      )
+      const { ctx, schemaError } = validationContext(
+        named ? inputs : { ...inputs, header: null, schemaText: null, profile: null },
+      )
+      if (schemaError !== null) console.warn(`schema of set ${set}: ${schemaError}`)
+      const notice =
+        schemaError === null
+          ? null
+          : `Das Schema des Sets ${set || 'der Vorlage'} ist fehlerhaft; geprüft wird nur gegen die Pipeline-Regeln.`
+      return { ctx, set, notice }
+    } catch (e) {
+      console.warn('validationInputs failed', e)
+      return {
+        ctx: { schema: PIPELINE_SCHEMA, sets: null, header: null, profile: null },
+        set,
+        notice: null,
+      }
+    }
+  }
+
+  /**
+   * The silent YAML check after an export's save or a template insert: only errors (what the
+   * pipeline or the set would ignore, misread or fail on) raise a banner; the export itself
+   * never waits for it. „Prüfen …“ opens the dialog of that tab when it is shown, else it
+   * switches to the tab first (`activate` is synchronous), so the dialog never checks another
+   * note than the banner counted. Any failure is only logged: a check must not disturb work.
+   */
+  private async offerYamlCheck(tabId: number): Promise<void> {
+    try {
+      const tab = this.store.get(tabId)
+      if (!tab || !isMarkdownTab(tab) || this.closing) return
+      const { ctx } = await this.validationFor(tab)
+      const live = this.store.get(tabId)
+      if (!live || this.closing) return
+      const text =
+        live.id === this.shownId ? this.editor.state.doc.toString() : live.state.doc.toString()
+      const result = validateFrontmatter(text, ctx)
+      const n = errorCount(result)
+      if (n === 0) return
+      this.notices.banner(
+        `YAML hat ${n === 1 ? '1 Fehler' : `${n} Fehler`}`,
+        [
+          {
+            label: 'Prüfen …',
+            run: () => {
+              const index = this.store.all.findIndex((t) => t.id === tabId)
+              if (index < 0 || this.closing) return
+              if (this.shownId !== tabId) this.activate(index)
+              void this.validateYaml()
+            },
+          },
+          { label: 'Schließen', run: () => undefined },
+        ],
+        `yaml:${tabId}`,
+      )
+    } catch (e) {
+      console.warn('YAML check failed', e)
+    }
   }
 
   private toggleHeader(): void {
@@ -1020,6 +1189,7 @@ export class App {
         )
         return
       }
+      void this.offerYamlCheck(tab.id)
       this.showExport(await this.mdo.exportPdf(tab.path))
     } catch (e) {
       this.notices.panel('Export fehlgeschlagen', e instanceof Error ? e.message : String(e))

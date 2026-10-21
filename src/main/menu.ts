@@ -179,13 +179,19 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
         type: 'checkbox',
         checked: d.spellcheck,
       },
+      sep,
+      // Checks the note's front matter against the pipeline's and the set's schema
+      // (src/core/frontmatter-validate.ts); the renderer refuses it outside Markdown notes.
+      item('validate-yaml', 'YAML prüfen …', 'CmdOrCtrl+Shift+Y'),
     ],
   }
 
   const insert: MenuItemConstructorOptions = {
     label: 'Einfügen',
     submenu: [
-      item('insert-header', 'YAML-Header …'),
+      // Merges a set's header into notes from elsewhere (src/core/header-merge.ts); the set
+      // comes from the picker, so the menu itself names no set.
+      item('insert-template', 'Vorlage …'),
       item('insert-pagebreak', 'Seitenumbruch', 'CmdOrCtrl+Enter'),
     ],
   }
@@ -230,7 +236,14 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     ],
   }
 
-  return [...(mac ? [appMenu] : []), file, edit, insert, view, window]
+  // Windows/Linux have no app menu: the About panel (with the AGPL notices, see index.ts)
+  // gets its own Hilfe menu there, as AGPL §5 d) asks every interactive UI to show them.
+  const help: MenuItemConstructorOptions = {
+    label: 'Hilfe',
+    submenu: [{ role: 'about', label: 'Über Markdown Office' }],
+  }
+
+  return [...(mac ? [appMenu] : []), file, edit, insert, view, window, ...(mac ? [] : [help])]
 }
 
 /**

@@ -1,4 +1,4 @@
-import { DEFAULT_SET, headerProfile } from '../../shared/sets'
+import { DEFAULT_SET, headerProfile } from '../../core/sets'
 import type { SetInfo } from '../../shared/types'
 
 export interface TemplatePickerDeps {
@@ -31,13 +31,13 @@ const NO_PROFILES = 'Kein Profil gefunden – Profile liegen in Vorlagen/profile
 const NO_SETS = 'Keine Vorlagen gefunden – eigene Sets liegen im Ordner Vorlagen/.'
 
 /**
- * Picker order. „Neu aus Vorlage …“ leaves the default set out (Mod+N already makes that one);
- * the header insert lists it first, so the usual choice is one Enter away. Otherwise main's
- * order (sorted by name) stays.
+ * Picker order: the default set first (preselected by the caller, so the usual choice is one
+ * Enter away), then the others in main's order (sorted by name). „Neu aus Vorlage …“ lists the
+ * default set too: every set is offered in one place, even though Mod+N already makes a memo
+ * note.
  */
-export function pickerSets(sets: readonly SetInfo[], withDefault: boolean): SetInfo[] {
+export function pickerSets(sets: readonly SetInfo[]): SetInfo[] {
   const rest = sets.filter((s) => s.name !== DEFAULT_SET)
-  if (!withDefault) return rest
   const def = sets.find((s) => s.name === DEFAULT_SET)
   return def ? [def, ...rest] : rest
 }

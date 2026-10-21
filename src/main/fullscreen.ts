@@ -101,6 +101,20 @@ export class FullScreenOwner {
     return true
   }
 
+  /**
+   * The window is about to close: true when it must leave fullscreen first (the app's own,
+   * also one still animating in, or the user's). The leave that follows is the app's own.
+   */
+  closing(isFullScreen: boolean): boolean {
+    const leave = this.owned || isFullScreen
+    this.wanted = false
+    if (leave) {
+      this.owned = false
+      this.pendingLeaves++
+    }
+    return leave
+  }
+
   /** Cancels timers and settles a pending enter (window closed). */
   dispose(): void {
     this.settle()
@@ -156,4 +170,62 @@ export async function setWindowFullScreen(
   win.setFullScreen(true)
   await entered
   return action.was
+}
+
+/** How long a closing window waits for its fullscreen to end before it closes anyway. */
+export const CLOSE_LEAVE_MS = 3000
+
+/** The part of a BrowserWindow a closing window needs (fakes in tests). */
+export interface ClosingWindow extends FullScreenWindow {
+  once(event: 'leave-full-screen', cb: () => void): unknown
+  removeListener(event: 'leave-full-screen', cb: () => void): unknown
+}
+
+/**
+ * Leaves fullscreen before the window closes and resolves once it has ended (or after
+ * CLOSE_LEAVE_MS); null when the window is not fullscreen and may close at once. A macOS window that closes or quits in fullscreen, or while the enter
+ * still animates, can leave a black fullscreen Space behind that covers every other window
+ * after the app is gone (seen after an e2e run on 2026-10-20: only a hard restart helped).
+ */
+export function leaveFullScreenBeforeClose(
+  owner: FullScreenOwner,
+  win: ClosingWindow,
+): Promise<void> | null {
+  if (!owner.closing(win.isFullScreen())) return null
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      win.removeListener('leave-full-screen', done)
+      resolve()
+    }
+    const timer = setTimeout(done, CLOSE_LEAVE_MS)
+    win.once('leave-full-screen', done)
+    win.setFullScreen(false)
+  })
+}
+
+/** Transition time of the simulated fullscreen; real macOS animates for about a second. */
+export const FAKE_TRANSITION_MS = 50
+
+/** The part of a BrowserWindow the simulated fullscreen replaces. */
+export interface FakeableWindow extends FullScreenWindow {
+  emit(event: 'enter-full-screen' | 'leave-full-screen'): boolean
+}
+
+/**
+ * e2e hook (MDO_E2E_FAKE_FULLSCREEN=1, set by the e2e helpers outside CI): the window only
+ * pretends to be fullscreen and emits the usual events after a short transition, so a local
+ * test run never puts a real window into a macOS fullscreen Space that a failed or killed run
+ * could leave behind. CI runs the real fullscreen.
+ */
+export function fakeFullScreen(win: FakeableWindow): void {
+  let full = false
+  win.isFullScreen = () => full
+  win.setFullScreen = (on: boolean) => {
+    setTimeout(() => {
+      if (full === on) return
+      full = on
+      win.emit(on ? 'enter-full-screen' : 'leave-full-screen')
+    }, FAKE_TRANSITION_MS)
+  }
 }

@@ -7,7 +7,9 @@
 # dist/markdown-office-<version>-linux-x86_64.AppImage (Linux), as built by `npm run dist`.
 # Everything happens below a temp dir with its own HOME: the runner's (or developer's)
 # real ~/Applications, ~/.local/bin and ~/.local/share are never touched. The download
-# path runs against a fake `curl` that serves fixtures, so no network is needed.
+# path runs against a fake `curl` that serves fixtures, so no network is needed. The file-manager
+# entry "Markdown-PDF" is checked as an artefact (plist lint / .desktop validation) and by running
+# its own command line on a note; its notifications go to a file (MDO_NOTIFY_LOG).
 # On Linux the bootstrap extracts the AppImage (no FUSE needed); the pipeline CLI needs no
 # display, but `markdown-office --app --version` starts the app and needs one, e.g. xvfb-run.
 set -euo pipefail
@@ -53,7 +55,7 @@ trap cleanup EXIT
 # Isolated profile: HOME, XDG and the install folder all live in the temp dir.
 export HOME="${work}/home"
 mkdir -p "${HOME}"
-unset XDG_DATA_HOME
+unset XDG_DATA_HOME XDG_CONFIG_HOME
 # The PDF viewer must not open during the conversion check.
 export MDO_NO_OPEN=1
 # With spaces, like "Markdown Office.app" itself: every path in the command must stay quoted.
@@ -76,6 +78,17 @@ case "${os}" in
     ;;
 esac
 old_dir="${install_dir}.old"
+# File-manager entry "Markdown-PDF": the shared script and the record next to the marker (MDO_HOME
+# here), the Quick Action (macOS) or the .desktop entry and a Nautilus script (Linux; the
+# nautilus data folder is created so the bootstrap sees Nautilus as present).
+pdf_script="${MDO_HOME}/markdown-pdf.sh"
+record="${MDO_HOME}/.mdo-file-manager"
+workflow="${HOME}/Library/Services/Markdown-PDF.workflow"
+pdf_desktop="${HOME}/.local/share/applications/markdown-office-pdf.desktop"
+nautilus_script="${HOME}/.local/share/nautilus/scripts/Markdown-PDF"
+[[ "${os}" != "Linux" ]] || mkdir -p "${HOME}/.local/share/nautilus"
+# Notifications of markdown-pdf.sh go to this file instead of the desktop.
+export MDO_NOTIFY_LOG="${work}/notify.log"
 
 run_bootstrap() {
   bash "${bootstrap}" "$@" </dev/null
@@ -132,6 +145,85 @@ assert_installed() {
     fail "--version lacks 'typst ${typst_version}': ${out}"
   [[ -z "$(find "$(dirname "${install_dir}")" -maxdepth 1 \( -name '*.old' -o -name '.*-new.*' \))" ]] ||
     fail "leftover staging/.old folders next to ${install_dir}"
+  assert_file_manager
+}
+
+# The entries exist, are tagged and recorded; the Quick Action's plists lint and the .desktop
+# entry validates (desktop-file-validate, when installed).
+assert_file_manager() {
+  [[ -x "${pdf_script}" ]] || fail "markdown-pdf.sh missing: ${pdf_script}"
+  grep -qxF "# Markdown-PDF (Markdown Office bootstrap)" "${pdf_script}" || fail "markdown-pdf.sh lacks the tag"
+  grep -qxF "F ${pdf_script}" "${record}" || fail "record lacks markdown-pdf.sh"
+  if [[ "${os}" == "Darwin" ]]; then
+    plutil -lint "${workflow}/Contents/Info.plist" "${workflow}/Contents/document.wflow" >/dev/null ||
+      fail "Quick Action plists do not lint"
+    grep -qxF "W ${workflow}" "${record}" || fail "record lacks the Quick Action"
+  else
+    grep -qxF "MimeType=text/markdown;" "${pdf_desktop}" || fail "Markdown-PDF .desktop entry missing"
+    if command -v desktop-file-validate >/dev/null 2>&1; then
+      desktop-file-validate "${pdf_desktop}" || fail "desktop-file-validate ${pdf_desktop}"
+    fi
+    [[ -x "${nautilus_script}" ]] || fail "Nautilus script missing"
+    grep -qxF "F ${pdf_desktop}" "${record}" || fail "record lacks the .desktop entry"
+    grep -qxF "F ${nautilus_script}" "${record}" || fail "record lacks the Nautilus script"
+    # Both entries claim text/markdown; a double-click must still open the editor, never convert.
+    if command -v gio >/dev/null 2>&1; then
+      local mime_default
+      mime_default="$(gio mime text/markdown 2>/dev/null | head -n 1)"
+      [[ "${mime_default}" != *markdown-office-pdf.desktop* ]] ||
+        fail "Markdown-PDF became the default application for .md: ${mime_default}"
+    fi
+  fi
+}
+
+# Runs the entry's own command line on files, as the file manager would: macOS the Quick Action's
+# shell script (/bin/bash -c, files as arguments, Automator's minimal environment), Linux the
+# .desktop Exec program (%F = the files).
+run_file_manager_entry() {
+  if [[ "${os}" == "Darwin" ]]; then
+    local cmd
+    cmd="$(/usr/libexec/PlistBuddy -c 'Print :actions:0:action:ActionParameters:COMMAND_STRING' \
+      "${workflow}/Contents/document.wflow")"
+    env -i HOME="${HOME}" PATH=/usr/bin:/bin:/usr/sbin:/sbin MDO_NO_OPEN=1 MDO_NOTIFY_LOG="${MDO_NOTIFY_LOG}" \
+      /bin/bash -c "cd / && ${cmd}" automator "$@"
+  else
+    local exec_line program
+    exec_line="$(sed -n 's/^Exec=//p' "${pdf_desktop}")"
+    program="$(printf '%s' "${exec_line% %F}" | sed -e 's/^"//' -e 's/"$//' -e 's/\\\\/\\/g' -e 's/\\\([$`"\\]\)/\1/g' -e 's/%%/%/g')"
+    env -i HOME="${HOME}" PATH=/usr/bin:/bin MDO_NO_OPEN=1 MDO_NOTIFY_LOG="${MDO_NOTIFY_LOG}" "${program}" "$@"
+  fi
+}
+
+# "Markdown-PDF" end to end with the installed app: a PDF next to a note in a folder with spaces
+# (ISO prefix from date:), and a broken note reported as an error (exit 1) with its file name.
+assert_file_manager_works() {
+  local notes="${work}/Notizen mit Leerzeichen" code
+  mkdir -p "${notes}"
+  printf -- '---\ntitle: Kontextmenü\ndate: 2026-10-20\n---\n\n# Hallo\n\nText.\n' >"${notes}/Notiz mit Leerzeichen.md"
+  printf -- '---\ntemplate: gibt-es-nicht\n---\n\nText.\n' >"${notes}/Kaputt.md"
+  : >"${MDO_NOTIFY_LOG}"
+  run_file_manager_entry "${notes}/Notiz mit Leerzeichen.md" >/dev/null 2>&1 ||
+    fail "Markdown-PDF failed: $(cat "${MDO_NOTIFY_LOG}")"
+  [[ "$(head -c 5 "${notes}/2026-10-20_Notiz mit Leerzeichen.pdf" 2>/dev/null)" == "%PDF-" ]] ||
+    fail "Markdown-PDF wrote no PDF next to the note: $(ls "${notes}")"
+  grep -qxF "normal|2026-10-20_Notiz mit Leerzeichen.pdf erstellt." "${MDO_NOTIFY_LOG}" ||
+    fail "success notification: $(cat "${MDO_NOTIFY_LOG}")"
+  : >"${MDO_NOTIFY_LOG}"
+  set +e
+  run_file_manager_entry "${notes}/Kaputt.md" >/dev/null 2>&1
+  code=$?
+  set -e
+  [[ "${code}" -eq 1 ]] || fail "Markdown-PDF exited ${code} for a broken note, expected 1"
+  grep -qF "critical|Fehler – Kaputt.md: Error: Vorlage nicht gefunden" "${MDO_NOTIFY_LOG}" ||
+    fail "error notification: $(cat "${MDO_NOTIFY_LOG}")"
+  if [[ "${os}" == "Linux" ]]; then
+    # Nautilus runs its scripts in the folder, with the selected names as arguments.
+    rm -f "${notes}"/*.pdf
+    (cd "${notes}" && env -i HOME="${HOME}" PATH=/usr/bin:/bin MDO_NO_OPEN=1 MDO_NOTIFY_LOG="${MDO_NOTIFY_LOG}" \
+      "${nautilus_script}" "Notiz mit Leerzeichen.md") >/dev/null 2>&1 || fail "Nautilus script failed"
+    [[ -f "${notes}/2026-10-20_Notiz mit Leerzeichen.pdf" ]] || fail "Nautilus script wrote no PDF"
+  fi
+  rm -rf "${notes}"
 }
 
 # The installed command end to end: a PDF from a note in a folder with spaces (options and
@@ -178,13 +270,16 @@ assert_installed
 pass "install: marker, command, markdown-office --version = ${version} + typst ${typst_version}"
 assert_command_works
 pass "command: PDF from a note in a folder with spaces; --app --version reaches the editor"
+assert_file_manager_works
+pass "file manager: Markdown-PDF entry writes the PDF next to the note; a broken note -> exit 1 + notification"
 
 # 3. Update over an existing install, also with a trailing slash on MDO_HOME.
 with_archive "${archive}"
 assert_installed
 MDO_HOME="${MDO_HOME}//" with_archive "${archive}"
 assert_installed
-pass "update over existing install (also MDO_HOME with trailing slash)"
+assert_file_manager_works
+pass "update over existing install (also MDO_HOME with trailing slash); Markdown-PDF still works"
 
 # 4. A broken archive aborts before anything is replaced; the old install keeps working.
 broken="${work}/broken-$(basename "${archive}")"
@@ -378,11 +473,22 @@ echo "${out}"
 [[ ! -e "${command_path}" ]] || fail "command still there"
 [[ ! -e "${desktop_path}" ]] || fail ".desktop entry still there"
 [[ ! -e "${marker}" ]] || fail "marker still there"
+for f in "${pdf_script}" "${record}" "${workflow}" "${pdf_desktop}" "${nautilus_script}"; do
+  [[ ! -e "${f}" ]] || fail "file-manager entry still there: ${f}"
+done
+if [[ "${os}" == "Darwin" ]]; then
+  [[ ! -e "${HOME}/Library/Services" ]] || fail "the Services folder the install created is still there"
+else
+  [[ ! -e "${HOME}/.local/share/nautilus/scripts" ]] || fail "the scripts folder the install created is still there"
+  [[ -d "${HOME}/.local/share/nautilus" ]] || fail "uninstall removed the nautilus folder it did not create"
+  ! grep -qs '^text/markdown=markdown-office.desktop$' "${HOME}/.config/mimeapps.list" ||
+    fail "uninstall left the editor as Markdown default in mimeapps.list"
+fi
 for f in Notiz.md Vorlagen/eigenes/eigenes.typ Snippets/eigenes.md; do
   [[ -f "${documents}/${f}" ]] || fail "uninstall touched the documents: ${f}"
 done
 grep -q 'Dokumente' <<<"${out}" || fail "final message does not mention the documents"
-pass "uninstall removed everything (incl. leftover .old), documents kept"
+pass "uninstall removed everything (incl. leftover .old and the Markdown-PDF entries), documents kept"
 
 # 8. A folder without the marker is never deleted or overwritten.
 if [[ "${os}" == "Darwin" ]]; then

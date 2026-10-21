@@ -14,7 +14,7 @@ import type {
 } from '../shared/types'
 import { addRecent, replaceRecent } from './cli'
 import { canonicalPath, canonicalPaths, sameFile } from './files'
-import { FullScreenOwner } from './fullscreen'
+import { FullScreenOwner, leaveFullScreenBeforeClose } from './fullscreen'
 import { buildMenuTemplate, PresentKeyGuard } from './menu'
 import { type PipelinePaths, pipelinePaths, runPipeline, typstVersion } from './pipeline'
 import { prepareSpellcheck, SpellcheckController } from './spellcheck/controller'
@@ -244,8 +244,15 @@ export class AppContext {
       return
     }
     this.closeApproved = true
-    if (this.window && !this.window.isDestroyed()) this.window.close()
-    if (this.quitting) app.quit()
+    const win = this.window && !this.window.isDestroyed() ? this.window : null
+    const close = () => {
+      if (win && !win.isDestroyed()) win.close()
+      if (this.quitting) app.quit()
+    }
+    // Fullscreen ends first: a macOS window closed in fullscreen can leave a black Space behind.
+    const leaving = win ? leaveFullScreenBeforeClose(this.fullScreen, win) : null
+    if (leaving) void leaving.then(close)
+    else close()
   }
 
   markQuitting(): void {

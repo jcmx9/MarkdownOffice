@@ -125,6 +125,43 @@ describe('inline elements', () => {
   })
 })
 
+describe('citations and undefined references (CommonMark: plain text, as in the PDF)', () => {
+  const linky = (d: string[]) =>
+    d.filter((x) => x.startsWith('mark:mdo-link') || x.startsWith('hide'))
+  it.each(['[21]', '[1], [2]', 'siehe [Müller 2020] und [a][b] oder [c][]'])(
+    '%s without a definition keeps its brackets and no link look',
+    (doc) => {
+      expect(linky(rf(doc))).toEqual([])
+    },
+  )
+  it('still styles what is inside the brackets', () => {
+    expect(rf('[**21**]')).toEqual(
+      expect.arrayContaining(['mark:mdo-strong@1-7', 'hide@1-3', 'hide@5-7']),
+    )
+    expect(linky(rf('[**21**]')).filter((x) => x.startsWith('mark:mdo-link'))).toEqual([])
+  })
+  it('an inline link with an empty destination is still a link', () => {
+    expect(rf('[x]()')).toEqual(expect.arrayContaining(['mark:mdo-link@0-5', 'hide@0-1']))
+  })
+  it('a shortcut reference with a definition is a link', () => {
+    expect(rf('[21] Text\n\n[21]: https://x.de')).toEqual(
+      expect.arrayContaining(['mark:mdo-link@0-4', 'hide@0-1', 'hide@3-4']),
+    )
+  })
+  it('matches labels case-insensitively with collapsed whitespace', () => {
+    const doc = '[Foo   bar] und [x][FOO BAR] und [nein]\n\n> [  foo\tBAR ]: /u'
+    const d = rf(doc)
+    expect(d).toEqual(expect.arrayContaining(['mark:mdo-link@0-11', 'mark:mdo-link@16-28']))
+    expect(d.some((x) => x.startsWith('mark:mdo-link@33'))).toBe(false)
+  })
+  it('a full reference uses the label, not the text', () => {
+    const doc = '[ref][21] und [21][nein]\n\n[21]: /u'
+    const d = rf(doc)
+    expect(d).toContain('mark:mdo-link@0-9')
+    expect(d.some((x) => x.startsWith('mark:mdo-link@14'))).toBe(false)
+  })
+})
+
 describe('front matter', () => {
   it('gets its own line class and no heading styles', () => {
     const d = rf('---\ntitle: x\n---')

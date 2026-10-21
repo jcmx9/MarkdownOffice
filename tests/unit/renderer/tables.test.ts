@@ -5,7 +5,12 @@ import { EditorState } from '@codemirror/state'
 import { EditorView, type WidgetType } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
-import { splitRow, tableField, tableModel } from '../../../src/renderer/editor/tables'
+import {
+  splitRow,
+  tableField,
+  tableModel,
+  typstAutoColumns,
+} from '../../../src/renderer/editor/tables'
 
 const TABLE =
   '| Produkt | Menge | Preis |\n|:--|:-:|---|\n| Espresso | 12 | 3,50 € |\n| Filter | 8 | 2 € |\n| **Neu** | | 1.200,00 EUR |'
@@ -41,6 +46,42 @@ describe('splitRow', () => {
     ['| a \\| b | c |', ['a | b', 'c']],
     ['| | x |', ['', 'x']],
   ])('%j', (row, cells) => expect(splitRow(row)).toEqual(cells))
+})
+
+describe('typstAutoColumns', () => {
+  it('keeps the natural widths when everything fits (no stretching)', () => {
+    expect(typstAutoColumns([50, 120, 40], 548)).toEqual([50, 120, 40])
+  })
+  it('caps one oversized column at the space the others leave', () => {
+    // fair = 300 / 3 = 100: 40 and 60 keep theirs, then fair = 200 / 1 for the rest.
+    expect(typstAutoColumns([40, 500, 60], 300)).toEqual([40, 200, 60])
+  })
+  it('gives several oversized columns the same remaining share', () => {
+    // fair = 300 / 3 = 100: 50 stays, then fair = 250 / 2 = 125 for both long columns.
+    expect(typstAutoColumns([50, 400, 300], 300)).toEqual([50, 125, 125])
+  })
+  it('removes columns iteratively as the fair share grows', () => {
+    // fair 400 / 4 = 100: 90 stays; fair 310 / 3 = 103.3: 103 stays (it did not fit
+    // the first round); fair 207 / 2 = 103.5 removes nothing more -> both long ones get 103.5.
+    expect(typstAutoColumns([90, 103, 500, 600], 400)).toEqual([90, 103, 103.5, 103.5])
+  })
+  it('lets a column whose share grows past it keep its natural width', () => {
+    // fair 300 / 3 = 100: 20 stays; fair 280 / 2 = 140: 130 stays; rest 150.
+    expect(typstAutoColumns([20, 130, 900], 300)).toEqual([20, 130, 150])
+  })
+  it('lays a single cell out in the available width at most', () => {
+    expect(typstAutoColumns([900], 300)).toEqual([300])
+  })
+  it('the Soiron Ausstattung case: short columns are not squeezed', () => {
+    const w = typstAutoColumns([148.3, 700, 82.4], 411)
+    expect(w[0]).toBe(148.3)
+    expect(w[2]).toBe(82.4)
+    expect(w[1]).toBeCloseTo(411 - 148.3 - 82.4, 6)
+  })
+  it('handles empty tables and no space', () => {
+    expect(typstAutoColumns([], 300)).toEqual([])
+    expect(typstAutoColumns([10, 20], 0)).toEqual([10, 20])
+  })
 })
 
 describe('tableModel', () => {
@@ -138,5 +179,22 @@ describe('tableField', () => {
     )
     expect(rows[0]?.children[2]?.classList.contains('mdo-al-right')).toBe(true)
     expect(rows[0]?.children[1]?.classList.contains('mdo-al-center')).toBe(true)
+  })
+  it('keeps citations in cells as text unless the document defines the label', () => {
+    const doc = '| Quelle | Wert |\n|---|---|\n| [21] | [def] |\n\n[DEF]: https://x.de\n\nende'
+    const [first] = tables(make(doc, doc.length))
+    const dom = first?.widget.toDOM({} as EditorView) as HTMLElement
+    const cells = [...dom.querySelectorAll('tbody td')]
+    expect(cells.map((c) => c.textContent)).toEqual(['[21]', 'def'])
+    expect(cells[0]?.querySelector('.mdo-link')).toBeNull()
+    expect(cells[1]?.querySelector('.mdo-link')?.textContent).toBe('def')
+  })
+  it('redraws the table when a reference definition changes', () => {
+    const doc = '| a |\n|---|\n| [21] |\n\nende'
+    const before = make(doc, doc.length)
+    const after = before.update({ changes: { from: doc.length, insert: '\n\n[21]: /u' } }).state
+    const [w1] = tables(before)
+    const [w2] = tables(after)
+    expect(w2?.widget.eq(w1?.widget as WidgetType)).toBe(false)
   })
 })

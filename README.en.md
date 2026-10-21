@@ -2,10 +2,10 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.0 · [Deutsch](README.md)
+**Version:** 26.10.1 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 ## Description
 
@@ -41,6 +41,20 @@ The script downloads the matching archive of the latest stable GitHub release, v
 
 The app is unsigned. On macOS it is ad-hoc signed (the bundled Typst too) and the script removes the quarantine flag, so Gatekeeper does not block it. On Windows, SmartScreen may warn. On Linux the script extracts the AppImage once, so `libfuse2` is not needed. On Ubuntu 24.04 and newer, AppArmor blocks the unprivileged user namespaces Electron's sandbox needs; the editor then does not start (PDF generation still works). The script warns in that case and prints an AppArmor profile for Markdown Office only (creating it needs sudo). The editor's launch log is at `~/.local/share/markdown-office/launch.log`.
 
+### Right-click "Markdown-PDF"
+
+The installation also adds a file-manager entry "Markdown-PDF": right-click a Markdown file and the PDF appears next to it, without starting the editor. It calls the `markdown-office` command, so the same output name applies (ISO prefix from `date:`), and the PDF then opens in the default viewer.
+
+| System | Where | What gets created |
+|--------|-------|-------------------|
+| macOS | Finder → right-click → Quick Actions → Markdown-PDF (only for `.md`/`.markdown`) | Quick Action `~/Library/Services/Markdown-PDF.workflow` |
+| Linux | File manager → right-click → Open With → Markdown-PDF; in Nautilus and Nemo also under Scripts | `~/.local/share/applications/markdown-office-pdf.desktop`, with Nautilus/Nemo present `~/.local/share/nautilus/scripts/Markdown-PDF` or `…/nemo/scripts/Markdown-PDF` |
+| Windows | Explorer → right-click on `.md`/`.markdown` → Markdown-PDF (Windows 11: under "Show more options") | Registry key `HKCU\Software\Classes\SystemFileAssociations\.md\shell\Markdown-PDF` (and `.markdown`), helper script `markdown-pdf.js` in the install folder |
+
+On macOS and Linux the entries call `~/.local/share/markdown-office/markdown-pdf.sh`. The result appears as a notification (macOS: Notification Centre, Linux: `notify-send` if available); several selected files are converted one after the other, other files are skipped. On Windows the entry starts without a console window (via `wscript.exe`; an error appears as a message box), which needs Windows Script Host to be enabled. The output of the last run is in `markdown-pdf.log` next to the script. On Linux the editor and "Markdown-PDF" both claim the type `text/markdown`; so that a double-click still opens the note in the editor instead of converting it, the installation sets Markdown Office as the default application for Markdown in `~/.config/mimeapps.list`, only if none is chosen there yet.
+
+What of this was created is listed in `.mdo-file-manager` next to the install marker; update and uninstall replace or remove exactly that. An entry of the same name that does not come from Markdown Office is left untouched.
+
 ## Update
 
 Run the install command again. The installed version is replaced; if the download fails, the old version stays as it is. A specific version: `... | bash -s -- --version 26.10.0`, or `-Version 26.10.0` on Windows.
@@ -59,7 +73,7 @@ Windows (PowerShell):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jcmx9/MarkdownOffice/main/scripts/bootstrap.ps1))) -Uninstall
 ```
 
-Only what the installation created is removed (recognised by its install marker): app, command, Start-menu or desktop entry. Documents, your own template sets, snippets and settings are left untouched.
+Only what the installation created is removed (recognised by its install marker): app, command, Start-menu or desktop entry and the file-manager entry "Markdown-PDF" (with the folders and registry keys created only for it). Documents, your own template sets, snippets and settings are left untouched.
 
 ## Test version
 
@@ -92,8 +106,8 @@ The preview uses the PDF's bundled fonts; if a font file is missing, it falls ba
 
 | Shortcut | Action |
 |----------|--------|
-| Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`), starting with the YAML header of the set `memo`; the file is only created once you type |
-| Mod+Shift+N | Neu aus Vorlage …: pick another template set (and a profile, if any), new note with its YAML header |
+| Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`), starting with the YAML header of the set `memo`; the file is only created once you type. Without an open note the button „Neues Memo …“ does the same |
+| Mod+Shift+N | Neu aus Vorlage …: pick a template set (`memo` first and preselected, with a profile if any), new note with its YAML header |
 | Mod+O | Open |
 | Mod+Shift+R | Rename |
 | Mod+W | Close tab |
@@ -119,23 +133,29 @@ Right-clicking a tab or the file name in the status line opens a menu with renam
 
 ### Outline
 
-A sidebar on the right lists the note's H1 and H2 headings. Entries read as a list: a chapter with sub-chapters shows an arrow, an entry without sub-chapters a bullet. The highest heading level in the note gets the top-level look, so a note with only H2 headings shows them as top-level entries. The arrow folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. The width can be dragged with the mouse at the outline's left edge (double-click: default width). In the editor it is remembered; in Present the outline starts at the default width every time and a dragged width lasts only until Present ends. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
+A sidebar on the right lists the note's H1 and H2 headings. Entries read as a list: a chapter with sub-chapters shows an arrow, an entry without sub-chapters sits flush, with nothing in front. The highest heading level in the note gets the top-level look, so a note with only H2 headings shows them as top-level entries. The arrow folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. The width can be dragged with the mouse at the outline's left edge (double-click: default width). In the editor it is remembered; in Present the outline starts at the default width every time and a dragged width lasts only until Present ends. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
 
 ### Snippets
 
 Type `:` at the start of a line or after a space, plus at least one letter (e.g. `:mee`), and the snippet list appears; Ctrl+Space after a single `:` shows all of them. On macOS, Ctrl+Space may be taken by the input-source switch; then just type `:` and a letter. Enter or Tab inserts the snippet, Tab / Shift+Tab jump through the fields. Prose such as `Hinweis:`, `10:30` or `:D` triggers nothing.
 
-Inside a snippet, Esc first leaves field mode; in presentation mode only a further Esc leaves Present. Header snippets (`:meeting`, `:telefonnotiz`, `:header`) keep the YAML header open in presentation mode while a field inside it is active; afterwards it collapses into the title block. Follow-up lines of a multi-line snippet take over the indentation of the current line, and tabs at the start of a template line become two spaces.
+Inside a snippet, Esc first leaves field mode; in presentation mode only a further Esc leaves Present. Header snippets (`:meeting`, `:telefonnotiz`) keep the YAML header open in presentation mode while a field inside it is active; afterwards it collapses into the title block. Follow-up lines of a multi-line snippet take over the indentation of the current line, and tabs at the start of a template line become two spaces.
 
 | Snippet | Content |
 |---------|---------|
 | `:meeting` | Meeting note with header, participants, agenda, minutes and tasks |
 | `:telefonnotiz` | Phone note |
 | `:aufgabe` | Task line `- [ ] Aufgabe – Name, bis Datum` |
-| `:header` | YAML header with all keys of the set `memo` |
 | `:newpage` | Page break `<!-- pagebreak -->` |
 
-The menu **Einfügen → YAML-Header …** asks for a template set (`memo` comes first and is preselected) and puts its front-matter template (`name.header.md`, see [Template sets](#template-sets)) unchanged at the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title. A note that already has a header is left unchanged.
+The menu **Einfügen → Vorlage …** turns a note from elsewhere into a note of a template set. With the same picker as „Neu aus Vorlage …“ it asks for the set (`memo` comes first and is preselected) and, when its header has `profile:`, for the profile. Then:
+
+- Without a YAML header the set's front-matter template (`name.header.md`, see [Template sets](#template-sets)) goes to the top of the note: every key with its default value, one line per key with a short comment. The cursor then sits in the title.
+- With a YAML header both are merged: existing keys keep their values, the set's missing keys are added at the bottom of the header with default value and comment; nothing is duplicated, existing comments and the order stay unchanged.
+- `template:` gets the chosen set (in place, else added at the bottom), and `profile:` the chosen profile likewise.
+- `date:` is checked: valid are `YYYY-MM-DD`, `D.M.YYYY` (also `DD.MM.YYYY`) or empty. Another notation brings up a notice with the button „In YYYY-MM-DD ändern“ (today's date); the date only changes on that click.
+
+The merge is a single undo step, the date change one of its own; the note's line endings (LF/CRLF) and BOM are kept. When the header already has every key of the set, a short notice says there was nothing to add.
 
 Your own snippets are files `name.tpl.md` in the snippet folder (default `~/Documents/Markdown Office/Snippets/`, setting „Snippet-Ordner“). Your own snippet with the same name replaces the built-in one. New files are picked up the next time the window gets focus. Supported syntax: `$1`, `${1:default}`, `$0` (final position) and `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (also in the form `${CURRENT_YEAR}`). `\$` gives a literal `$`, `\\` a backslash, and inside a default `\}` gives a literal `}`.
 
@@ -157,6 +177,7 @@ markdown-office --soft-breaks note.md        # line breaks become spaces
 markdown-office --template my-set note.md    # another template set
 markdown-office --help                       # all options
 markdown-office --app [note.md …]            # open the editor
+markdown-office validate note.md             # check the YAML header
 ```
 
 Without an argument the command prints its help.
@@ -183,6 +204,17 @@ On Windows the same options apply, plus `-Version` and `-Help`. There the comman
 | `TYPST=/path/typst` | Use a specific Typst binary instead of the bundled one (≥ 0.15) |
 | `SOURCE_DATE_EPOCH` | Fix the PDF date when no `date:` is set |
 
+### Check YAML
+
+```bash
+markdown-office validate note.md                   # print findings, change nothing
+markdown-office validate note.md --fix             # write the corrections
+markdown-office validate note.md --add-missing     # add the set's missing keys
+markdown-office validate note.md --json            # result as JSON
+```
+
+The command checks the YAML header with the same rules as **Bearbeiten → „YAML prüfen …“** in the editor (see [Front matter](#front-matter)). `--fix` writes the suggested corrections (never typo guesses), `--add-missing` appends the set's missing keys; both change only the lines concerned, line endings and BOM stay. Exit code: `0` no errors (warnings and hints do not count), `1` errors or an unclosed header, `2` wrong usage or the file cannot be read or written.
+
 ### From other programs
 
 `markdown-office` is built as an export target:
@@ -198,7 +230,9 @@ MDO_NO_OPEN=1 MDO_BASE_DIR="/path/to/note" markdown-office --no-source "/path/no
 
 ## Front matter
 
-A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → YAML-Header …** or the `:header` snippet) contains every key with its default value and a comment.
+A YAML block at the start of the file controls individual documents. All keys are optional; the front-matter template of the set `memo` (menu **Einfügen → Vorlage …**) contains every key with its default value and a comment.
+
+**Quotes:** free text goes in quotes (`title: "Kick-off: relaunch"`), fixed values go without (`lang: de`, `toc: auto`, `true`, `13mm`). Without quotes YAML misreads text containing `: ` or ` #` (everything from `#` on becomes a comment), words like `no`, `yes`, `on`, `off` (booleans), numbers with a leading zero like `01067` (becomes 1067) and text starting with `[`, `{`, `*`, `&`, `!`, `@`, `` ` ``, `|`, `>` or `%`. `""` explicitly means empty. A date like `date: 2026-10-20` may stay unquoted.
 
 ```yaml
 ---
@@ -238,6 +272,8 @@ hard_breaks: false           # line breaks become spaces
 
 **Rules:** empty values (`subtitle: ""` or just `subtitle:`) are ignored, never an error. Yes/no keys accept `true`/`false`, `yes`/`no`, `on`/`off` in any case; an unrecognised value produces a warning and the default applies. Comments (`# …`) may stand on their own lines and after values. In paths (`logo:`, images) `~`, `$VAR`, `${VAR}` and `%VAR%` are expanded.
 
+**Check YAML:** the menu **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) checks the note's header against the rules of the pipeline and of the chosen set: invalid values (for example `toc: ja`, `date: 20.10.26`, an unknown set or a `profile:` that is not found), repeated keys and presumed typos. Extra keys of your own are always allowed. The dialog shows every finding with a suggested fix; „Übernehmen“ writes the ticked fixes as **one** undo step, everything else in the note stays byte for byte. „Fehlende ergänzen“ appends the set's keys the header does not have yet (off by default). Without findings „YAML in Ordnung“ appears. On export the app checks the header silently first; with errors a notice „YAML hat n Fehler“ offers „Prüfen …“, and the export runs anyway. The same goes for „Einfügen → Vorlage …“. Which keys and values a set expects is described in its `name.schema.yaml`, see [TEMPLATES.md](TEMPLATES.md). The same check exists in the terminal: [`markdown-office validate`](#check-yaml).
+
 ### Logo
 
 A logo appears **only** when `logo:` is set. Without the key, with an empty value or commented out, the header has no logo.
@@ -276,7 +312,7 @@ A template set defines how a document looks. It consists of up to three files sh
 
 The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
-New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all other sets (bundled and your own; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
+New notes start with a set's header: Mod+N with `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) with a set chosen from all sets (`memo` first and preselected, then bundled and your own alphabetically; each with a hint taken from the first `# …` comment line of its header file). The editor reads `name.header.md` next to the chosen `name.typ`: for your own set as a file that is `Vorlagen/name.header.md`, as a folder `Vorlagen/name/name.header.md`. Without that file the note starts with a header that only contains `template: name`. **Einfügen → Vorlage …** merges the same header into an existing note (see [Snippets](#snippets)). When the header has a `profile:` key, the picker also offers the existing profiles (see [Letters](#letters-din5008a)).
 
 A note picks its set with `template: name` in the front matter; without the key, `memo` applies. `template: ./offer.typ` uses a single template relative to the note. `--template` overrides the key. An unknown set stops the build with a message.
 
@@ -345,16 +381,20 @@ cd MarkdownOffice
 npm ci
 npm run assets                    # Typst, fonts, packages, set memo; then the dev layout
 npm run dev                       # app with hot reload (macOS: menu bar shows "Markdown Office", via postinstall)
+npm run build:cli                 # build the markdown-office command (src/cli/) into out/cli/cli.js
 npm run lint && npm run typecheck
-npm test                          # unit tests (Vitest, including pipeline/*.test.mjs)
-npm run test:e2e                  # end-to-end (Playwright + Electron)
+npm test                          # unit tests (Vitest, tests/unit)
+npm run test:e2e                  # end-to-end (Playwright + Electron; locally only a simulated fullscreen)
 bash pipeline/tests/test-pdf.sh          # pipeline: PDFs of the test notes and the interface (macOS/Linux)
 bash pipeline/tests/test-equivalence.sh  # pipeline: set memo against the reference PDFs
 npm run dist                      # package for the current system into dist/
 bash scripts/test-bootstrap.sh    # install, update, uninstall with the package from dist/
+bash scripts/test-file-manager.sh # "Markdown-PDF" file-manager entry (generators, no build needed)
 ```
 
 `npm run assets` downloads the pinned pipeline assets into `build/pipeline-assets/`, verifies every file against its SHA-256 checksum from `scripts/pipeline-assets.json` and builds the development layout `build/pipeline-dev/`, which matches the app's packaged layout. On Windows, `pipeline/tests/test-windows.ps1` checks the pipeline (Windows PowerShell 5.1).
+
+The `markdown-office` command is TypeScript (`src/cli/`, shared logic in `src/core/`) and is bundled into one file. `npm run dev` does not rebuild it: after changes in `src/cli/` or `src/core/`, `npm run build:cli` (or `npm run build`) refreshes the CLI in the dev layout.
 
 In development the app uses its own app data folder `Markdown Office Dev` next to `Markdown Office`, so an installed app and the development build never share settings, session or the single-instance lock. `MDO_USER_DATA` (tests) overrides the folder.
 
@@ -365,7 +405,9 @@ src/main/       main process: files, export, session, menu, window
 src/preload/    secure bridge window.mdo
 src/renderer/   editor (CodeMirror 6), tabs, UI
 src/shared/     shared types and IPC channels
-pipeline/       Markdown → PDF/A: cli.js, build.sh, convert.ps1, lib/markdown.typ, tests
+src/core/       shared logic for app, CLI and later MCP (no Electron, no Node modules)
+src/cli/        the markdown-office command (TypeScript, bundled to pipeline/cli.js in the package)
+pipeline/       Markdown → PDF/A: build.sh, convert.ps1, lib/markdown.typ, tests
 scripts/        assets, signing, installation, release
 tests/          unit and end-to-end tests of the editor
 docs/           release workflow
@@ -389,4 +431,6 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT – see [LICENSE](LICENSE). Bundled fonts, Typst and Typst packages are under their own licences (see [Fonts and licences](#fonts-and-licences)).
+Copyright © 2026 jcmx9. Markdown Office is free software under the **GNU Affero General Public License, version 3 or later** (AGPL-3.0-or-later), see [LICENSE](LICENSE). You may use the program, commercially too, modify it and pass it on. Whoever passes on a modified version or offers it as a network service must publish its complete source code under the same licence. For use outside the AGPL, e.g. in a closed product, a separate commercial licence is possible; ask via an issue in the repository. The program comes without any warranty.
+
+Versions up to and including 26.10.0 were released under the MIT licence; from 26.10.1 on the AGPL applies. The template sets (`memo`, `din5008a`) stay under MIT, so the documents they produce carry no obligations. Bundled fonts, Typst and Typst packages are under their own licences (see [Fonts and licences](#fonts-and-licences)).

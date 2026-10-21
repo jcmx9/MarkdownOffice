@@ -40,8 +40,9 @@
 
   /* template.typ: body 10pt; Plan 3 scales this for zoom/Present */
   --mdo-body-size: 10pt;
-  /* A4 text width 145mm at 10pt ≈ 41em */
-  --mdo-measure: 41em;
+  /* memo text block: A4 minus margins 35 mm + 30 mm = 145 mm = 41.1em at 10pt; the width the
+     text breaks in, scaled with the body size (zoom). */
+  --mdo-measure: 41.1em;
 }
 
 /* ── shared editor chrome ─────────────────────────────────────────────── */
@@ -102,7 +103,9 @@
   font-variant-numeric: oldstyle-nums proportional-nums;
 }
 .mdo-preview .cm-content {
-  max-width: var(--mdo-measure);
+  /* border-box: the measure plus the content's 1.5em side padding and CodeMirror's line
+     padding (6px + 2px), so the lines break in exactly the PDF's width (it was 37.4em). */
+  max-width: calc(var(--mdo-measure) + 3em + 8px);
   margin: 0 auto;
   padding: 2em 1.5em 40vh;
 }
@@ -365,7 +368,8 @@
 
 /* Table widget (cursor elsewhere): like the memo set's #show table */
 .mdo-preview .mdo-table-wrap {
-  padding: 1.2em 0 1.4em;
+  /* Same side insets as a .cm-line, so a table spans exactly the text width. */
+  padding: 1.2em 2px 1.4em 6px;
   overflow-x: auto;
   cursor: text;
 }
@@ -377,6 +381,14 @@
   font-variant-numeric: lining-nums tabular-nums;
   text-align: left;
   hyphens: manual;
+}
+/* Column widths as Typst's auto columns (tables.ts typstAutoColumns): measured with
+   .mdo-table-measure (auto layout at max-content), then fixed via <col> widths. */
+.mdo-preview table.mdo-table.mdo-table-fitted {
+  table-layout: fixed;
+}
+.mdo-preview table.mdo-table.mdo-table-measure {
+  table-layout: auto;
 }
 .mdo-preview table.mdo-table :is(th, td) {
   /* Same cell inset as memo 26.10.3 (y 5pt, x 5pt), so rows match the PDF */
@@ -489,7 +501,9 @@
   color: var(--mdo-faint);
 }
 
-/* Present: larger text in a calm, centred column; no gutters */
+/* Present: larger text in a calm, centred column; no gutters. Deliberately not the PDF's
+   measure: about 60 instead of 82 characters per line, readable for an audience, so line
+   breaks never match the PDF here. */
 .mdo-present .cm-content {
   max-width: 70ch;
   padding-top: 3em;

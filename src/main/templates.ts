@@ -1,7 +1,7 @@
 import { constants } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { headerHint, headerProfile, minimalHeader, SET_NAME_RE } from '../shared/sets'
+import { headerHint, headerProfile, minimalHeader, SET_NAME_RE } from '../core/sets'
 import type { SetInfo } from '../shared/types'
 
 /** A header file larger than this is not a header (protects the renderer), as for snippets. */
@@ -34,7 +34,7 @@ export function userTemplatesDir(env: NodeJS.ProcessEnv, documentsDir: string): 
   return join(documentsDir, 'Markdown Office', 'Vorlagen')
 }
 
-async function isFile(p: string): Promise<boolean> {
+export async function isFile(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isFile()
   } catch (err) {
@@ -52,7 +52,7 @@ interface ResolvedSet {
  * Same order as `build.sh resolve_template`: `<user>/<n>.typ`, `<user>/<n>/<n>.typ`,
  * `<sets>/<n>/<n>.typ`; the first regular file wins, so a user set shadows a bundled one.
  */
-async function resolveSet(
+export async function resolveSet(
   setsDir: string,
   userDir: string,
   name: string,
@@ -112,6 +112,19 @@ export async function setExampleProfile(
   if (!example || !SET_NAME_RE.test(example)) return null
   const dir = join(dirname(set.typ), 'profiles')
   return (await isFile(join(dir, `${example}${PROFILE_EXT}`))) ? { dir, example } : null
+}
+
+/**
+ * The set's `<name>.schema.yaml` next to the winning `<name>.typ` (front matter checks of the
+ * set's own keys). null when the set or the file is missing, or it is not a small UTF-8 file.
+ */
+export async function readSetSchema(
+  setsDir: string,
+  userDir: string,
+  name: string,
+): Promise<string | null> {
+  const set = await resolveSet(setsDir, userDir, name)
+  return set ? readSmallText(join(dirname(set.typ), `${name}.schema.yaml`)) : null
 }
 
 /** `<dir of the winning .typ>/<n>.header.md` (a flat user set: `Vorlagen/<n>.header.md`). */

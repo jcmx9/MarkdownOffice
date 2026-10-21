@@ -62,7 +62,18 @@ function run(initial: string[]): void {
 
   void app.whenReady().then(async () => {
     // macOS shows "Version <app> (<build>)"; both are the package version, so drop the build.
-    app.setAboutPanelOptions({ applicationVersion: app.getVersion(), version: '' })
+    // Copyright, licence and the no-warranty note are the "Appropriate Legal Notices" AGPL
+    // §5 d) asks every interactive user interface to display.
+    app.setAboutPanelOptions({
+      applicationVersion: app.getVersion(),
+      version: '',
+      copyright: 'Copyright © 2026 jcmx9',
+      credits:
+        'Freie Software unter der GNU Affero General Public License, Version 3 oder später ' +
+        '(AGPL-3.0-or-later), ohne jede Gewährleistung. Quelltext und Lizenz: ' +
+        'github.com/jcmx9/MarkdownOffice',
+      website: 'https://github.com/jcmx9/MarkdownOffice',
+    })
     await ctx.load()
     // Before handleFontProtocol: protocol.handle creates the default session, and with it
     // Chromium's spellchecker, which must find the dictionaries and the dead download URL.

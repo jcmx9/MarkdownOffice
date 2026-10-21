@@ -31,6 +31,7 @@ function complete(win = false) {
   put(join('sets', 'din5008a', 'din5008a.typ'))
   put(join('pipeline', win ? 'convert.ps1' : 'build.sh'))
   put(join('pipeline', 'cli.js'))
+  put('LICENSE')
   for (const l of licenses) put(join('pipeline', 'licenses', l))
   for (const d of dictionaries) put(join('dictionaries', d))
 }
@@ -65,6 +66,7 @@ describe('checkPackedResources', () => {
     join('sets', 'din5008a', 'din5008a.typ'),
     join('pipeline', 'build.sh'),
     join('pipeline', 'cli.js'),
+    'LICENSE',
     join('pipeline', 'licenses', 'typst', 'LICENSE'),
     join('pipeline', 'licenses', 'fonts', 'A-OFL.txt'),
   ])('fails naming the missing %s', (rel) => {

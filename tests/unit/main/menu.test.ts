@@ -40,6 +40,7 @@ describe('buildMenuTemplate', () => {
     ['undo', 'CmdOrCtrl+Z'],
     ['redo', 'CmdOrCtrl+Shift+Z'],
     ['select-all', 'CmdOrCtrl+A'],
+    ['validate-yaml', 'CmdOrCtrl+Shift+Y'],
     ['insert-pagebreak', 'CmdOrCtrl+Enter'],
     ['next-tab', 'Ctrl+Tab'],
     ['prev-tab', 'Ctrl+Shift+Tab'],
@@ -70,6 +71,15 @@ describe('buildMenuTemplate', () => {
     expect(byId(buildMenuTemplate(deps({ spellcheck: false })), 'toggle-spellcheck')?.checked).toBe(
       false,
     )
+  })
+
+  it('Bearbeiten offers „YAML prüfen …“ after the Rechtschreibprüfung, behind a separator', () => {
+    const edit = buildMenuTemplate(deps()).find((m) => m.label === 'Bearbeiten')
+    const items = Array.isArray(edit?.submenu) ? edit.submenu : []
+    const at = items.findIndex((i) => i.id === 'validate-yaml')
+    expect(items[at]?.label).toBe('YAML prüfen …')
+    expect(items[at - 1]?.type).toBe('separator')
+    expect(items[at - 2]?.id).toBe('toggle-spellcheck')
   })
 
   it('ignores toggle-present key repeats from a held shortcut', () => {
@@ -182,7 +192,7 @@ describe('buildMenuTemplate', () => {
     }
   })
 
-  it('puts "Neu aus Vorlage …" right below "Neu" and labels the header insert set-neutral', () => {
+  it('puts "Neu aus Vorlage …" right below "Neu" and labels the template insert set-neutral', () => {
     const file = buildMenuTemplate(deps()).find((m) => m.label === 'Datei')
     const ids = ((file?.submenu ?? []) as { id?: string }[]).map((i) => i.id)
     expect(ids.slice(0, 3)).toEqual(['new', 'new-from-template', 'create-profile'])
@@ -190,9 +200,27 @@ describe('buildMenuTemplate', () => {
     expect(profile?.label).toBe('Profil anlegen …')
     expect(profile?.accelerator).toBeUndefined()
     expect(byId(buildMenuTemplate(deps()), 'new-from-template')?.label).toBe('Neu aus Vorlage …')
-    const header = byId(buildMenuTemplate(deps()), 'insert-header')
-    expect(header?.label).toBe('YAML-Header …')
-    click(header)
+    const insert = byId(buildMenuTemplate(deps()), 'insert-template')
+    expect(insert?.label).toBe('Vorlage …')
+    expect(byId(buildMenuTemplate(deps()), 'insert-header')).toBeUndefined()
+    click(insert)
+  })
+
+  // AGPL §5 d): every interactive UI shows the legal notices; the About panel carries them.
+  it.each(['win32', 'linux'] as const)(
+    '%s: Hilfe → Über Markdown Office opens the About panel',
+    (platform) => {
+      const menus = buildMenuTemplate(deps({ platform }))
+      const help = menus.at(-1)
+      expect(help?.label).toBe('Hilfe')
+      expect(help?.submenu).toEqual([{ role: 'about', label: 'Über Markdown Office' }])
+    },
+  )
+
+  it('darwin: About stays in the app menu, no extra Hilfe menu', () => {
+    const menus = buildMenuTemplate(deps())
+    expect(menus.some((m) => m.label === 'Hilfe')).toBe(false)
+    expect(flatten(menus).some((i) => i.role === 'about')).toBe(true)
   })
 
   it('labels the outline toggle in German', () => {

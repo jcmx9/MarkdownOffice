@@ -1,5 +1,6 @@
 import { markdownLanguage } from '@codemirror/lang-markdown'
 import type { SyntaxNode } from '@lezer/common'
+import { isRealLink } from './link-refs'
 
 const ELEMENTS: Record<string, [tag: string, cls: string]> = {
   StrongEmphasis: ['strong', 'mdo-strong'],
@@ -38,14 +39,43 @@ function appendArrow(into: HTMLElement): void {
   into.append(arrow)
 }
 
-/** Inline Markdown → DOM, built node by node (never innerHTML); HTML stays text. */
-export function renderInline(text: string, parent: HTMLElement): void {
+/**
+ * Inline Markdown → DOM, built node by node (never innerHTML); HTML stays text.
+ *
+ * `labels` are the normalised reference labels of the whole document (`referenceLabels`):
+ * a cell is parsed on its own and cannot see the definitions. A `[…]` that is no real link
+ * (the citation `[21]`) keeps its brackets as text, as in the PDF.
+ */
+export function renderInline(
+  text: string,
+  parent: HTMLElement,
+  labels: ReadonlySet<string> = new Set(),
+): void {
   const doc = parent.ownerDocument
   const tree = markdownLanguage.parser.parse(text)
-  const walk = (node: SyntaxNode, from: number, to: number, into: HTMLElement): void => {
+  const slice = (from: number, to: number) => text.slice(from, to)
+  // `literal`: node is a `Link` that is no real link, so its brackets and label stay text.
+  const walk = (
+    node: SyntaxNode,
+    from: number,
+    to: number,
+    into: HTMLElement,
+    literal = false,
+  ): void => {
     let pos = from
     for (let c = node.firstChild; c; c = c.nextSibling) {
       if (c.from > pos) into.append(text.slice(pos, c.from))
+      if (c.name === 'Link' && !isRealLink(c, slice, labels)) {
+        // Literal brackets: no link element; the inside is still rendered (`[**21**]`).
+        walk(c, c.from, c.to, into, true)
+        pos = c.to
+        continue
+      }
+      if (literal && (c.name === 'LinkMark' || c.name === 'LinkLabel')) {
+        into.append(text.slice(c.from, c.to))
+        pos = c.to
+        continue
+      }
       if (
         MARKS.has(c.name) ||
         (c.name === 'URL' && (node.name === 'Link' || node.name === 'Image'))
