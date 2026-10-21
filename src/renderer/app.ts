@@ -3,8 +3,16 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { PIPELINE_SCHEMA } from '../core/frontmatter-schema'
+import {
+  noteSet,
+  topLevelValue,
+  type ValidationContext,
+  validateFrontmatter,
+} from '../core/frontmatter-validate'
 import { dateIssue } from '../core/header-merge'
 import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../core/sets'
+import { validationContext } from '../core/validation-context'
 import type {
   ExportResult,
   ExternalChange,
@@ -44,6 +52,7 @@ import {
   spellcheckCompartment,
   spellcheckExtensions,
 } from './editor/spellcheck'
+import { choiceSpec } from './editor/validate'
 import { isMarkdownTab, type Tab, TabStore } from './tabs/tab-store'
 import { allowedWithDialog, editTarget } from './ui/edit-target'
 import { InfoLine } from './ui/infoline'
@@ -55,6 +64,7 @@ import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './u
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
 import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
+import { openValidateDialog } from './ui/validate-dialog'
 import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
@@ -115,7 +125,10 @@ export class App {
   private presentFactor = 1.6
   private settings: Settings | null = null
   private settingsOpen = false
-  /** The template picker is open or loading its list (Mod+Shift+N twice opens it once). */
+  /**
+   * The template picker or „YAML prüfen …“ is open or loading its inputs (Mod+Shift+N or
+   * Mod+Shift+Y twice opens it once).
+   */
   private pickerOpen = false
   /** Spell checking switch (Settings.spellcheck); applied only in Edit mode. */
   private spellcheckOn = true
@@ -312,6 +325,7 @@ export class App {
       (cmd === 'export' ||
         cmd === 'toggle-header' ||
         cmd === 'insert-template' ||
+        cmd === 'validate-yaml' ||
         cmd === 'create-profile' ||
         cmd === 'settings')
     ) {
@@ -356,6 +370,8 @@ export class App {
         return this.editCommand('insertPageBreak', insertPageBreak)
       case 'insert-template':
         return this.insertTemplate()
+      case 'validate-yaml':
+        return this.validateYaml()
       case 'toggle-view':
         if (this.mode === 'present') return this.presentToCode()
         return this.setView(this.view === 'code' ? 'preview' : 'code')
@@ -906,6 +922,95 @@ export class App {
     }
     this.offerDateFix(tab.id)
     this.editor.focus()
+  }
+
+  /**
+   * Bearbeiten → „YAML prüfen …“: the shown note's front matter checked against the pipeline's
+   * and its set's schema (src/core/frontmatter-validate.ts). No findings → a toast; else the
+   * dialog, whose choice is applied as one undo step to the note as it is when the dialog
+   * closes (choiceSpec validates again, so a note changed meanwhile never gets stale offsets).
+   */
+  private async validateYaml(): Promise<void> {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab || this.pickerOpen || this.settingsOpen) return
+    if (!isMarkdownTab(tab)) {
+      this.notices.toast(MARKDOWN_ONLY)
+      return
+    }
+    // The user may switch tabs or start closing while main reads the set files.
+    const still = () => !this.closing && this.shownId === tab.id
+    this.pickerOpen = true
+    try {
+      const { ctx, set, notice } = await this.validationFor(tab)
+      if (!still() || document.querySelector('dialog[open]')) return
+      // Validated after the await: the text main's inputs belong to may have been typed on.
+      const result = validateFrontmatter(this.editor.state.doc.toString(), ctx)
+      if (result.kind === 'none') {
+        this.notices.toast('Die Notiz hat keinen YAML-Header.')
+        return
+      }
+      if (result.kind === 'unclosed') {
+        this.notices.toast('Der YAML-Header der Notiz ist nicht geschlossen (---).')
+        return
+      }
+      if (result.findings.length === 0 && result.missing.length === 0) {
+        if (notice) this.notices.toast(notice)
+        this.notices.toast('YAML in Ordnung')
+        return
+      }
+      const choice = await openValidateDialog({ set, result, notice })
+      if (!choice || !still()) return
+      const spec = choiceSpec(this.editor.state, ctx, choice)
+      if (spec) this.editor.dispatch(spec)
+    } finally {
+      this.pickerOpen = false
+      if (this.shownId !== null) this.editor.focus()
+    }
+  }
+
+  /**
+   * The validator's context for a tab's note, from main's disk inputs. Never throws: when main
+   * cannot answer, the note is checked against the pipeline layer alone (no set, no profile).
+   * `notice` is the neutral hint for a broken set schema.
+   */
+  private async validationFor(
+    tab: Tab,
+  ): Promise<{ ctx: ValidationContext; set: string; notice: string | null }> {
+    const text =
+      tab.id === this.shownId ? this.editor.state.doc.toString() : tab.state.doc.toString()
+    const set = noteSet(text)
+    const template = topLevelValue(text, 'template') ?? ''
+    const profile = topLevelValue(text, 'profile') ?? ''
+    // Main refuses a template that is neither a set name nor a .typ path (and over-long
+    // values). Such a note is still checked: the installed sets come with the default request
+    // (for the unknown-set finding), but none of the default set's files or profile lookup.
+    const named =
+      template === '' ||
+      (template.length <= 256 && template.toLowerCase().endsWith('.typ')) ||
+      (template.length <= 64 && SET_NAME_RE.test(template))
+    try {
+      const inputs = await this.mdo.validationInputs(
+        tab.onDisk ? tab.path : null,
+        named ? template : '',
+        profile.length <= 256 ? profile : '',
+      )
+      const { ctx, schemaError } = validationContext(
+        named ? inputs : { ...inputs, header: null, schemaText: null, profile: null },
+      )
+      if (schemaError !== null) console.warn(`schema of set ${set}: ${schemaError}`)
+      const notice =
+        schemaError === null
+          ? null
+          : `Das Schema des Sets ${set || 'der Vorlage'} ist fehlerhaft; geprüft wird nur gegen die Pipeline-Regeln.`
+      return { ctx, set, notice }
+    } catch (e) {
+      console.warn('validationInputs failed', e)
+      return {
+        ctx: { schema: PIPELINE_SCHEMA, sets: null, header: null, profile: null },
+        set,
+        notice: null,
+      }
+    }
   }
 
   /**

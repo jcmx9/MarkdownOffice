@@ -40,6 +40,7 @@ describe('buildMenuTemplate', () => {
     ['undo', 'CmdOrCtrl+Z'],
     ['redo', 'CmdOrCtrl+Shift+Z'],
     ['select-all', 'CmdOrCtrl+A'],
+    ['validate-yaml', 'CmdOrCtrl+Shift+Y'],
     ['insert-pagebreak', 'CmdOrCtrl+Enter'],
     ['next-tab', 'Ctrl+Tab'],
     ['prev-tab', 'Ctrl+Shift+Tab'],
@@ -70,6 +71,15 @@ describe('buildMenuTemplate', () => {
     expect(byId(buildMenuTemplate(deps({ spellcheck: false })), 'toggle-spellcheck')?.checked).toBe(
       false,
     )
+  })
+
+  it('Bearbeiten offers „YAML prüfen …“ after the Rechtschreibprüfung, behind a separator', () => {
+    const edit = buildMenuTemplate(deps()).find((m) => m.label === 'Bearbeiten')
+    const items = Array.isArray(edit?.submenu) ? edit.submenu : []
+    const at = items.findIndex((i) => i.id === 'validate-yaml')
+    expect(items[at]?.label).toBe('YAML prüfen …')
+    expect(items[at - 1]?.type).toBe('separator')
+    expect(items[at - 2]?.id).toBe('toggle-spellcheck')
   })
 
   it('ignores toggle-present key repeats from a held shortcut', () => {

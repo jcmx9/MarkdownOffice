@@ -179,6 +179,10 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
         type: 'checkbox',
         checked: d.spellcheck,
       },
+      sep,
+      // Checks the note's front matter against the pipeline's and the set's schema
+      // (src/core/frontmatter-validate.ts); the renderer refuses it outside Markdown notes.
+      item('validate-yaml', 'YAML prüfen …', 'CmdOrCtrl+Shift+Y'),
     ],
   }
 

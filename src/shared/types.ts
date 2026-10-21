@@ -110,6 +110,7 @@ export type MenuCommand =
   | 'toggle-header'
   | 'toggle-outline'
   | 'toggle-spellcheck'
+  | 'validate-yaml'
   | 'fold'
   | 'unfold'
   | 'fold-all'
