@@ -312,7 +312,8 @@ Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task ta
 #let lang = inp("lang", default: "de")
 // `lang:` may carry a region (de-AT); text(lang:) refuses that, it takes the region separately.
 #let lang-code = lang.split("-").first()
-#let lang-region = lang.split("-").at(1, default: none)
+// The region is the two-letter part (de-AT); a script subtag such as zh-Hant is not one.
+#let lang-region = lang.split("-").slice(1).find(p => p.len() == 2)
 #let doctitle = inp("doctitle")
 #let source = inp("source", default: none)
 #let attach = inp("attach")
