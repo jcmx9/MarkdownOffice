@@ -13,6 +13,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Template sets: optional `<name>.schema.yaml` next to the set's `.typ` describes its `x-` keys and restrictions (TEMPLATES.md)
 
 ### Changed
+- Template sets: memo 26.10.5 and din5008a 26.10.2 ship their `<name>.schema.yaml` (din5008a checks `x-to` ≤ 6 lines, `x-sign`, `x-attachments`, `lang` de/en; memo declares no own keys)
 - Editor: the notice after „Vorlage …“ about an invalid `date:` („In <today> ändern“) is replaced by the YAML check; the date error is now one finding in „YAML prüfen …“, fixed with „Übernehmen“ (undo step of its own, after the merge's)
 - Internal: the `markdown-office` command is written in TypeScript and shares one core with the app (`src/core/`); behaviour unchanged
 - Editor: the start screen's button „Neue Notiz“ is now „Neues Memo …“, since it starts a note with the `memo` header like Mod+N
@@ -25,6 +26,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Snippet `:header` (memo-specific; „Einfügen → Vorlage …“ covers every set)
 
 ### Fixed
+- Template sets memo and din5008a: `lang:` with a region (`de-AT`, `de-DE`, `en-GB`) no longer stops the export with "expected two or three letter language code"; the region goes to Typst's `region:`
 - TEMPLATES.md: the skeleton passed a regional `lang:` (`de-AT`) straight to `text(lang:)`, which stops the export („expected two or three letter language code“); it now splits off the region and passes it as `region:`. The sets `memo` and `din5008a` get the same fix with their next pinned release
 - Editor preview and Present: table column widths follow Typst's auto columns like the memo PDF (each column as wide as its widest cell; if the table is too wide, columns that fit their fair share keep their width and only the oversized ones share the rest); the browser's own table layout squeezed short columns such as "Objekt" or "Quelle" until they wrapped. Small tables still stay as wide as their content
 - Spell checking (Windows): after a language switch (the start language → the note's `lang:`, a downloaded dictionary) the shown note was checked again with the new dictionary; Chromium answered the unchanged text from its cache of the old language, so misspellings stayed unmarked or got suggestions in the wrong language (English ones in a German note) until the text was edited. The recheck now clears that cache first (Blink's per-document `spellCheckCustomDictionary`, enabled for the window) and runs once more shortly after, because the new dictionary reaches the renderer on a channel of its own
