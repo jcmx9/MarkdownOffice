@@ -1,7 +1,7 @@
 import { constants } from 'node:fs'
 import { copyFile, lstat, mkdir, open, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { SET_NAME_RE } from '../shared/sets'
+import { SET_NAME_RE } from '../core/sets'
 import type { CreateProfileResult } from '../shared/types'
 import { canonicalPath, errorCode } from './files'
 import { readSmallText, setExampleProfile } from './templates'

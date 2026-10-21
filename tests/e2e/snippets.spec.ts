@@ -217,12 +217,12 @@ test('page break from the menu and with Mod+Enter inserts exactly one', async ()
   await app.close()
 })
 
-test('Einfügen → YAML-Header … puts the memo set’s header on top, once', async () => {
+test('Einfügen → Vorlage … puts the memo set’s header on top, a second time adds nothing', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Termin.md')
   await writeFile(note, '# Termin\n\nText\n')
   const { app, page } = await launch({ dirs, args: [note] })
-  await clickMenu(app, 'insert-header')
+  await clickMenu(app, 'insert-template')
   // The picker preselects memo: Enter takes it.
   await expect(page.getByTestId('tpl-set-memo')).toBeChecked()
   await page.keyboard.press('Enter')
@@ -233,7 +233,9 @@ test('Einfügen → YAML-Header … puts the memo set’s header on top, once', 
   expect(text.startsWith('---\n# Alle Schlüssel und Regeln:')).toBe(true)
   expect(text).toMatch(/^template: memo +#/m)
   expect(text.endsWith('---\n\n# Termin\n\nText\n')).toBe(true)
-  await clickMenu(app, 'insert-header')
-  await expect(page.locator('.toast')).toContainText('schon einen YAML-Header')
+  await clickMenu(app, 'insert-template')
+  await expect(page.getByTestId('tpl-set-memo')).toBeChecked()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.toast')).toContainText('hat schon alle Schlüssel')
   await app.close()
 })

@@ -1,5 +1,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
+import { fakeFullScreen } from './fullscreen'
+import { SPELLCHECK_BLINK_FEATURES } from './spellcheck/features'
 
 /**
  * `beforeLoad` runs before the renderer loads (the spellchecker's dictionaries must be in
@@ -23,8 +25,12 @@ export function createMainWindow(
       nodeIntegration: false,
       // The main process switches checking on/off (SpellcheckController); the renderer limits it to Edit mode outside code and front matter.
       spellcheck: true,
+      // Lets the renderer clear Chromium's cached spelling result before a recheck (features.ts).
+      enableBlinkFeatures: SPELLCHECK_BLINK_FEATURES,
     },
   })
+  // Test hook: local e2e runs never put a real window into a macOS fullscreen Space.
+  if (process.env.MDO_E2E_FAKE_FULLSCREEN === '1') fakeFullScreen(win)
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.once('ready-to-show', () => win.show())

@@ -34,7 +34,7 @@ describe('allowedWithDialog', () => {
       'new',
       'new-from-template',
       'create-profile',
-      'insert-header',
+      'insert-template',
       'open',
       'close-tab',
       'export',

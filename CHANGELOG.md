@@ -5,6 +5,38 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.1] - 2026-10-21
+
+### Added
+- Installer: a file-manager entry „Markdown-PDF“ turns a selected Markdown file into a PDF next to it through the `markdown-office` command, without opening the editor (real-fast-document had this; it was lost in the migration). macOS: Finder Quick Action for `.md`/`.markdown` (`~/Library/Services/Markdown-PDF.workflow`, result as a notification); Linux: „Öffnen mit → Markdown-PDF“ (`.desktop` entry for `text/markdown`) plus a Nautilus/Nemo script when those are present, result via `notify-send`; since both Linux entries claim `text/markdown`, the editor becomes the Markdown default in `~/.config/mimeapps.list` when none is chosen, so a double-click never converts; Windows: Explorer context-menu verb under `HKCU\Software\Classes\SystemFileAssociations` for `.md`/`.markdown`, started through `wscript.exe` so no console window flashes up, errors as a message box. Install and update write it, uninstall removes exactly what the install recorded in `.mdo-file-manager` next to the marker (including folders and registry keys created only for it); an entry of the same name that is not Markdown Office's is never touched. New `scripts/test-file-manager.sh` tests the generators; the bootstrap tests run each entry's command line on a note in a folder with spaces
+- Editor: „Einfügen → Vorlage …“ replaces „Einfügen → YAML-Header …“ and makes a note from elsewhere a note of a template set, with the same picker as „Neu aus Vorlage …“ (set, and profile when the set's header has `profile:`). Without front matter the set's header goes on top; an existing header is merged: existing keys keep their values, the set's missing keys are appended at the bottom with default value and comment, no duplicates, comments and order untouched; `template:` (and `profile:` when one is chosen) is set in place or appended. One undo step; line endings and BOM stay as they were. The merge is a pure module (`src/core/header-merge.ts`) for a later shared core of CLI and MCP
+- Editor: Bearbeiten → „YAML prüfen …“ (Mod+Shift+Y) checks the note's YAML header against the pipeline's schema (`pipeline/lib/frontmatter.schema.yaml`) and the set's own `<name>.schema.yaml` (types `text`, `bool`, `enum`, `date`, `length`, `list`, `lines`, `file`, `name`, `lang`; extra keys stay allowed). The dialog lists each finding with a suggested fix and offers the set's missing keys („Fehlende ergänzen“, off by default); „Übernehmen“ is one undo step and touches only the lines it fixes. On export and after „Vorlage …“ the header is checked silently; errors raise a notice „YAML hat n Fehler“ with „Prüfen …“ (the export runs anyway)
+- CLI: `markdown-office validate <note.md> [--fix] [--add-missing] [--json]` runs the same check; exit code 0 = no errors, 1 = errors, 2 = usage or file error
+- Template sets: optional `<name>.schema.yaml` next to the set's `.typ` describes its `x-` keys and restrictions (TEMPLATES.md)
+
+### Changed
+- Template sets: memo 26.10.5 and din5008a 26.10.2 ship their `<name>.schema.yaml` (din5008a checks `x-to` ≤ 6 lines, `x-sign`, `x-attachments`, `lang` de/en; memo declares no own keys)
+- Editor: the notice after „Vorlage …“ about an invalid `date:` („In <today> ändern“) is replaced by the YAML check; the date error is now one finding in „YAML prüfen …“, fixed with „Übernehmen“ (undo step of its own, after the merge's)
+- Internal: the `markdown-office` command is written in TypeScript and shares one core with the app (`src/core/`); behaviour unchanged
+- Editor: the start screen's button „Neue Notiz“ is now „Neues Memo …“, since it starts a note with the `memo` header like Mod+N
+- Editor: „Neu aus Vorlage …“ (Mod+Shift+N) lists `memo` too, first and preselected, so every set is offered in one place
+- README: the front matter section explains when values need quotes (free text in quotes, fixed values without, and why)
+- Licence: Markdown Office is now licensed under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later) instead of MIT; versions up to 26.10.0 stay MIT. Contributions come with a contributor agreement that keeps a commercial licence possible (CONTRIBUTING.md). The template sets stay MIT. The About panel shows copyright, licence and the no-warranty note; on Windows and Linux it opens from the new menu Hilfe → Über Markdown Office
+- Outline: entries without sub-chapters no longer show a bullet (•); the slot stays empty, so their titles still line up with the chapters that have a fold arrow
+
+### Removed
+- Snippet `:header` (memo-specific; „Einfügen → Vorlage …“ covers every set)
+
+### Fixed
+- Template sets memo and din5008a: `lang:` with a region (`de-AT`, `de-DE`, `en-GB`) no longer stops the export with "expected two or three letter language code"; the region goes to Typst's `region:`
+- TEMPLATES.md: the skeleton passed a regional `lang:` (`de-AT`) straight to `text(lang:)`, which stops the export („expected two or three letter language code“); it now splits off the region and passes it as `region:`. The sets `memo` and `din5008a` get the same fix with their next pinned release
+- Editor preview and Present: table column widths follow Typst's auto columns like the memo PDF (each column as wide as its widest cell; if the table is too wide, columns that fit their fair share keep their width and only the oversized ones share the rest); the browser's own table layout squeezed short columns such as "Objekt" or "Quelle" until they wrapped. Small tables still stay as wide as their content
+- Spell checking (Windows): after a language switch (the start language → the note's `lang:`, a downloaded dictionary) the shown note was checked again with the new dictionary; Chromium answered the unchanged text from its cache of the old language, so misspellings stayed unmarked or got suggestions in the wrong language (English ones in a German note) until the text was edited. The recheck now clears that cache first (Blink's per-document `spellCheckCustomDictionary`, enabled for the window) and runs once more shortly after, because the new dictionary reaches the renderer on a channel of its own
+- Preview: the text breaks in the memo PDF's width (145 mm = 41.1em at 10pt); it was 37.4em, because CodeMirror's padding was taken from the measure, so lines held about 13 % fewer characters than in the PDF; tables span the same width as the text. Present stays deliberately narrower and larger than the PDF
+- Editor preview, Present and table widget: a citation like `[21]` or `[1], [2]` (no link destination, no matching `[label]: …` definition) keeps its brackets as text, as in the PDF; only inline links, autolinks and references with a definition (label matched case-insensitively, whitespace collapsed) hide their brackets and get the link look
+- Editor: closing the window or quitting during Present (or while its fullscreen still animates) leaves fullscreen first and only then closes; on macOS a window closed in fullscreen could leave a black fullscreen Space in front of everything after the app was gone
+- e2e tests: every app a test started is closed afterwards, also after a failed assertion, and killed when the close hangs; local runs (outside CI) only simulate the fullscreen (`MDO_E2E_FAKE_FULLSCREEN=1`), CI tests the real one
+
 ## [26.10.0] - 2026-10-19
 
 ### Added

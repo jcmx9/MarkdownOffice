@@ -48,9 +48,29 @@ npm ci
 
 5. Push and create a PR targeting `dev`.
 
+## The `markdown-office` command
+
+The command is TypeScript in `src/cli/`, built on the shared logic in `src/core/` (no Electron, no Node modules there). `npm run build:cli` bundles it into `out/cli/cli.js`; packaging ships it as `<resources>/pipeline/cli.js`. `npm run dev` does not rebuild it, so run `npm run build:cli` (or `npm run build`) after changing `src/cli/` or `src/core/`.
+
 ## Pipeline assets
 
 `npm run assets` downloads the pinned pipeline assets (Typst, fonts, Typst packages, template sets) into `build/pipeline-assets/`, checks every download against `scripts/pipeline-assets.json` and then builds the development layout `build/pipeline-dev/` (the packaged layout, used by `npm run dev`, the e2e tests and the pipeline tests); `npm run dist` runs the download first. To try an unpublished change to the `memo` set, point the script at a local checkout of `MarkdownOffice-set-memo` (the manifest's tag is archived; only tracked files are copied): `MDO_SET_MEMO_DIR=~/GitHub/MarkdownOffice-set-memo npm run assets`.
+
+## Licence and contributor agreement
+
+Markdown Office is licensed under the GNU Affero General Public License, version 3 or later
+(AGPL-3.0-or-later). The maintainer (jcmx9) keeps the option to offer a separate commercial
+licence (dual licensing). By submitting a contribution (pull request, patch or other code) you
+agree that:
+
+1. the contribution is your own work, or you have the right to submit it under these terms;
+2. it is licensed under AGPL-3.0-or-later; and
+3. you additionally grant jcmx9 a perpetual, worldwide, non-exclusive, royalty-free, irrevocable
+   licence to use, modify, distribute and sublicense the contribution, including under other
+   licence terms such as a commercial licence.
+
+You keep the copyright of your contribution. Please confirm the agreement in your PR description
+(see the checklist). Template sets are separate repositories under MIT.
 
 ## PR Checklist
 
@@ -63,6 +83,7 @@ Before submitting a PR, verify:
 - [ ] Documentation updated (if applicable; keep `README.md` and `README.en.md` identical)
 - [ ] CHANGELOG.md updated under `[Unreleased]`
 - [ ] Commit messages follow Conventional Commits
+- [ ] I agree to the licence and contributor agreement above
 
 ## Code Standards
 

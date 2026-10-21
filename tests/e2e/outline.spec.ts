@@ -374,7 +374,7 @@ test('entries read as a list: arrow with children, bullet without; levels are re
   const { app, page, note: file } = await openNote(note)
   await clickMenu(app, 'toggle-outline')
   await expect(chevrons(page)).toHaveCount(1)
-  await expect(page.locator('#outline .mdo-ol-marker')).toHaveCount(3)
+  await expect(page.locator('#outline .mdo-ol-spacer')).toHaveCount(3)
   await shot(page, 'outline-list-chapters')
   await writeFile(
     file,
@@ -401,7 +401,7 @@ test('entries read as a list: arrow with children, bullet without; levels are re
       '',
     ].join('\n'),
   )
-  await expect(page.locator('#outline .mdo-ol-marker')).toHaveCount(5, { timeout: 15000 })
+  await expect(page.locator('#outline .mdo-ol-spacer')).toHaveCount(5, { timeout: 15000 })
   await expect(page.locator('#outline li.mdo-ol-top')).toHaveCount(5)
   await expect(page.locator('#outline li.mdo-ol-sub')).toHaveCount(0)
   const font = await page

@@ -1,7 +1,6 @@
+import { isolateHistory } from '@codemirror/commands'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
-import { frontmatterRange } from './frontmatter'
-
-export type InsertHeaderResult = { spec: TransactionSpec } | { refused: 'exists' }
+import { mergeHeader, type TemplateChoiceInput, type TextChange } from '../../core/header-merge'
 
 /**
  * A template's header in the line break `nl` (trailing blank lines dropped) and where the
@@ -15,27 +14,54 @@ function headerParts(template: string, nl: string): { header: string; anchor: nu
   return { header, anchor }
 }
 
-/**
- * Inserts a YAML header template (a template set's `<name>.header.md`) at the very top of the
- * note: front matter only counts there. The template's lines take the note's line break; a
- * blank line separates it from existing text. The cursor lands inside `title: ""`, else after
- * the header. Refused when the note already starts with a front matter.
- */
-export function insertHeader(state: EditorState, template: string): InsertHeaderResult {
-  if (frontmatterRange(state.doc)) return { refused: 'exists' }
-  const nl = state.lineBreak
-  const { header, anchor } = headerParts(template, nl)
-  const first = state.doc.line(1).text
-  const gap = state.doc.length === 0 ? '' : /^\s*$/.test(first) ? '' : nl
-  const insert = header + nl + gap
-  return {
-    spec: {
-      changes: { from: 0, insert },
-      selection: { anchor },
-      scrollIntoView: true,
-      userEvent: 'input',
-    },
+/** Offset right after the line break of the closing fence in an inserted header. */
+function afterFence(text: string): number {
+  const lines = text.split('\n')
+  let pos = (lines[0]?.length ?? 0) + 1
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i] ?? ''
+    pos += line.length + 1
+    if (/^(---|\.\.\.)\s*$/.test(line)) return Math.min(pos, text.length)
   }
+  return text.length
+}
+
+export type InsertTemplateResult =
+  | { kind: 'changed'; spec: TransactionSpec; inserted: boolean; added: string[] }
+  | { kind: 'unchanged' }
+  | { kind: 'unclosed' }
+
+/**
+ * Einfügen → „Vorlage …“: the set's header merged into the note by the pure rules of
+ * src/core/header-merge.ts. The editor's doc joins lines with `\n` (a CRLF note gets its CRLF
+ * back from serializeDoc, a mixed note keeps `\r` in its lines), which is exactly the text the
+ * merge expects, so its changes apply as they are. The whole merge is one transaction and
+ * isolated in the history: one undo step, never joined with typing right before or after it.
+ * A header put on top places the cursor inside `title: ""` (as before with „YAML-Header …“);
+ * a merge leaves the cursor where it was (mapped through the changes).
+ */
+export function insertTemplate(
+  state: EditorState,
+  header: string,
+  choice: TemplateChoiceInput,
+): InsertTemplateResult {
+  const res = mergeHeader(state.doc.toString(), header, choice)
+  if (res.kind === 'unclosed') return res
+  if (res.changes.length === 0) return { kind: 'unchanged' }
+  const inserted = res.kind === 'inserted'
+  const spec: TransactionSpec = {
+    changes: res.changes,
+    userEvent: 'input',
+    annotations: isolateHistory.of('full'),
+    scrollIntoView: inserted,
+  }
+  if (inserted) {
+    const text = (res.changes[0] as TextChange).insert
+    const title = text.search(/^title: ""/m)
+    // Inside the empty title, else on the line right after the header's closing fence.
+    spec.selection = { anchor: title >= 0 ? title + 'title: "'.length : afterFence(text) }
+  }
+  return { kind: 'changed', spec, inserted, added: inserted ? [] : res.added }
 }
 
 /**

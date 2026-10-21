@@ -1,9 +1,9 @@
 {
   "name": "markdown-office",
   "productName": "Markdown Office",
-  "version": "26.10.0",
+  "version": "26.10.1",
   "description": "Calm Markdown editor with a bundled Markdown-to-PDF/A pipeline; the editor looks like the PDF while you type.",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "author": "jcmx9",
   "homepage": "https://github.com/jcmx9/MarkdownOffice",
   "repository": {
@@ -16,16 +16,17 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "assets": "node scripts/fetch-pipeline-assets.mjs && node scripts/dev-layout.mjs",
-    "dist": "node scripts/fetch-pipeline-assets.mjs && electron-vite build && electron-builder --publish never",
+    "build": "electron-vite build && npm run build:cli",
+    "build:cli": "vite build --config vite.cli.config.mts",
+    "assets": "node scripts/fetch-pipeline-assets.mjs && node scripts/dev-layout.mjs && npm run build:cli",
+    "dist": "node scripts/fetch-pipeline-assets.mjs && npm run build && electron-builder --publish never",
     "start": "electron-vite preview",
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "electron-vite build && playwright test",
+    "test:e2e": "npm run build && playwright test",
     "postinstall": "node scripts/dev-app-name.mjs"
   },
   "devDependencies": {

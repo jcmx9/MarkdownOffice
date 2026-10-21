@@ -8,7 +8,9 @@
   powershell.exe process: as a file, and in the documented one-liner forms ("irm | iex"
   and the script block with -Uninstall), fed from the local file instead of irm.
   LOCALAPPDATA, APPDATA and MDO_HOME point into a temp folder, so the real profile,
-  WindowsApps folder and Start menu are never touched. The download path runs against
+  WindowsApps folder and Start menu are never touched; MDO_CLASSES_KEY moves the
+  Explorer verb "Markdown-PDF" below a temporary HKCU\Software\MarkdownOffice-test-<id>
+  key, whose command line the test runs like Explorer would. The download path runs against
   fake Invoke-RestMethod / Invoke-WebRequest functions (they shadow the cmdlets), so no
   network is needed.
 #>
@@ -32,6 +34,7 @@ function Pass([string]$Message) { Write-Host "ok   $Message" }
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ('mdo-bootstrap-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $work | Out-Null
+$regRoot = ''
 
 try {
   $env:LOCALAPPDATA = Join-Path $work 'Local'
@@ -49,6 +52,15 @@ try {
   $marker = Join-Path $installDir '.mdo-install'
   $cmdPath = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\markdown-office.cmd'
   $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Markdown Office.lnk'
+  # The Explorer verb "Markdown-PDF" goes below a test key instead of HKCU\Software\Classes, so
+  # a local run never changes the real context menu; uninstall must remove the whole test key
+  # again (every key the install created).
+  $regRoot = 'Software\MarkdownOffice-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+  $env:MDO_CLASSES_KEY = "$regRoot\Classes"
+  $verbKeys = @('.md', '.markdown' | ForEach-Object { "$env:MDO_CLASSES_KEY\SystemFileAssociations\$_\shell\Markdown-PDF" })
+  $pdfHelper = Join-Path $installDir 'markdown-pdf.js'
+  $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+  $notifyLog = Join-Path $work 'notify.log'
 
   # --- Fake GitHub -----------------------------------------------------------
   $fake = Join-Path $work 'fake-gh'
@@ -151,6 +163,89 @@ function global:Invoke-WebRequest {
     if (-not ($lines | Where-Object { $_ -like "typst $typstVersion *" })) { Fail "--version lacks 'typst $typstVersion': $($lines -join ' | ')" }
     $leftovers = @(Get-ChildItem -LiteralPath (Split-Path -Parent $installDir) -Force | Where-Object { $_.Name -like '*.old' -or $_.Name -like '*.old-*' -or $_.Name -like '.*-new.*' })
     if ($leftovers.Count -gt 0) { Fail "leftover staging/.old folders: $(($leftovers | ForEach-Object { $_.Name }) -join ', ')" }
+    Assert-ContextMenu
+  }
+
+  function Get-RegValue([string]$SubKey, [string]$Name) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($SubKey)
+    if ($null -eq $key) { return $null }
+    try { return $key.GetValue($Name) } finally { $key.Close() }
+  }
+
+  function Test-RegKey([string]$SubKey) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($SubKey)
+    if ($null -eq $key) { return $false }
+    $key.Close()
+    return $true
+  }
+
+  # The verb for .md and .markdown: title, tag, icon and the exact command line (wscript.exe, a
+  # GUI program, with the helper in the install folder and the selected file as "%1").
+  function Assert-ContextMenu {
+    if (-not (Test-Path -LiteralPath $pdfHelper -PathType Leaf)) { Fail "helper missing: $pdfHelper" }
+    $record = @(Get-Content -LiteralPath (Join-Path $installDir '.mdo-file-manager'))
+    $expected = '"{0}" //B //NoLogo //E:JScript "{1}" "%1"' -f $wscript, $pdfHelper
+    foreach ($sub in $verbKeys) {
+      if ((Get-RegValue $sub 'MUIVerb') -ne 'Markdown-PDF') { Fail "verb title missing: HKCU\$sub" }
+      if ((Get-RegValue $sub 'MarkdownOfficeBootstrap') -ne 'Markdown-PDF (Markdown Office bootstrap)') { Fail "verb tag missing: HKCU\$sub" }
+      if ((Get-RegValue $sub 'Icon') -ne "$exe,0") { Fail "verb icon: $(Get-RegValue $sub 'Icon')" }
+      $command = Get-RegValue "$sub\command" ''
+      if ($command -ne $expected) { Fail "verb command is '$command', expected '$expected'" }
+      if ($record -notcontains "K $sub") { Fail "record lacks K $sub" }
+    }
+    if ($record -notcontains "E $regRoot") { Fail "record lacks the created key $regRoot" }
+  }
+
+  # Runs the .md verb's command line as Explorer does (%1 = the selected file) and waits.
+  function Invoke-ContextMenu([string]$Note) {
+    $command = [string](Get-RegValue "$($verbKeys[0])\command" '')
+    if ($command -notmatch '^"([^"]+)" (.*)$') { Fail "unexpected verb command: $command" }
+    $file = $Matches[1]
+    $arguments = $Matches[2].Replace('%1', $Note)
+    if (Test-Path -LiteralPath $notifyLog) { Remove-Item -LiteralPath $notifyLog -Force }
+    $proc = Start-Process -FilePath $file -ArgumentList $arguments -Wait -PassThru
+    return $proc.ExitCode
+  }
+
+  function Get-NotifyLog {
+    if (-not (Test-Path -LiteralPath $notifyLog)) { return '' }
+    return [IO.File]::ReadAllText($notifyLog)
+  }
+
+  # The verb end to end: a PDF next to a note in a folder with spaces (ISO date prefix from
+  # date:), a broken note and a non-Markdown file each report an error (exit 1) instead of a
+  # message box (MDO_NOTIFY_LOG).
+  function Assert-ContextMenuWorks {
+    $notes = Join-Path $work 'Notizen mit Leerzeichen'
+    New-Item -ItemType Directory -Force -Path $notes | Out-Null
+    $env:MDO_NOTIFY_LOG = $notifyLog
+    try {
+      $note = Join-Path $notes 'Notiz mit Leerzeichen.md'
+      Set-Content -LiteralPath $note -Value @('---', 'title: Kontextmenue', 'date: 2026-10-20', '---', '', '# Hallo', '', 'Text.') -Encoding Ascii
+      $code = Invoke-ContextMenu $note
+      if ($code -ne 0) { Fail "Markdown-PDF exited $code converting a note: $(Get-NotifyLog)" }
+      $pdf = Join-Path $notes '2026-10-20_Notiz mit Leerzeichen.pdf'
+      if (-not (Test-Path -LiteralPath $pdf -PathType Leaf)) { Fail "Markdown-PDF wrote no $pdf" }
+      $head = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pdf), 0, 5)
+      if ($head -ne '%PDF-') { Fail "not a PDF: $head" }
+      if ((Get-NotifyLog) -notmatch 'normal\|PDF erstellt') { Fail "no success report: $(Get-NotifyLog)" }
+
+      $broken = Join-Path $notes 'Kaputt.md'
+      Set-Content -LiteralPath $broken -Value @('---', 'template: gibt-es-nicht', '---', '', 'Text.') -Encoding Ascii
+      $code = Invoke-ContextMenu $broken
+      if ($code -ne 1) { Fail "Markdown-PDF exited $code for a broken note, expected 1" }
+      $report = Get-NotifyLog
+      if ($report -notmatch 'critical\|' -or $report -notmatch 'Kaputt\.md: ' -or $report -notmatch 'markdown-pdf\.log') { Fail "error report: $report" }
+
+      $text = Join-Path $notes 'Liste.txt'
+      Set-Content -LiteralPath $text -Value 'kein Markdown' -Encoding Ascii
+      $code = Invoke-ContextMenu $text
+      if ($code -ne 1) { Fail "Markdown-PDF exited $code for a .txt file, expected 1" }
+      if ((Get-NotifyLog) -notmatch 'critical\|Keine Markdown-Datei') { Fail "no hint for a .txt file: $(Get-NotifyLog)" }
+    } finally {
+      Remove-Item Env:MDO_NOTIFY_LOG
+    }
+    Remove-Item -LiteralPath $notes -Recurse -Force
   }
 
   # The installed command end to end: a PDF from a note in a folder with spaces (options and
@@ -218,6 +313,8 @@ function global:Invoke-WebRequest {
   Assert-CommandWorks
   Assert-Installed
   Pass 'command: PDF from a note in a folder with spaces; --app --version; --app starts the editor detached'
+  Assert-ContextMenuWorks
+  Pass 'Explorer verb Markdown-PDF (.md, .markdown): PDF next to the note; broken note and .txt -> error report, exit 1'
 
   # 3. Update via a script block like "irm | iex", and with a trailing backslash on MDO_HOME.
   $block = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$bootstrap')))"
@@ -228,7 +325,8 @@ function global:Invoke-WebRequest {
   Assert-Code (Invoke-Bootstrap @()) 0 'update with trailing backslash on MDO_HOME'
   $env:MDO_HOME = $installDir
   Assert-Installed
-  Pass 'update over existing install (script block; MDO_HOME with trailing backslash)'
+  Assert-ContextMenuWorks
+  Pass 'update over existing install (script block; MDO_HOME with trailing backslash); Markdown-PDF still works'
 
   # 3b. The documented "irm | iex" one-liner, fed from the local file: it updates, and an
   #     error throws instead of calling exit, so the user's window stays open.
@@ -340,7 +438,28 @@ function global:Invoke-WebRequest {
     if (Test-Path -LiteralPath $path) { Fail "still there after uninstall: $path" }
   }
   if (-not (Test-Path -LiteralPath (Join-Path $outside 'precious.txt'))) { Fail 'uninstall followed a junction' }
-  Pass 'uninstall removed everything (incl. own .old), junction target untouched'
+  foreach ($sub in $verbKeys) {
+    if (Test-RegKey $sub) { Fail "verb still there after uninstall: HKCU\$sub" }
+  }
+  # Every key the install created is gone again, up to the test root it had to create.
+  if (Test-RegKey $regRoot) { Fail "uninstall left created registry keys below HKCU\$regRoot" }
+  Pass 'uninstall removed everything (incl. own .old, Explorer verbs and the keys they needed), junction target untouched'
+
+  # 8b. A verb of the same name that is not ours is neither overwritten nor removed.
+  $foreignVerb = $verbKeys[1]
+  $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($foreignVerb)
+  $key.SetValue('MUIVerb', 'Fremd')
+  $key.Close()
+  $env:MDO_ARCHIVE = $Archive
+  Assert-Code (Invoke-Bootstrap @()) 0 'install next to a foreign verb'
+  Remove-Item Env:MDO_ARCHIVE
+  if ((Get-RegValue $foreignVerb 'MUIVerb') -ne 'Fremd' -or (Get-RegValue $foreignVerb 'MarkdownOfficeBootstrap')) { Fail 'install overwrote a foreign verb' }
+  if ((Get-RegValue $verbKeys[0] 'MUIVerb') -ne 'Markdown-PDF') { Fail 'install skipped the .md verb because of a foreign .markdown verb' }
+  Assert-Code (Invoke-Bootstrap @('-Uninstall')) 0 'uninstall next to a foreign verb'
+  if ((Get-RegValue $foreignVerb 'MUIVerb') -ne 'Fremd') { Fail 'uninstall removed a foreign verb' }
+  if (Test-RegKey $verbKeys[0]) { Fail 'uninstall left the .md verb' }
+  [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($regRoot, $false)
+  Pass 'foreign verb of the same name: install and uninstall leave it alone'
 
   # 9. A folder without the marker, or with a marker but no Markdown Office.exe, is never
   #    deleted or overwritten.
@@ -364,6 +483,7 @@ function global:Invoke-WebRequest {
   Write-Host 'All bootstrap checks passed.'
 } finally {
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+  if ($regRoot) { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($regRoot, $false) }
 }
 # The expected refusals above leave LASTEXITCODE non-zero; the CI shell would report it.
 exit 0

@@ -1,7 +1,7 @@
-import { isAbsolute } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
+import { SET_NAME_RE } from '../core/sets'
 import { Ch } from '../shared/ipc'
-import { SET_NAME_RE } from '../shared/sets'
 import type {
   CreateProfileResult,
   NoteFile,
@@ -28,6 +28,7 @@ import { createProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
 import { CODE_RE } from './spellcheck/languages'
 import { listProfiles, listSets, readSetHeader, userTemplatesDir } from './templates'
+import { validationInputs } from './validation-inputs'
 
 const str = (v: unknown): string => {
   if (typeof v !== 'string') throw new TypeError('Ungültiger Parameter.')
@@ -60,6 +61,31 @@ export function registerIpc(ctx: AppContext): void {
   )
   ipcMain.handle(Ch.listProfiles, (_e, name: unknown) =>
     setName(name) ? listProfiles(setsDir(), userDir(), name) : [],
+  )
+  // „YAML prüfen“ inputs. The renderer names the note by a path main already allowed (null =
+  // unsaved note) and passes the note's raw `template:`/`profile:` values; these only select
+  // names and a lookup, main never reads a path the renderer invents. An absolute or `~`
+  // profile value makes main only stat (existence check) a path named in the user's own note,
+  // it never reads it.
+  ipcMain.handle(
+    Ch.validationInputs,
+    async (_e, path: unknown, template: unknown, profile: unknown) => {
+      const t = str(template)
+      const isTypPath = t.length <= 256 && t.toLowerCase().endsWith('.typ')
+      if (t !== '' && !isTypPath && !setName(t)) {
+        throw new TypeError('Ungültiger Parameter.')
+      }
+      const pr = str(profile)
+      if (pr.length > 256) throw new TypeError('Ungültiger Parameter.')
+      const noteDir = path === null ? null : dirname(await ctx.assertAllowed(str(path)))
+      return validationInputs({
+        setsDir: setsDir(),
+        userDir: userDir(),
+        noteDir,
+        template: t,
+        profile: pr,
+      })
+    },
   )
   // „Profil anlegen …“: both names are checked here (createProfile checks again); the renderer
   // may only open the new YAML because main allows exactly that one created path.

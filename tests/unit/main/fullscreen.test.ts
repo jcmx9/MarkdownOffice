@@ -1,7 +1,12 @@
+import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  CLOSE_LEAVE_MS,
+  FAKE_TRANSITION_MS,
   FullScreenOwner,
   type FullScreenWindow,
+  fakeFullScreen,
+  leaveFullScreenBeforeClose,
   REFUSED_MS,
   setWindowFullScreen,
 } from '../../../src/main/fullscreen'
@@ -242,5 +247,114 @@ describe('setWindowFullScreen: refused enter', () => {
     o.dispose()
     await vi.advanceTimersByTimeAsync(REFUSED_MS * 2)
     expect(refused).not.toHaveBeenCalled()
+  })
+})
+
+/** A window that emits 'leave-full-screen' only when the test says so. */
+function closingWindow(full: boolean) {
+  return Object.assign(new EventEmitter(), {
+    full,
+    calls: [] as boolean[],
+    isFullScreen() {
+      return this.full
+    },
+    setFullScreen(on: boolean) {
+      this.calls.push(on)
+    },
+  })
+}
+
+describe('leaveFullScreenBeforeClose', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('a window that is not fullscreen closes at once, untouched', async () => {
+    const win = closingWindow(false)
+    expect(leaveFullScreenBeforeClose(new FullScreenOwner(), win)).toBeNull()
+    expect(win.calls).toEqual([])
+  })
+
+  it("leaves the app's fullscreen and waits for 'leave-full-screen'", async () => {
+    const o = new FullScreenOwner()
+    o.request(true, false)
+    const win = closingWindow(true)
+    let settled = false
+    const done = leaveFullScreenBeforeClose(o, win)?.then(() => {
+      settled = true
+    })
+    expect(win.calls).toEqual([false])
+    await vi.advanceTimersByTimeAsync(CLOSE_LEAVE_MS - 1)
+    expect(settled).toBe(false)
+    win.emit('leave-full-screen')
+    await done
+    // The leave was the app's own: never reported as an OS leave that ends Present.
+    expect(o.onLeave()).toBe(false)
+  })
+
+  it('also leaves an enter that still animates (isFullScreen still false)', async () => {
+    const o = new FullScreenOwner()
+    o.request(true, false)
+    const win = closingWindow(false)
+    const done = leaveFullScreenBeforeClose(o, win)
+    expect(win.calls).toEqual([false])
+    win.emit('leave-full-screen')
+    await done
+  })
+
+  it("also leaves the user's own fullscreen", async () => {
+    const win = closingWindow(true)
+    const done = leaveFullScreenBeforeClose(new FullScreenOwner(), win)
+    expect(win.calls).toEqual([false])
+    win.emit('leave-full-screen')
+    await done
+  })
+
+  it('closes anyway when the leave never arrives', async () => {
+    const o = new FullScreenOwner()
+    o.request(true, true)
+    const win = closingWindow(true)
+    let settled = false
+    const done = leaveFullScreenBeforeClose(o, win)?.then(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(CLOSE_LEAVE_MS)
+    expect(settled).toBe(true)
+    await done
+    expect(win.listenerCount('leave-full-screen')).toBe(0)
+  })
+})
+
+describe('fakeFullScreen (e2e hook MDO_E2E_FAKE_FULLSCREEN=1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('switches the reported state and emits the events after a short transition', async () => {
+    const real = vi.fn()
+    const win = Object.assign(new EventEmitter(), {
+      isFullScreen: () => false,
+      setFullScreen: real,
+    })
+    const events: string[] = []
+    win.on('enter-full-screen', () => events.push(`enter:${win.isFullScreen()}`))
+    win.on('leave-full-screen', () => events.push(`leave:${win.isFullScreen()}`))
+    fakeFullScreen(win)
+    win.setFullScreen(true)
+    expect(events).toEqual([])
+    await vi.advanceTimersByTimeAsync(FAKE_TRANSITION_MS)
+    win.setFullScreen(true) // already fullscreen: no second event
+    await vi.advanceTimersByTimeAsync(FAKE_TRANSITION_MS)
+    win.setFullScreen(false)
+    await vi.advanceTimersByTimeAsync(FAKE_TRANSITION_MS)
+    expect(events).toEqual(['enter:true', 'leave:false'])
+    // The real window never goes fullscreen.
+    expect(real).not.toHaveBeenCalled()
   })
 })

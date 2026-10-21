@@ -33,6 +33,19 @@ test('Mod+N starts with the memo header; nothing is written until typed', async 
   await app.close()
 })
 
+test("the start screen's „Neues Memo …“ starts a note with the memo header", async () => {
+  const { app, page, notes } = await launch()
+  await clickMenu(app, 'close-tab')
+  await expect(tabs(page)).toHaveCount(0)
+  const button = page.locator('#empty [data-action=new]')
+  await expect(button).toHaveText('Neues Memo …')
+  await button.click()
+  await expect(tabs(page)).toHaveCount(1)
+  await expect(page.locator('.cm-content')).toContainText('template: memo')
+  expect(await readdir(notes)).toEqual([])
+  await app.close()
+})
+
 test('Mod+N note emptied again leaves no file behind', async () => {
   const { app, page, notes } = await launch()
   await clickMenu(app, 'new')
@@ -51,7 +64,7 @@ test('Mod+N note emptied again leaves no file behind', async () => {
   await app.close()
 })
 
-test('Neu aus Vorlage: din5008a with a user profile, memo not offered', async () => {
+test('Neu aus Vorlage: memo first and preselected, din5008a with a user profile', async () => {
   const dirs = await makeDirs()
   await mkdir(join(dirs.templates, 'profiles'))
   await writeFile(join(dirs.templates, 'profiles', 'kanzlei.yaml'), 'name: Kanzlei\n')
@@ -59,7 +72,12 @@ test('Neu aus Vorlage: din5008a with a user profile, memo not offered', async ()
   await clickMenu(app, 'new-from-template')
   await expect(picker(page)).toBeVisible()
   await expect(page.getByTestId('tpl-row-din5008a')).toContainText('mitgeliefert')
-  await expect(page.getByTestId('tpl-row-memo')).toHaveCount(0)
+  // memo is offered too, first and preselected: one Enter makes the usual note.
+  await expect(page.locator('[data-testid^=tpl-row-]').first()).toHaveAttribute(
+    'data-testid',
+    'tpl-row-memo',
+  )
+  await expect(page.getByTestId('tpl-set-memo')).toBeChecked()
 
   await page.getByTestId('tpl-set-din5008a').check()
   const select = page.getByTestId('tpl-profile')
@@ -127,12 +145,12 @@ test('Esc closes the template picker without a new tab', async () => {
   await app.close()
 })
 
-test('Einfügen → YAML-Header …: the chosen set goes on top, a second insert is refused', async () => {
+test('Einfügen → Vorlage …: no header → the chosen set goes on top; again → nothing to add', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Brief.md')
   await writeFile(note, '# Brief\n\nText\n')
   const { app, page } = await launch({ dirs, args: [note] })
-  await clickMenu(app, 'insert-header')
+  await clickMenu(app, 'insert-template')
   await expect(picker(page)).toBeVisible()
   // The default set is offered first and preselected here.
   await expect(page.locator('[data-testid^=tpl-row-]').first()).toHaveAttribute(
@@ -150,9 +168,60 @@ test('Einfügen → YAML-Header …: the chosen set goes on top, a second insert
   expect(text).toMatch(/^profile: beispiel +#/m)
   expect(text.endsWith('---\n\n# Brief\n\nText\n')).toBe(true)
 
-  await clickMenu(app, 'insert-header')
-  await expect(page.locator('.toast')).toContainText('schon einen YAML-Header')
+  // The same set again: the header already has every key, nothing changes.
+  await clickMenu(app, 'insert-template')
+  await page.getByTestId('tpl-set-din5008a').check()
+  await page.getByTestId('tpl-ok').click()
+  await expect(page.locator('.toast')).toContainText('hat schon alle Schlüssel')
+  await app.close()
+})
+
+test('Einfügen → Vorlage …: merges into a CRLF header, YAML check offers the date fix, each one undo step', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Fremd.md')
+  const original =
+    '---\r\n# von woanders\r\ntitle: "Alt"   # mein Titel\r\ndate: 13/10/2026\r\n---\r\n\r\nText\r\n'
+  await writeFile(note, original)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await clickMenu(app, 'insert-template')
+  await expect(page.getByTestId('tpl-set-memo')).toBeChecked()
+  await page.keyboard.press('Enter')
   await expect(picker(page)).toHaveCount(0)
+  const merged = (
+    await waitForFile(note, (b) => b.toString('utf8').includes('template: memo'))
+  ).toString('utf8')
+  // Existing lines untouched, missing keys appended before the fence, CRLF everywhere.
+  expect(
+    merged.startsWith(
+      '---\r\n# von woanders\r\ntitle: "Alt"   # mein Titel\r\ndate: 13/10/2026\r\ntemplate: memo ',
+    ),
+  ).toBe(true)
+  expect(merged).toMatch(/^lang: de +# de oder en\r$/m)
+  expect(merged.match(/^title:/gm)).toHaveLength(1)
+  expect(merged.replace(/\r\n/g, '')).not.toContain('\n')
+  expect(merged.endsWith('---\r\n\r\nText\r\n')).toBe(true)
+
+  // The silent YAML check names the wrong date; nothing changes until „Übernehmen“.
+  const banner = page.locator('.banner')
+  await expect(banner).toContainText('YAML hat 1 Fehler')
+  await shot(page, 'insert-template-yaml')
+  await banner.getByRole('button', { name: 'Prüfen …' }).click()
+  const row = page.getByTestId('validate-row')
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('date')
+  await expect(row).toContainText('→ 2026-10-13')
+  await page.getByTestId('validate-apply').click()
+  await expect(page.getByTestId('validate-dialog')).toHaveCount(0)
+  const fixed = (
+    await waitForFile(note, (b) => b.toString('utf8').includes('date: 2026-10-13'))
+  ).toString('utf8')
+  expect(fixed).toBe(merged.replace('date: 13/10/2026', 'date: 2026-10-13'))
+
+  // Undo: first the fix alone, then the whole merge in one step.
+  await clickMenu(app, 'undo')
+  await waitForFile(note, (b) => b.toString('utf8') === merged)
+  await clickMenu(app, 'undo')
+  await waitForFile(note, (b) => b.toString('utf8') === original)
   await app.close()
 })
 

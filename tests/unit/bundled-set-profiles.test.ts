@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { headerProfile } from '../../src/shared/sets'
+import { headerProfile } from '../../src/core/sets'
 
 // TEMPLATES.md checklist: a set whose header names a `profile:` ships that profile as
 // `profiles/<value>.yaml`. A new note from the set then exports right away, and „Profil
