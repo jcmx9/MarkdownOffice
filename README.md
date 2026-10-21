@@ -369,7 +369,7 @@ npm run assets                    # Typst, Schriften, Packages, Set memo; danach
 npm run dev                       # App mit Hot Reload (macOS: Menüleiste zeigt "Markdown Office", per postinstall)
 npm run build:cli                 # den Befehl markdown-office (src/cli/) nach out/cli/cli.js bauen
 npm run lint && npm run typecheck
-npm test                          # Unit-Tests (Vitest, auch pipeline/*.test.mjs)
+npm test                          # Unit-Tests (Vitest, tests/unit)
 npm run test:e2e                  # Ende-zu-Ende (Playwright + Electron; lokal nur simuliertes Vollbild)
 bash pipeline/tests/test-pdf.sh          # Pipeline: PDFs der Testnotizen und Schnittstelle (macOS/Linux)
 bash pipeline/tests/test-equivalence.sh  # Pipeline: Set memo gegen die Referenz-PDFs
