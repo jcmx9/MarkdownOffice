@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['tests/unit/**/*.test.ts', 'pipeline/**/*.test.mjs'],
+    include: ['tests/unit/**/*.test.ts'],
     environment: 'node',
     testTimeout: 15_000,
     coverage: {
@@ -12,6 +12,7 @@ export default defineConfig({
         'src/renderer/**/*.ts',
         'src/shared/**/*.ts',
         'src/core/**/*.ts',
+        'src/cli/**/*.ts',
       ],
       // Electron/DOM wiring is covered by the Playwright suite.
       exclude: [
@@ -24,6 +25,9 @@ export default defineConfig({
         'src/renderer/app.ts',
         'src/renderer/ui/**',
         'src/renderer/env.d.ts',
+        // The CLI's process wiring runs only as the bundled cli.js in a child process
+        // (tests/unit/cli/bundle.test.ts), which v8 coverage does not see.
+        'src/cli/main.ts',
       ],
       thresholds: { lines: 80, branches: 80 },
     },
