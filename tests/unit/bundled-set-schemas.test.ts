@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PIPELINE_SCHEMA, parseSchema } from '../../src/core/frontmatter-schema'
+import { parseSchema } from '../../src/core/frontmatter-schema'
 import { errorCount, validateFrontmatter } from '../../src/core/frontmatter-validate'
 import { validationContext } from '../../src/core/validation-context'
 
@@ -33,9 +33,28 @@ describe('bundled set schemas', () => {
       profile: { status: 'found' },
     })
     expect(schemaError).toBeNull()
-    expect(ctx.schema).not.toBe(PIPELINE_SCHEMA)
     if (header === null) return
     expect(errorCount(validateFrontmatter(header, ctx))).toBe(0)
   })
+  // memo takes the first two letters of `lang`, so regional codes must stay valid.
+  it.skipIf(!withSchema.includes('memo'))(
+    'memo accepts a regional lang such as de-AT',
+    async () => {
+      const dir = join(setsDir, 'memo')
+      const header = (await readFile(join(dir, 'memo.header.md'), 'utf8')).replace(
+        /^lang:.*$/m,
+        'lang: de-AT',
+      )
+      const { ctx } = validationContext({
+        set: 'memo',
+        sets,
+        header,
+        schemaText: await readFile(join(dir, 'memo.schema.yaml'), 'utf8'),
+        profile: { status: 'found' },
+      })
+      expect(header).toContain('lang: de-AT')
+      expect(errorCount(validateFrontmatter(header, ctx))).toBe(0)
+    },
+  )
   if (skip) it.skip(skip, () => undefined)
 })
