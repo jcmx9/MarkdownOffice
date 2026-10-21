@@ -44,20 +44,20 @@ export type MergeResult =
 const OPEN = /^---\s*$/
 const CLOSE = /^(---|\.\.\.)\s*$/
 /** A top-level key: column 0, like the pipeline's front-matter reader; indented keys are nested. */
-const KEY = /^([A-Za-z0-9_-]+):/
+export const KEY = /^([A-Za-z0-9_-]+):/
 
-const stripCr = (line: string): string => (line.endsWith('\r') ? line.slice(0, -1) : line)
+export const stripCr = (line: string): string => (line.endsWith('\r') ? line.slice(0, -1) : line)
 const crOf = (line: string): string => (line.endsWith('\r') ? '\r' : '')
 
 /** Index of the closing fence, -1 when the text has an unclosed header, null without one. */
-function closingFence(lines: readonly string[]): number | null {
+export function closingFence(lines: readonly string[]): number | null {
   if (lines.length < 2 || !OPEN.test(lines[0] ?? '')) return null
   for (let i = 1; i < lines.length; i++) if (CLOSE.test(lines[i] ?? '')) return i
   return -1
 }
 
 /** Start offset of every line in `text` split by `\n`. */
-function lineStarts(lines: readonly string[]): number[] {
+export function lineStarts(lines: readonly string[]): number[] {
   const out: number[] = []
   let pos = 0
   for (const l of lines) {
