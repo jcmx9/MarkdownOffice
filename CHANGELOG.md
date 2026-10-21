@@ -11,6 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Editor: after „Vorlage …“ a `date:` in a notation other than `YYYY-MM-DD`, `D.M.YYYY`/`DD.MM.YYYY` or empty gets a notice with the button „In <today> ändern“; the date only changes on that click, as an undo step of its own
 
 ### Changed
+- Internal: the `markdown-office` command is written in TypeScript and shares one core with the app (`src/core/`); behaviour unchanged
 - Editor: the start screen's button „Neue Notiz“ is now „Neues Memo …“, since it starts a note with the `memo` header like Mod+N
 - Editor: „Neu aus Vorlage …“ (Mod+Shift+N) lists `memo` too, first and preselected, so every set is offered in one place
 - README: the front matter section explains when values need quotes (free text in quotes, fixed values without, and why)

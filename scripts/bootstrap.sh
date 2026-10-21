@@ -30,7 +30,7 @@
 #
 # The command is a small /bin/sh shim that always runs the app's own binary as Node
 # (ELECTRON_RUN_AS_NODE=1) with <resources>/pipeline/cli.js and every argument unchanged;
-# cli.js itself starts the editor for a leading --app (see pipeline/cli.js).
+# cli.js itself starts the editor for a leading --app (see src/cli/main.ts).
 #
 # Umgebung (für Tests):
 #   MDO_ARCHIVE  lokales Archiv statt Download (keine Prüfsumme)

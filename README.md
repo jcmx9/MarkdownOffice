@@ -367,6 +367,7 @@ cd MarkdownOffice
 npm ci
 npm run assets                    # Typst, Schriften, Packages, Set memo; danach das Dev-Layout
 npm run dev                       # App mit Hot Reload (macOS: Menüleiste zeigt "Markdown Office", per postinstall)
+npm run build:cli                 # den Befehl markdown-office (src/cli/) nach out/cli/cli.js bauen
 npm run lint && npm run typecheck
 npm test                          # Unit-Tests (Vitest, auch pipeline/*.test.mjs)
 npm run test:e2e                  # Ende-zu-Ende (Playwright + Electron; lokal nur simuliertes Vollbild)
@@ -379,6 +380,8 @@ bash scripts/test-file-manager.sh # Dateimanager-Eintrag „Markdown-PDF“ (Gen
 
 `npm run assets` lädt die gepinnten Pipeline-Assets nach `build/pipeline-assets/`, prüft jede Datei gegen ihre SHA-256-Prüfsumme aus `scripts/pipeline-assets.json` und baut das Entwicklungs-Layout `build/pipeline-dev/`, das dem gepackten Layout der App entspricht. Unter Windows prüft `pipeline/tests/test-windows.ps1` die Pipeline (Windows PowerShell 5.1).
 
+Der Befehl `markdown-office` ist TypeScript (`src/cli/`, gemeinsame Logik in `src/core/`) und wird zu einer Datei gebündelt. `npm run dev` baut ihn nicht neu: Nach Änderungen in `src/cli/` oder `src/core/` aktualisieren `npm run build:cli` (oder `npm run build`) die CLI im Dev-Layout.
+
 In der Entwicklung nutzt die App einen eigenen App-Datenordner `Markdown Office Dev` neben `Markdown Office`. So teilen eine installierte App und die Entwicklungsversion nie Einstellungen, Sitzung oder Single-Instance-Sperre. `MDO_USER_DATA` (Tests) überschreibt den Ordner.
 
 ## Projektstruktur
@@ -388,7 +391,9 @@ src/main/       Main-Prozess: Dateien, Export, Sitzung, Menü, Fenster
 src/preload/    sichere Brücke window.mdo
 src/renderer/   Editor (CodeMirror 6), Tabs, Oberfläche
 src/shared/     gemeinsame Typen und IPC-Kanäle
-pipeline/       Markdown → PDF/A: cli.js, build.sh, convert.ps1, lib/markdown.typ, Tests
+src/core/       gemeinsame Logik für App, CLI und später MCP (ohne Electron und Node-Module)
+src/cli/        der Befehl markdown-office (TypeScript, gebündelt zu pipeline/cli.js im Paket)
+pipeline/       Markdown → PDF/A: build.sh, convert.ps1, lib/markdown.typ, Tests
 scripts/        Assets, Signieren, Installation, Release
 tests/          Unit- und Ende-zu-Ende-Tests des Editors
 docs/           Release-Ablauf

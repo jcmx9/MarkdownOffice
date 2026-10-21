@@ -9,6 +9,8 @@ files:
   - "out/**"
   - "package.json"
   - "!**/*.map"
+  # The CLI ships only as <resources>/pipeline/cli.js (extraResources), never a second time in app.asar.
+  - "!out/cli/**"
 # Pipeline: scripts/lib from pipeline/, the rest from build/pipeline-assets (npm run assets).
 # ${os}-${arch} expands to mac|win|linux and x64|arm64, matching the folder names there.
 extraResources:

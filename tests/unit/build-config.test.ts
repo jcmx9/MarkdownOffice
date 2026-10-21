@@ -55,9 +55,11 @@ describe('electron-builder.yml', () => {
     expect(config.artifactName).toBe('markdown-office-${version}-${os}-${arch}.${ext}')
   })
 
-  it('ships only the built app and package.json, never scripts, tests or source maps', () => {
+  it('ships only the built app and package.json, never scripts, tests, source maps or a second CLI copy', () => {
     const config = loadConfig()
-    expect(config.files).toEqual(['out/**', 'package.json', '!**/*.map'])
+    expect(config.files).toEqual(['out/**', 'package.json', '!**/*.map', '!out/cli/**'])
+    // The CLI ships once, as <resources>/pipeline/cli.js, not also inside app.asar.
+    expect(config.files).toContain('!out/cli/**')
     expect(config.files.some((f) => f.startsWith('scripts') || f.startsWith('tests'))).toBe(false)
   })
 

@@ -9,7 +9,7 @@ export interface FakeCliOptions {
 }
 
 /**
- * Writes a stand-in for pipeline/cli.js. It records its arguments, its working directory and the
+ * Writes a stand-in for the bundled <resources>/pipeline/cli.js (src/cli/). It records its arguments, its working directory and the
  * MDO_* / ELECTRON_RUN_AS_NODE environment as JSON in `record.json`, then prints and exits as told.
  */
 export async function makeFakeCli(
