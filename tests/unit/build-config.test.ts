@@ -82,15 +82,14 @@ describe('electron-builder.yml', () => {
   it('ships only an allowlist of the pipeline folder (no tests, no fonts or vendor copies)', () => {
     const entry = loadConfig().extraResources.find((r) => r.from === 'pipeline')
     expect(entry?.to).toBe('pipeline')
-    expect(entry?.filter).toEqual([
-      'build.sh',
-      'convert.ps1',
-      'cli.js',
-      'lib/**/*',
-      'logo.svg',
-      'example.md',
-    ])
+    expect(entry?.filter).toEqual(['build.sh', 'convert.ps1', 'lib/**/*', 'logo.svg', 'example.md'])
     expect(entry?.filter?.some((f) => f.includes('*') && !f.startsWith('lib/'))).toBe(false)
+  })
+
+  // The CLI is built from src/cli/ (npm run build:cli → out/cli/cli.js), not kept in pipeline/.
+  it('ships the bundled CLI as pipeline/cli.js', () => {
+    const entry = loadConfig().extraResources.find((r) => r.from === 'out/cli/cli.js')
+    expect(entry?.to).toBe('pipeline/cli.js')
   })
 
   it('ships the licence texts as pipeline/licenses', () => {
@@ -103,10 +102,6 @@ describe('electron-builder.yml', () => {
   it('names only files that exist in pipeline/', () => {
     const entry = loadConfig().extraResources.find((r) => r.from === 'pipeline')
     for (const f of entry?.filter ?? []) {
-      // TODO(core-cli Task 3): cli.js is now built from src/cli/ (vite.cli.config.ts) and no
-      // longer lives in pipeline/; Task 3 moves it out of this filter into its own extraResources
-      // entry (out/cli/cli.js) — drop this exception there.
-      if (f === 'cli.js') continue
       expect(existsSync(join(root, 'pipeline', f.replace('/**/*', '')))).toBe(true)
     }
   })
@@ -129,10 +124,10 @@ describe('electron-builder.yml', () => {
       devDependencies: Record<string, string>
     }
     expect(pkg.scripts.dist).toBe(
-      'node scripts/fetch-pipeline-assets.mjs && electron-vite build && electron-builder --publish never',
+      'node scripts/fetch-pipeline-assets.mjs && npm run build && electron-builder --publish never',
     )
     expect(pkg.scripts.assets).toBe(
-      'node scripts/fetch-pipeline-assets.mjs && node scripts/dev-layout.mjs',
+      'node scripts/fetch-pipeline-assets.mjs && node scripts/dev-layout.mjs && npm run build:cli',
     )
     expect(pkg.devDependencies['electron-builder']).toMatch(/^\^\d+\.\d+\.\d+$/)
   })
@@ -194,6 +189,26 @@ describe('withRetry (codesign is flaky on CI runners)', () => {
     const task = vi.fn<() => Promise<number>>().mockResolvedValue(1)
     await expect(withRetry(task, { delayMs: 0 })).resolves.toBe(1)
     expect(task).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Every packaging or e2e path must build the CLI too, or the app ships without pipeline/cli.js
+// (after-pack would stop it, but only at the very end).
+describe('npm scripts build the CLI bundle', () => {
+  const scripts = () =>
+    (
+      JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>
+      }
+    ).scripts
+
+  it('builds it with vite.cli.config.mts, after the app', () => {
+    expect(scripts()['build:cli']).toBe('vite build --config vite.cli.config.mts')
+    expect(scripts().build).toBe('electron-vite build && npm run build:cli')
+  })
+
+  it('runs the full build before e2e tests', () => {
+    expect(scripts()['test:e2e']).toBe('npm run build && playwright test')
   })
 })
 

@@ -4,9 +4,9 @@
 // code pass through unchanged; a pipeline killed by a signal exits with 1.
 //
 // Layout: MDO_PIPELINE_ROOT defaults to the folder this file was invoked from (packaged:
-// <resources>/pipeline; development: build/pipeline-dev/pipeline, where cli.js is a symlink),
-// MDO_SETS_DIR to <root>/../sets and MDO_VERSION to `dev` (the app passes its version).
-// build.sh / convert.ps1 are taken from next to the real file (symlinks resolved).
+// <resources>/pipeline; development: build/pipeline-dev/pipeline, where the CLI build writes a
+// copy of cli.js), MDO_SETS_DIR to <root>/../sets and MDO_VERSION to `dev` (the app passes its
+// version). build.sh / convert.ps1 are taken from next to the real file (symlinks resolved).
 //
 // `--app [args]` as the first argument starts the editor instead: this process's own binary (the
 // app) with the remaining arguments, without ELECTRON_RUN_AS_NODE. The installed shims therefore
@@ -14,7 +14,7 @@
 // `%*`). --version/--help wait for the app and pass its output on; anything else starts the app
 // detached and returns at once, with its output in MDO_LAUNCH_LOG (truncated per start) if set.
 //
-// Source: src/cli/ (TypeScript), bundled by vite.cli.config.ts into one CommonJS file cli.js,
+// Source: src/cli/ (TypeScript), bundled by vite.cli.config.mts into one CommonJS file cli.js,
 // which keeps this comment as its banner.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'

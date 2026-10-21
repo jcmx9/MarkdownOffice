@@ -4,7 +4,7 @@
 #
 #   build/pipeline-dev/pipeline/build.sh     -> pipeline/build.sh
 #   build/pipeline-dev/pipeline/convert.ps1  -> pipeline/convert.ps1
-#   build/pipeline-dev/pipeline/cli.js       -> pipeline/cli.js
+#   build/pipeline-dev/pipeline/cli.js       (Kopie, schreibt `npm run build:cli`)
 #   build/pipeline-dev/pipeline/lib          -> pipeline/lib
 #   build/pipeline-dev/pipeline/example.md   -> pipeline/example.md
 #   build/pipeline-dev/pipeline/logo.svg     -> pipeline/logo.svg
@@ -14,9 +14,15 @@
 #   build/pipeline-dev/pipeline/licenses     -> build/pipeline-assets/licenses (falls vorhanden)
 #   build/pipeline-dev/sets                  -> build/pipeline-assets/sets
 #
-# Alles sind symbolische Links: Änderungen an pipeline/ wirken sofort. Unter
+# cli.js wird aus src/cli/ gebündelt; der CLI-Build (vite.cli.config.mts)
+# legt die Kopie hier ab, sobald dieses Layout existiert (npm run assets ruft
+# ihn danach auf). Ein Link auf out/cli/cli.js wäre unter Git Bash eine
+# veraltende Kopie. Weil dieses Skript das Layout neu anlegt (auch aus
+# test-pdf.sh/test-equivalence.sh), übernimmt es eine vorhandene
+# out/cli/cli.js – sonst fehlte cli.js danach bis zum nächsten CLI-Build.
+# Der Rest sind symbolische Links: Änderungen an pipeline/ wirken sofort. Unter
 # Git Bash (Windows) legt ln -s Kopien an; dann nach Änderungen an pipeline/
-# erneut ausführen (npm run assets ruft das Skript am Ende auf). Die
+# erneut ausführen (npm run assets ruft das Skript auf). Die
 # Skripte kennen nur MDO_PIPELINE_ROOT und MDO_SETS_DIR; beide zeigen auf
 # dieses Layout (Standard ohne Variablen: Ordner des Skripts bzw. ../sets).
 # Voraussetzung: build/pipeline-assets/ ist befüllt (npm run assets).
@@ -62,9 +68,11 @@ done
 
 rm -rf "${dev}"
 mkdir -p "${dev}/pipeline/bin"
-for f in build.sh convert.ps1 cli.js lib example.md logo.svg; do
+for f in build.sh convert.ps1 lib example.md logo.svg; do
   ln -s "${repo_dir}/pipeline/${f}" "${dev}/pipeline/${f}"
 done
+# Dieselbe Datei, die der CLI-Build zuletzt geschrieben hat (siehe oben).
+if [[ -f "${repo_dir}/out/cli/cli.js" ]]; then cp "${repo_dir}/out/cli/cli.js" "${dev}/pipeline/cli.js"; fi
 ln -s "${typst_src}" "${dev}/pipeline/bin/${typst_name}"
 ln -s "${assets}/fonts" "${dev}/pipeline/fonts"
 ln -s "${assets}/vendor" "${dev}/pipeline/vendor"

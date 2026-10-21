@@ -1,5 +1,5 @@
 // Subprocess tests of the bundled `markdown-office` command. The bundle is built once with
-// vite.cli.config.ts into a temp folder; the real build.sh / convert.ps1 are replaced by fakes next
+// vite.cli.config.mts into a temp folder; the real build.sh / convert.ps1 are replaced by fakes next
 // to a copy of it, so only the wrapper's own behaviour is tested.
 import { spawnSync } from 'node:child_process'
 import {
@@ -28,7 +28,7 @@ let CLI = ''
 beforeAll(async () => {
   outDir = realpathSync(mkdtempSync(path.join(tmpdir(), 'mdo cli bundle ')))
   await build({
-    configFile: path.join(ROOT, 'vite.cli.config.ts'),
+    configFile: path.join(ROOT, 'vite.cli.config.mts'),
     logLevel: 'silent',
     build: { outDir, emptyOutDir: true },
   })
@@ -44,6 +44,13 @@ describe('bundle', () => {
     const src = readFileSync(CLI, 'utf8')
     expect(src.startsWith('// Entry point of the `markdown-office` command')).toBe(true)
     expect(src).not.toMatch(/^\s*(import|export)\s/m)
+  })
+
+  it('requires nothing but Node built-ins (node:*), so it runs without node_modules', () => {
+    const src = readFileSync(CLI, 'utf8')
+    const required = [...src.matchAll(/\brequire\(\s*(["'`])(.*?)\1\s*\)/g)].map((m) => m[2])
+    expect(required.length).toBeGreaterThan(0)
+    for (const id of required) expect(id).toMatch(/^node:/)
   })
 })
 
@@ -84,8 +91,8 @@ describe('cli.js', () => {
         '',
       ].join('\r\n'),
     )
-    // The dev layout links cli.js; Windows without symlink rights gets copies (as dev-layout.sh
-    // under Git Bash), so there the scripts sit next to the copy.
+    // A symlinked cli.js (e.g. a hand-made link to a pipeline folder); Windows without symlink
+    // rights gets copies (as dev-layout.sh under Git Bash), so there the scripts sit next to them.
     if (win) {
       copyFileSync(CLI, path.join(layout, 'cli.js'))
       copyFileSync(path.join(real, 'convert.ps1'), path.join(layout, 'convert.ps1'))
@@ -111,7 +118,7 @@ describe('cli.js', () => {
   }
   const lines = (file: string) =>
     readFileSync(file, 'utf8')
-      .replace(/^﻿/, '')
+      .replace(/^\uFEFF/, '')
       .split(/\r?\n/)
       .filter((l, i, a) => l !== '' || i < a.length - 1)
 
@@ -181,9 +188,10 @@ describe('cli.js', () => {
     expect(electron).toBe('unset')
   })
 
-  // Dev layout: build/pipeline-dev/pipeline/cli.js is a symlink. The pipeline root is the
-  // symlink's folder (argv[1], not resolved), while build.sh is the one next to the real file —
-  // a decoy build.sh beside the symlink must not run.
+  // Through a symlink (the dev layout linked cli.js before the CLI was bundled; a hand-made link
+  // still works the same way). The pipeline root is the symlink's folder (argv[1], not
+  // resolved), while build.sh is the one next to the real file — a decoy build.sh beside the
+  // symlink must not run.
   it.skipIf(win)('through a symlinked cli.js: root from the link, build.sh from the target', () => {
     writeFileSync(
       path.join(layout, 'build.sh'),
