@@ -9,6 +9,8 @@ files:
   - "out/**"
   - "package.json"
   - "!**/*.map"
+  # The CLI ships only as <resources>/pipeline/cli.js (extraResources), never a second time in app.asar.
+  - "!out/cli/**"
 # Pipeline: scripts/lib from pipeline/, the rest from build/pipeline-assets (npm run assets).
 # ${os}-${arch} expands to mac|win|linux and x64|arm64, matching the folder names there.
 extraResources:
@@ -25,17 +27,20 @@ extraResources:
     to: LICENSE
   - from: build/pipeline-assets/sets
     to: sets
-  # Allowlist: the entry (cli.js), both pipeline scripts, the Typst building blocks (lib/), the
-  # fallback logo build.sh/convert.ps1 look up in the pipeline folder, and the example note.
+  # Allowlist: both pipeline scripts, the Typst building blocks (lib/), the fallback logo
+  # build.sh/convert.ps1 look up in the pipeline folder, and the example note.
   - from: pipeline
     to: pipeline
     filter:
       - build.sh
       - convert.ps1
-      - cli.js
       - "lib/**/*"
       - logo.svg
       - example.md
+  # The entry `markdown-office` runs: the CLI bundled from src/cli/ (npm run build:cli), placed
+  # where installers, shims and the app call it.
+  - from: out/cli/cli.js
+    to: pipeline/cli.js
 # Fails the build when the packed app lacks Typst, fonts, vendor, licences, the memo set or (on
 # Windows/Linux) the bundled dictionaries.
 afterPack: ./scripts/after-pack.mjs

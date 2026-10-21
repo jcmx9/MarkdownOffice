@@ -5,7 +5,7 @@ import {
   isValidDate,
   mergeHeader,
   setDate,
-} from '../../../src/shared/header-merge'
+} from '../../../src/core/header-merge'
 
 const MEMO = [
   '---',

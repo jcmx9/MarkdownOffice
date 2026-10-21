@@ -1,7 +1,7 @@
 import { isAbsolute } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
+import { SET_NAME_RE } from '../core/sets'
 import { Ch } from '../shared/ipc'
-import { SET_NAME_RE } from '../shared/sets'
 import type {
   CreateProfileResult,
   NoteFile,

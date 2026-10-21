@@ -3,8 +3,8 @@ import { redo, selectAll, undo } from '@codemirror/commands'
 import { foldCode, unfoldAll, unfoldCode } from '@codemirror/language'
 import type { EditorState, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { dateIssue } from '../shared/header-merge'
-import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../shared/sets'
+import { dateIssue } from '../core/header-merge'
+import { DEFAULT_SET, SET_NAME_RE, withProfile } from '../core/sets'
 import type {
   ExportResult,
   ExternalChange,
@@ -857,7 +857,7 @@ export class App {
   /**
    * Einfügen → „Vorlage …“: for notes that came from elsewhere. The same picker as „Neu aus
    * Vorlage …“ (set, and profile when the set's header has `profile:`); the set's header is
-   * merged into the note by src/shared/header-merge.ts (no header → on top; else missing keys
+   * merged into the note by src/core/header-merge.ts (no header → on top; else missing keys
    * appended, `template:`/`profile:` set, everything else untouched) as one undo step.
    * Afterwards a wrongly written `date:` gets a notice whose button fixes it (own undo step).
    */

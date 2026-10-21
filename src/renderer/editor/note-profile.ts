@@ -1,5 +1,5 @@
 import type { EditorState, TransactionSpec } from '@codemirror/state'
-import { SET_NAME_RE, withProfile } from '../../shared/sets'
+import { SET_NAME_RE, withProfile } from '../../core/sets'
 import { frontmatterRange } from './frontmatter'
 
 /**

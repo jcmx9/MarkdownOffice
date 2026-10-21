@@ -367,8 +367,9 @@ cd MarkdownOffice
 npm ci
 npm run assets                    # Typst, fonts, packages, set memo; then the dev layout
 npm run dev                       # app with hot reload (macOS: menu bar shows "Markdown Office", via postinstall)
+npm run build:cli                 # build the markdown-office command (src/cli/) into out/cli/cli.js
 npm run lint && npm run typecheck
-npm test                          # unit tests (Vitest, including pipeline/*.test.mjs)
+npm test                          # unit tests (Vitest, tests/unit)
 npm run test:e2e                  # end-to-end (Playwright + Electron; locally only a simulated fullscreen)
 bash pipeline/tests/test-pdf.sh          # pipeline: PDFs of the test notes and the interface (macOS/Linux)
 bash pipeline/tests/test-equivalence.sh  # pipeline: set memo against the reference PDFs
@@ -379,6 +380,8 @@ bash scripts/test-file-manager.sh # "Markdown-PDF" file-manager entry (generator
 
 `npm run assets` downloads the pinned pipeline assets into `build/pipeline-assets/`, verifies every file against its SHA-256 checksum from `scripts/pipeline-assets.json` and builds the development layout `build/pipeline-dev/`, which matches the app's packaged layout. On Windows, `pipeline/tests/test-windows.ps1` checks the pipeline (Windows PowerShell 5.1).
 
+The `markdown-office` command is TypeScript (`src/cli/`, shared logic in `src/core/`) and is bundled into one file. `npm run dev` does not rebuild it: after changes in `src/cli/` or `src/core/`, `npm run build:cli` (or `npm run build`) refreshes the CLI in the dev layout.
+
 In development the app uses its own app data folder `Markdown Office Dev` next to `Markdown Office`, so an installed app and the development build never share settings, session or the single-instance lock. `MDO_USER_DATA` (tests) overrides the folder.
 
 ## Project structure
@@ -388,7 +391,9 @@ src/main/       main process: files, export, session, menu, window
 src/preload/    secure bridge window.mdo
 src/renderer/   editor (CodeMirror 6), tabs, UI
 src/shared/     shared types and IPC channels
-pipeline/       Markdown → PDF/A: cli.js, build.sh, convert.ps1, lib/markdown.typ, tests
+src/core/       shared logic for app, CLI and later MCP (no Electron, no Node modules)
+src/cli/        the markdown-office command (TypeScript, bundled to pipeline/cli.js in the package)
+pipeline/       Markdown → PDF/A: build.sh, convert.ps1, lib/markdown.typ, tests
 scripts/        assets, signing, installation, release
 tests/          unit and end-to-end tests of the editor
 docs/           release workflow

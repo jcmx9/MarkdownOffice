@@ -185,7 +185,7 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
   const insert: MenuItemConstructorOptions = {
     label: 'Einfügen',
     submenu: [
-      // Merges a set's header into notes from elsewhere (src/shared/header-merge.ts); the set
+      // Merges a set's header into notes from elsewhere (src/core/header-merge.ts); the set
       // comes from the picker, so the menu itself names no set.
       item('insert-template', 'Vorlage …'),
       item('insert-pagebreak', 'Seitenumbruch', 'CmdOrCtrl+Enter'),
