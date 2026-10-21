@@ -5,7 +5,7 @@
 // explains itself. Packaging ships out/cli/cli.js as <resources>/pipeline/cli.js
 // (electron-builder.yml); the dev layout gets a copy from this build (devLayoutCopy below).
 // `.mts`: Vite loads a `.ts` config as CommonJS here (no "type": "module") and warns on every build.
-import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +27,12 @@ function headerComment(file: string): string {
  * Git Bash on Windows (ln -s copies there) — rebuilding the CLI now always refreshes it. A former
  * symlink at that place is removed first, so the copy never writes through it. Builds elsewhere
  * (the bundle tests' temp folders) leave the dev layout alone; nothing is created without it.
+ *
+ * "Into <root>/out/cli" is decided on canonical paths: Vite resolves config.root to its real path
+ * (on Windows, after its `net use` probe, with realpathSync.native, which expands 8.3 short names
+ * such as RUNNER~1) but keeps build.outDir as given. A plain string compare then skipped the copy
+ * silently whenever the root was reached through a link or a short name (seen on the Windows CI
+ * runner from the second build of a process on).
  */
 function devLayoutCopy(): Plugin {
   let projectRoot = ''
@@ -39,13 +45,16 @@ function devLayoutCopy(): Plugin {
       outDir = path.resolve(config.root, config.build.outDir)
     },
     closeBundle() {
-      if (outDir !== path.join(projectRoot, 'out', 'cli')) return
       const built = path.join(outDir, 'cli.js')
       const devPipeline = path.join(projectRoot, 'build', 'pipeline-dev', 'pipeline')
       if (!existsSync(built) || !existsSync(devPipeline)) return
+      const ownOut = path.join(projectRoot, 'out', 'cli')
+      if (!existsSync(ownOut) || realpathSync.native(outDir) !== realpathSync.native(ownOut)) return
       const copy = path.join(devPipeline, 'cli.js')
       rmSync(copy, { force: true })
       copyFileSync(built, copy)
+      // Loud instead of a dev layout without cli.js (the exports would fail far from the cause).
+      if (!existsSync(copy)) throw new Error(`dev layout copy missing after the build: ${copy}`)
     },
   }
 }
