@@ -7,7 +7,7 @@ import type { Finding, FindingCode } from './frontmatter-validate'
  */
 const MESSAGES: Record<FindingCode, (f: Finding) => string> = {
   'validate.syntax': (f) =>
-    `Zeile ${f.line}: Diese Zeile ist kein gültiges YAML${f.params.detail ? ` (${f.params.detail})` : ''}.`,
+    `Zeile ${f.line}: Diese Zeile ist kein gültiges YAML${f.params.reason ? ` (${f.params.reason})` : ''}.`,
   'validate.duplicate': (f) =>
     `„${f.key}“ steht mehrfach im Kopf (zuerst in Zeile ${f.params.first ?? '?'}); die Pipeline nimmt die letzte.`,
   'validate.bool': (f) => `„${f.key}“ erwartet true oder false, gefunden: ${f.params.value ?? ''}.`,

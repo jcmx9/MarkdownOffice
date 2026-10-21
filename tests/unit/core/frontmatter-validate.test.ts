@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { combineSchemas, PIPELINE_SCHEMA, parseSchema } from '../../../src/core/frontmatter-schema'
 import {
+  errorCount,
   type Finding,
   type FindingCode,
   noteSet,
   quoteYaml,
   rewriteValue,
+  selectedChanges,
   topLevelValue,
   type ValidationContext,
   validateFrontmatter,
 } from '../../../src/core/frontmatter-validate'
-import { applyChanges } from '../../../src/core/header-merge'
+import { applyChanges, mergeHeader } from '../../../src/core/header-merge'
 import { findingMessage } from '../../../src/core/validate-messages'
 
 const SET = parseSchema(
@@ -98,6 +100,8 @@ describe('bool', () => {
     expect(f.code).toBe('validate.bool')
     expect(f.severity).toBe('warning')
     expect(f.suggestion).toBe(suggestion)
+    const key = line.split(':')[0]
+    expect(applyChanges(note(line), f.changes)).toBe(note(`${key}: ${suggestion}`))
   })
 
   it('has no fix for an unknown word', () => {
@@ -119,14 +123,23 @@ describe('enum', () => {
     expect([f.code, f.severity, f.suggestion]).toEqual(['validate.enum', 'error', 'true'])
   })
 
-  it('lower-cases a wrongly capitalised value', () => {
-    const f = one('toc: Auto')
-    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.enum', 'error', 'auto'])
+  it.each(['toc: Auto', 'h1_break: AUTO'])('%s is a warning (build.sh lower-cases it)', (line) => {
+    const f = one(line)
+    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.enum', 'warning', 'auto'])
+    const key = line.split(':')[0]
+    expect(applyChanges(note(line), f.changes)).toBe(note(`${key}: auto`))
+  })
+
+  it('keeps a case slip in another enum an error', () => {
+    const f = one('lang: DE', langSetCtx)
+    expect([f.code, f.severity, f.suggestion]).toEqual(['validate.enum', 'error', 'de'])
+    expect(applyChanges(note('lang: DE'), f.changes)).toBe(note('lang: de'))
   })
 
   it('takes yes as a warning', () => {
     const f = one('toc: yes')
     expect([f.code, f.severity, f.suggestion]).toEqual(['validate.enum', 'warning', 'true'])
+    expect(applyChanges(note('toc: yes'), f.changes)).toBe(note('toc: true'))
   })
 
   it('has no fix for an unknown value', () => {
@@ -147,6 +160,7 @@ describe('date', () => {
     ['date: 20. Oktober 2026', '2026-10-20'],
     ['date: 5. Mrz 2026', '2026-03-05'],
     ['date: 5. März 2026', '2026-03-05'],
+    ['date: 5. Mär 2026', '2026-03-05'],
     ['date: 13/10/2026', '2026-10-13'],
   ])('%s is an error with a suggestion', (line, iso) => {
     const f = one(line)
@@ -161,6 +175,7 @@ describe('date', () => {
       'warning',
       '2026-01-05',
     ])
+    expect(applyChanges(note('date: 2026-1-5'), f.changes)).toBe(note('date: 2026-01-05'))
   })
 
   it('does not guess an ambiguous D/M/YYYY', () => {
@@ -209,6 +224,7 @@ describe('length', () => {
   it('warns when over the maximum', () => {
     const f = one('logo-height: 30mm')
     expect([f.code, f.severity, f.suggestion]).toEqual(['validate.length.max', 'warning', '25mm'])
+    expect(applyChanges(note('logo-height: 30mm'), f.changes)).toBe(note('logo-height: 25mm'))
   })
 
   it('compares in millimetres across units', () => {
@@ -321,6 +337,7 @@ describe('file, name, lang', () => {
   it('suggests the lower-case language', () => {
     const f = one('lang: DE')
     expect([f.code, f.severity, f.suggestion]).toEqual(['validate.lang', 'error', 'de'])
+    expect(applyChanges(note('lang: DE'), f.changes)).toBe(note('lang: de'))
   })
 
   it('has no fix for de_DE', () => {
@@ -354,9 +371,9 @@ describe('structure of the findings', () => {
   })
 
   it('checks only the last of duplicate keys', () => {
-    const found = check(note('toc: ja', 'toc: auto'))
-    expect(found).toEqual([])
-    expect(check(note('toc: auto', 'toc: ja'))[0]?.line).toBe(3)
+    const values = (text: string) => check(text).filter((f) => f.code !== 'validate.duplicate')
+    expect(values(note('toc: ja', 'toc: auto'))).toEqual([])
+    expect(values(note('toc: auto', 'toc: ja'))[0]?.line).toBe(3)
   })
 
   it('ignores keys not in the schema and nested keys', () => {
@@ -368,13 +385,13 @@ describe('structure of the findings', () => {
   })
 
   it('preselects only findings with a fix', () => {
-    const [a, b] = check(note('toc: ja', 'toc2: x', 'hard_breaks: maybe'))
+    const [a, b] = check(note('toc: ja', 'hard_breaks: maybe'))
     expect(a?.preselected).toBe(true)
     expect(b?.preselected).toBe(false)
   })
 
   it('keeps CRLF per line and the BOM', () => {
-    const text = '﻿---\r\ntitle: Hi\r\ntoc: Auto  # c\r\nlang: DE\n---\r\n\r\nBody\r\n'
+    const text = '﻿---\r\ntitle: Hi\r\ntoc: ja  # c\r\nlang: DE\n---\r\n\r\nBody\r\n'
     const found = check(text)
     expect(found.map((f) => f.line)).toEqual([3, 4])
     expect(
@@ -382,13 +399,13 @@ describe('structure of the findings', () => {
         text,
         found.flatMap((f) => f.changes),
       ),
-    ).toBe('﻿---\r\ntitle: Hi\r\ntoc: auto  # c\r\nlang: de\n---\r\n\r\nBody\r\n')
+    ).toBe('﻿---\r\ntitle: Hi\r\ntoc: true # c\r\nlang: de\n---\r\n\r\nBody\r\n')
   })
 
   it('does not touch the bytes around a fix', () => {
-    const text = note('title: A', 'toc: ja', 'title2: B')
+    const text = note('title: A', 'toc: ja', 'zebra: B')
     const f = check(text)[0] as Finding
-    expect(applyChanges(text, f.changes)).toBe(note('title: A', 'toc: true', 'title2: B'))
+    expect(applyChanges(text, f.changes)).toBe(note('title: A', 'toc: true', 'zebra: B'))
   })
 })
 
@@ -429,6 +446,252 @@ describe('helpers', () => {
     expect(noteSet(note('title: x'))).toBe('memo')
     expect(noteSet('plain')).toBe('memo')
     expect(noteSet(note('template: ./my.typ'))).toBe('')
+  })
+})
+
+const MEMO = [
+  '---',
+  '# Alle Schlüssel: README',
+  'template: memo          # Vorlagen-Set',
+  'title: ""               # Titel',
+  'date: ""                # leer: kein Datum',
+  'lang: de                # de oder en',
+  '---',
+  '',
+].join('\n')
+
+const result = (text: string, ctx: ValidationContext = pipelineCtx) => {
+  const r = validateFrontmatter(text, ctx)
+  if (r.kind !== 'checked') throw new Error(`not checked: ${r.kind}`)
+  return r
+}
+
+describe('syntax', () => {
+  it('quotes a value with a colon', () => {
+    const f = one('title: Kickoff: X')
+    expect([f.code, f.severity, f.line, f.suggestion]).toEqual([
+      'validate.syntax',
+      'error',
+      2,
+      '"Kickoff: X"',
+    ])
+    expect(applyChanges(note('title: Kickoff: X'), f.changes)).toBe(note('title: "Kickoff: X"'))
+  })
+
+  it('reports a tab-indented line without a fix and keeps checking the rest', () => {
+    const found = check(note('title: A', '\tbad: 1', 'toc: ja'))
+    const syntax = found.find((f) => f.code === 'validate.syntax')
+    expect(syntax?.severity).toBe('error')
+    expect(syntax?.params.reason).toBeTruthy()
+    expect(syntax?.changes).toEqual([])
+    expect(found.some((f) => f.code === 'validate.enum')).toBe(true)
+  })
+
+  it('reports an unclosed inline list', () => {
+    const found = check(note('title: A', 'x-attachments: [a, b'), setCtx)
+    const syntax = found.find((f) => f.code === 'validate.syntax')
+    expect(syntax?.severity).toBe('error')
+    expect(syntax?.line).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('duplicates', () => {
+  it('flags the earlier line, deletes it with its block and checks the later value', () => {
+    const text = note('date: 2026-01-05', 'x-to:', '  - A', 'x-to:', '  - B', 'date: 20.10.26')
+    const found = check(text, setCtx)
+    const dups = found.filter((f) => f.code === 'validate.duplicate')
+    expect(dups.map((f) => [f.line, f.key, f.severity, f.params.first])).toEqual([
+      [2, 'date', 'error', '2'],
+      [3, 'x-to', 'error', '3'],
+    ])
+    expect(
+      applyChanges(
+        text,
+        dups.flatMap((f) => f.changes),
+      ),
+    ).toBe(note('x-to:', '  - B', 'date: 20.10.26'))
+    expect(found.find((f) => f.code === 'validate.date.invalid')?.line).toBe(7)
+  })
+})
+
+describe('template and profile', () => {
+  const sets = { ...pipelineCtx, sets: ['memo', 'din5008a'] }
+
+  it('suggests the nearest installed set', () => {
+    const text = note('template: memmo   # set')
+    const f = one('template: memmo   # set', sets)
+    expect([f.code, f.severity, f.suggestion]).toEqual([
+      'validate.template.unknown',
+      'error',
+      'memo',
+    ])
+    expect(applyChanges(text, f.changes)).toBe(note('template: memo    # set'))
+  })
+
+  it('reports an unknown set without a near miss and accepts the rest', () => {
+    const f = one('template: zzzzzz', sets)
+    expect([f.code, f.suggestion, f.changes]).toEqual(['validate.template.unknown', null, []])
+    expect(check(note('template: brief.typ'), sets)).toEqual([])
+    expect(check(note('template: memmo'), pipelineCtx)).toEqual([])
+    expect(check(note('template: memo'), sets)).toEqual([])
+  })
+
+  it('reports a profile that was not found', () => {
+    const ctx: ValidationContext = {
+      ...pipelineCtx,
+      profile: { status: 'missing', searched: ['/a/profiles', '/b/profiles'] },
+    }
+    const f = one('profile: x', ctx)
+    expect([f.code, f.severity, f.changes]).toEqual(['validate.profile.missing', 'error', []])
+    expect(f.params.searched).toBe('/a/profiles\n/b/profiles')
+    expect(findingMessage(f)).toContain('/b/profiles')
+  })
+
+  it('reports an invalid profile and ignores a lookup without a profile key', () => {
+    const ctx = { ...pipelineCtx, profile: { status: 'invalid' } as const }
+    expect(one('profile: x y', ctx).code).toBe('validate.profile.invalid')
+    expect(check(note('title: A'), ctx)).toEqual([])
+  })
+})
+
+describe('key typos', () => {
+  it('suggests the schema key as a hint that renames only the key', () => {
+    const text = note('titel: X   # c', 'subtile: Y')
+    const found = check(text)
+    expect(found.map((f) => [f.code, f.severity, f.suggestion, f.preselected])).toEqual([
+      ['validate.key.typo', 'hint', 'title', false],
+      ['validate.key.typo', 'hint', 'subtitle', false],
+    ])
+    expect(
+      applyChanges(
+        text,
+        found.flatMap((f) => f.changes),
+      ),
+    ).toBe(note('title: X   # c', 'subtitle: Y'))
+  })
+
+  it('allows x- keys and distant keys', () => {
+    expect(check(note('x-titel: A', 'foo: B', 'something: C'))).toEqual([])
+  })
+})
+
+describe('nested keys', () => {
+  it('are never duplicates, typos or type findings', () => {
+    const text = note(
+      'x-to:',
+      '  - title: A',
+      '  - B',
+      'title: Top',
+      'map:',
+      '  title: no',
+      '  toc: ja',
+    )
+    expect(check(text, setCtx)).toEqual([])
+  })
+})
+
+describe('missing keys', () => {
+  const ctx = { ...pipelineCtx, header: MEMO }
+
+  it('lists the header keys the note lacks, in header order', () => {
+    const text = note('title: Hi')
+    const r = result(text, ctx)
+    expect(r.missing).toEqual(['template', 'date', 'lang'])
+    const merged = mergeHeader(text, MEMO, { template: 'memo', profile: null })
+    if (merged.kind !== 'merged') throw new Error('not merged')
+    expect(applyChanges(text, r.missingChanges)).toBe(applyChanges(text, merged.changes))
+    expect(applyChanges(text, r.missingChanges)).toBe(
+      note(
+        'title: Hi',
+        'template: memo          # Vorlagen-Set',
+        'date: ""                # leer: kein Datum',
+        'lang: de                # de oder en',
+      ),
+    )
+  })
+
+  it('never rewrites an existing template', () => {
+    const text = note('template:   "memo"', 'title: Hi')
+    const r = result(text, ctx)
+    expect(applyChanges(text, r.missingChanges)).not.toContain('template: memo')
+    expect(r.missing).toEqual(['date', 'lang'])
+  })
+
+  it('is empty without a header or when nothing is missing', () => {
+    expect(result(note('title: Hi')).missing).toEqual([])
+    const full = note('template: memo', 'title: A', 'date: ""', 'lang: de')
+    expect(result(full, ctx)).toMatchObject({ missing: [], missingChanges: [] })
+  })
+
+  it('handles a BOM and CRLF', () => {
+    const text = '\uFEFF---\r\ntitle: Hi\r\n---\r\n\r\nBody\r\n'
+    const r = result(text, ctx)
+    expect(applyChanges(text, r.missingChanges)).toBe(
+      '\uFEFF---\r\ntitle: Hi\r\ntemplate: memo          # Vorlagen-Set\r\ndate: ""                # leer: kein Datum\r\nlang: de                # de oder en\r\n---\r\n\r\nBody\r\n',
+    )
+  })
+})
+
+describe('CRLF and mixed line ends', () => {
+  const lines = ['title: Hi', 'toc: ja', 'toc: auto', 'titel: X', 'date: 20.10.26']
+  const lf = note(...lines)
+  const crlf = lf.replace(/\n/g, '\r\n')
+
+  it('gives the same findings for CRLF', () => {
+    const strip = (fs: Finding[]) => fs.map((f) => [f.id, f.severity])
+    expect(strip(check(crlf))).toEqual(strip(check(lf)))
+  })
+
+  it("keeps every untouched byte and each rewritten line's CR", () => {
+    const mixed = '---\r\ntitle: Hi\r\ndate: 20.10.26  # d\r\nlang: DE\n---\n\nBody\n'
+    const r = result(mixed)
+    const ids = new Set(r.findings.filter((f) => f.preselected).map((f) => f.id))
+    expect(applyChanges(mixed, selectedChanges(r, ids, false))).toBe(
+      '---\r\ntitle: Hi\r\ndate: 2026-10-20 # d\r\nlang: de\n---\n\nBody\n',
+    )
+  })
+})
+
+describe('overlapping fixes', () => {
+  it('keeps one fix per line', () => {
+    const f = check(note('title: Kickoff: no'))
+    expect(f.filter((x) => x.changes.length > 0).length).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('selectedChanges and errorCount', () => {
+  const text = note('title: A', 'toc: ja', 'toc: true', 'date: 20.10.26', 'lang: DE', 'titel: B')
+  const ctx = { ...pipelineCtx, header: MEMO }
+  const r = result(text, ctx)
+
+  it('applies all preselected fixes plus the missing keys in one go, in any order', () => {
+    const ids = new Set(r.findings.filter((f) => f.preselected).map((f) => f.id))
+    const all = selectedChanges(r, ids, true)
+    const combined = applyChanges(text, all)
+    const sequential = [...all]
+      .sort((a, b) => a.from - b.from)
+      .reduceRight((acc, c) => applyChanges(acc, [c]), text)
+    expect(combined).toBe(sequential)
+    expect(combined).toContain('date: 2026-10-20')
+    expect(combined).toContain('lang: de')
+    expect(combined).toContain('template: memo')
+    expect(combined).toContain('titel: B') // a hint is not preselected
+  })
+
+  it('selects by id and skips the missing keys unless asked', () => {
+    const first = r.findings[0] as Finding
+    expect(selectedChanges(r, new Set([first.id]), false)).toEqual(first.changes)
+    expect(selectedChanges(r, new Set(), false)).toEqual([])
+    expect(selectedChanges(r, new Set(), true)).toEqual(r.missingChanges)
+    expect(selectedChanges({ kind: 'none' }, new Set(['x']), true)).toEqual([])
+  })
+
+  it('counts only errors', () => {
+    const errors = r.findings.filter((f) => f.severity === 'error').length
+    expect(errors).toBeGreaterThan(0)
+    expect(errors).toBeLessThan(r.findings.length)
+    expect(errorCount(r)).toBe(errors)
+    expect(errorCount({ kind: 'unclosed' })).toBe(0)
   })
 })
 

@@ -12,13 +12,14 @@
  * (the pipeline ignores them). Only column-0 keys count; nested lines are only looked at to
  * count the items of a block list.
  */
-import { load, YAML11_SCHEMA } from 'js-yaml'
+import { load, YAML11_SCHEMA, YAMLException } from 'js-yaml'
 import type { FieldRule, Schema } from './frontmatter-schema'
 import {
   closingFence,
   isValidDate,
   KEY,
   lineStarts,
+  mergeHeader,
   stripCr,
   type TextChange,
 } from './header-merge'
@@ -31,7 +32,7 @@ export type Severity = 'error' | 'warning' | 'hint'
 /**
  * Every finding kind. `params` per code (all values are strings; `value` = the value as
  * written, `key` is the finding's own field):
- * - validate.syntax: `detail` (what the line is)
+ * - validate.syntax: `reason` (js-yaml's wording)
  * - validate.duplicate: `first` (line of the first occurrence)
  * - validate.bool: `value`
  * - validate.enum: `value`, `allowed` (comma-separated)
@@ -144,6 +145,8 @@ interface Entry {
   raw: string
   /** Continuation lines (indented lines, `- ` items) below the key, without `\r`. */
   block: string[]
+  /** Index of the line after the key's last continuation line (the key's own end). */
+  end: number
 }
 
 const CONTINUATION = /^([ \t]|- |-$)/
@@ -156,12 +159,14 @@ function topLevelEntries(fm: FrontMatter): Entry[] {
     const m = KEY.exec(stripCr(text))
     if (!m?.[1]) continue
     const block: string[] = []
+    let end = i + 1
     for (let j = i + 1; j < fm.close; j++) {
       const l = stripCr(fm.lines[j] ?? '')
       if (KEY.test(l)) break
       if (/^\s*(#.*)?$/.test(l)) continue
       if (!CONTINUATION.test(l)) break
       block.push(l)
+      end = j + 1
     }
     out.push({
       key: m[1],
@@ -170,6 +175,7 @@ function topLevelEntries(fm: FrontMatter): Entry[] {
       start: fm.starts[i] ?? 0,
       raw: stripCr(text).slice(m[1].length + 1),
       block,
+      end,
     })
   }
   return out
@@ -283,7 +289,12 @@ function checkEnum(s: Subject): Verdict | null {
     if (v !== 'ok' && v.suggestion) return { ...v, params }
   }
   const same = values.find((x) => x.toLowerCase() === s.value.toLowerCase())
-  if (same) return verdict('validate.enum', 'error', params, same)
+  // build.sh lower-cases toc/h1_break before it matches `auto`, so `Auto` works: not canonical
+  // (a warning), unlike a case slip in any other enum, which the set would not read.
+  if (same) {
+    const pipelineAccepts = same === 'auto' && (s.entry.key === 'toc' || s.entry.key === 'h1_break')
+    return verdict('validate.enum', pipelineAccepts ? 'warning' : 'error', params, same)
+  }
   return verdict('validate.enum', 'error', params)
 }
 
@@ -293,6 +304,7 @@ const MONTHS: Record<string, number> = {
   februar: 2,
   feb: 2,
   märz: 3,
+  mär: 3,
   maerz: 3,
   mrz: 3,
   april: 4,
@@ -483,30 +495,49 @@ const CHECKS: Record<FieldRule['type'], (s: Subject) => Verdict | null> = {
   lang: checkLang,
 }
 
+function makeFinding(
+  code: FindingCode,
+  severity: Severity,
+  line: number,
+  key: string,
+  params: Record<string, string>,
+  suggestion: string | null,
+  changes: TextChange[],
+): Finding {
+  return {
+    id: `${code}:${line}:${key}`,
+    code,
+    severity,
+    line,
+    key,
+    params,
+    suggestion,
+    changes,
+    preselected: changes.length > 0 && severity !== 'hint',
+  }
+}
+
+/** The change that replaces a whole key line with `value` written in (comment and `\r` kept). */
+function rewriteChange(entry: Entry, value: string): TextChange {
+  return {
+    from: entry.start,
+    to: entry.start + entry.text.length,
+    insert: rewriteValue(entry.text, entry.key, value),
+  }
+}
+
 /** Builds the finding of a verdict: the fix replaces the whole line, comment and `\r` kept. */
 function toFinding(entry: Entry, v: Verdict): Finding {
-  const line = entry.index + 1
-  const changes: TextChange[] =
-    v.write === undefined
-      ? []
-      : [
-          {
-            from: entry.start,
-            to: entry.start + entry.text.length,
-            insert: rewriteValue(entry.text, entry.key, v.write),
-          },
-        ]
-  return {
-    id: `${v.code}:${line}:${entry.key}`,
-    code: v.code,
-    severity: v.severity,
-    line,
-    key: entry.key,
-    params: v.params,
-    suggestion: v.suggestion,
+  const changes = v.write === undefined ? [] : [rewriteChange(entry, v.write)]
+  return makeFinding(
+    v.code,
+    v.severity,
+    entry.index + 1,
+    entry.key,
+    v.params,
+    v.suggestion,
     changes,
-    preselected: changes.length > 0 && v.severity !== 'hint',
-  }
+  )
 }
 
 /** The value checks of every key the schema knows (the last of duplicates, nested keys skipped). */
@@ -527,12 +558,253 @@ function valueFindings(entries: readonly Entry[], schema: Schema): Finding[] {
   return out
 }
 
+// --- Structure ------------------------------------------------------------------------
+
+/** The header's lines between the fences, `\r` stripped, joined for the YAML parser. */
+function headerBody(fm: FrontMatter): string {
+  return fm.lines.slice(1, fm.close).map(stripCr).join('\n')
+}
+
+/** js-yaml's complaint about `body`, or null. `json: true` keeps duplicates from being one. */
+function yamlError(body: string): { line: number; reason: string } | null {
+  try {
+    load(body, { json: true })
+    return null
+  } catch (e) {
+    if (!(e instanceof YAMLException)) return null
+    return { line: (e.mark?.line ?? 0) + 2, reason: e.reason }
+  }
+}
+
+/**
+ * The header is not valid YAML. The usual cause is an unquoted `: ` in a value; when quoting the
+ * value of that key line removes the error, that is the fix, otherwise there is none.
+ */
+function syntaxFindings(fm: FrontMatter, entries: readonly Entry[]): Finding[] {
+  const err = yamlError(headerBody(fm))
+  if (!err) return []
+  // An error at the very end (an unclosed list) points past the last line: clamp into the header.
+  const line = Math.min(err.line, fm.close)
+  const entry = entries.find((e) => e.index + 1 === line)
+  let suggestion: string | null = null
+  const changes: TextChange[] = []
+  if (entry) {
+    const { value } = splitValue(entry.raw)
+    const plain = value.trim()
+    if (plain !== '' && !/^["'[{|>&*!]/.test(plain)) {
+      const fixed = rewriteValue(entry.text, entry.key, quoteYaml(plain))
+      const lines = fm.lines.slice(1, fm.close).map(stripCr)
+      lines[entry.index - 1] = stripCr(fixed)
+      const after = yamlError(lines.join('\n'))
+      if (!after || after.line !== err.line) {
+        suggestion = quoteYaml(plain)
+        changes.push(rewriteChange(entry, suggestion))
+      }
+    }
+  }
+  return [
+    makeFinding(
+      'validate.syntax',
+      'error',
+      line,
+      entry?.key ?? '',
+      { reason: err.reason },
+      suggestion,
+      changes,
+    ),
+  ]
+}
+
+/** A repeated key: every occurrence but the last is dead; the fix deletes it with its block. */
+function duplicateFindings(fm: FrontMatter, entries: readonly Entry[]): Finding[] {
+  const last = new Map<string, Entry>()
+  const first = new Map<string, Entry>()
+  for (const e of entries) {
+    last.set(e.key, e)
+    if (!first.has(e.key)) first.set(e.key, e)
+  }
+  const out: Finding[] = []
+  for (const e of entries) {
+    if (last.get(e.key) === e) continue
+    const to = fm.starts[e.end] ?? e.start + e.text.length
+    out.push(
+      makeFinding(
+        'validate.duplicate',
+        'error',
+        e.index + 1,
+        e.key,
+        { first: String((first.get(e.key)?.index ?? e.index) + 1) },
+        null,
+        [{ from: e.start, to, insert: '' }],
+      ),
+    )
+  }
+  return out
+}
+
+/** Damerau-Levenshtein distance (adjacent swaps count once), case-insensitive. */
+function distance(a: string, b: string): number {
+  const x = a.toLowerCase()
+  const y = b.toLowerCase()
+  const d: number[][] = Array.from({ length: x.length + 1 }, (_, i) => [
+    i,
+    ...Array<number>(y.length).fill(0),
+  ])
+  for (let j = 0; j <= y.length; j++) (d[0] as number[])[j] = j
+  for (let i = 1; i <= x.length; i++) {
+    for (let j = 1; j <= y.length; j++) {
+      const cost = x[i - 1] === y[j - 1] ? 0 : 1
+      const row = d[i] as number[]
+      row[j] = Math.min(
+        ((d[i - 1] as number[])[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        ((d[i - 1] as number[])[j - 1] as number) + cost,
+      )
+      if (i > 1 && j > 1 && x[i - 1] === y[j - 2] && x[i - 2] === y[j - 1]) {
+        row[j] = Math.min(row[j] as number, ((d[i - 2] as number[])[j - 2] as number) + 1)
+      }
+    }
+  }
+  return (d[x.length] as number[])[y.length] as number
+}
+
+/** The nearest of `candidates` within `max` edits, or null; the first of equals wins. */
+function nearest(word: string, candidates: readonly string[], max: number): string | null {
+  let best: string | null = null
+  let bestDistance = max + 1
+  for (const c of candidates) {
+    const dist = distance(word, c)
+    if (dist < bestDistance) [best, bestDistance] = [c, dist]
+  }
+  return best
+}
+
+/** Keys that look like a misspelt schema key (hint). `x-` keys and distant keys are the user's. */
+function typoFindings(entries: readonly Entry[], schema: Schema): Finding[] {
+  const known = Object.keys(schema.keys)
+  const out: Finding[] = []
+  for (const e of lastEntries(entries)) {
+    if (e.key.length < 4 || e.key.startsWith('x-') || schema.keys[e.key]) continue
+    const similar = nearest(e.key, known, 2)
+    if (!similar) continue
+    const to = e.start + e.key.length
+    out.push(
+      makeFinding('validate.key.typo', 'hint', e.index + 1, e.key, { similar }, similar, [
+        { from: e.start, to, insert: similar },
+      ]),
+    )
+  }
+  return out
+}
+
+/** The set the note names must be installed; a near miss is the suggestion. */
+function templateFindings(entries: readonly Entry[], sets: readonly string[] | null): Finding[] {
+  if (sets === null) return []
+  const e = lastEntries(entries).find((x) => x.key === 'template')
+  if (!e) return []
+  const value = splitValue(e.raw).value.trim()
+  if (value === '' || value.endsWith('.typ') || sets.includes(value)) return []
+  const similar = nearest(value, sets, 2)
+  const changes = similar ? [rewriteChange(e, similar)] : []
+  return [
+    makeFinding(
+      'validate.template.unknown',
+      'error',
+      e.index + 1,
+      'template',
+      { value },
+      similar,
+      changes,
+    ),
+  ]
+}
+
+/** An unresolved `profile:` is an error: the export would stop on it. No automatic fix. */
+function profileFindings(entries: readonly Entry[], profile: ProfileLookup | null): Finding[] {
+  if (!profile || profile.status === 'found') return []
+  const e = lastEntries(entries).find((x) => x.key === 'profile')
+  if (!e) return []
+  const value = splitValue(e.raw).value.trim()
+  if (value === '') return []
+  const params: Record<string, string> =
+    profile.status === 'missing' ? { value, searched: profile.searched.join('\n') } : { value }
+  const code =
+    profile.status === 'missing' ? 'validate.profile.missing' : 'validate.profile.invalid'
+  return [makeFinding(code, 'error', e.index + 1, 'profile', params, null, [])]
+}
+
+/**
+ * Two fixes must never touch the same bytes (one transaction applies them all). The first
+ * finding in the list keeps its fix; a later one that overlaps loses it and is reported
+ * without one, so the user sees it after the first is applied and the note re-checked.
+ */
+function dropOverlaps(findings: Finding[]): Finding[] {
+  const taken: TextChange[] = []
+  return findings.map((f) => {
+    const clash = f.changes.some((c) => taken.some((t) => c.from < t.to && t.from < c.to))
+    if (clash) return { ...f, changes: [], suggestion: null, preselected: false }
+    taken.push(...f.changes)
+    return f
+  })
+}
+
+/**
+ * The set's header keys the note lacks, appended at the closing fence by `mergeHeader`. Only
+ * its insertion is used: `template:` is never rewritten here (a wrong one is its own finding).
+ */
+function missingKeys(
+  note: string,
+  header: string | null,
+): { missing: string[]; missingChanges: TextChange[] } {
+  const none = { missing: [], missingChanges: [] }
+  if (header === null) return none
+  // mergeHeader's fence test does not know a BOM: hand it the text without and shift back.
+  const shift = note.startsWith(BOM) ? BOM.length : 0
+  const merged = mergeHeader(note.slice(shift), header, { template: noteSet(note), profile: null })
+  if (merged.kind !== 'merged') return none
+  const inserts = merged.changes.filter((c) => c.from === c.to)
+  return {
+    missing: inserts.length > 0 ? merged.added : [],
+    missingChanges: inserts.map((c) => ({ ...c, from: c.from + shift, to: c.to + shift })),
+  }
+}
+
 /** Validates the note's front matter against `ctx.schema`; see the module comment. */
 export function validateFrontmatter(note: string, ctx: ValidationContext): ValidationResult {
   const fm = readFrontMatter(note)
   if (fm === 'none') return { kind: 'none' }
   if (fm === 'unclosed') return { kind: 'unclosed' }
   const entries = topLevelEntries(fm)
-  const findings = [...valueFindings(entries, ctx.schema)]
-  return { kind: 'checked', findings, missing: [], missingChanges: [] }
+  // Order = priority when two fixes touch the same line (see dropOverlaps).
+  const all = [
+    ...duplicateFindings(fm, entries),
+    ...valueFindings(entries, ctx.schema),
+    ...templateFindings(entries, ctx.sets),
+    ...profileFindings(entries, ctx.profile),
+    ...typoFindings(entries, ctx.schema),
+    ...syntaxFindings(fm, entries),
+  ]
+  const findings = dropOverlaps(all).sort((a, b) => a.line - b.line)
+  return { kind: 'checked', findings, ...missingKeys(note, ctx.header) }
+}
+
+/**
+ * The text changes of the chosen findings (by id) and, when `addMissing`, the missing-key
+ * insertion. Findings never overlap (`dropOverlaps`), so the changes apply in any order.
+ */
+export function selectedChanges(
+  result: ValidationResult,
+  ids: ReadonlySet<string>,
+  addMissing: boolean,
+): TextChange[] {
+  if (result.kind !== 'checked') return []
+  const out = result.findings.filter((f) => ids.has(f.id)).flatMap((f) => f.changes)
+  if (addMissing) out.push(...result.missingChanges)
+  return out
+}
+
+/** Findings that make the pipeline ignore, misread or fail on the note (not warnings, hints). */
+export function errorCount(result: ValidationResult): number {
+  if (result.kind !== 'checked') return 0
+  return result.findings.filter((f) => f.severity === 'error').length
 }
