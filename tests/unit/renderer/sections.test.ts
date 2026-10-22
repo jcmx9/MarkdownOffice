@@ -1,18 +1,18 @@
 // @vitest-environment happy-dom
-import { codeFolding, ensureSyntaxTree, foldEffect, foldedRanges } from '@codemirror/language'
+import { codeFolding, foldEffect, foldedRanges } from '@codemirror/language'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 import { headerFold, headerHidden } from '../../../src/renderer/editor/header'
 import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
 import { sectionFoldRanges, unfoldOnCursor } from '../../../src/renderer/editor/sections'
+import { parsed } from './parsed'
 
 function state(doc: string): EditorState {
   const s = EditorState.create({
     doc,
     extensions: mdoMarkdown(),
   })
-  ensureSyntaxTree(s, s.doc.length, 5000)
-  return s
+  return parsed(s)
 }
 
 describe('sectionFoldRanges', () => {
@@ -64,8 +64,7 @@ describe('unfoldOnCursor', () => {
       doc,
       extensions: [codeFolding(), ...(ext as []), mdoMarkdown(), ...(extra as [])],
     })
-    ensureSyntaxTree(s, s.doc.length, 5000)
-    return s
+    return parsed(s)
   }
   const foldAll = (s: EditorState) =>
     s.update({ effects: sectionFoldRanges(s).map((r) => foldEffect.of(r)) }).state
