@@ -227,11 +227,14 @@ jobs:
           if ($head -ne '%PDF-') { throw "not a PDF: $head" }
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        # Only a failed run needs its traces and screenshots, and only until it is looked at:
+        # uploading every run for 90 days filled the account's Actions storage (2026-10-22).
+        if: failure()
         with:
           name: e2e-${{ matrix.os }}
           path: test-results/
           if-no-files-found: ignore
+          retention-days: 7
 
   # Installs the freshly packaged app with scripts/bootstrap.{sh,ps1} (MDO_ARCHIVE) into an
   # isolated temp profile, checks the installed markdown-office command (PDF from a note in a
