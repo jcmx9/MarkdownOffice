@@ -104,6 +104,8 @@ New notes go to the default folder `~/Documents/Markdown Office/` (Windows: in t
 
 The preview uses the PDF's bundled fonts; if a font file is missing, it falls back to system fonts. Body text is justified as in the PDF, but without hyphenation; Typst hyphenates only on export. Mod+E saves the note and exports it with the pipeline; the PDF lands next to the note (named as by the [command](#the-markdown-office-command)) and opens in the default viewer.
 
+Font, sizes, text width and the blocks above and below the text (such as a letter's sender, address, subject and closing) come from the note's set in the preview: from `name.css` and `name.preview.yaml` (see [Template sets](#template-sets) and TEMPLATES.md). Sets without these files look like `memo`. At 100 % zoom the preview matches the paper size (11 pt is 11 pt, 165 mm is 165 mm); zoom and the Present factor scale all print sizes together.
+
 | Shortcut | Action |
 |----------|--------|
 | Mod+N | New note in the default folder (`YYYY-MM-DD_HH-mm-ss.md`), starting with the YAML header of the set `memo`; the file is only created once you type. Without an open note the button „Neues Memo …“ does the same |
@@ -302,13 +304,14 @@ CommonMark works as usual: `*italic*`, `**bold**`, `` `code` ``, links, lists, q
 
 ## Template sets
 
-A template set defines how a document looks. It consists of up to three files sharing one name:
+A template set defines how a document looks. It consists of up to four files sharing one name:
 
 | File | Purpose | Required |
 |------|---------|----------|
 | `name.typ` | Typst template for the PDF | yes |
 | `name.header.md` | Front-matter template with all keys; contains `template: name` | no |
-| `name.css` | Look in the editor (reserved; the editor does not read it yet) | no |
+| `name.css` | Look of the preview in the editor (font, sizes, text width) | no |
+| `name.preview.yaml` | Blocks above and below the text in the preview (head and foot) | no |
 
 The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 

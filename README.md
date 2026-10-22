@@ -104,6 +104,8 @@ Neue Notizen landen im Standardordner `~/Documents/Markdown Office/` (Windows: i
 
 Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdatei, fällt sie auf Systemschriften zurück. Fließtext wird wie im PDF im Blocksatz gesetzt, aber ohne Silbentrennung; getrennt wird erst beim Export durch Typst. Mod+E speichert die Notiz und exportiert sie mit der Pipeline; das PDF landet neben der Notiz (Name wie beim [Befehl](#befehl-markdown-office)) und öffnet sich im Standardprogramm.
 
+Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Absender, Anschrift, Betreff und Grußformel eines Briefs) übernimmt die Vorschau vom Set der Notiz: aus `name.css` und `name.preview.yaml` (siehe [Vorlagen-Sets](#vorlagen-sets) und TEMPLATES.md). Sets ohne diese Dateien sehen aus wie `memo`. Bei 100 % Zoom entspricht die Vorschau der Papiergröße (11 pt sind 11 pt, 165 mm sind 165 mm); Zoom und Präsentationsfaktor skalieren alle Druckgrößen gemeinsam.
+
 | Kürzel | Aktion |
 |--------|--------|
 | Mod+N | Neue Notiz im Standardordner (`JJJJ-MM-TT_HH-mm-ss.md`), beginnt mit dem YAML-Header des Sets `memo`; die Datei entsteht erst beim ersten Tippen. Ohne offene Notiz macht der Knopf „Neues Memo …“ dasselbe |
@@ -302,13 +304,14 @@ CommonMark funktioniert wie gewohnt: `*kursiv*`, `**fett**`, `` `Code` ``, Links
 
 ## Vorlagen-Sets
 
-Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu drei Dateien mit gemeinsamem Namen:
+Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu vier Dateien mit gemeinsamem Namen:
 
 | Datei | Zweck | Pflicht |
 |-------|-------|---------|
 | `name.typ` | Typst-Vorlage für das PDF | ja |
 | `name.header.md` | Frontmatter-Vorlage mit allen Schlüsseln; enthält `template: name` | nein |
-| `name.css` | Aussehen im Editor (reserviert; der Editor liest es noch nicht) | nein |
+| `name.css` | Aussehen der Vorschau im Editor (Schrift, Größen, Satzbreite) | nein |
+| `name.preview.yaml` | Blöcke über und unter dem Text in der Vorschau (Kopf und Fuß) | nein |
 
 Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
 
