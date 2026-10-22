@@ -66,7 +66,7 @@ import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
 import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
 import { openValidateDialog } from './ui/validate-dialog'
-import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
+import { editorScale, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
 import { LatestToggle, SerialQueue } from './util/serial'
@@ -541,9 +541,10 @@ export class App {
 
   /** Scales the editor via CSS custom properties (never Electron page zoom). */
   private applyZoom(): void {
-    const { body, code } = editorSizes(this.mode, this.zoom[this.mode], this.presentFactor)
-    this.root.editor.style.setProperty('--mdo-body-size', body)
-    this.root.editor.style.setProperty('--mdo-code-size', code)
+    // Only the factor is set inline: the sizes are theme/set tokens built on it, so a set's
+    // own --mdo-body-size is not overridden by an inline value.
+    const scale = editorScale(this.mode, this.zoom[this.mode], this.presentFactor)
+    this.root.editor.style.setProperty('--mdo-scale', String(scale))
     // The outline follows the zoom of the mode, not Present's larger text factor.
     this.root.outline.style.setProperty('--mdo-ol-zoom', String(this.zoom[this.mode]))
     this.editor.requestMeasure()

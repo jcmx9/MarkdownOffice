@@ -3,6 +3,13 @@
  * set (memo.typ), from which this stylesheet was originally derived.
  * Weights are nominal (400/500/600): Chromium draws the variable Source
  * fonts lighter than PDF viewers, the set sets its PDF slightly below.
+ *
+ * The set-dependent values are the --mdo-* set tokens on .cm-editor (block
+ * "set tokens" below): memo's values are the defaults, a set's <name>.css
+ * overrides them for its notes. Print lengths are written
+ * calc(<len> * var(--mdo-scale, 1)); --mdo-scale is the one zoom factor the
+ * app sets on #editor (zoom × Present factor), so at zoom 1 a set's 11pt is
+ * 11 CSS pt and every size scales together.
  */
 
 :root {
@@ -37,17 +44,51 @@
   --mdo-syntax-keyword: #d73a49;
   --mdo-syntax-function: #4b69c6;
   --mdo-syntax-number: #b60157;
-
-  /* template.typ: body 10pt; Plan 3 scales this for zoom/Present */
-  --mdo-body-size: 10pt;
-  /* memo text block: A4 minus margins 35 mm + 30 mm = 145 mm = 41.1em at 10pt; the width the
-     text breaks in, scaled with the body size (zoom). */
-  --mdo-measure: 41.1em;
 }
 
 /* ── shared editor chrome ─────────────────────────────────────────────── */
 
 .cm-editor {
+  /* set tokens: begin */
+  /* memo body: Source Sans 10pt, line height 1.5, justified */
+  --mdo-body-font: var(--mdo-font-sans);
+  --mdo-body-size: calc(10pt * var(--mdo-scale, 1));
+  --mdo-body-weight: 400;
+  --mdo-bold-weight: 600;
+  --mdo-line-height: 1.5;
+  --mdo-align: justify;
+  /* the blank line between paragraphs carries the paragraph gap */
+  --mdo-par-gap: 1.1em;
+  /* memo text block: A4 minus margins 35 mm + 30 mm = 145 mm, the width the text breaks in */
+  --mdo-measure: calc(145mm * var(--mdo-scale, 1));
+  /* headings: Source Serif, flush left; H1 14pt with a hairline under it, H2 12pt, H3 10pt
+     underlined */
+  --mdo-heading-font: var(--mdo-font-serif);
+  --mdo-heading-align: left;
+  --mdo-h1-font: var(--mdo-heading-font);
+  --mdo-h2-font: var(--mdo-heading-font);
+  --mdo-h3-font: var(--mdo-heading-font);
+  --mdo-h1-size: calc(14pt * var(--mdo-scale, 1));
+  --mdo-h2-size: calc(12pt * var(--mdo-scale, 1));
+  --mdo-h3-size: calc(10pt * var(--mdo-scale, 1));
+  --mdo-h1-weight: 560;
+  --mdo-h2-weight: 560;
+  --mdo-h3-weight: 400;
+  --mdo-h1-color: var(--mdo-heading);
+  --mdo-h2-color: var(--mdo-heading);
+  --mdo-h3-color: var(--mdo-heading);
+  --mdo-h1-rule: var(--mdo-hairline);
+  --mdo-h3-decoration: underline;
+  /* tables: 9pt medium, slightly tighter tracking in the rendered table */
+  --mdo-table-font: var(--mdo-body-font);
+  --mdo-table-size: calc(9pt * var(--mdo-scale, 1));
+  --mdo-table-weight: 500;
+  --mdo-table-tracking: -0.02em;
+  /* code blocks 9pt (inline code stays 0.9em of the surrounding text) */
+  --mdo-code-size: calc(9pt * var(--mdo-scale, 1));
+  --mdo-titleblock-align: center;
+  /* set tokens: end */
+
   background: var(--mdo-bg);
   color: var(--mdo-text);
 }
@@ -72,7 +113,8 @@
 
 .mdo-code .cm-scroller {
   font-family: var(--mdo-font-code);
-  font-size: var(--mdo-code-size, 9pt);
+  /* The raw source is not set-styled: always 9pt, only scaled by the zoom. */
+  font-size: calc(9pt * var(--mdo-scale, 1));
   line-height: 1.5;
 }
 .mdo-code .mdo-tok-heading {
@@ -96,10 +138,10 @@
 /* ── Preview: the PDF look ─────────────────────────────────────────────── */
 
 .mdo-preview .cm-scroller {
-  font-family: var(--mdo-font-sans);
+  font-family: var(--mdo-body-font);
   font-size: var(--mdo-body-size);
-  line-height: 1.5;
-  font-weight: 400;
+  line-height: var(--mdo-line-height);
+  font-weight: var(--mdo-body-weight);
   font-variant-numeric: oldstyle-nums proportional-nums;
 }
 .mdo-preview .cm-content {
@@ -111,27 +153,36 @@
 }
 /* memo set: par(justify: true). Typst hyphenates in the PDF; the editor never does. */
 .mdo-preview .cm-line {
-  text-align: justify;
+  text-align: var(--mdo-align);
   hyphens: manual;
 }
 
-/* Headings: serif, flush-left */
+/* Headings: serif, flush-left (H4–H6 follow the heading font at body size, italic) */
 .mdo-preview .cm-line:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
-  font-family: var(--mdo-font-serif);
+  font-family: var(--mdo-heading-font);
   color: var(--mdo-heading);
   font-weight: 560;
-  text-align: left;
+  text-align: var(--mdo-heading-align);
   hyphens: manual;
 }
 .mdo-preview .cm-line.mdo-h1 {
-  font-size: 1.4em;
+  font-family: var(--mdo-h1-font);
+  font-size: var(--mdo-h1-size);
+  font-weight: var(--mdo-h1-weight);
+  color: var(--mdo-h1-color);
 }
 .mdo-preview .cm-line.mdo-h2 {
-  font-size: 1.2em;
+  font-family: var(--mdo-h2-font);
+  font-size: var(--mdo-h2-size);
+  font-weight: var(--mdo-h2-weight);
+  color: var(--mdo-h2-color);
 }
 .mdo-preview .cm-line.mdo-h3 {
-  font-weight: 400;
-  text-decoration: underline;
+  font-family: var(--mdo-h3-font);
+  font-size: var(--mdo-h3-size);
+  font-weight: var(--mdo-h3-weight);
+  color: var(--mdo-h3-color);
+  text-decoration: var(--mdo-h3-decoration);
   text-decoration-thickness: 0.5pt;
   text-underline-offset: 2pt;
 }
@@ -142,7 +193,7 @@
 
 /* Spacing like the PDF: a blank line between paragraphs carries the paragraph gap */
 .mdo-preview .cm-line:has(> br:only-child) {
-  line-height: 1.1em;
+  line-height: var(--mdo-par-gap);
 }
 
 /*
@@ -173,7 +224,7 @@
    */
   padding-bottom: calc(1.49em - 0.427 * var(--mdo-body-size));
   background:
-    linear-gradient(var(--mdo-hairline), var(--mdo-hairline)) left bottom
+    linear-gradient(var(--mdo-h1-rule), var(--mdo-h1-rule)) left bottom
     calc(0.6em - 0.427 * var(--mdo-body-size)) / 100% 0.6pt no-repeat;
 }
 .mdo-preview .cm-line.mdo-h2 {
@@ -217,7 +268,7 @@
   color: var(--mdo-faint);
 }
 .mdo-preview .mdo-strong {
-  font-weight: 600;
+  font-weight: var(--mdo-bold-weight);
 }
 .mdo-preview .mdo-em {
   font-style: italic;
@@ -347,8 +398,9 @@
 
 /* Tables: 9pt medium, lining tabular figures, stripes, rule under head */
 .mdo-preview .cm-line:is(.mdo-table-head, .mdo-table-row, .mdo-table-delim) {
-  font-size: 0.9em;
-  font-weight: 500;
+  font-family: var(--mdo-table-font);
+  font-size: var(--mdo-table-size);
+  font-weight: var(--mdo-table-weight);
   font-variant-numeric: lining-nums tabular-nums;
   text-align: left;
   hyphens: manual;
@@ -375,9 +427,10 @@
 }
 .mdo-preview table.mdo-table {
   border-collapse: collapse;
-  font-size: 0.9em;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-family: var(--mdo-table-font);
+  font-size: var(--mdo-table-size);
+  font-weight: var(--mdo-table-weight);
+  letter-spacing: var(--mdo-table-tracking);
   font-variant-numeric: lining-nums tabular-nums;
   text-align: left;
   hyphens: manual;
@@ -424,7 +477,7 @@
 /* Code blocks: 9pt code font on light grey, Typst syntax colours */
 .mdo-preview .cm-line:is(.mdo-codeblock, .mdo-codefence) {
   font-family: var(--mdo-font-code);
-  font-size: 0.9em;
+  font-size: var(--mdo-code-size);
   font-variant-numeric: normal;
   background: var(--mdo-code-bg);
   text-align: left;
@@ -463,7 +516,7 @@
 }
 .mdo-preview .mdo-titleblock {
   padding: 0.2em 0 1.6em;
-  text-align: center;
+  text-align: var(--mdo-titleblock-align);
   cursor: default;
 }
 .mdo-preview .mdo-tb-toptitle {
@@ -503,9 +556,11 @@
 
 /* Present: larger text in a calm, centred column; no gutters. Deliberately not the PDF's
    measure: about 60 instead of 82 characters per line, readable for an audience, so line
-   breaks never match the PDF here. */
+   breaks never match the PDF here. !important: a set's measure must not widen it (the set
+   CSS sanitiser strips !important from set rules, so this always wins). */
 .mdo-present .cm-content {
-  max-width: 70ch;
+  /* biome-ignore lint/complexity/noImportantStyles: Present's column must beat a set's measure */
+  max-width: 70ch !important;
   padding-top: 3em;
 }
 .mdo-present .cm-gutters {

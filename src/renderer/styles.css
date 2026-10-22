@@ -158,6 +158,10 @@ dialog.prompt input:focus-visible {
 #editor {
   flex: 1;
   min-width: 0;
+  /* A set's CSS styles the note inside this box only: paint containment clips anything a set
+     rule positions or draws outside it (it cannot cover the outline, tabs or dialogs).
+     CodeMirror detects the containing block this creates, so its tooltips stay in place. */
+  contain: paint;
 }
 /* Drag handle on the outline's left edge (Edit and Present): a 6px strip over the border line. */
 #outline-grip {
