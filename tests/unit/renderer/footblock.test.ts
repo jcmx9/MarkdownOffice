@@ -4,7 +4,11 @@ import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { parsePreviewSpec } from '../../../src/core/preview-spec'
 import { footBlock } from '../../../src/renderer/editor/footblock'
-import { setHeaderHidden } from '../../../src/renderer/editor/header'
+import {
+  headCollapsed,
+  headerToggleSpec,
+  setHeaderHidden,
+} from '../../../src/renderer/editor/header'
 import { modeCompartment, modeExtensions } from '../../../src/renderer/editor/mode'
 import { type PreviewSource, setPreviewSource } from '../../../src/renderer/editor/preview-source'
 import { createState, viewCompartment, viewExtensions } from '../../../src/renderer/editor/setup'
@@ -55,7 +59,8 @@ describe('footBlock', () => {
   it('foot appears after the last line with the header hidden and in Present, never otherwise', () => {
     const v = view(false)
     expect(foot(v)).toBeNull()
-    v.dispatch({ effects: setHeaderHidden.of(true) })
+    // The toggle moves the cursor off the header, as the menu does (the head collapses with it).
+    v.dispatch(headerToggleSpec(v.state, true))
     expect(footAt(v)).toEqual([NOTE.length])
     const el = foot(v)
     expect(el?.querySelector('.mdo-tb-closing')?.textContent).toBe('Gruß')
@@ -110,6 +115,32 @@ describe('footBlock', () => {
     expect(v.state.doc.toString()).toBe(`${NOTE}!`)
     expect(footAt(v)).toEqual([NOTE.length + 1])
     expect(v.contentDOM.lastElementChild).toBe(foot(v))
+    v.destroy()
+  })
+
+  it('a header-only note shows no foot (its header stays open)', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const doc = '---\nx-closing: Gruß\n---'
+    const v = new EditorView({ state: createState(doc, '\n', 'preview', true), parent })
+    v.dispatch({ effects: setPreviewSource.of(source()) })
+    expect(v.contentDOM.querySelector('.mdo-titleblock')).toBeNull()
+    expect(foot(v)).toBeNull()
+    v.destroy()
+  })
+
+  it('follows the head: no foot while the cursor keeps the header open, foot once it leaves', () => {
+    // Header hidden while the cursor is on it (outside Present): the header stays open.
+    const v = view(false)
+    v.dispatch({ selection: { anchor: 0 } })
+    v.dispatch({ effects: setHeaderHidden.of(true) })
+    expect(headCollapsed(v.state)).toBe(false)
+    expect(foot(v)).toBeNull()
+    // A selection change alone (no doc change, no effect) collapses the head and shows the foot.
+    v.dispatch({ selection: { anchor: v.state.doc.length } })
+    expect(headCollapsed(v.state)).toBe(true)
+    expect(footAt(v)).toEqual([NOTE.length])
+    expect(foot(v)).not.toBeNull()
     v.destroy()
   })
 })

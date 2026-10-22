@@ -39,8 +39,9 @@ class TitleBlockWidget extends WidgetType {
   ) {
     super()
   }
-  // By value, so cursor moves (each rebuilds the decoration) keep the same DOM; the signature
-  // by identity: the same data URL string is kept per source, no deep compare of ~256 KiB.
+  // By value, so cursor moves (each rebuilds the decoration) keep the same DOM. `===` on the
+  // signature compares strings by value too; it is cheap because a source keeps one data URL
+  // instance (same reference → immediate match), a changed signature costs one string compare.
   override eq(other: TitleBlockWidget): boolean {
     return (
       other.present === this.present &&
@@ -121,6 +122,14 @@ function clampSelection(tr: Transaction): Transaction | readonly (Transaction | 
     EditorSelection.range(Math.max(r.anchor, min), Math.max(r.head, min))
   const selection = EditorSelection.create(sel.ranges.map(clamp), sel.mainIndex)
   return [tr, { selection, sequential: true }]
+}
+
+/**
+ * True while the preview shows the head block. The foot block reads this same answer (the
+ * decoration itself, O(1)), so it is visible under exactly the head's conditions.
+ */
+export function headCollapsed(state: EditorState): boolean {
+  return collapsedRange(state) !== null
 }
 
 function cursorInCollapsedHeader(state: EditorState): boolean {

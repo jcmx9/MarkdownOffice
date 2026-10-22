@@ -2,8 +2,7 @@ import type { EditorState } from '@codemirror/state'
 import { StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 import type { PreviewBlock } from '../../core/preview-spec'
-import { headerHidden } from './header'
-import { presentMode } from './mode'
+import { headCollapsed } from './header'
 import { noteBlocks, previewSource, setPreviewSource } from './preview-source'
 import { renderBlocks } from './titleblock'
 
@@ -15,7 +14,7 @@ class FootBlockWidget extends WidgetType {
     super()
   }
   override eq(other: FootBlockWidget): boolean {
-    // Signature by identity: the same data URL string is kept per source, no deep compare.
+    // `===` compares the signature by value; cheap because a source keeps one data URL instance.
     return (
       other.signature === this.signature &&
       JSON.stringify(other.blocks) === JSON.stringify(this.blocks)
@@ -31,8 +30,9 @@ class FootBlockWidget extends WidgetType {
 }
 
 function build(state: EditorState): DecorationSet {
-  // Same visibility as the head block: preview with the header hidden, Present always.
-  if (!state.facet(presentMode) && !state.field(headerHidden, false)) return Decoration.none
+  // Exactly the head block's visibility (header hidden or Present, closed front matter with a
+  // body, no selection keeping the header open), so a foot never shows under an open header.
+  if (!headCollapsed(state)) return Decoration.none
   const blocks = noteBlocks(state, 'foot')
   if (!blocks.length) return Decoration.none
   const signature = state.field(previewSource, false)?.signature ?? null
@@ -50,10 +50,11 @@ function build(state: EditorState): DecorationSet {
 export const footBlock: StateField<DecorationSet> = StateField.define<DecorationSet>({
   create: build,
   update(deco, tr) {
-    const flipped = tr.startState.field(headerHidden, false) !== tr.state.field(headerHidden, false)
-    const modeFlipped = tr.startState.facet(presentMode) !== tr.state.facet(presentMode)
+    // Covers header toggle, mode switch, snippet session end and selection moves onto or off
+    // the header; other cursor moves leave the foot alone.
+    const flipped = headCollapsed(tr.startState) !== headCollapsed(tr.state)
     const sourced = tr.effects.some((e) => e.is(setPreviewSource))
-    return tr.docChanged || flipped || modeFlipped || sourced ? build(tr.state) : deco
+    return tr.docChanged || flipped || sourced ? build(tr.state) : deco
   },
   provide: (f) => EditorView.decorations.from(f),
 })
