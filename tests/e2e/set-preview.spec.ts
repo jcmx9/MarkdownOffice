@@ -52,9 +52,33 @@ async function openBrief(settings: Record<string, unknown> = {}) {
 
 /** Leaves Present the way present.spec does: toggled off, then out of the real fullscreen. */
 async function leavePresent(app: ElectronApplication, page: Page): Promise<void> {
-  await clickMenu(app, 'toggle-present')
+  if ((await page.locator('body.mdo-mode-present').count()) > 0) {
+    await clickMenu(app, 'toggle-present')
+  }
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
   if (!linux) await expect.poll(() => fullScreen(app), { timeout: 10_000 }).toBe(false)
+}
+
+/**
+ * Runs `body` in Present and always leaves it again, also when an assertion in `body` fails:
+ * closing an app in a real fullscreen Space is the known trigger of the macOS CI launch hangs
+ * (helpers.ts), and the teardown would otherwise close it there.
+ */
+async function inPresent(
+  app: ElectronApplication,
+  page: Page,
+  body: () => Promise<void>,
+): Promise<void> {
+  await clickMenu(app, 'toggle-present')
+  let passed = false
+  try {
+    await body()
+    passed = true
+  } finally {
+    // After a failure the body's error is the one to report, not a failed leave.
+    if (passed) await leavePresent(app, page)
+    else await leavePresent(app, page).catch(() => {})
+  }
 }
 
 /** Body text measures of the letter's long paragraph (it wraps over several lines). */
@@ -114,22 +138,22 @@ test('a letter set shows head and foot with the header hidden, nothing in Code v
 
 test('Present shows the letter head and foot', async () => {
   const { app, page } = await openBrief()
-  await clickMenu(app, 'toggle-present')
-  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
-  const editor = page.locator('.cm-editor.mdo-present')
-  await expect(editor.locator('.mdo-titleblock .mdo-tb-sender')).toHaveText(
-    'Dr. Erika Muster · Hauptstraße 5 · 01067 Dresden',
-  )
-  await expect(editor.locator('.mdo-titleblock .mdo-tb-subject')).toHaveText('Angebot Nr. 42')
-  await expect(editor.locator('.mdo-footblock .mdo-tb-closing')).toHaveText(
-    'Mit freundlichen Grüßen',
-  )
-  await expect(editor.locator('.mdo-footblock img.mdo-tb-signature')).toHaveCount(1)
-  await expect(editor.locator('.mdo-footblock .mdo-tb-signer')).toHaveText('Dr. Erika Muster')
-  await expect(page.locator('.cm-line.mdo-frontmatter')).toHaveCount(0)
-  if (!linux) await expect.poll(() => fullScreen(app)).toBe(true)
-  await shot(page, 'set-preview-present')
-  await leavePresent(app, page)
+  await inPresent(app, page, async () => {
+    await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+    const editor = page.locator('.cm-editor.mdo-present')
+    await expect(editor.locator('.mdo-titleblock .mdo-tb-sender')).toHaveText(
+      'Dr. Erika Muster · Hauptstraße 5 · 01067 Dresden',
+    )
+    await expect(editor.locator('.mdo-titleblock .mdo-tb-subject')).toHaveText('Angebot Nr. 42')
+    await expect(editor.locator('.mdo-footblock .mdo-tb-closing')).toHaveText(
+      'Mit freundlichen Grüßen',
+    )
+    await expect(editor.locator('.mdo-footblock img.mdo-tb-signature')).toHaveCount(1)
+    await expect(editor.locator('.mdo-footblock .mdo-tb-signer')).toHaveText('Dr. Erika Muster')
+    await expect(page.locator('.cm-line.mdo-frontmatter')).toHaveCount(0)
+    if (!linux) await expect.poll(() => fullScreen(app)).toBe(true)
+    await shot(page, 'set-preview-present')
+  })
   await app.close()
 })
 
@@ -153,27 +177,27 @@ test('zoom 1 is the set print size; a zoom step scales font, line distance and m
 test('Present multiplies by the factor and keeps the 70ch measure', async () => {
   const { app, page } = await openBrief()
   await expect.poll(() => bodySize(page)).toBeCloseTo(BRIEF_SIZE, 1)
-  await clickMenu(app, 'toggle-present')
-  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
-  // Default Present factor 1.6 at Present zoom 100 %.
-  await expect.poll(() => bodySize(page)).toBeCloseTo(BRIEF_SIZE * 1.6, 1)
-  const widths = await page.evaluate(() => {
-    const scroller = document.querySelector('.cm-scroller') as HTMLElement
-    const probe = document.createElement('div')
-    Object.assign(probe.style, { width: '70ch', position: 'absolute', visibility: 'hidden' })
-    scroller.append(probe)
-    const probeWidth = probe.getBoundingClientRect().width
-    probe.remove()
-    return {
-      max: Number.parseFloat(
-        getComputedStyle(document.querySelector('.cm-content') as Element).maxWidth,
-      ),
-      probe: probeWidth,
-    }
+  await inPresent(app, page, async () => {
+    await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+    // Default Present factor 1.6 at Present zoom 100 %.
+    await expect.poll(() => bodySize(page)).toBeCloseTo(BRIEF_SIZE * 1.6, 1)
+    const widths = await page.evaluate(() => {
+      const scroller = document.querySelector('.cm-scroller') as HTMLElement
+      const probe = document.createElement('div')
+      Object.assign(probe.style, { width: '70ch', position: 'absolute', visibility: 'hidden' })
+      scroller.append(probe)
+      const probeWidth = probe.getBoundingClientRect().width
+      probe.remove()
+      return {
+        max: Number.parseFloat(
+          getComputedStyle(document.querySelector('.cm-content') as Element).maxWidth,
+        ),
+        probe: probeWidth,
+      }
+    })
+    // The set's 165 mm measure never widens Present's column.
+    expect(Math.abs(widths.max - widths.probe)).toBeLessThanOrEqual(1)
   })
-  // The set's 165 mm measure never widens Present's column.
-  expect(Math.abs(widths.max - widths.probe)).toBeLessThanOrEqual(1)
-  await leavePresent(app, page)
   await app.close()
 })
 
@@ -222,13 +246,14 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
   await installSet(dirs, 'fx-plain')
   await installSet(dirs, 'fx-memo')
   const notes = {
-    memo: join(dirs.notes, 'Memo.md'),
+    memo: join(dirs.notes, 'Builtin.md'),
     'fx-plain': join(dirs.notes, 'Plain.md'),
-    'fx-memo': join(dirs.notes, 'Fxmemo.md'),
+    'fx-memo': join(dirs.notes, 'Setmemo.md'),
   }
   await writeFile(notes.memo, await memoNoteWith(null))
   await writeFile(notes['fx-plain'], await memoNoteWith('fx-plain'))
   await writeFile(notes['fx-memo'], await memoNoteWith('fx-memo'))
+  // No file name is a substring of another: a tab filter `hasText` matches substrings.
   // Header hidden on every tab: the title blocks are compared too.
   await writeFile(
     join(dirs.userData, 'session.json'),
@@ -262,7 +287,7 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
         ),
       }
     })
-  await tabs(page).filter({ hasText: 'Memo.md' }).click()
+  await tabs(page).filter({ hasText: 'Builtin.md' }).click()
   await setShown(page, 'memo')
   await expect(page.locator('.mdo-tb-title')).toHaveText('Kickoff Kaffeerösterei')
   const memo = await look()
@@ -270,7 +295,7 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
   expect(memo.texts.length).toBeGreaterThan(0)
   for (const [set, name] of [
     ['fx-plain', 'Plain.md'],
-    ['fx-memo', 'Fxmemo.md'],
+    ['fx-memo', 'Setmemo.md'],
   ] as const) {
     await tabs(page).filter({ hasText: name }).click()
     await setShown(page, set)
