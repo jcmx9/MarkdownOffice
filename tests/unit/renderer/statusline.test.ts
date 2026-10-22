@@ -8,6 +8,7 @@ const actions = () => ({
   setView: vi.fn(),
   toggleOutline: vi.fn(),
   toggleYaml: vi.fn(),
+  validateYaml: vi.fn(),
 })
 const q = (el: HTMLElement, id: string) =>
   el.querySelector(`[data-testid=${id}]`) as HTMLButtonElement
@@ -169,6 +170,49 @@ describe('status line', () => {
     file.dispatchEvent(ev)
     expect(ev.defaultPrevented).toBe(true)
     expect(a.noteMenu).toHaveBeenCalledOnce()
+    status.stop()
+  })
+})
+
+describe('status line set name', () => {
+  const setEl = (el: HTMLElement) => el.querySelector('[data-testid=status-set]') as HTMLElement
+
+  it('is hidden without a set and sits right after the file name', () => {
+    const el = document.createElement('footer')
+    const status = new StatusLine(el, actions())
+    status.render('a.md', 'saved', null, 'preview')
+    expect(setEl(el).hidden).toBe(true)
+    expect(setEl(el).previousElementSibling?.className).toBe('file')
+    status.renderSet({ name: 'memo', errors: 0, unknown: false })
+    expect(setEl(el).hidden).toBe(false)
+    status.renderSet(null)
+    expect(setEl(el).hidden).toBe(true)
+    expect(setEl(el).textContent).toBe('')
+    status.stop()
+  })
+
+  it.each([
+    [0, false, 'memo', false],
+    [1, false, 'memo – 1 Fehler im YAML-Kopf', true],
+    [2, false, 'memo – 2 Fehler im YAML-Kopf', true],
+    [1, true, 'memo – 1 Fehler im YAML-Kopf (Set nicht installiert)', true],
+  ])('%i errors (unknown %s): title %s, red %s', (errors, unknown, title, red) => {
+    const el = document.createElement('footer')
+    const status = new StatusLine(el, actions())
+    status.renderSet({ name: 'memo', errors, unknown })
+    expect(setEl(el).textContent).toBe('memo')
+    expect(setEl(el).title).toBe(title)
+    expect(setEl(el).classList.contains('error')).toBe(red)
+    status.stop()
+  })
+
+  it('opens „YAML prüfen …“ on a click', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const status = new StatusLine(el, a)
+    status.renderSet({ name: 'memo', errors: 1, unknown: false })
+    setEl(el).click()
+    expect(a.validateYaml).toHaveBeenCalledOnce()
     status.stop()
   })
 })
