@@ -5,6 +5,7 @@ import {
   type PreviewElement,
   type PreviewSpec,
   parsePreviewSpec,
+  profileKeys,
   resolveBlocks,
 } from '../../../src/core/preview-spec'
 
@@ -307,5 +308,39 @@ describe('parsePreviewSpec', () => {
 
   it('treats a missing head or foot as empty', () => {
     expect(parsePreviewSpec('preview: 1')).toEqual({ ok: true, spec: { head: [], foot: [] } })
+  })
+})
+
+describe('profileKeys', () => {
+  it('collects every profile placeholder of the spec example', () => {
+    const r = parsePreviewSpec(SPEC_EXAMPLE)
+    if (!r.ok) throw new Error(r.error)
+    expect([...profileKeys(r.spec)].sort()).toEqual([
+      'city',
+      'name',
+      'signature',
+      'signature-width',
+      'street',
+      'zip',
+    ])
+  })
+
+  it('reads when, width defaults and label maps, ignores front-matter keys', () => {
+    const spec: PreviewSpec = {
+      head: [
+        { class: 'a', text: '{x-to} {profile.phone|-}', today: false, when: ['{profile.iban}'] },
+      ],
+      foot: [
+        {
+          class: 'b',
+          lines: '{x-attachments}',
+          label: { de: '{profile.de}', en: 'Enclosures' },
+          today: false,
+          when: [],
+        },
+      ],
+    }
+    expect([...profileKeys(spec)].sort()).toEqual(['de', 'iban', 'phone'])
+    expect(profileKeys(MEMO_PREVIEW).size).toBe(0)
   })
 })

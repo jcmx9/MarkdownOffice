@@ -273,6 +273,38 @@ function resolveOne(el: PreviewElement, c: Ctx): PreviewBlock | null {
   return text ? { cls: el.class, kind: 'text', text, label } : null
 }
 
+/**
+ * Every `{profile.<key>}` a description names (any text-bearing field). Main sends the renderer
+ * only these profile values: a `profile:` path may point at any small YAML file, and nothing but
+ * what the set shows may leave main.
+ */
+export function profileKeys(spec: PreviewSpec): Set<string> {
+  const keys = new Set<string>()
+  for (const el of [...spec.head, ...spec.foot]) {
+    const label =
+      el.label === undefined
+        ? []
+        : typeof el.label === 'string'
+          ? [el.label]
+          : Object.values(el.label)
+    const texts = [
+      el.text,
+      el.lines,
+      el.image,
+      el.width,
+      el.sep,
+      ...(el.parts ?? []),
+      ...el.when,
+      ...label,
+    ]
+    for (const t of texts) {
+      if (t === undefined) continue
+      for (const m of t.matchAll(PLACEHOLDER_RE)) if (m[1] !== undefined) keys.add(m[2] as string)
+    }
+  }
+  return keys
+}
+
 /** Resolves a head or foot description against one note; omitted elements leave no trace. */
 export function resolveBlocks(
   elements: readonly PreviewElement[],

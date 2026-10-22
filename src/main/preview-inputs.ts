@@ -1,5 +1,7 @@
+import { lstat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { flattenProfile, readFlatYaml } from '../core/flat-yaml'
+import { MEMO_PREVIEW, parsePreviewSpec, profileKeys } from '../core/preview-spec'
 import { sanitizeSetCss } from '../core/set-css'
 import { DEFAULT_SET } from '../core/sets'
 import type { PreviewInputs } from '../shared/types'
@@ -14,6 +16,9 @@ const MAX_SIGNATURE = 256 * 1024
  */
 const SIGNATURE_RE = /^[^/\\]+\.svg$/i
 
+// After an optional UTF-8 BOM and whitespace: an SVG document, not some other file named `.svg`.
+const SVG_START_RE = /^(\uFEFF)?\s*(<svg|<\?xml)/
+
 const NONE: PreviewInputs = { set: '', css: [], preview: null, profile: {}, signature: null }
 
 /** The profile's `signature` as a data URL; null unless it is a bare small SVG next to it. */
@@ -25,8 +30,18 @@ async function readSignature(
   // Hidden files are refused too: `.svg` alone would otherwise match, and dotfiles are never
   // something a set author ships deliberately.
   if (!SIGNATURE_RE.test(name) || name.startsWith('.')) return null
-  const buf = await readCapped(join(dirname(profilePath), name), MAX_SIGNATURE)
-  return buf === null ? null : `data:image/svg+xml;base64,${buf.toString('base64')}`
+  const path = join(dirname(profilePath), name)
+  try {
+    // A symlink could point anywhere; only a real file next to the profile is read.
+    if ((await lstat(path)).isSymbolicLink()) return null
+  } catch {
+    return null // missing: no signature, as for any absent optional file
+  }
+  const buf = await readCapped(path, MAX_SIGNATURE)
+  if (buf === null) return null
+  // Only the head is decoded; a non-UTF-8 byte there just fails the check.
+  if (!SVG_START_RE.test(buf.subarray(0, 256).toString('utf8'))) return null
+  return `data:image/svg+xml;base64,${buf.toString('base64')}`
 }
 
 /**
@@ -59,6 +74,9 @@ export async function previewInputs(o: {
     }
   }
   const preview = await readSmallText(join(setDir, `${set}.preview.yaml`))
+  // Same fallback as the renderer: a missing or broken description shows memo's blocks.
+  const parsed = preview === null ? null : parsePreviewSpec(preview)
+  const wanted = profileKeys(parsed?.ok ? parsed.spec : MEMO_PREVIEW)
 
   const found = await findProfile(o.profile, {
     userDir: o.userDir,
@@ -71,8 +89,14 @@ export async function previewInputs(o: {
   if (found?.status === 'found') {
     const text = await readSmallText(found.path)
     if (text !== null) {
-      profile = flattenProfile(readFlatYaml(text))
-      signature = await readSignature(found.path, profile)
+      // Only the keys the set shows leave main: `profile:` may name any small YAML file by path
+      // (`~/.config/…/hosts.yml`), and its other values (tokens) must never reach the renderer.
+      const all = flattenProfile(readFlatYaml(text))
+      // fromEntries defines own properties, so even a key like `__proto__` stays plain data.
+      profile = Object.fromEntries(
+        [...wanted].filter((k) => Object.hasOwn(all, k)).map((k) => [k, all[k] as string]),
+      )
+      if (wanted.has('signature')) signature = await readSignature(found.path, all)
     }
   }
   return { set, css, preview, profile, signature }

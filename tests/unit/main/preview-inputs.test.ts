@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -59,17 +59,77 @@ describe('previewInputs', () => {
     expect(await run('nope', 'fx')).toEqual(none)
   })
 
-  it.each(['../x.svg', '/abs/x.svg', 'x.svg.png', '.hidden.svg'])(
-    'refuses signature %s',
-    async (name) => {
-      await put(join(user, 'fx-brief', 'x.svg'), '<svg/>')
-      await put(join(user, 'fx-brief', 'profiles', '.hidden.svg'), '<svg/>')
-      await put(fxProfile(), `name: Dr. Erika Muster\nsignature: ${name}\n`)
-      const r = await run('fx-brief', 'fx')
-      expect(r.profile.name).toBe('Dr. Erika Muster')
-      expect(r.signature).toBeNull()
-    },
-  )
+  it('returns only the profile keys the description references', async () => {
+    await put(
+      fxProfile(),
+      'name: Dr. Erika Muster\noauth_token: x\nsignature: fx-unterschrift.svg\n',
+    )
+    const r = await run('fx-brief', 'fx')
+    expect(r.profile).toEqual({ name: 'Dr. Erika Muster', signature: 'fx-unterschrift.svg' })
+    expect(r.signature).not.toBeNull()
+  })
+
+  it('sends the whole fx-brief sender but nothing for a description without profile keys', async () => {
+    const r = await run('fx-brief', 'fx')
+    expect(Object.keys(r.profile).sort()).toEqual([
+      'city',
+      'name',
+      'signature',
+      'signature-width',
+      'street',
+      'zip',
+    ])
+    await put(
+      join(user, 'fx-brief', 'fx-brief.preview.yaml'),
+      'preview: 1\nhead:\n  - class: sender\n    text: "{profile.name}"\n',
+    )
+    const noSig = await run('fx-brief', 'fx')
+    expect(noSig.profile).toEqual({ name: 'Dr. Erika Muster' })
+    expect(noSig.signature).toBeNull()
+  })
+
+  it('falls back to memo blocks (no profile keys) for a missing or broken description', async () => {
+    await put(join(user, 'fx-brief', 'fx-brief.preview.yaml'), 'preview: 7\n')
+    expect(await run('fx-brief', 'fx')).toMatchObject({ profile: {}, signature: null })
+  })
+
+  it.each([
+    ['../x.svg', 'fx-brief/x.svg'],
+    ['ABS', 'abs/x.svg'],
+    ['x.svg.png', 'fx-brief/profiles/x.svg.png'],
+    ['.hidden.svg', 'fx-brief/profiles/.hidden.svg'],
+  ])('refuses signature %s', async (name, file) => {
+    // Every referenced file exists with valid SVG content, so only the name rule can refuse it.
+    const target = join(user, file)
+    await put(target, '<svg/>')
+    const value = name === 'ABS' ? target : name
+    await put(fxProfile(), `name: Dr. Erika Muster\nsignature: ${value}\n`)
+    const r = await run('fx-brief', 'fx')
+    expect(r.profile.name).toBe('Dr. Erika Muster')
+    expect(r.signature).toBeNull()
+  })
+
+  it('accepts a signature with BOM, whitespace or an XML declaration', async () => {
+    const sig = join(user, 'fx-brief', 'profiles', 'fx-unterschrift.svg')
+    for (const text of ['\uFEFF\n  <svg/>', '<?xml version="1.0"?><svg/>']) {
+      await put(sig, text)
+      expect((await run('fx-brief', 'fx')).signature).toMatch(/^data:image\/svg\+xml;base64,/)
+    }
+  })
+
+  it('refuses a signature that is not an SVG document', async () => {
+    await put(join(user, 'fx-brief', 'profiles', 'fx-unterschrift.svg'), 'oauth_token: x\n')
+    expect((await run('fx-brief', 'fx')).signature).toBeNull()
+  })
+
+  it('refuses a signature that is a symlink', async () => {
+    const sig = join(user, 'fx-brief', 'profiles', 'fx-unterschrift.svg')
+    const real = join(root, 'elsewhere.svg')
+    await put(real, '<svg/>')
+    await rm(sig)
+    await symlink(real, sig)
+    expect((await run('fx-brief', 'fx')).signature).toBeNull()
+  })
 
   it('refuses a signature over 256 KiB', async () => {
     const big = `<svg>${' '.repeat(256 * 1024)}</svg>`

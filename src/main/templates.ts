@@ -87,7 +87,7 @@ export async function readCapped(p: string, maxBytes: number): Promise<Buffer | 
       await fh.close()
     }
   } catch (err) {
-    if (!quiet(err)) console.warn('Markdown Office: template file skipped', p, err)
+    if (!quiet(err)) console.warn('Markdown Office: set file skipped', p, err)
     return null
   }
 }
@@ -103,7 +103,7 @@ export async function readSmallText(p: string): Promise<string | null> {
     const text = utf8.decode(buf)
     return text.startsWith(BOM) ? text.slice(1) : text
   } catch (err) {
-    console.warn('Markdown Office: header template skipped', p, err)
+    console.warn('Markdown Office: set file skipped', p, err)
     return null
   }
 }
