@@ -2,8 +2,11 @@
  * A template set's `<name>.css` is untrusted input that reaches the editor. This module decides
  * what of it survives: plain `.mdo-*` rules with declarations that can load nothing (no `url(`,
  * `@import`, `@font-face`, CSS escapes) and cannot leave the editor (no `position: fixed`,
- * no `z-index`). The output is rebuilt from the parsed pieces, never passed through, so the
- * browser reads exactly the structure this scanner saw.
+ * no `z-index`). Two further limits keep the preview honest about the note: `content` adds no
+ * letters or digits (only decoration like `"▪ "`), and rules that may reach the note's own text
+ * (anything but the head and foot blocks) are limited to typography and spacing with a visible
+ * colour, so a set cannot hide what the user wrote. The output is rebuilt from the parsed pieces,
+ * never passed through, so the browser reads exactly the structure this scanner saw.
  */
 
 export interface SetCssRule {
@@ -18,6 +21,14 @@ const PLAIN_PROP_RE = /^-?[a-z][a-z-]*$/
 const LOADING_FNS = ['url(', 'image(', 'image-set(', 'element(', 'expression(', 'src(']
 const POSITIONS = new Set(['static', 'relative', 'absolute'])
 const IMPORTANT_RE = /\s*!\s*important\s*$/i
+// What a rule that may reach the note's text can set: typography, spacing, borders, background.
+const TEXT_PROP_RE =
+  /^(?:font(?:-[a-z-]+)?|line-height|letter-spacing|word-spacing|text-(?:align|indent|transform|decoration(?:-[a-z]+)?|underline-offset)|hyphens|tab-size|color|background(?:-color)?|(?:margin|padding)(?:-[a-z]+)?|border(?:-[a-z-]+)?|min-height)$/
+// The head and foot blocks the app renders from `.preview.yaml` (`titleblock.ts`).
+const BLOCK_CLASS_RE = /\.mdo-(?:tb-[a-z0-9-]+|titleblock|footblock)(?![\w-])/
+// Foreground colours that would make text invisible: `transparent`, any alpha channel.
+const HIDDEN_COLOR_RE = /transparent|#(?:[0-9a-f]{4}|[0-9a-f]{8})\b|rgba\(|hsla\(|\/|color-mix\(/
+const ZERO_RE = /^[+-]?(?:0+\.?0*|\.0+)(?:[a-z]+|%)?$/
 const LENGTH_RE = /(^|[^\w.#-])(-?(?:\d+\.?\d*|\.\d+))(px|pt|pc|mm|cm|in|q)\b/gi
 
 /** Index just past the string starting at `i` (a quote), or -1 if it never closes on its line. */
@@ -139,8 +150,52 @@ function findPreludeEnd(css: string, i: number): number {
   return -1
 }
 
+/**
+ * True when the selector's subject is one of the preview blocks, so it cannot reach the note's
+ * text: the last compound (outside parentheses) names a block class, and no sibling combinator
+ * (`~`, `+`) steps from a block to a text line.
+ */
+function isBlockSelector(selector: string): boolean {
+  let depth = 0
+  let last = 0
+  for (let i = 0; i < selector.length; i++) {
+    const ch = selector[i] as string
+    if (ch === '"' || ch === "'") i = skipString(selector, i) - 1
+    else if (ch === '(' || ch === '[') depth++
+    else if (ch === ')' || ch === ']') depth--
+    else if (depth === 0 && (ch === '~' || ch === '+')) return false
+    else if (depth === 0 && (ch === '>' || /\s/.test(ch))) last = i + 1
+  }
+  const subject = selector.slice(last).replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+  return BLOCK_CLASS_RE.test(subject)
+}
+
+/** `content` may decorate (`"▪ "`, `none`) but never write letters or digits into the preview. */
+function decorativeContent(value: string): boolean {
+  if (/^(?:none|normal)$/i.test(value)) return true
+  const m = /^(["'])(.*)\1$/s.exec(value)
+  return m !== null && !/[\p{L}\p{N}]/u.test(m[2] ?? '')
+}
+
+/** Why a declaration on a rule that may reach the note's text is dropped, or null to keep it. */
+function textRuleVerdict(property: string, lower: string, squashed: string): string | null {
+  const token = TOKEN_PROP_RE.test(property)
+  if (!token && !TEXT_PROP_RE.test(property)) return `${property} on text`
+  const foreground = property === 'color' || (token && property.endsWith('-color'))
+  if (foreground && HIDDEN_COLOR_RE.test(squashed)) return `${property}: invisible colour`
+  // In the `font` shorthand the size is one of the words (`italic 600 0 serif`).
+  const sizes =
+    property === 'font-size' || (token && property.endsWith('-size'))
+      ? [squashed]
+      : property === 'font'
+        ? lower.split(/[\s/]+/)
+        : []
+  if (sizes.some((v) => ZERO_RE.test(v))) return `${property}: zero size`
+  return null
+}
+
 /** A declaration's verdict: the kept pair, or why it was dropped. */
-function sanitizeDeclaration(raw: string): [string, string] | string {
+function sanitizeDeclaration(raw: string, text: boolean): [string, string] | string {
   const colon = raw.indexOf(':')
   if (colon < 0) return `declaration ${raw}`
   const property = raw.slice(0, colon).trim().toLowerCase()
@@ -167,6 +222,11 @@ function sanitizeDeclaration(raw: string): [string, string] | string {
   // into HTML; braces or unbalanced strings/brackets would make the browser read past the rule.
   if (/[<{}]/.test(value) || !balanced(value)) return `${property}: malformed value`
   if (value === '') return `${property}: empty value`
+  if (property === 'content' && !decorativeContent(value)) return 'content: text'
+  if (text) {
+    const verdict = textRuleVerdict(property, lower, squashed)
+    if (verdict) return verdict
+  }
   return [property, scaleLengths(value)]
 }
 
@@ -229,10 +289,12 @@ export function sanitizeSetCss(css: string): { rules: SetCssRule[]; dropped: str
       dropped.push(selectors)
       continue
     }
+    // One selector that may reach the note's text puts the whole rule under the text limits.
+    const text = !selectors.every(isBlockSelector)
     const declarations: SetCssRule['declarations'] = []
     for (const raw of splitTop(src.slice(stop + 1, block.end - 1), ';')) {
       if (raw.trim() === '') continue
-      const verdict = sanitizeDeclaration(raw)
+      const verdict = sanitizeDeclaration(raw, text)
       if (typeof verdict === 'string') dropped.push(verdict)
       else declarations.push(verdict)
     }

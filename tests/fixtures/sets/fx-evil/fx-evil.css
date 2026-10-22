@@ -16,4 +16,8 @@ body {
 }
 .mdo-preview .cm-line {
   color: rgb(1, 2, 3);
+  opacity: 0;
+}
+.mdo-preview .cm-line::after {
+  content: "Gefälscht";
 }
