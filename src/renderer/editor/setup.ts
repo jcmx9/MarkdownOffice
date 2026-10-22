@@ -10,7 +10,15 @@ import {
   type Text,
   type TransactionSpec,
 } from '@codemirror/state'
-import { drawSelection, EditorView, type KeyBinding, keymap, lineNumbers } from '@codemirror/view'
+import {
+  drawSelection,
+  EditorView,
+  type KeyBinding,
+  keymap,
+  lineNumbers,
+  type Rect,
+  tooltips,
+} from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
 import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
@@ -84,6 +92,16 @@ export function viewExtensions(view: View): Extension {
       ]
 }
 
+/**
+ * The space tooltips (snippet autocomplete) may use: the editor's host (#editor), not the
+ * window. #editor has `contain: paint`, so a tooltip placed by the window's bounds would be cut
+ * off under the status line or beside the outline; inside this box CodeMirror flips and
+ * shrinks it so it stays visible.
+ */
+export function tooltipSpace(view: EditorView): Rect {
+  return (view.dom.parentElement ?? view.dom).getBoundingClientRect()
+}
+
 /** What a tab holds: a Markdown note, or a YAML profile opened for editing („Profil anlegen …“). */
 export type DocKind = 'markdown' | 'yaml'
 
@@ -115,6 +133,7 @@ export function createState(
       // Every tab keeps its own set description; null (built-in memo) until main answers.
       previewSource,
       EditorView.lineWrapping,
+      tooltips({ tooltipSpace }),
       viewCompartment.of(viewExtensions(view)),
       modeCompartment.of(modeExtensions(mode)),
       // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
