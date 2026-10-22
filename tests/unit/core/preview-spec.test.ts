@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FlatValue } from '../../../src/core/flat-yaml'
+import { type FlatValue, readFlatYaml } from '../../../src/core/flat-yaml'
 import {
   MEMO_PREVIEW,
   type PreviewElement,
@@ -219,6 +219,38 @@ describe('resolveBlocks', () => {
     ])
     expect(resolveBlocks([{ ...att, label: 'Anl.' }], v(fm('en')))).toEqual([
       { cls: 'attachments', kind: 'lines', lines: ['Rechnung'], label: 'Anl.' },
+    ])
+  })
+
+  it.each([
+    '{constructor}',
+    '{profile.toString}',
+    '{__proto__}',
+    '{profile.__proto__}',
+    '{hasOwnProperty}',
+  ])('prototype-named placeholder %s resolves empty instead of throwing', (ph) => {
+    const fm = readFlatYaml('title: X\n')
+    expect(resolveBlocks([el({ text: ph })], v(fm, { name: 'A' }))).toEqual([])
+    expect(resolveBlocks([el({ lines: ph })], v(fm))).toEqual([])
+    expect(resolveBlocks([el({ parts: [ph, '{title}'] })], v(fm))).toEqual([
+      { cls: 'x', kind: 'text', text: 'X', label: null },
+    ])
+    expect(resolveBlocks([el({ text: 'fix', when: [ph] })], v(fm))).toEqual([])
+  })
+
+  it('a prototype-named lang falls back to the de label', () => {
+    const att = example().foot[3] as PreviewElement
+    for (const lang of ['constructor', 'toString', '__proto__'])
+      expect(
+        resolveBlocks([att], v({ lang, 'x-closing': 'Gruß', 'x-attachments': ['R'] })),
+      ).toEqual([{ cls: 'attachments', kind: 'lines', lines: ['R'], label: 'Anlagen:' }])
+  })
+
+  it('lines: literals alone do not keep an element whose placeholders are all empty', () => {
+    expect(resolveBlocks([el({ lines: 'An: {x-to}' })], v({ 'x-to': '' }))).toEqual([])
+    expect(resolveBlocks([el({ lines: 'An: {x-to}' })], v({}))).toEqual([])
+    expect(resolveBlocks([el({ lines: 'An:\nfix' })], v({}))).toEqual([
+      { cls: 'x', kind: 'lines', lines: ['An:', 'fix'], label: null },
     ])
   })
 

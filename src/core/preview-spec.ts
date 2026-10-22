@@ -158,7 +158,10 @@ export type PreviewBlock =
   | { cls: string; kind: 'lines'; lines: string[]; label: string | null }
   | { cls: string; kind: 'image'; width: string | null }
 
-const PLACEHOLDER_RE = /\{(profile\.)?([A-Za-z0-9_-]+)(?:\|([^}]*))?\}/g
+const PLACEHOLDER_SRC = String.raw`\{(profile\.)?([A-Za-z0-9_-]+)(?:\|([^}]*))?\}`
+const PLACEHOLDER_RE = new RegExp(PLACEHOLDER_SRC, 'g')
+// The same grammar anchored: a `lines:` value that is exactly one placeholder.
+const WHOLE_PLACEHOLDER_RE = new RegExp(`^${PLACEHOLDER_SRC}$`)
 const WIDTH_RE = /^\d+(\.\d+)?(mm|pt|cm|in)$/
 // `when:` reads booleans from source text (front matter is flat source text, not typed YAML).
 const FALSE_RE = /^(false|False|FALSE)$/
@@ -167,6 +170,17 @@ const isEmpty = (x: FlatValue) =>
   Array.isArray(x) ? x.every((s) => s.trim() === '') : x.trim() === ''
 const asText = (x: FlatValue) =>
   Array.isArray(x) ? x.filter((s) => s.trim() !== '').join(', ') : x
+
+/**
+ * Own string or string-list values only: keys come from note and set text, so `{constructor}` or
+ * `lang: __proto__` must never reach Object.prototype (a broken note may not throw into the editor).
+ */
+function own(map: Record<string, unknown>, key: string): FlatValue | undefined {
+  if (!Object.hasOwn(map, key)) return undefined
+  const val = map[key]
+  if (typeof val === 'string') return val
+  return Array.isArray(val) && val.every((s) => typeof s === 'string') ? val : undefined
+}
 
 interface Ctx {
   v: PreviewValues
@@ -181,12 +195,12 @@ function lookup(profile: boolean, key: string, def: string | undefined, c: Ctx):
   if (profile) {
     // Generic note override `x-profile-<key>` (din5008a's convention); never for the signature,
     // which main resolves to a file next to the profile.
-    const over = key === 'signature' ? undefined : fm[`x-profile-${key}`]
-    val = over !== undefined && !isEmpty(over) ? asText(over) : (c.v.profile[key] ?? '')
+    const over = key === 'signature' ? undefined : own(fm, `x-profile-${key}`)
+    val = over !== undefined && !isEmpty(over) ? asText(over) : asText(own(c.v.profile, key) ?? '')
   } else if (key === 'date') {
-    val = formatDate(asText(fm.date ?? ''), c.lang)
+    val = formatDate(asText(own(fm, 'date') ?? ''), c.lang)
     if (val.trim() === '' && c.today) val = formatDate(isoDate(c.v.today), c.lang)
-  } else val = fm[key] ?? ''
+  } else val = own(fm, key) ?? ''
   return isEmpty(val) && def !== undefined ? def : val
 }
 
@@ -218,7 +232,8 @@ function holds(cond: string, c: Ctx): boolean {
 function pickLabel(label: PreviewElement['label'], lang: string): string | null {
   if (label === undefined) return null
   if (typeof label === 'string') return label
-  return label[lang] ?? label.de ?? Object.values(label)[0] ?? null
+  const pick = own(label, lang) ?? own(label, 'de') ?? Object.values(label)[0]
+  return typeof pick === 'string' ? pick : null
 }
 
 function resolveOne(el: PreviewElement, c: Ctx): PreviewBlock | null {
@@ -231,11 +246,16 @@ function resolveOne(el: PreviewElement, c: Ctx): PreviewBlock | null {
   }
   if (el.lines !== undefined) {
     // A list value that makes up the whole `lines:` gives one line per item.
-    const whole = /^\{(profile\.)?([A-Za-z0-9_-]+)(?:\|([^}]*))?\}$/.exec(el.lines.trim())
+    const whole = WHOLE_PLACEHOLDER_RE.exec(el.lines.trim())
     const val = whole ? lookup(whole[1] !== undefined, whole[2] as string, whole[3], c) : null
-    const lines = (Array.isArray(val) ? val : fill(el.lines, c).text.split('\n'))
-      .map((l) => l.trim())
-      .filter((l) => l !== '')
+    let text: string[] | null = Array.isArray(val) ? val : null
+    if (!text) {
+      // Same rule as text and parts: literals alone ("An:") never keep an all-empty element.
+      const f = fill(el.lines, c)
+      if (f.found && !f.filled) return null
+      text = f.text.split('\n')
+    }
+    const lines = text.map((l) => l.trim()).filter((l) => l !== '')
     return lines.length ? { cls: el.class, kind: 'lines', lines, label } : null
   }
   if (el.parts !== undefined) {
@@ -258,7 +278,7 @@ export function resolveBlocks(
   elements: readonly PreviewElement[],
   v: PreviewValues,
 ): PreviewBlock[] {
-  const rawLang = v.fm.lang
+  const rawLang = own(v.fm, 'lang')
   const lang =
     (typeof rawLang === 'string' ? rawLang : '').split('-')[0]?.trim().toLowerCase() || 'de'
   const out: PreviewBlock[] = []
