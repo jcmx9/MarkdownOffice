@@ -33,6 +33,10 @@ describe('sanitizeSetCss', () => {
     'position: fixed',
     'position: sticky',
     'z-index: 9',
+    'position: fixed !important',
+    'position: -webkit-sticky',
+    'position: var(--mdo-p)',
+    'content: "}"',
   ])('drops the declaration %s', (decl) =>
     expect(sanitizeSetCss(`.mdo-a { ${decl}; color: red }`).rules[0]?.declarations).toEqual([
       ['color', 'red'],
@@ -52,11 +56,20 @@ describe('sanitizeSetCss', () => {
     ).toEqual(['@import', 'selector body', 'background: url(…)']))
   it('strips comments but not comment-like text in strings', () =>
     expect(
-      sanitizeSetCss('/* body{} */ .mdo-a { /* x */ content: "/* }" }').rules[0]?.declarations,
-    ).toEqual([['content', '"/* }"']]))
-  it('keeps braces in strings out of the structure', () =>
-    expect(sanitizeSetCss('.mdo-a { content: "} body { color: red" }').rules).toEqual([
-      { selectors: ['.mdo-a'], declarations: [['content', '"} body { color: red"']] },
+      sanitizeSetCss('/* body{} */ .mdo-a { /* x */ content: "/* x" }').rules[0]?.declarations,
+    ).toEqual([['content', '"/* x"']]))
+  it('keeps braces in strings out of the structure and drops the value', () =>
+    expect(sanitizeSetCss('.mdo-a { content: "} body { color: red"; color: red }').rules).toEqual([
+      { selectors: ['.mdo-a'], declarations: [['color', 'red']] },
+    ]))
+  it('drops a selector with a brace, so nothing targets body', () => {
+    const { rules } = sanitizeSetCss('.mdo-a } body { color: red }')
+    expect(rules).toEqual([])
+    expect(scopeSetCss(rules, '#e')).not.toMatch(/body/)
+  })
+  it('keeps position: relative', () =>
+    expect(sanitizeSetCss('.mdo-a { position: relative }').rules[0]?.declarations).toEqual([
+      ['position', 'relative'],
     ]))
   it('splits selectors outside parens and brackets', () =>
     expect(sanitizeSetCss('.mdo-a:is(.x, .y), .mdo-b[t="a,b"] { color: red }').rules[0]).toEqual({

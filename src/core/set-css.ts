@@ -16,6 +16,7 @@ const TOKEN_PROP_RE = /^--mdo-[a-z0-9-]+$/
 const PLAIN_PROP_RE = /^-?[a-z][a-z-]*$/
 // Functions that fetch a resource or run code; matched with all whitespace removed.
 const LOADING_FNS = ['url(', 'image(', 'image-set(', 'element(', 'expression(', 'src(']
+const POSITIONS = new Set(['static', 'relative', 'absolute'])
 const IMPORTANT_RE = /\s*!\s*important\s*$/i
 const LENGTH_RE = /(^|[^\w.#-])(-?(?:\d+\.?\d*|\.\d+))(px|pt|pc|mm|cm|in|q)\b/gi
 
@@ -143,24 +144,28 @@ function sanitizeDeclaration(raw: string): [string, string] | string {
   const colon = raw.indexOf(':')
   if (colon < 0) return `declaration ${raw}`
   const property = raw.slice(0, colon).trim().toLowerCase()
-  let value = raw.slice(colon + 1).trim()
+  // The app's own `!important` (Present's 70ch measure) must always win. Stripped before every
+  // check below so `position: fixed !important` is judged as `fixed`.
+  const value = raw
+    .slice(colon + 1)
+    .trim()
+    .replace(IMPORTANT_RE, '')
+  const lower = value.toLowerCase()
+  const squashed = lower.replace(/\s+/g, '')
   if (!TOKEN_PROP_RE.test(property) && !PLAIN_PROP_RE.test(property)) return `property ${property}`
   // The app owns the zoom factor; a set overriding it would break the zoom contract.
   if (property === '--mdo-scale') return '--mdo-scale'
   if (property === 'z-index') return 'z-index'
-  const lower = value.toLowerCase()
-  if (property === 'position' && (lower === 'fixed' || lower === 'sticky'))
-    return `position: ${lower}`
+  // Allowlist, not blocklist: `fixed`/`sticky` (also `-webkit-sticky`, or via `var()`) would
+  // escape the editor's paint containment or overlay the app's chrome.
+  if (property === 'position' && !POSITIONS.has(squashed)) return `position: ${lower}`
   // Escapes could spell `url(` past the check below (`u\72l(`), so no value may contain one.
   if (value.includes('\\')) return `${property}: escape`
-  const squashed = lower.replace(/\s+/g, '')
   const fn = LOADING_FNS.find((f) => squashed.includes(f))
   if (fn) return `${property}: ${fn}…)`
   // `<` has no use in a value but could close a <style> element if the CSS is ever serialised
-  // into HTML; unbalanced strings or brackets would make the browser read past the rule.
-  if (value.includes('<') || !balanced(value)) return `${property}: malformed value`
-  // The app's own `!important` (Present's 70ch measure) must always win.
-  value = value.replace(IMPORTANT_RE, '')
+  // into HTML; braces or unbalanced strings/brackets would make the browser read past the rule.
+  if (/[<{}]/.test(value) || !balanced(value)) return `${property}: malformed value`
   if (value === '') return `${property}: empty value`
   return [property, scaleLengths(value)]
 }
@@ -168,7 +173,8 @@ function sanitizeDeclaration(raw: string): [string, string] | string {
 /** The selector list's parts, or why the whole rule is dropped. */
 function sanitizeSelectors(prelude: string): string[] | string {
   const text = prelude.trim()
-  if (text.includes('\\') || text.includes('<') || !balanced(text)) return `selector ${text}`
+  // A brace in a selector (`.mdo-a } body`) would end our rule early and start an unscoped one.
+  if (/[\\<{}]/.test(text) || !balanced(text)) return `selector ${text}`
   const parts = splitTop(text, ',').map((p) => p.trim())
   // One foreign part drops the whole list: the author meant the rule as a unit.
   const bad = parts.find((p) => !SELECTOR_RE.test(p))
