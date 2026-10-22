@@ -310,19 +310,38 @@ describe('NoteWatcher own content (save base check)', () => {
     expect(watcher.isOwn(path, mine)).toBe(false)
   })
 
-  // A late FSEvents delivery for the initial write can start a read that completes between
-  // writeFile('extern') and acknowledge() on a slow runner (seen on macOS CI). Retry instead of
-  // sleeping longer.
-  it('acknowledge() keeps a state handed over by a refused save from being reported', {
-    retry: 2,
-  }, async () => {
+  // The folder event is fired by hand, after acknowledge(). With the real fs.watch a late
+  // FSEvents delivery for the initial write could start a read that completed between
+  // writeFile('extern') and acknowledge() on a slow runner, which then rightly reported
+  // 'extern' (macOS CI, run 39061004852); a retry only hid that.
+  it('acknowledge() keeps a state handed over by a refused save from being reported', async () => {
+    const folder = { fire: (_event: string, _name: string): void => undefined }
+    let reads = 0
+    watcher.close()
+    watcher = new NoteWatcher(
+      (c) => events.push(c),
+      100,
+      async (p) => {
+        const bytes = await readFile(p)
+        reads++
+        return bytes
+      },
+      {
+        watch: ((_dir: string, listener: (event: string, name: string) => void) => {
+          folder.fire = listener
+          const w = { close: () => undefined, on: () => w }
+          return w
+        }) as unknown as WatcherDeps['watch'],
+      },
+    )
     const path = join(dir, 'ack.md')
     await writeFile(path, 'alt')
     watcher.setFiles([path])
-    await sleep(150)
     await writeFile(path, 'extern')
     watcher.acknowledge(path, hashBytes(Buffer.from('extern')))
-    await sleep(500)
+    folder.fire('change', 'ack.md')
+    // The check reports synchronously once its read is done, before waitFor looks again.
+    await waitFor(() => reads > 0)
     expect(events).toEqual([])
     expect(watcher.isOwn(path, hashBytes(Buffer.from('extern')))).toBe(false)
   })
