@@ -50,11 +50,13 @@ export class SetPreview {
   }
 
   private async run(tabId: number, fresh: boolean): Promise<void> {
-    const seq = ++this.seq
     const key = this.host.key(tabId)
     if (key === null) return
     // The tab state already holds the inputs for this key.
     if (!fresh && this.cache.get(tabId) === key) return
+    // Counted only for runs that ask main: a run that returns early (cache hit, no key) must not
+    // drop an answer still in flight (e.g. a focus refresh followed by a debounced no-op edit).
+    const seq = ++this.seq
     const inputs = await this.host.fetch(tabId)
     if (seq !== this.seq || this.host.key(tabId) !== key) return
     // A failed fetch applies nothing and is not cached, so the next run asks again.

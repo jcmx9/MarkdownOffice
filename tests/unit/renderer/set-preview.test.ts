@@ -84,4 +84,22 @@ describe('SetPreview', () => {
     await b
     expect(host.fetch).toHaveBeenCalledTimes(2)
   })
+
+  it('a cache-hit run does not drop a fresh answer still in flight', async () => {
+    const { sp, host, pending, applied } = setup()
+    const a = sp.now(1)
+    pending.shift()?.(inputs('old'))
+    await a
+    // Focus refresh asks main again; while it is pending, a debounced edit finds the key cached.
+    const b = sp.now(1, true)
+    sp.schedule(1)
+    vi.advanceTimersByTime(500)
+    pending.shift()?.(inputs('new'))
+    await b
+    expect(host.fetch).toHaveBeenCalledTimes(2)
+    expect(applied).toEqual([
+      [1, inputs('old')],
+      [1, inputs('new')],
+    ])
+  })
 })
