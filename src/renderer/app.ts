@@ -1602,6 +1602,9 @@ export class App {
   }
 
   private reload(tab: Tab, note: NoteFile): void {
+    // The old set description stays until main answers for the new text, so a din5008a note
+    // does not flash the memo look (blocks and scope) for one round trip.
+    const source = tab.state.field(previewSource, false) ?? null
     const state = this.closingState(
       createState(
         note.text,
@@ -1611,7 +1614,7 @@ export class App {
         this.mode,
         this.spellcheckOn && isMarkdownTab(tab),
         docKind(tab.path),
-      ),
+      ).update({ effects: setPreviewSource.of(source) }).state,
     )
     const wasOnDisk = tab.onDisk
     tab.bom = note.bom
@@ -1626,11 +1629,12 @@ export class App {
       // setState bypasses dispatchTransactions, which schedules the check after edits.
       void this.setCheck.now(tab.id)
     }
-    // The fresh state has no preview source: the cached key would skip the fetch otherwise.
+    // The new text may name another set or profile, and the set's files may have changed too:
+    // ask main again (fresh); a hidden tab asks on its next show (forgotten key).
     this.setPreview.forget(tab.id)
     if (this.shownId === tab.id) {
-      this.showSet(null)
-      void this.setPreview.now(tab.id)
+      this.showSet(source?.set ?? null)
+      void this.setPreview.now(tab.id, true)
     }
     // A new note whose path a file took meanwhile (refused first save) is now watched.
     if (!wasOnDisk) this.syncMain()
