@@ -25,6 +25,8 @@ export const Ch = {
   createProfile: 'mdo:create-profile',
   validationInputs: 'mdo:validation-inputs',
   noteMenu: 'mdo:note-menu',
+  revealPath: 'mdo:reveal-path',
+  openTemplatesFolder: 'mdo:open-templates-folder',
   spellReplace: 'mdo:spell-replace',
   spellRecheck: 'mdo:spell-recheck',
   spellLanguage: 'mdo:spell-language',

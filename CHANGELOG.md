@@ -5,6 +5,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Editor: „Im Finder zeigen“ (Windows „Im Explorer zeigen“, Linux „Im Dateimanager zeigen“) in the „Datei“ menu after „Umbenennen …“ and in the note's right-click menu (tab, status-line file name) shows the active note in the system's file manager. A new note is saved first; a missing file or a path the app did not open is reported as a notice; not available while presenting
+- Settings: the button „Vorlagen-Ordner öffnen“ opens the folder for your own template sets (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`) in the file manager and creates it when it is missing; an error shows next to the button
+
 ### Fixed
 - Build: `scripts/fetch-pipeline-assets.mjs` retries a download that failed with a server error (5xx), rate limiting (429) or a network error, three times with growing pauses (2 s, 5 s, 15 s); a 4xx other than 429 still fails at once. Single HTTP 503 answers from chromium.googlesource.com (dictionaries) had broken CI and release runs
 

@@ -320,6 +320,8 @@ export class App {
         cmd === 'insert-template' ||
         cmd === 'validate-yaml' ||
         cmd === 'create-profile' ||
+        // The file manager would come to the front over the shared Present screen.
+        cmd === 'reveal' ||
         cmd === 'settings')
     ) {
       this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
@@ -336,6 +338,8 @@ export class App {
         return this.open()
       case 'rename':
         return this.rename()
+      case 'reveal':
+        return this.reveal()
       case 'close-tab': {
         const tab = this.store.active
         if (tab) await this.closeTab(tab.id)
@@ -413,6 +417,7 @@ export class App {
         settings: current,
         status: withTimeout(this.mdo.getSettingsStatus(), STATUS_TIMEOUT_MS),
         choose: (kind, path) => this.mdo.choosePath(kind, path),
+        openTemplatesFolder: () => this.mdo.openTemplatesFolder(),
         platform: isMac ? 'darwin' : 'other',
         checkDictionaries: () => this.mdo.checkDictionaryUpdates(),
         words: () => this.mdo.spellWords(),
@@ -1162,6 +1167,28 @@ export class App {
       return
     }
     this.show()
+  }
+
+  /**
+   * „Im Finder zeigen“ for the active note. A new note has no file until its first save, so it
+   * is saved first (like rename and export); otherwise the file manager would have nothing to show.
+   */
+  private async reveal(): Promise<void> {
+    const tab = this.store.active
+    if (!tab) return
+    if (!(await this.saveTab(tab, true))) {
+      this.notices.panel(
+        'Anzeigen nicht möglich',
+        `Die Notiz konnte nicht gespeichert werden:\n${this.saveErrors.get(tab.id) ?? ''}`,
+      )
+      return
+    }
+    try {
+      const error = await this.mdo.revealPath(tab.path)
+      if (error) this.notices.panel('Anzeigen nicht möglich', error)
+    } catch (e) {
+      this.notices.panel('Anzeigen nicht möglich', e instanceof Error ? e.message : String(e))
+    }
   }
 
   /** Context menu of a note; a right click on another tab selects that tab first. */

@@ -9,6 +9,7 @@ export const SAVE_STATE_LABEL: Record<SaveState, string> = {
   held: 'Nicht gespeichert',
 }
 
+import { platformFromUserAgent, revealLabel } from '../../shared/reveal'
 import type { View } from '../../shared/types'
 import { Clock } from './clock'
 import {
@@ -20,7 +21,7 @@ import {
 } from './switches'
 
 export interface StatusActions extends ToggleActions {
-  /** Right click on the file name: the note's context menu (rename, export, close). */
+  /** Right click on the file name: the note's context menu (rename, reveal, export, close). */
   noteMenu(): void
   setMode(mode: Mode): void
   setView(view: View): void
@@ -46,7 +47,9 @@ export class StatusLine {
     this.state.className = 'state'
     this.state.dataset.testid = 'status-state'
     this.name.dataset.testid = 'status-file'
-    this.name.title = 'Rechtsklick: Umbenennen, PDF exportieren, Tab schließen'
+    // Lists the note menu's entries (src/main/menu.ts noteMenuTemplate), same platform label.
+    const reveal = revealLabel(platformFromUserAgent(navigator.userAgent))
+    this.name.title = `Rechtsklick: Umbenennen, ${reveal}, PDF exportieren, Tab schließen`
     this.name.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       if (this.name.textContent) actions.noteMenu()

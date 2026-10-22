@@ -45,6 +45,8 @@ const api: MdoApi = {
   validationInputs: (path, template, profile) =>
     ipcRenderer.invoke(Ch.validationInputs, path, template, profile),
   showNoteMenu: () => ipcRenderer.invoke(Ch.noteMenu),
+  revealPath: (path) => ipcRenderer.invoke(Ch.revealPath, path),
+  openTemplatesFolder: () => ipcRenderer.invoke(Ch.openTemplatesFolder),
   getSettingsStatus: () => ipcRenderer.invoke(Ch.settingsStatus),
   updateSettings: (patch) => ipcRenderer.invoke(Ch.updateSettings, patch),
   choosePath: (kind, current) => ipcRenderer.invoke(Ch.choosePath, kind, current),
