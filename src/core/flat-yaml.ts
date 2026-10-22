@@ -42,11 +42,14 @@ export function readFlatYaml(yaml: string): Record<string, FlatValue> {
     const { value: raw } = splitValue(m[2] ?? '')
     const quoted = /^["']/.test((m[2] ?? '').trimStart())
     const value = raw.trim()
-    // Indented lines belonging to this key (blank lines inside are kept for block scalars).
+    // Lines belonging to this key: indented ones (blank lines inside are kept for block
+    // scalars) and, for an empty value, `- item` lines in column 0 — YAML allows a block list
+    // at the key's own indentation, and hand-written headers use it (`x-to:` / `- Firma`).
+    const listHead = !quoted && value === ''
     let end = i + 1
     while (end < lines.length) {
       const l = lines[end] as string
-      if (l.trim() === '' || indentOf(l) > 0) end++
+      if (l.trim() === '' || indentOf(l) > 0 || (listHead && /^-(\s|$)/.test(l))) end++
       else break
     }
     const body = lines.slice(i + 1, end)
@@ -57,9 +60,9 @@ export function readFlatYaml(yaml: string): Record<string, FlatValue> {
       while (text.length && text[text.length - 1] === '') text.pop()
       out[key] = text.join(value.startsWith('|') ? '\n' : ' ')
       i = end - 1
-    } else if (!quoted && value === '') {
+    } else if (listHead) {
       const items = body
-        .map((l) => /^\s+-(?:\s+(.*))?$/.exec(l))
+        .map((l) => /^\s*-(?:\s+(.*))?$/.exec(l))
         .filter((x): x is RegExpExecArray => x !== null)
         .map((x) => splitValue(x[1] ?? '').value.trim())
       out[key] = items.length ? items : ''

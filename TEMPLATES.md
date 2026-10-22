@@ -360,7 +360,7 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
 | `--mdo-titleblock-align` | `center` | alignment of the head block |
 
-Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-mono` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
+Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
 
 **Classes.** Besides tokens a set may style the blocks of `.preview.yaml`: `.mdo-titleblock` (the head), `.mdo-footblock` (the foot), each element as `.mdo-tb-<class>`, its label as `.mdo-tb-label`, the single lines of `lines:` as `.mdo-tb-line`. Declarations such as `margin`, `text-align`, `font-size` and `position: relative|absolute` (to let a signature overlap lines) are fine.
 

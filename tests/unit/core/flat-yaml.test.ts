@@ -16,6 +16,13 @@ describe('readFlatYaml', () => {
       'x-att': ['A, B', 'C'],
       e: [],
     }))
+  it('reads block lists whose items start in column 0', () =>
+    expect(readFlatYaml('x-to:\n- Firma\n-   "12345 Ort"\nsubject: S\n- stray\n')).toEqual({
+      'x-to': ['Firma', '12345 Ort'],
+      subject: 'S',
+    }))
+  it('keeps column-0 dashes out of block scalars and scalars', () =>
+    expect(readFlatYaml('a: |\n  x\n- y\nb: v\n- z\n')).toEqual({ a: 'x', b: 'v' }))
   it('reads block scalars', () =>
     expect(readFlatYaml('a: |\n  L1\n  L2\nb: x\n')).toEqual({ a: 'L1\nL2', b: 'x' }))
   it('folds > scalars and drops trailing blank lines', () =>

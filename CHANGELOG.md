@@ -12,9 +12,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Editor: the status line shows the note's set (`template:`, e.g. `memo`, `din5008a`) next to the file name; nothing without `template:`. The header is checked silently in the background (on opening a note, on switching tabs, 500 ms after typing stops; main's set and profile inputs are fetched again only when the path, `template:` or `profile:` change, or when the window regains focus). The name turns red when the check finds errors (warnings and hints do not count, like the export notice and the CLI exit code; a set that is not installed or a missing profile is an error); the tooltip reads „memo – n Fehler im YAML-Kopf“, with „(Set nicht installiert)“ for an unknown set. A click opens „YAML prüfen …“ (not while presenting)
 
 ### Changed
+- Template sets: memo 26.10.6 and din5008a 26.10.3 describe their editor preview (`<name>.css`, `<name>.preview.yaml`). din5008a shows the sender line, address, date and subject above the text and closing, signature, signer and enclosures below it, in serif 11 pt at the letter's 165 mm measure; memo states its look explicitly (unchanged)
 - Editor: 100 % zoom now matches the paper size, and zoom and the Present factor scale the set's print sizes (body, headings, tables, code, measure) together; memo's measure is 145 mm instead of 41.1 em (0.03 px apart at 100 %)
 
 ### Fixed
+- Editor: the set's preview reads block lists whose items start in column 0 (`x-to:` followed by `- Firma`), which is valid YAML; the address block stayed empty
+- TEMPLATES.md §8.1 named the code font token `--mdo-font-mono`; the theme's token is `--mdo-font-code`
 - Build: `scripts/fetch-pipeline-assets.mjs` retries a download that failed with a server error (5xx), rate limiting (429) or a network error, three times with growing pauses (2 s, 5 s, 15 s); a 4xx other than 429 still fails at once. Single HTTP 503 answers from chromium.googlesource.com (dictionaries) had broken CI and release runs
 
 ## [26.10.1] - 2026-10-21

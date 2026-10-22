@@ -114,14 +114,14 @@
     {
       "name": "memo",
       "repo": "jcmx9/MarkdownOffice-set-memo",
-      "tag": "v26.10.5",
-      "sha256": "bfb7804575c5bb5478fb4196d2f8a737cea933ee32e3f99e73f7ab084d7c980e"
+      "tag": "v26.10.6",
+      "sha256": "243fb9eb925eaa334d7e7c432604a646ccd63bd5c8d62e5b509c53d0567886a8"
     },
     {
       "name": "din5008a",
       "repo": "jcmx9/MarkdownOffice-set-din5008a",
-      "tag": "v26.10.2",
-      "sha256": "74436be992487c0adc91c7da796b84c0851e4954de91c00713253c0be175ba05"
+      "tag": "v26.10.3",
+      "sha256": "967150da706c37b481d6be5ffd482f15923befce340339dc686e14b44d9a7c6d"
     }
   ],
   "dictionaries": [
