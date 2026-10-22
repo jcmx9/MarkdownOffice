@@ -553,6 +553,28 @@
   font-size: 0.85em;
   color: var(--mdo-faint);
 }
+/* Foot block after the body (closing, signature, signer, attachments of a letter set); memo
+   has none. A set styles its blocks (.mdo-tb-<class>) in its own CSS; these are neutral bases. */
+.mdo-preview .mdo-footblock {
+  padding: 1.6em 0 0.2em;
+  text-align: left;
+  cursor: default;
+}
+.mdo-preview .mdo-footblock-none {
+  padding: 0;
+}
+/* One line of a `lines:` block (address, attachments) and the label above it. */
+.mdo-preview .mdo-tb-line,
+.mdo-preview .mdo-tb-label {
+  overflow-wrap: anywhere;
+}
+/* Signature image: block-level; an inline width from the description beats this default. */
+.mdo-preview img.mdo-tb-signature {
+  display: block;
+  width: calc(40mm * var(--mdo-scale, 1));
+  max-width: 100%;
+  height: auto;
+}
 
 /* Present: larger text in a calm, centred column; no gutters. Deliberately not the PDF's
    measure: about 60 instead of 82 characters per line, readable for an audience, so line

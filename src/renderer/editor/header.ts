@@ -15,9 +15,11 @@ import {
   ViewPlugin,
   WidgetType,
 } from '@codemirror/view'
+import type { PreviewBlock } from '../../core/preview-spec'
 import { frontmatterRange } from './frontmatter'
 import { presentMode } from './mode'
-import { renderTitleBlock, type TitleBlock, titleBlockData } from './titleblock'
+import { noteBlocks, previewSource, setPreviewSource } from './preview-source'
+import { renderBlocks } from './titleblock'
 
 export const setHeaderHidden = StateEffect.define<boolean>()
 
@@ -31,18 +33,27 @@ export const headerHidden = StateField.define<boolean>({
 
 class TitleBlockWidget extends WidgetType {
   constructor(
-    readonly data: TitleBlock | null,
+    readonly blocks: readonly PreviewBlock[],
+    readonly signature: string | null,
     readonly present: boolean,
   ) {
     super()
   }
+  // By value, so cursor moves (each rebuilds the decoration) keep the same DOM; the signature
+  // by identity: the same data URL string is kept per source, no deep compare of ~256 KiB.
   override eq(other: TitleBlockWidget): boolean {
     return (
-      other.present === this.present && JSON.stringify(other.data) === JSON.stringify(this.data)
+      other.present === this.present &&
+      other.signature === this.signature &&
+      JSON.stringify(other.blocks) === JSON.stringify(this.blocks)
     )
   }
   override toDOM(): HTMLElement {
-    return renderTitleBlock(this.data, document, this.present ? 'none' : 'marker')
+    return renderBlocks(this.blocks, {
+      part: 'head',
+      signature: this.signature,
+      empty: this.present ? 'none' : 'marker',
+    })
   }
 }
 
@@ -66,7 +77,11 @@ function build(state: EditorState): DecorationSet {
   }
   return Decoration.set([
     Decoration.replace({
-      widget: new TitleBlockWidget(titleBlockData(state.doc), present),
+      widget: new TitleBlockWidget(
+        noteBlocks(state, 'head'),
+        state.field(previewSource, false)?.signature ?? null,
+        present,
+      ),
       block: true,
       rf: 'header-fold',
     }).range(range.from, range.to),
@@ -140,7 +155,9 @@ export const headerFold: StateField<DecorationSet> = StateField.define<Decoratio
     const modeFlipped = tr.startState.facet(presentMode) !== tr.state.facet(presentMode)
     // Esc ends a snippet session without moving the selection: rebuild so the header collapses.
     const sessionEnded = snippetActive(tr.startState) !== snippetActive(tr.state)
-    return tr.docChanged || tr.selection || flipped || modeFlipped || sessionEnded
+    // A new set description (or profile) for the note changes what the head shows.
+    const sourced = tr.effects.some((e) => e.is(setPreviewSource))
+    return tr.docChanged || tr.selection || flipped || modeFlipped || sessionEnded || sourced
       ? build(tr.state)
       : deco
   },

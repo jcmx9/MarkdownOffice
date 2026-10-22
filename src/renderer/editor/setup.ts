@@ -12,6 +12,7 @@ import {
 } from '@codemirror/state'
 import { drawSelection, EditorView, type KeyBinding, keymap, lineNumbers } from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
+import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
 import { mdoHighlight } from './highlight'
@@ -20,6 +21,7 @@ import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
 import { previewPlugin } from './preview'
+import { previewSource } from './preview-source'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
@@ -78,6 +80,7 @@ export function viewExtensions(view: View): Extension {
         previewPlugin,
         tableField,
         headerFold,
+        footBlock,
       ]
 }
 
@@ -109,6 +112,8 @@ export function createState(
       md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
+      // Every tab keeps its own set description; null (built-in memo) until main answers.
+      previewSource,
       EditorView.lineWrapping,
       viewCompartment.of(viewExtensions(view)),
       modeCompartment.of(modeExtensions(mode)),

@@ -9,6 +9,7 @@ import {
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
+import { parsePreviewSpec } from '../../../src/core/preview-spec'
 import {
   headerFold,
   headerHidden,
@@ -16,6 +17,7 @@ import {
   moveOutOfHeader,
 } from '../../../src/renderer/editor/header'
 import { modeCompartment, modeExtensions } from '../../../src/renderer/editor/mode'
+import { setPreviewSource } from '../../../src/renderer/editor/preview-source'
 import { createState, viewCompartment, viewExtensions } from '../../../src/renderer/editor/setup'
 
 const DOC = '---\ntitle: "Kickoff"\n---\n\n# Body'
@@ -160,6 +162,31 @@ describe('collapsed header in a real view', () => {
     expect(v.state.selection.main.head).toBe(0)
     v.dispatch(v.state.replaceSelection('x'))
     expect(v.state.doc.toString()).toBe(`x${HEAD}Erste Zeile\n\n---\nmehr`)
+    v.destroy()
+  })
+
+  it('cursor moves keep the same widget DOM (eq by value, signature by identity)', () => {
+    const v = view()
+    const before = v.contentDOM.querySelector('.mdo-titleblock')
+    expect(before?.querySelector('.mdo-tb-title')?.textContent).toBe('Kickoff')
+    for (const anchor of [HEAD.length + 3, TEXT.length, HEAD.length + 1]) {
+      v.dispatch({ selection: { anchor } })
+    }
+    expect(v.contentDOM.querySelector('.mdo-titleblock')).toBe(before)
+    v.destroy()
+  })
+
+  it('a source effect redraws the head from the set description', () => {
+    const v = view()
+    const spec = parsePreviewSpec('preview: 1\nhead:\n  - class: subject\n    text: "{title}!"\n')
+    if (!spec.ok) throw new Error(spec.error)
+    v.dispatch({
+      effects: setPreviewSource.of({ set: 'brief', spec: spec.spec, profile: {}, signature: null }),
+    })
+    expect(v.contentDOM.querySelector('.mdo-tb-subject')?.textContent).toBe('Kickoff!')
+    expect(v.contentDOM.querySelector('.mdo-tb-title')).toBeNull()
+    v.dispatch({ effects: setPreviewSource.of(null) })
+    expect(v.contentDOM.querySelector('.mdo-tb-title')?.textContent).toBe('Kickoff')
     v.destroy()
   })
 

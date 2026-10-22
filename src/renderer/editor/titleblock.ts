@@ -1,61 +1,70 @@
-import type { Text } from '@codemirror/state'
-import { formatDate } from '../../core/format-date'
-import { frontmatterFields } from './frontmatter'
+import type { PreviewBlock } from '../../core/preview-spec'
+import { safeSignature } from './preview-source'
 
-export { formatDate } from '../../core/format-date'
-
-export interface TitleBlock {
-  /** Front matter `toptitle:`: the small letter-spaced line above the title (memo set). */
-  toptitle: string
-  title: string
-  subtitle: string
-  /** "date · author", only when author is set (as in the PDF). */
-  meta: string
-}
-
-export function titleBlockData(doc: Text): TitleBlock | null {
-  const f = frontmatterFields(doc)
-  const toptitle = f.toptitle ?? ''
-  const title = f.title ?? ''
-  const subtitle = f.subtitle ?? ''
-  const author = f.author ?? ''
-  if (!toptitle && !title && !subtitle && !author) return null
-  const date = formatDate(f.date ?? '', f.lang || 'de')
-  return {
-    toptitle,
-    title,
-    subtitle,
-    meta: author ? [date, author].filter(Boolean).join(' · ') : '',
+/** One block as `.mdo-tb-<cls>`; text always via textContent / text nodes, never as HTML. */
+function renderBlock(b: PreviewBlock, signature: string | null, doc: Document): HTMLElement | null {
+  if (b.kind === 'image') {
+    const src = safeSignature(signature)
+    if (!src) return null
+    const img = doc.createElement('img')
+    img.className = `mdo-tb-${b.cls}`
+    img.alt = ''
+    img.src = src
+    // Print units scale with the zoom like every other length (the --mdo-scale contract).
+    if (b.width) img.style.width = `calc(${b.width} * var(--mdo-scale, 1))`
+    return img
   }
+  const el = doc.createElement('div')
+  el.className = `mdo-tb-${b.cls}`
+  if (b.label !== null) {
+    const label = doc.createElement('div')
+    label.className = 'mdo-tb-label'
+    label.textContent = b.label
+    el.append(label)
+  }
+  if (b.kind === 'text') el.append(doc.createTextNode(b.text))
+  else
+    for (const text of b.lines) {
+      const line = doc.createElement('div')
+      line.className = 'mdo-tb-line'
+      line.textContent = text
+      el.append(line)
+    }
+  return el
 }
 
-export function renderTitleBlock(
-  tb: TitleBlock | null,
-  doc: Document = document,
-  empty: 'marker' | 'none' = 'marker',
+/**
+ * The head (title block replacing the front matter) or foot (after the body) of a note's
+ * preview. An empty head keeps today's faint "⋯ YAML-Header" marker outside Present.
+ */
+export function renderBlocks(
+  blocks: readonly PreviewBlock[],
+  o: { part: 'head' | 'foot'; signature: string | null; empty: 'marker' | 'none'; doc?: Document },
 ): HTMLElement {
+  const doc = o.doc ?? document
   const el = doc.createElement('div')
-  el.className = 'mdo-titleblock'
-  if (empty !== 'none' || tb) el.title = 'YAML-Header ausgeblendet'
-  if (!tb) {
-    if (empty === 'none') {
-      el.classList.add('mdo-titleblock-none')
+  if (o.part === 'head') {
+    el.className = 'mdo-titleblock'
+    if (o.empty !== 'none' || blocks.length) el.title = 'YAML-Header ausgeblendet'
+    if (!blocks.length) {
+      if (o.empty === 'none') {
+        el.classList.add('mdo-titleblock-none')
+        return el
+      }
+      el.classList.add('mdo-titleblock-empty')
+      el.textContent = '⋯ YAML-Header'
       return el
     }
-    el.classList.add('mdo-titleblock-empty')
-    el.textContent = '⋯ YAML-Header'
-    return el
+  } else {
+    el.className = 'mdo-footblock'
+    if (!blocks.length) {
+      el.classList.add('mdo-footblock-none')
+      return el
+    }
   }
-  const part = (cls: string, text: string) => {
-    if (!text) return
-    const d = doc.createElement('div')
-    d.className = cls
-    d.textContent = text
-    el.append(d)
+  for (const b of blocks) {
+    const child = renderBlock(b, o.signature, doc)
+    if (child) el.append(child)
   }
-  part('mdo-tb-toptitle', tb.toptitle)
-  part('mdo-tb-title', tb.title)
-  part('mdo-tb-subtitle', tb.subtitle)
-  part('mdo-tb-meta', tb.meta)
   return el
 }
