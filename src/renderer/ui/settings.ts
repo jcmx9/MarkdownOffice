@@ -12,6 +12,8 @@ export interface SettingsDialogDeps {
   /** Resolves while the dialog is open; the status block says so until then. */
   status: Promise<SettingsStatus>
   choose(kind: ChooseKind, current: string): Promise<string | null>
+  /** „Vorlagen-Ordner öffnen“: main opens (and creates) it; null = opened, else the message. */
+  openTemplatesFolder(): Promise<string | null>
   /** `process.platform` value; macOS uses the system spellchecker and has no update controls. */
   platform: NodeJS.Platform | string
   /** „Jetzt prüfen“: asks main to look for dictionary updates. */
@@ -186,6 +188,31 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       label.append(row)
       rows.push(label)
     }
+
+    // User sets live in a fixed folder (~/Documents/Markdown Office/Vorlagen) that has no path
+    // field: this button is the way to find it. A failure shows next to the button, the dialog
+    // stays usable.
+    const templates = el(
+      'button',
+      { type: 'button', textContent: 'Vorlagen-Ordner öffnen' },
+      'settings-open-templates',
+    )
+    const templatesStatus = el('span', { className: 'settings-hint' }, 'settings-templates-status')
+    templatesStatus.setAttribute('role', 'status')
+    templates.addEventListener('click', () => {
+      templatesStatus.textContent = ''
+      deps.openTemplatesFolder().then(
+        (err) => {
+          templatesStatus.textContent = err ?? ''
+        },
+        (e: unknown) => {
+          templatesStatus.textContent = `Vorlagen-Ordner nicht geöffnet: ${e instanceof Error ? e.message : 'unbekannter Fehler'}`
+        },
+      )
+    })
+    const templatesRow = el('div', { className: 'settings-path' })
+    templatesRow.append(templates, templatesStatus)
+    rows.push(templatesRow)
 
     const factor = el(
       'input',

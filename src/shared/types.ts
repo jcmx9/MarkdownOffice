@@ -96,6 +96,7 @@ export type MenuCommand =
   | 'create-profile'
   | 'open'
   | 'rename'
+  | 'reveal'
   | 'close-tab'
   | 'export'
   | 'next-tab'
@@ -191,8 +192,18 @@ export interface MdoApi {
     template: string,
     profile: string,
   ): Promise<ValidationInputs>
-  /** Shows the shown note's context menu (rename, export, close) at the mouse. */
+  /** Shows the shown note's context menu (rename, reveal, export, close) at the mouse. */
   showNoteMenu(): Promise<void>
+  /**
+   * Shows the note in the OS file manager (Finder/Explorer). Main rejects a path it did not
+   * allow. Resolves to null when shown, else the message for the user (e.g. file missing).
+   */
+  revealPath(path: string): Promise<string | null>
+  /**
+   * Opens the user templates folder (`Vorlagen`, created when missing) in the file manager.
+   * Resolves to null when opened, else the message for the user.
+   */
+  openTemplatesFolder(): Promise<string | null>
   getSettingsStatus(): Promise<SettingsStatus>
   /** Main validates every value; resolves to the settings now in effect (invalid ones dropped). */
   updateSettings(patch: SettingsPatch): Promise<Settings>
