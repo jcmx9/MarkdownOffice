@@ -1,0 +1,19 @@
+/* Hostile test set: only the body-size token (without !important) and the line colour survive. */
+@import url(http://127.0.0.1:9/import.css);
+@font-face {
+  font-family: x;
+  src: url(http://127.0.0.1:9/font.woff2);
+}
+body {
+  background: rgb(255, 0, 0);
+}
+.mdo-preview {
+  background-image: url(http://127.0.0.1:9/bg.png);
+  position: fixed;
+  z-index: 99;
+  /* biome-ignore lint/complexity/noImportantStyles: the sanitiser must strip it */
+  --mdo-body-size: 30pt !important;
+}
+.mdo-preview .cm-line {
+  color: rgb(1, 2, 3);
+}
