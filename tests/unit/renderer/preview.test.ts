@@ -6,6 +6,7 @@ import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
 import { buildPreview, previewPlugin } from '../../../src/renderer/editor/preview'
+import { parsed } from './parsed'
 import { rf } from './preview-helper'
 
 describe('headings', () => {
@@ -179,12 +180,13 @@ describe('front matter', () => {
 describe('ranges', () => {
   it('only decorates the requested range', () => {
     const doc = '# Eins\n\n# Zwei'
-    const state = EditorState.create({
-      doc: `${doc}\n\nende`,
-      selection: { anchor: doc.length + 6 },
-      extensions: markdown({ base: markdownLanguage }),
-    })
-    ensureSyntaxTree(state, state.doc.length, 5000)
+    const state = parsed(
+      EditorState.create({
+        doc: `${doc}\n\nende`,
+        selection: { anchor: doc.length + 6 },
+        extensions: markdown({ base: markdownLanguage }),
+      }),
+    )
     const out: number[] = []
     buildPreview(state, [{ from: 8, to: 14 }]).between(0, state.doc.length, (from) => {
       out.push(from)
@@ -198,12 +200,13 @@ describe('ranges', () => {
 })
 
 function stateOf(doc: string, anchor: number, head?: number) {
-  const state = EditorState.create({
-    doc,
-    selection: { anchor, head: head ?? anchor },
-    extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
-  })
-  ensureSyntaxTree(state, state.doc.length, 5000)
+  const state = parsed(
+    EditorState.create({
+      doc,
+      selection: { anchor, head: head ?? anchor },
+      extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+    }),
+  )
   return state
 }
 
@@ -237,17 +240,21 @@ describe('line breaks', () => {
 
 describe('reveal rule', () => {
   it('reveals with a second selection range touching the element', () => {
-    const state = EditorState.create({
-      doc: 'text **fett** text\n\nende',
-      selection: { anchor: 22 },
-      extensions: [
-        EditorState.allowMultipleSelections.of(true),
-        markdown({ base: markdownLanguage }),
-      ],
-    }).update({
-      selection: EditorSelection.create([EditorSelection.cursor(22), EditorSelection.cursor(8)], 0),
-    }).state
-    ensureSyntaxTree(state, state.doc.length, 5000)
+    const state = parsed(
+      EditorState.create({
+        doc: 'text **fett** text\n\nende',
+        selection: { anchor: 22 },
+        extensions: [
+          EditorState.allowMultipleSelections.of(true),
+          markdown({ base: markdownLanguage }),
+        ],
+      }).update({
+        selection: EditorSelection.create(
+          [EditorSelection.cursor(22), EditorSelection.cursor(8)],
+          0,
+        ),
+      }).state,
+    )
     const d = collect(state)
     expect(d).toContain('mark:mdo-mark@5-7')
     expect(d.some((x) => x.startsWith('hide'))).toBe(false)
