@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Build: `scripts/fetch-pipeline-assets.mjs` retries a download that failed with a server error (5xx), rate limiting (429) or a network error, three times with growing pauses (2 s, 5 s, 15 s); a 4xx other than 429 still fails at once. Single HTTP 503 answers from chromium.googlesource.com (dictionaries) had broken CI and release runs
+
 ## [26.10.1] - 2026-10-21
 
 ### Added
