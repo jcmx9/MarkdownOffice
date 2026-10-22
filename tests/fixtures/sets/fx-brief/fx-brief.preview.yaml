@@ -1,0 +1,26 @@
+preview: 1
+head:                       # replaces the front matter in preview (header hidden) and Present
+  - class: sender           # rendered as .mdo-tb-sender
+    parts: ["{profile.name}", "{profile.street}", "{profile.zip} {profile.city}"]
+    sep: " · "
+  - class: address
+    lines: "{x-to}"         # a list value → one line each; a string → split at newlines
+  - class: date
+    text: "{date}"          # ISO or D.M.YYYY → long form by lang
+    today: true             # empty → today (din5008a like its PDF; memo leaves it out)
+  - class: subject
+    text: "{x-subject}"
+foot:                       # fixed after the last line of the body
+  - class: closing
+    text: "{x-closing}"
+  - class: signature
+    image: "{profile.signature}"   # a file name next to the profile (SVG only)
+    width: "{profile.signature-width|40mm}"
+    when: ["{x-closing}", "{x-sign}"]
+  - class: signer
+    text: "{profile.name}"
+    when: "{x-closing}"
+  - class: attachments
+    label: { de: "Anlagen:", en: "Enclosures:" }
+    lines: "{x-attachments}"
+    when: "{x-closing}"

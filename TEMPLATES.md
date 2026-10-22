@@ -12,7 +12,8 @@ A set is a Typst template plus optional companion files, all sharing one name:
 |------|----------|---------|---------|
 | `<name>.typ` | yes | pipeline (Typst) | Builds the whole PDF: page layout, metadata, and the body via cmarker |
 | `<name>.header.md` | no | editor (new notes, *Einfügen → Vorlage …*) | Front-matter template with every key the set understands |
-| `<name>.css` | no | nobody yet (reserved) | Editor preview overrides |
+| `<name>.css` | no | editor preview | Look of the preview and Present: tokens and `.mdo-*` rules (§8) |
+| `<name>.preview.yaml` | no | editor preview | Head and foot blocks of the preview, filled from front matter and profile (§8) |
 
 **Name rule:** `^[a-z0-9_-]+$` (lowercase letters, digits, `_`, `-`). Anything else is not treated as a set name. A value ending in `.typ` (case-insensitive) is a single template file instead.
 
@@ -22,7 +23,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 |-------|--------|-------|
 | User folder | `<MDO_TEMPLATES>/<name>.typ` | flat file, no sub-folder; default `~/Documents/Markdown Office/Vorlagen/` (Windows: the *Documents* folder + `\Markdown Office\Vorlagen`) |
 | Bundled sets | `<MDO_SETS_DIR>/<name>/<name>.typ` | default `<pipeline>/../sets`; the app ships `<resources>/sets/memo/` |
-| Set repository | `<name>.typ`, `<name>.css`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
+| Set repository | `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
 
 Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`) and the bundled store packages (`@preview/…`), see §4. On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
 
@@ -75,6 +76,8 @@ A set that needs a sender (a letter) reads a profile: a YAML file plus the files
 |---|---|
 | a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `<name>.yaml` 1. in `profiles/` in the note's folder (or `MDO_BASE_DIR`), 2. in `<set>/profiles/` in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`; the set's profiles, also for a bundled set – only when `template:` is a set name, not a `.typ` file), 3. in `profiles/` in the templates folder (shared by all sets), 4. in `profiles/` in the folder of the resolved set (its example profiles) – the first existing file wins |
 | a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
+
+**Overriding values per note.** A set that prints profile values may let the note override single ones: `x-profile-<key>` in the front matter replaces the profile's `<key>` (for example `x-profile-phone`). The editor preview follows the same convention for `{profile.<key>}` (section 8). `signature` cannot be overridden: it names a file next to the profile.
 
 A folder `Vorlagen/<set>/` that holds only `profiles/` (no `<set>.typ`) does not shadow the bundled set: a set is resolved by its `.typ` only.
 
@@ -293,9 +296,136 @@ Every set must produce a valid **PDF/A-3b** with the source attached, like `memo
 | Metadata | — | memo: `title` = `doctitle` or `title`; `author` = `author` split at `,`; `description` = `doctitle`; `keywords` = `toptitle` + `"Markdown Office " + version` |
 | Colours | — | Use `luma()` for greys (stored as single-channel grey); Typst 0.15 cannot embed CMYK in PDF/A |
 
-## 8. Editor preview CSS
+## 8. Editor preview: `<name>.css` and `<name>.preview.yaml`
 
-`<name>.css` is reserved for editor overrides: the editor brings its own preview look (derived from `memo.typ`) and a set may later override it only via the CSS variables `--mdo-*` and the classes `.mdo-*`. The editor does not load set CSS yet; `memo.css` contains no rules. Ship an empty or minimal file with a comment; never rely on it for PDF output.
+The editor preview and Present mode take their look from the note's set. Two optional files next to `<name>.typ` describe it; neither has any influence on the PDF.
+
+| File | Describes |
+|------|-----------|
+| `<name>.css` | font, sizes, measure, colours and the look of the blocks (print units) |
+| `<name>.preview.yaml` | the blocks above (`head`) and below (`foot`) the text, filled from the front matter and the profile |
+
+Both are UTF-8 and at most 64 KiB. A file that is missing, too large or broken never stops the editor; the fallbacks are listed at the end of this section. Which set a note uses follows `template:` (no key: `memo`); a `.typ` path or a set that is not installed gets the built-in memo look.
+
+### 8.1 `<name>.css`
+
+**Scope.** The app puts every rule under `#editor[data-mdo-set="<name>"]`, so two tabs with different sets never mix and a set cannot style anything outside the editor (the editor also clips with `contain: paint`). Write plain rules; do not write the scope yourself.
+
+**What survives the sanitiser.** The file is rebuilt from the rules that pass; everything else is dropped and logged:
+
+- Only rules whose every selector starts with `.mdo-` followed by at least one of `a-z`, `0-9`, `-` stay. One foreign selector in a list drops the whole rule.
+- All at-rules are dropped (`@import`, `@font-face`, `@media`, `@supports`, …). Nested rules are dropped.
+- `{`, `}`, `\` or `<` in a selector or value drop the rule or the declaration (CSS escapes could spell `url(`).
+- A declaration containing `url(`, `image(`, `image-set(`, `element(`, `expression(` or `src(` (case-insensitive, whitespace ignored) is dropped, so a set can load nothing. Fonts and pictures come from the app, not from CSS.
+- `!important` is stripped (the app's own `!important`, e.g. Present's `max-width: 70ch`, always wins).
+- A declaration with an unbalanced string or bracket, an invalid property name or an empty value is dropped.
+- `--mdo-scale` and `z-index` are dropped. `position` may be `static`, `relative` or `absolute`, never `fixed` or `sticky`.
+
+**Print units and zoom.** Write sizes in print units (`11pt`, `165mm`). The sanitiser multiplies every absolute length (`px pt pc mm cm in Q`, outside strings) by the app's zoom factor `--mdo-scale`. At 100 % zoom a set's `11pt` is 11 CSS pt and `165mm` is 165 CSS mm, i.e. the paper size; the zoom and the Present factor scale all print sizes together by the same factor. Relative units (`em`, `ch`, unitless line heights) follow on their own. Present keeps its `70ch` measure.
+
+**Tokens.** The app declares the tokens on the `.cm-editor` element, which also carries the class `.mdo-preview`. A set changes them with a rule on `.mdo-preview`:
+
+```css
+.mdo-preview {
+  --mdo-body-font: var(--mdo-font-serif);
+  --mdo-body-size: 11pt;
+  --mdo-measure: 165mm;
+}
+```
+
+Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-table-font`) are resolved on `.mdo-preview` itself, so override them there too, in the same rule; a rule on a deeper element would not reach them. The defaults are memo's values:
+
+| Token | memo default | Meaning |
+|-------|--------------|---------|
+| `--mdo-body-font` | `var(--mdo-font-sans)` | body font family |
+| `--mdo-body-size` | `10pt` | body size (zoomed) |
+| `--mdo-body-weight` | `400` | body weight |
+| `--mdo-bold-weight` | `600` | weight of `**bold**` |
+| `--mdo-line-height` | `1.5` | line height |
+| `--mdo-align` | `justify` | text alignment of paragraphs |
+| `--mdo-par-gap` | `1.1em` | the gap a blank line makes between paragraphs |
+| `--mdo-measure` | `145mm` | width of the text block |
+| `--mdo-heading-font` | `var(--mdo-font-serif)` | heading font family |
+| `--mdo-heading-align` | `left` | heading alignment |
+| `--mdo-h1-font`, `--mdo-h2-font`, `--mdo-h3-font` | `var(--mdo-heading-font)` | font per level |
+| `--mdo-h1-size`, `--mdo-h2-size`, `--mdo-h3-size` | `14pt`, `12pt`, `10pt` | size per level |
+| `--mdo-h1-weight`, `--mdo-h2-weight`, `--mdo-h3-weight` | `560`, `560`, `400` | weight per level |
+| `--mdo-h1-color`, `--mdo-h2-color`, `--mdo-h3-color` | `var(--mdo-heading)` | colour per level |
+| `--mdo-h1-rule` | `var(--mdo-hairline)` | colour of the line under H1 |
+| `--mdo-h3-decoration` | `underline` | text decoration of H3 |
+| `--mdo-table-font` | `var(--mdo-body-font)` | table font family |
+| `--mdo-table-size` | `9pt` | table size |
+| `--mdo-table-weight` | `500` | table weight |
+| `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
+| `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
+| `--mdo-titleblock-align` | `center` | alignment of the head block |
+
+Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-mono` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
+
+**Classes.** Besides tokens a set may style the blocks of `.preview.yaml`: `.mdo-titleblock` (the head), `.mdo-footblock` (the foot), each element as `.mdo-tb-<class>`, its label as `.mdo-tb-label`, the single lines of `lines:` as `.mdo-tb-line`. Declarations such as `margin`, `text-align`, `font-size` and `position: relative|absolute` (to let a signature overlap lines) are fine.
+
+**Fonts.** Only the bundled families are available ("mdo Sans", "mdo Serif", "mdo Code", see section 4 and `src/renderer/ui/fonts.ts`); name them through the tokens or `var(--mdo-font-*)`. `@font-face` is dropped.
+
+### 8.2 `<name>.preview.yaml`
+
+```yaml
+preview: 1
+head:                       # replaces the front matter in the preview (header hidden) and in Present
+  - class: sender           # rendered as .mdo-tb-sender
+    parts: ["{profile.name}", "{profile.street}", "{profile.zip} {profile.city}"]
+    sep: " · "
+  - class: address
+    lines: "{x-to}"         # a list value: one line each; a string is split at newlines
+  - class: date
+    text: "{date}"          # ISO or D.M.YYYY, long form by lang
+    today: true             # empty: today
+  - class: subject
+    text: "{x-subject}"
+foot:                       # after the last line of the text
+  - class: closing
+    text: "{x-closing}"
+  - class: signature
+    image: "{profile.signature}"
+    width: "{profile.signature-width|40mm}"
+    when: ["{x-closing}", "{x-sign}"]
+  - class: attachments
+    label: { de: "Anlagen:", en: "Enclosures:" }
+    lines: "{x-attachments}"
+    when: "{x-closing}"
+```
+
+The file is a map with `preview: 1` and the lists `head` and `foot` (both optional). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
+
+Keys of an element:
+
+- `class:` (required, `a-z`, `0-9`, `-`): the element becomes `mdo-tb-<class>`.
+- Exactly one of `text:`, `parts:`, `lines:`, `image:`.
+- `text:` a string; `parts:` a list of strings joined with `sep:` (default one space, empty parts are dropped first, so no dangling separators); `lines:` is a string (a YAML list makes the file invalid): if it is exactly one placeholder whose value is a list (e.g. `"{x-to}"`), each list item becomes a line; otherwise the resolved string is split at newlines.
+- `image:` only `"{profile.signature}"` (the one picture the app reads). `width:` sets its width, e.g. `"{profile.signature-width|40mm}"`; a number with `mm`, `pt`, `cm` or `in` (else no width), scaled with the zoom.
+- `label:` a text shown before the content, either a string or a map by language (`de`, `en`, …): the note's `lang` without region, then `de`, then the first entry.
+- `today:` `true` makes an empty or missing `{date}` today's date (as the PDF does); without it an empty date stays empty.
+- `when:` one placeholder or a list; all must hold. A value holds when it is not empty and not `false`, `False` or `FALSE`. Other words (`no`, `nein`, `0`) count as present. A string with several placeholders holds only if all of them hold; a `when` without any placeholder always holds.
+
+Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
+
+Omission: an element with at least one placeholder whose placeholders are all empty is left out. An element made of literal text only is always shown. All text is inserted as text, never as HTML.
+
+**Where the blocks appear.** The head replaces the front matter in the preview with the header hidden and in Present; the foot sits after the text under the same conditions. Neither appears in the code view.
+
+### 8.3 Profile access
+
+Only the profile keys that `.preview.yaml` names (`{profile.key}`) are read into the preview; other keys of the file never leave the app's main process. The note may override a value with `x-profile-<key>` (section 2). The signature is a bare `.svg` file name next to the profile, at most 256 KiB, not a symbolic link, not dot-prefixed (hidden), whose content starts with `<svg` or `<?xml`; otherwise there is no signature picture. `signature` cannot be overridden by the note.
+
+### 8.4 Fallbacks
+
+| Case | Result |
+|------|--------|
+| no `<name>.css` | built-in memo look |
+| no `<name>.preview.yaml` | memo's title block (toptitle, title, subtitle, date and author) |
+| invalid `<name>.preview.yaml` | memo's title block, and one notice per set per session |
+| `template:` is a `.typ` path or an unknown set | built-in memo look and blocks |
+
+Test a set in the editor by copying it into the templates folder and opening a note with `template: <name>`. The unit tests in `tests/unit/` and the fixture sets `tests/fixtures/sets/` show working and malicious examples. Never rely on `.css` or `.preview.yaml` for PDF output.
 
 ## 9. Minimal working skeleton
 
@@ -420,7 +550,7 @@ Repository tests: `bash pipeline/tests/test-pdf.sh` (PDFs of `pipeline/tests/fix
 
 ## 11. Publishing a set
 
-- One repository per set: `MarkdownOffice-set-<name>` (e.g. `jcmx9/MarkdownOffice-set-memo`), with `<name>.typ`, `<name>.css`, `<name>.header.md`, `LICENSE`, `README.md`, `README.en.md` (content-identical), `CHANGELOG.md` at the root.
+- One repository per set: `MarkdownOffice-set-<name>` (e.g. `jcmx9/MarkdownOffice-set-memo`), with `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md`, `LICENSE`, `README.md`, `README.en.md` (content-identical), `CHANGELOG.md` at the root.
 - Versions are CalVer `YY.M.MICRO`; tags are `vYY.M.MICRO` (e.g. `v26.10.0`).
 - Users install a set by copying `<name>.typ` into their templates folder.
 - To bundle a set with the app, add it to `sets` in `scripts/pipeline-assets.json`:
@@ -439,7 +569,7 @@ The app will offer sets for one-click installation from a catalog. A set is list
 
 **Security review.** A set must not put users at risk. In particular:
 
-- **No hard-coded links.** No fixed URLs in the `.typ`, `.css` or `.header.md` (no `link("https://…")`, no URLs in text): a link in a client PDF can lead to a dangerous site, and a reader cannot tell. Links come only from the user's own note.
+- **No hard-coded links.** No fixed URLs in the `.typ`, `.css`, `.preview.yaml` or `.header.md` (no `link("https://…")`, no URLs in text, no `url()` in the CSS: the editor drops it anyway): a link in a client PDF can lead to a dangerous site, and a reader cannot tell. Links come only from the user's own note.
 - **Read only what the pipeline hands over:** `read()` only on `sys.inputs.source` and files under `mdo`; no other paths.
 - **No obfuscated content** (encoded payloads, embedded files other than the source attachment).
 
@@ -447,7 +577,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 
 ## 13. Checklist
 
-- [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`.
+- [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`, `<name>.preview.yaml`.
 - [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"`, `mdo + "/vendor/…"` and bundled store packages (`@preview/<name>:<version>` with the exact pinned version, section 4); no `@preview/` in comments.
 - [ ] Every input is read with `sys.inputs.at(key, default: …)`; booleans compared as strings.
 - [ ] Body rendered with `cmarker.render(preprocess(read(source), hard-breaks: …, lang: …), …)`, `smart-punctuation: false`, `math: mitex`.
@@ -457,6 +587,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
+- [ ] If the set has a `.css` or `.preview.yaml`: print units for sizes, no `url()` or at-rules, `.preview.yaml` starts with `preview: 1` and only uses the documented keys (section 8); a note without them still looks right (memo fallback).
 - [ ] Ships `<name>.schema.yaml` for its `x-` keys (section 6, *Schema*).
 - [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.

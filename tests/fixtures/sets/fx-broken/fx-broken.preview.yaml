@@ -1,0 +1,5 @@
+# An unknown description version: the whole file is refused.
+preview: 2
+head:
+  - class: title
+    text: "{title}"

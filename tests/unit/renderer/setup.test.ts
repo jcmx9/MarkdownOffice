@@ -10,6 +10,7 @@ import {
   freezeSpec,
   isFrozen,
   serializeDoc,
+  tooltipSpace,
   viewCompartment,
   viewExtensions,
 } from '../../../src/renderer/editor/setup'
@@ -134,5 +135,17 @@ describe('freezeSpec (closing)', () => {
     const s = createState('abc', '\n', 'code')
     expect(isFrozen(s)).toBe(false)
     expect(s.readOnly).toBe(false)
+  })
+})
+
+describe('tooltipSpace', () => {
+  it("is the host's box (#editor clips with contain: paint), not the window", () => {
+    const parent = document.createElement('div')
+    const rect = { left: 10, top: 20, right: 310, bottom: 220 } as DOMRect
+    parent.getBoundingClientRect = () => rect
+    document.body.append(parent)
+    const v = new EditorView({ state: createState('abc', '\n', 'preview'), parent })
+    expect(tooltipSpace(v)).toBe(rect)
+    v.destroy()
   })
 })

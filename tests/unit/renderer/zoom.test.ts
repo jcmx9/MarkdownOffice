@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  editorSizes,
+  editorScale,
   handleZoomKey,
   ZOOM_STEPS,
   zoomIn,
@@ -28,16 +28,15 @@ describe('zoom steps', () => {
   })
 })
 
-describe('editorSizes', () => {
-  it('Edit: body 10pt and code 9pt at 100 %', () => {
-    expect(editorSizes('edit', 1, 1.6)).toEqual({ body: '10pt', code: '9pt' })
+describe('editorScale', () => {
+  it('scale: Edit = zoom, Present = zoom × factor', () => {
+    expect(editorScale('edit', 1, 1.6)).toBe(1)
+    expect(editorScale('edit', 0.67, 1.6)).toBe(0.67)
+    expect(editorScale('present', 1, 1.6)).toBe(1.6)
+    expect(editorScale('present', 1.1, 1.6)).toBe(1.76)
   })
-  it('Present: body 10pt × factor × zoom', () => {
-    expect(editorSizes('present', 1, 1.6)).toEqual({ body: '16pt', code: '14.4pt' })
-    expect(editorSizes('present', 1.25, 1.6)).toEqual({ body: '20pt', code: '18pt' })
-  })
-  it('rounds to two decimals', () => {
-    expect(editorSizes('edit', 0.67, 1.6)).toEqual({ body: '6.7pt', code: '6.03pt' })
+  it('rounds to four decimals', () => {
+    expect(editorScale('present', 0.67, 1.33)).toBe(0.8911)
   })
 })
 

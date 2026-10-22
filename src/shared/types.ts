@@ -1,3 +1,4 @@
+import type { SetCssRule } from '../core/set-css'
 import type { ValidationInputs } from '../core/validation-context'
 
 /** Line-ending style of a note. 'mixed' keeps every byte as found. */
@@ -192,6 +193,11 @@ export interface MdoApi {
     template: string,
     profile: string,
   ): Promise<ValidationInputs>
+  /**
+   * Disk inputs of the editor preview for a note (set CSS, preview description, profile,
+   * signature). Same argument rules as `validationInputs`; the note's raw values.
+   */
+  previewInputs(path: string | null, template: string, profile: string): Promise<PreviewInputs>
   /** Shows the shown note's context menu (rename, reveal, export, close) at the mouse. */
   showNoteMenu(): Promise<void>
   /**
@@ -220,6 +226,20 @@ export interface SetInfo {
   hint: string
   /** The header has a column-0 `profile:` key, so the picker offers the existing profiles. */
   hasProfile: boolean
+}
+
+/** What the editor preview needs from disk to show a note like its PDF (`previewInputs`). */
+export interface PreviewInputs {
+  /** The resolved set; '' = none (a .typ path or a set that is not installed): built-in look. */
+  set: string
+  /** Sanitised rules of <set>.css; [] without a file. */
+  css: SetCssRule[]
+  /** <set>.preview.yaml as text; null without a readable file. */
+  preview: string | null
+  /** The resolved profile, flat source text; {} without a found profile. */
+  profile: Record<string, string>
+  /** The profile's signature as data:image/svg+xml;base64,…; null when absent or refused. */
+  signature: string | null
 }
 
 export interface SnippetDef {

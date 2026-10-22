@@ -1,5 +1,5 @@
 import { type ChildProcess, execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -102,6 +102,16 @@ export async function makeDirs(): Promise<Dirs> {
   await mkdir(userData, { recursive: true })
   await mkdir(templates, { recursive: true })
   return { root, notes, userData, templates }
+}
+
+/**
+ * Installs a fixture set (tests/fixtures/sets/<name>) as a user set: copied into the test's
+ * MDO_TEMPLATES folder, so the real ~/Documents never sees it.
+ */
+export async function installSet(dirs: Dirs, name: string): Promise<void> {
+  await cp(join(__dirname, '..', 'fixtures', 'sets', name), join(dirs.templates, name), {
+    recursive: true,
+  })
 }
 
 /**
