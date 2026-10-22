@@ -24,6 +24,7 @@ export const Ch = {
   listProfiles: 'mdo:list-profiles',
   createProfile: 'mdo:create-profile',
   validationInputs: 'mdo:validation-inputs',
+  previewInputs: 'mdo:preview-inputs',
   noteMenu: 'mdo:note-menu',
   revealPath: 'mdo:reveal-path',
   openTemplatesFolder: 'mdo:open-templates-folder',

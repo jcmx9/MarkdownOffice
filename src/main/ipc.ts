@@ -25,6 +25,7 @@ import {
 } from './files'
 import { setWindowFullScreen } from './fullscreen'
 import { noteMenuTemplate } from './menu'
+import { previewInputs } from './preview-inputs'
 import { createProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
 import { CODE_RE } from './spellcheck/languages'
@@ -99,25 +100,35 @@ export function registerIpc(ctx: AppContext): void {
   // names and a lookup, main never reads a path the renderer invents. An absolute or `~`
   // profile value makes main only stat (existence check) a path named in the user's own note,
   // it never reads it.
+  // Shared argument checks of the note-bound inputs handlers: the same rules for „YAML prüfen“
+  // and the preview, so neither can be used to probe what the other refuses.
+  const noteInputArgs = async (path: unknown, template: unknown, profile: unknown) => {
+    const t = str(template)
+    const isTypPath = t.length <= 256 && t.toLowerCase().endsWith('.typ')
+    if (t !== '' && !isTypPath && !setName(t)) {
+      throw new TypeError('Ungültiger Parameter.')
+    }
+    const pr = str(profile)
+    if (pr.length > 256) throw new TypeError('Ungültiger Parameter.')
+    const noteDir = path === null ? null : dirname(await ctx.assertAllowed(str(path)))
+    return { noteDir, template: t, profile: pr }
+  }
   ipcMain.handle(
     Ch.validationInputs,
-    async (_e, path: unknown, template: unknown, profile: unknown) => {
-      const t = str(template)
-      const isTypPath = t.length <= 256 && t.toLowerCase().endsWith('.typ')
-      if (t !== '' && !isTypPath && !setName(t)) {
-        throw new TypeError('Ungültiger Parameter.')
-      }
-      const pr = str(profile)
-      if (pr.length > 256) throw new TypeError('Ungültiger Parameter.')
-      const noteDir = path === null ? null : dirname(await ctx.assertAllowed(str(path)))
-      return validationInputs({
+    async (_e, path: unknown, template: unknown, profile: unknown) =>
+      validationInputs({
         setsDir: setsDir(),
         userDir: userDir(),
-        noteDir,
-        template: t,
-        profile: pr,
-      })
-    },
+        ...(await noteInputArgs(path, template, profile)),
+      }),
+  )
+  // Editor preview inputs (set CSS, preview description, profile, signature); same checks.
+  ipcMain.handle(Ch.previewInputs, async (_e, path: unknown, template: unknown, profile: unknown) =>
+    previewInputs({
+      setsDir: setsDir(),
+      userDir: userDir(),
+      ...(await noteInputArgs(path, template, profile)),
+    }),
   )
   // „Profil anlegen …“: both names are checked here (createProfile checks again); the renderer
   // may only open the new YAML because main allows exactly that one created path.

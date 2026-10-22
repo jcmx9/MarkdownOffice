@@ -193,6 +193,11 @@ export interface MdoApi {
     template: string,
     profile: string,
   ): Promise<ValidationInputs>
+  /**
+   * Disk inputs of the editor preview for a note (set CSS, preview description, profile,
+   * signature). Same argument rules as `validationInputs`; the note's raw values.
+   */
+  previewInputs(path: string | null, template: string, profile: string): Promise<PreviewInputs>
   /** Shows the shown note's context menu (rename, reveal, export, close) at the mouse. */
   showNoteMenu(): Promise<void>
   /**
