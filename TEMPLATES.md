@@ -313,11 +313,12 @@ Both are UTF-8 and at most 64 KiB. A file that is missing, too large or broken n
 
 **What survives the sanitiser.** The file is rebuilt from the rules that pass; everything else is dropped and logged:
 
-- Only rules whose every selector starts with `.mdo-` stay. One foreign selector in a list drops the whole rule.
+- Only rules whose every selector starts with `.mdo-` followed by at least one of `a-z`, `0-9`, `-` stay. One foreign selector in a list drops the whole rule.
 - All at-rules are dropped (`@import`, `@font-face`, `@media`, `@supports`, …). Nested rules are dropped.
 - `{`, `}`, `\` or `<` in a selector or value drop the rule or the declaration (CSS escapes could spell `url(`).
 - A declaration containing `url(`, `image(`, `image-set(`, `element(`, `expression(` or `src(` (case-insensitive, whitespace ignored) is dropped, so a set can load nothing. Fonts and pictures come from the app, not from CSS.
 - `!important` is stripped (the app's own `!important`, e.g. Present's `max-width: 70ch`, always wins).
+- A declaration with an unbalanced string or bracket, an invalid property name or an empty value is dropped.
 - `--mdo-scale` and `z-index` are dropped. `position` may be `static`, `relative` or `absolute`, never `fixed` or `sticky`.
 
 **Print units and zoom.** Write sizes in print units (`11pt`, `165mm`). The sanitiser multiplies every absolute length (`px pt pc mm cm in Q`, outside strings) by the app's zoom factor `--mdo-scale`. At 100 % zoom a set's `11pt` is 11 CSS pt and `165mm` is 165 CSS mm, i.e. the paper size; the zoom and the Present factor scale all print sizes together by the same factor. Relative units (`em`, `ch`, unitless line heights) follow on their own. Present keeps its `70ch` measure.
@@ -399,11 +400,11 @@ Keys of an element:
 
 - `class:` (required, `a-z`, `0-9`, `-`): the element becomes `mdo-tb-<class>`.
 - Exactly one of `text:`, `parts:`, `lines:`, `image:`.
-- `text:` a string; `parts:` a list of strings joined with `sep:` (default one space, empty parts are dropped first, so no dangling separators); `lines:` one line per list item, or a string split at newlines.
+- `text:` a string; `parts:` a list of strings joined with `sep:` (default one space, empty parts are dropped first, so no dangling separators); `lines:` is a string (a YAML list makes the file invalid): if it is exactly one placeholder whose value is a list (e.g. `"{x-to}"`), each list item becomes a line; otherwise the resolved string is split at newlines.
 - `image:` only `"{profile.signature}"` (the one picture the app reads). `width:` sets its width, e.g. `"{profile.signature-width|40mm}"`; a number with `mm`, `pt`, `cm` or `in` (else no width), scaled with the zoom.
 - `label:` a text shown before the content, either a string or a map by language (`de`, `en`, …): the note's `lang` without region, then `de`, then the first entry.
 - `today:` `true` makes an empty or missing `{date}` today's date (as the PDF does); without it an empty date stays empty.
-- `when:` one placeholder or a list; all must hold. A value holds when it is not empty and not `false`, `False` or `FALSE`. Other words (`no`, `nein`, `0`) count as present.
+- `when:` one placeholder or a list; all must hold. A value holds when it is not empty and not `false`, `False` or `FALSE`. Other words (`no`, `nein`, `0`) count as present. A string with several placeholders holds only if all of them hold; a `when` without any placeholder always holds.
 
 Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
 
@@ -413,7 +414,7 @@ Omission: an element with at least one placeholder whose placeholders are all em
 
 ### 8.3 Profile access
 
-Only the profile keys that `.preview.yaml` names (`{profile.key}`) are read into the preview; other keys of the file never leave the app's main process. The note may override a value with `x-profile-<key>` (section 2). The signature is a bare `.svg` file name next to the profile, at most 256 KiB, not a symbolic link, whose content starts with `<svg` or `<?xml`; otherwise there is no signature picture. `signature` cannot be overridden by the note.
+Only the profile keys that `.preview.yaml` names (`{profile.key}`) are read into the preview; other keys of the file never leave the app's main process. The note may override a value with `x-profile-<key>` (section 2). The signature is a bare `.svg` file name next to the profile, at most 256 KiB, not a symbolic link, not dot-prefixed (hidden), whose content starts with `<svg` or `<?xml`; otherwise there is no signature picture. `signature` cannot be overridden by the note.
 
 ### 8.4 Fallbacks
 
