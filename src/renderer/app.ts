@@ -60,6 +60,7 @@ import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
 import { applyOutlineWidth, attachOutlineResize } from './ui/outline-resize'
 import { askText } from './ui/prompt'
+import { inputsKey, SetCheck } from './ui/set-status'
 import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
@@ -103,6 +104,8 @@ export class App {
   private readonly editor: EditorView
   private readonly tabBar: TabBar
   private readonly status: StatusLine
+  /** The silent YAML check behind the status line's set name. */
+  private readonly setCheck: SetCheck
   private readonly notices: Notices
   private readonly infoLine: InfoLine
   private readonly outline: OutlineSync
@@ -181,6 +184,7 @@ export class App {
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           this.refresh()
+          this.setCheck.schedule(tab.id)
           // lang: may have been edited; report it once typing pauses.
           if (this.spellLangTimer) clearTimeout(this.spellLangTimer)
           this.spellLangTimer = setTimeout(() => void this.reportSpellLanguage(false), 500)
@@ -201,6 +205,27 @@ export class App {
       // Through command(): the same guards as the menu (closing window, open dialog).
       toggleOutline: () => void this.command('toggle-outline'),
       toggleYaml: () => void this.command('toggle-header'),
+      // The menu command, so Present refuses it with the same toast.
+      validateYaml: () => void this.command('validate-yaml'),
+    })
+    this.setCheck = new SetCheck({
+      snapshot: (id) => {
+        const tab = this.store.get(id)
+        if (!tab || id !== this.shownId) return null
+        // A YAML file (a profile) is no note: no front matter, so no set to show.
+        if (!isMarkdownTab(tab)) return { text: '', key: '' }
+        const text = this.editor.state.doc.toString()
+        return { text, key: inputsKey(tab.onDisk ? tab.path : null, text) }
+      },
+      context: async (id) => {
+        const tab = this.store.get(id)
+        if (!tab) return null
+        const { ctx, answered } = await this.validationFor(tab)
+        return { ctx, cache: answered }
+      },
+      paint: (id, status) => {
+        if (id === this.shownId) this.status.renderSet(status)
+      },
     })
     this.notices = new Notices(root.notices)
     this.infoLine = new InfoLine(root.infoline, {
@@ -275,7 +300,11 @@ export class App {
     this.mdo.onBeforeClose(() => this.beforeClose())
     window.addEventListener('keydown', (e) => this.globalKeys(e))
     window.addEventListener('blur', () => void this.autosave.flush())
-    window.addEventListener('focus', () => void this.reloadSnippets())
+    window.addEventListener('focus', () => {
+      void this.reloadSnippets()
+      // Sets or profiles may have been installed in the file manager meanwhile.
+      if (this.shownId !== null) void this.setCheck.now(this.shownId, true)
+    })
   }
 
   private async reloadSnippets(): Promise<void> {
@@ -969,11 +998,11 @@ export class App {
   /**
    * The validator's context for a tab's note, from main's disk inputs. Never throws: when main
    * cannot answer, the note is checked against the pipeline layer alone (no set, no profile).
-   * `notice` is the neutral hint for a broken set schema.
+   * `notice` is the neutral hint for a broken set schema; `answered` is false for that fallback.
    */
   private async validationFor(
     tab: Tab,
-  ): Promise<{ ctx: ValidationContext; set: string; notice: string | null }> {
+  ): Promise<{ ctx: ValidationContext; set: string; notice: string | null; answered: boolean }> {
     const text =
       tab.id === this.shownId ? this.editor.state.doc.toString() : tab.state.doc.toString()
     const set = noteSet(text)
@@ -1000,13 +1029,14 @@ export class App {
         schemaError === null
           ? null
           : `Das Schema des Sets ${set || 'der Vorlage'} ist fehlerhaft; geprüft wird nur gegen die Pipeline-Regeln.`
-      return { ctx, set, notice }
+      return { ctx, set, notice, answered: true }
     } catch (e) {
       console.warn('validationInputs failed', e)
       return {
         ctx: { schema: PIPELINE_SCHEMA, sets: null, header: null, profile: null },
         set,
         notice: null,
+        answered: false,
       }
     }
   }
@@ -1127,6 +1157,7 @@ export class App {
     this.savedHashes.delete(id)
     this.overwrite.delete(id)
     this.saving.delete(id)
+    this.setCheck.forget(id)
     // Present never shows the empty state.
     if (this.mode === 'present' && this.store.all.length === 0) await this.exitPresent()
     this.show()
@@ -1505,6 +1536,8 @@ export class App {
     if (this.shownId === tab.id) {
       this.editor.setState(state)
       this.outline.invalidate()
+      // setState bypasses dispatchTransactions, which schedules the check after edits.
+      void this.setCheck.now(tab.id)
     }
     // A new note whose path a file took meanwhile (refused first save) is now watched.
     if (!wasOnDisk) this.syncMain()
@@ -1526,9 +1559,17 @@ export class App {
       this.editor.setState(state)
       this.editor.focus()
       this.outline.invalidate()
+      // The last tab's set must not stay while main reads this one's inputs (a cache hit
+      // repaints in the same tick, so there is no flicker).
+      this.status.renderSet(null)
     }
     this.shownId = tab?.id ?? null
     void this.reportSpellLanguage(false)
+    // On opening and switching (cached inputs unless path, template: or profile: changed).
+    if (this.shownId === null) {
+      this.setCheck.cancel()
+      this.status.renderSet(null)
+    } else void this.setCheck.now(this.shownId)
     this.applyOutline()
     this.refresh()
     this.syncMain()
