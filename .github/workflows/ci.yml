@@ -181,7 +181,11 @@ jobs:
           export LD_LIBRARY_PATH="${app}/usr/lib"
           out="$(xvfb-run -a "${app}/markdown-office" --version)"
           echo "${out}"
-          [ "${out}" = "Markdown Office ${version}" ]
+          # xvfb-run merges the app's stderr into stdout, so Chromium's occasional
+          # "ERROR:dbus/bus.cc ... Failed to connect to the bus" line ends up in ${out} and an
+          # exact comparison failed without a FAIL line. The version line itself must still
+          # match exactly.
+          printf '%s\n' "${out}" | grep -Fxq "Markdown Office ${version}"
           # The CLI runs as Node: no display needed.
           bash scripts/smoke-cli.sh "${app}/markdown-office" "${app}/resources/pipeline/cli.js"
 
