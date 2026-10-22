@@ -240,15 +240,31 @@ describe('NoteWatcher', () => {
 
   it('re-checks a missing file once before reporting it deleted', async () => {
     const path = join(dir, 'neu-angelegt.md')
+    // The file comes back right after the first check found it missing, i.e. between that
+    // check and the confirming re-check. The read itself recreates it, so this holds under any
+    // load: a fixed sleep (150 ms between rm and write) ran past the re-check on busy Windows
+    // runners, which then rightly reported `deleted` before the recreation.
+    let misses = 0
+    watcher.close()
+    watcher = new NoteWatcher(
+      (c) => events.push(c),
+      100,
+      async (p) => {
+        try {
+          return await readFile(p)
+        } catch (err) {
+          if (++misses === 1) await writeFile(p, 'b')
+          throw err
+        }
+      },
+    )
     await writeFile(path, 'a')
     watcher.setFiles([path])
     await sleep(150)
     await rm(path)
-    // Past the first check (debounce 100 ms) but inside the confirming re-check.
-    await sleep(150)
-    await writeFile(path, 'b')
     await waitFor(() => events.length > 0)
     await sleep(400)
+    expect(misses).toBe(1)
     expect(events).toEqual([expect.objectContaining({ kind: 'changed' })])
   })
 })
