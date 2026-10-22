@@ -220,6 +220,12 @@ test('a malicious set changes nothing outside the editor and loads nothing', asy
     'color',
     'rgb(1, 2, 3)',
   )
+  // The note's text stays visible and the set writes no text of its own into it.
+  await expect(page.locator('.cm-line', { hasText: 'Ein Absatz mit' })).toHaveCSS('opacity', '1')
+  const after = await page
+    .locator('.cm-line', { hasText: 'Ein Absatz mit' })
+    .evaluate((el) => getComputedStyle(el, '::after').content)
+  expect(after).not.toContain('Gefälscht')
   await expect(page.locator('body')).not.toHaveCSS('background-color', 'rgb(255, 0, 0)')
   const editor = page.locator('.cm-editor')
   await expect(editor).not.toHaveCSS('position', 'fixed')
