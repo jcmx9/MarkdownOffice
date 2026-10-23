@@ -424,7 +424,7 @@ foot:                       # after the last line of the text
     when: "{x-closing}"
 ```
 
-The file is a map with `preview: 1`, the lists `head` and `foot` and the map `nobreak` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
+The file is a map with `preview: 1`, the lists `head` and `foot` and the maps `nobreak` and `mermaid` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
 
 Keys of an element:
 
@@ -445,6 +445,19 @@ nobreak:
 ```
 
 Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together. A set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's lists. The note's text is not changed; the preview only forbids the line break. Code (inline and blocks), tables and the front matter are left out.
+
+**`mermaid:` (optional).** The arguments your `.typ` passes to mmdr's `mermaid-svg`, so the preview draws a diagram exactly as the PDF does:
+
+```yaml
+mermaid:
+  base-theme: modern            # default "modern"; "default" is Mermaid's own theme
+  theme: { primary_color: "#f4f2ee", font_family: SourceSans3VF }   # mmdr theme fields, strings
+  layout: { node_spacing: 25, rank_spacing: 35 }                     # numbers
+  max-height: 12cm              # required: the largest height a diagram is scaled to (mm, cm, pt, in)
+  font-weight: 500              # optional: written before every font-family in the SVG (1-1000)
+```
+
+`max-height` is the only required key; without `theme`/`layout` mmdr uses its base theme alone, without `font-weight` the SVG is left as drawn. `theme` and `layout` take at most 64 entries (names `a-z`, `0-9`, `_`, strings up to 64 characters), an unknown key or a wrong type makes the whole file invalid. A valid file without `mermaid:` means the set draws no diagrams; a set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's options.
 
 Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
 

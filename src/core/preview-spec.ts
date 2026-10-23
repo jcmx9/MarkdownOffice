@@ -1,6 +1,7 @@
 import { CORE_SCHEMA, load } from 'js-yaml'
 import type { FlatValue } from './flat-yaml'
 import { formatDate, isoDate } from './format-date'
+import { MEMO_MERMAID, type MermaidOptions } from './mermaid'
 
 /**
  * A set's `<name>.preview.yaml`: which head and foot blocks the editor preview shows, filled from
@@ -40,11 +41,16 @@ export interface PreviewSpec {
   foot: PreviewElement[]
   /** Where lines must not break, like the PDF's no-break spaces (`nobreak.ts`). */
   nobreak: { words: string[]; units: string[] }
+  /** Options for the mmdr plugin, like the set's .typ passes them; null = the set draws no diagrams. */
+  mermaid: MermaidOptions | null
 }
 
 // Lists from a set file are cut here, so a huge one cannot slow the editor down.
 const NOBREAK_MAX_ENTRIES = 200
 const NOBREAK_MAX_LENGTH = 40
+// Same idea for `mermaid:`: a set file cannot hand the plugin an unbounded theme.
+const MERMAID_MAX_ENTRIES = 64
+const MERMAID_MAX_LENGTH = 64
 
 /** memo's title block as it was hard-wired before sets could describe it ("date · author"). */
 export const MEMO_PREVIEW: PreviewSpec = {
@@ -91,6 +97,8 @@ export const MEMO_PREVIEW: PreviewSpec = {
       '$',
     ],
   },
+  // memo.typ's own diagram arguments, so memo's built-in look draws diagrams like its PDF.
+  mermaid: MEMO_MERMAID,
 }
 
 const CONTENT_KEYS = ['text', 'parts', 'lines', 'image'] as const
@@ -172,6 +180,69 @@ function parseNobreak(raw: unknown): PreviewSpec['nobreak'] | string {
   return out
 }
 
+const MERMAID_KEYS = ['base-theme', 'theme', 'layout', 'max-height', 'font-weight']
+const MERMAID_NAME_RE = /^[a-z0-9_]+$/
+// Typst lengths that mean the same in CSS; relative units would differ between PDF and preview.
+const MAX_HEIGHT_RE = /^\d+(\.\d+)?(mm|cm|pt|in)$/
+
+/**
+ * The `mermaid:` map: the plugin arguments of the set's .typ. Only `max-height` is required (the
+ * preview must scale a diagram into the page like the PDF does); the rest defaults like mmdr's
+ * lib.typ (base theme "modern", no theme or layout overrides) and the SVG stays untouched
+ * without `font-weight`.
+ */
+function parseMermaid(raw: unknown): MermaidOptions | string {
+  if (!isMap(raw)) return '„mermaid" muss eine Zuordnung sein'
+  for (const k of Object.keys(raw))
+    if (!MERMAID_KEYS.includes(k))
+      return `mermaid: unbekannter Schlüssel „${k}" (erlaubt: ${MERMAID_KEYS.join(', ')})`
+  const out: MermaidOptions = {
+    baseTheme: 'modern',
+    theme: {},
+    layout: {},
+    maxHeight: '',
+    fontWeight: null,
+  }
+  const base = raw['base-theme']
+  if (base !== undefined) {
+    if (typeof base !== 'string' || base === '' || base.length > MERMAID_MAX_LENGTH)
+      return `mermaid: „base-theme" muss ein Text mit höchstens ${MERMAID_MAX_LENGTH} Zeichen sein`
+    out.baseTheme = base
+  }
+  for (const k of ['theme', 'layout'] as const) {
+    const map = raw[k]
+    if (map === undefined || map === null) continue
+    if (!isMap(map)) return `mermaid: „${k}" muss eine Zuordnung sein`
+    const entries = Object.entries(map)
+    if (entries.length > MERMAID_MAX_ENTRIES)
+      return `mermaid: „${k}" erlaubt höchstens ${MERMAID_MAX_ENTRIES} Einträge`
+    for (const [key, val] of entries) {
+      if (!MERMAID_NAME_RE.test(key) || key.length > MERMAID_MAX_LENGTH)
+        return `mermaid: „${k}": Name „${key}" muss aus a–z, 0–9 und _ bestehen`
+      if (k === 'theme') {
+        if (typeof val !== 'string' || val.length > MERMAID_MAX_LENGTH)
+          return `mermaid: „theme.${key}" muss ein Text mit höchstens ${MERMAID_MAX_LENGTH} Zeichen sein`
+        out.theme[key] = val
+      } else {
+        if (typeof val !== 'number' || !Number.isFinite(val))
+          return `mermaid: „layout.${key}" muss eine Zahl sein`
+        out.layout[key] = val
+      }
+    }
+  }
+  const height = raw['max-height']
+  if (typeof height !== 'string' || !MAX_HEIGHT_RE.test(height))
+    return 'mermaid: „max-height" fehlt oder ist keine Länge (z. B. 12cm; mm, cm, pt, in)'
+  out.maxHeight = height
+  const weight = raw['font-weight']
+  if (weight !== undefined && weight !== null) {
+    if (typeof weight !== 'number' || !Number.isInteger(weight) || weight < 1 || weight > 1000)
+      return 'mermaid: „font-weight" muss eine ganze Zahl von 1 bis 1000 sein'
+    out.fontWeight = weight
+  }
+  return out
+}
+
 /** Parses a `<name>.preview.yaml`; any deviation from the grammar refuses the whole file. */
 export function parsePreviewSpec(text: string): Parsed {
   let doc: unknown
@@ -186,18 +257,23 @@ export function parsePreviewSpec(text: string): Parsed {
   }
   if (!isMap(doc)) return { ok: false, error: 'oberste Ebene muss eine Zuordnung sein' }
   for (const k of Object.keys(doc))
-    if (k !== 'preview' && k !== 'head' && k !== 'foot' && k !== 'nobreak')
+    if (k !== 'preview' && k !== 'head' && k !== 'foot' && k !== 'nobreak' && k !== 'mermaid')
       return {
         ok: false,
-        error: `unbekannter Schlüssel „${k}" (erlaubt: preview, head, foot, nobreak)`,
+        error: `unbekannter Schlüssel „${k}" (erlaubt: preview, head, foot, nobreak, mermaid)`,
       }
   if (doc.preview !== 1)
     return { ok: false, error: '„preview: 1" fehlt oder hat eine unbekannte Version' }
-  const spec: PreviewSpec = { head: [], foot: [], nobreak: { words: [], units: [] } }
+  const spec: PreviewSpec = { head: [], foot: [], nobreak: { words: [], units: [] }, mermaid: null }
   if (doc.nobreak !== undefined && doc.nobreak !== null) {
     const nb = parseNobreak(doc.nobreak)
     if (typeof nb === 'string') return { ok: false, error: nb }
     spec.nobreak = nb
+  }
+  if (doc.mermaid !== undefined && doc.mermaid !== null) {
+    const mm = parseMermaid(doc.mermaid)
+    if (typeof mm === 'string') return { ok: false, error: mm }
+    spec.mermaid = mm
   }
   for (const part of ['head', 'foot'] as const) {
     const list = doc[part]
