@@ -1,5 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { MenuItemConstructorOptions } from 'electron'
+import { revealLabel } from '../shared/reveal'
 import type { MenuCommand } from '../shared/types'
 
 export interface MenuDeps {
@@ -154,6 +155,8 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       { label: 'Zuletzt geöffnet', submenu: recent },
       sep,
       item('rename', 'Umbenennen …', 'CmdOrCtrl+Shift+R'),
+      // No accelerator: a rare action; the label names the platform's own file manager.
+      item('reveal', revealLabel(d.platform)),
       item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),
       sep,
       item('export', 'PDF exportieren', 'CmdOrCtrl+E'),
@@ -248,13 +251,16 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
 
 /**
  * Right-click menu of a note (tab or status line file name). The shortcuts are shown for
- * reference only; the application menu owns them.
+ * reference only; the application menu owns them. `platform` names the file manager.
  */
-export function noteMenuTemplate(command: (c: MenuCommand) => void): MenuItemConstructorOptions[] {
+export function noteMenuTemplate(
+  command: (c: MenuCommand) => void,
+  platform: NodeJS.Platform,
+): MenuItemConstructorOptions[] {
   const item = (
     id: MenuCommand,
     label: string,
-    accelerator: string,
+    accelerator?: string,
   ): MenuItemConstructorOptions => ({
     id,
     label,
@@ -264,6 +270,7 @@ export function noteMenuTemplate(command: (c: MenuCommand) => void): MenuItemCon
   })
   return [
     item('rename', 'Umbenennen …', 'CmdOrCtrl+Shift+R'),
+    item('reveal', revealLabel(platform)),
     item('export', 'PDF exportieren', 'CmdOrCtrl+E'),
     { type: 'separator' },
     item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),

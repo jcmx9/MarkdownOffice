@@ -1,7 +1,7 @@
 {
   "name": "markdown-office",
   "productName": "Markdown Office",
-  "version": "26.10.1",
+  "version": "26.10.2",
   "description": "Calm Markdown editor with a bundled Markdown-to-PDF/A pipeline; the editor looks like the PDF while you type.",
   "license": "AGPL-3.0-or-later",
   "author": "jcmx9",
@@ -43,17 +43,18 @@
     "@lezer/markdown": "^1.8.0",
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.19.2",
-    "@vitest/coverage-v8": "^5.0.4",
-    "electron": "^44.7.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "electron": "^44.9.0",
     "electron-builder": "^26.17.0",
     "electron-vite": "^6.0.0",
-    "happy-dom": "^21.0.1",
-    "js-yaml": "^5.4.3",
+    "happy-dom": "^21.0.3",
+    "js-yaml": "^5.5.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.4"
   },
   "dependencies": {
-    "@codemirror/lang-yaml": "^6.1.3"
+    "@codemirror/lang-yaml": "^6.1.3",
+    "linebreak": "1.1.0"
   }
 }

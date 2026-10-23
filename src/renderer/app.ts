@@ -19,6 +19,7 @@ import type {
   MenuCommand,
   Mode,
   NoteFile,
+  PreviewInputs,
   Settings,
   View,
 } from '../shared/types'
@@ -30,6 +31,7 @@ import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
+import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
 import { foldAllSections } from './editor/sections'
 import {
   createState,
@@ -60,12 +62,16 @@ import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
 import { applyOutlineWidth, attachOutlineResize } from './ui/outline-resize'
 import { askText } from './ui/prompt'
+import { SetPreview } from './ui/set-preview'
+import { inputsKey, SetCheck } from './ui/set-status'
+import { SetStyles } from './ui/set-styles'
 import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
+import { SpaceAdvance } from './ui/space-advance'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
 import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
 import { openValidateDialog } from './ui/validate-dialog'
-import { editorSizes, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
+import { editorScale, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
 import { LatestToggle, SerialQueue } from './util/serial'
@@ -77,6 +83,12 @@ const DELETED_ERROR = 'Datei außerhalb gelöscht – bitte im Hinweis entscheid
 const MAX_SAVE_ROUNDS = 3
 
 const MARKDOWN_ONLY = 'Nur in Markdown-Notizen verfügbar.'
+
+/** A `template:` main answers for: empty, a .typ path or a set name (within main's lengths). */
+const mainAccepts = (template: string): boolean =>
+  template === '' ||
+  (template.length <= 256 && template.toLowerCase().endsWith('.typ')) ||
+  (template.length <= 64 && SET_NAME_RE.test(template))
 
 const docKind = (path: string): DocKind => (isMarkdownTab({ path }) ? 'markdown' : 'yaml')
 
@@ -103,6 +115,14 @@ export class App {
   private readonly editor: EditorView
   private readonly tabBar: TabBar
   private readonly status: StatusLine
+  /** The silent YAML check behind the status line's set name. */
+  private readonly setCheck: SetCheck
+  /** The shown note's set look: its scoped CSS and its head/foot description per tab. */
+  private readonly setPreview: SetPreview
+  private readonly setStyles: SetStyles
+  private readonly spaceAdvance: SpaceAdvance
+  /** Sets whose broken `.preview.yaml` notice was already shown this session. */
+  private readonly previewNoticed = new Set<string>()
   private readonly notices: Notices
   private readonly infoLine: InfoLine
   private readonly outline: OutlineSync
@@ -181,6 +201,8 @@ export class App {
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           this.refresh()
+          this.setCheck.schedule(tab.id)
+          this.setPreview.schedule(tab.id)
           // lang: may have been edited; report it once typing pauses.
           if (this.spellLangTimer) clearTimeout(this.spellLangTimer)
           this.spellLangTimer = setTimeout(() => void this.reportSpellLanguage(false), 500)
@@ -201,6 +223,40 @@ export class App {
       // Through command(): the same guards as the menu (closing window, open dialog).
       toggleOutline: () => void this.command('toggle-outline'),
       toggleYaml: () => void this.command('toggle-header'),
+      // The menu command, so Present refuses it with the same toast.
+      validateYaml: () => void this.command('validate-yaml'),
+    })
+    this.setCheck = new SetCheck({
+      snapshot: (id) => {
+        const tab = this.store.get(id)
+        if (!tab || id !== this.shownId) return null
+        // A YAML file (a profile) is no note: no front matter, so no set to show.
+        if (!isMarkdownTab(tab)) return { text: '', key: '' }
+        const text = this.editor.state.doc.toString()
+        return { text, key: inputsKey(tab.onDisk ? tab.path : null, text) }
+      },
+      context: async (id) => {
+        const tab = this.store.get(id)
+        if (!tab) return null
+        const { ctx, answered } = await this.validationFor(tab)
+        return { ctx, cache: answered }
+      },
+      paint: (id, status) => {
+        if (id === this.shownId) this.status.renderSet(status)
+      },
+    })
+    this.setStyles = new SetStyles(document, root.editor)
+    // On the editor element: the set's scoped tokens sit there (`#editor[…] .mdo-preview`).
+    this.spaceAdvance = new SpaceAdvance(() => this.editor.dom)
+    this.setPreview = new SetPreview({
+      // Same key as the set check: only path, template: and profile: change the inputs.
+      key: (id) => {
+        const tab = this.store.get(id)
+        if (!tab || id !== this.shownId || !isMarkdownTab(tab)) return null
+        return inputsKey(tab.onDisk ? tab.path : null, this.editor.state.doc.toString())
+      },
+      fetch: (id) => this.previewFor(id),
+      apply: (id, inputs) => this.applyPreview(id, inputs),
     })
     this.notices = new Notices(root.notices)
     this.infoLine = new InfoLine(root.infoline, {
@@ -275,7 +331,15 @@ export class App {
     this.mdo.onBeforeClose(() => this.beforeClose())
     window.addEventListener('keydown', (e) => this.globalKeys(e))
     window.addEventListener('blur', () => void this.autosave.flush())
-    window.addEventListener('focus', () => void this.reloadSnippets())
+    window.addEventListener('focus', () => {
+      void this.reloadSnippets()
+      // Sets or profiles may have been installed in the file manager meanwhile.
+      if (this.shownId !== null) {
+        void this.setCheck.now(this.shownId, true)
+        // An edited <set>.css, .preview.yaml or profile shows without reopening the note.
+        void this.setPreview.now(this.shownId, true)
+      }
+    })
   }
 
   private async reloadSnippets(): Promise<void> {
@@ -320,6 +384,8 @@ export class App {
         cmd === 'insert-template' ||
         cmd === 'validate-yaml' ||
         cmd === 'create-profile' ||
+        // The file manager would come to the front over the shared Present screen.
+        cmd === 'reveal' ||
         cmd === 'settings')
     ) {
       this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
@@ -336,6 +402,8 @@ export class App {
         return this.open()
       case 'rename':
         return this.rename()
+      case 'reveal':
+        return this.reveal()
       case 'close-tab': {
         const tab = this.store.active
         if (tab) await this.closeTab(tab.id)
@@ -413,6 +481,7 @@ export class App {
         settings: current,
         status: withTimeout(this.mdo.getSettingsStatus(), STATUS_TIMEOUT_MS),
         choose: (kind, path) => this.mdo.choosePath(kind, path),
+        openTemplatesFolder: () => this.mdo.openTemplatesFolder(),
         platform: isMac ? 'darwin' : 'other',
         checkDictionaries: () => this.mdo.checkDictionaryUpdates(),
         words: () => this.mdo.spellWords(),
@@ -507,9 +576,10 @@ export class App {
 
   /** Scales the editor via CSS custom properties (never Electron page zoom). */
   private applyZoom(): void {
-    const { body, code } = editorSizes(this.mode, this.zoom[this.mode], this.presentFactor)
-    this.root.editor.style.setProperty('--mdo-body-size', body)
-    this.root.editor.style.setProperty('--mdo-code-size', code)
+    // Only the factor is set inline: the sizes are theme/set tokens built on it, so a set's
+    // own --mdo-body-size is not overridden by an inline value.
+    const scale = editorScale(this.mode, this.zoom[this.mode], this.presentFactor)
+    this.root.editor.style.setProperty('--mdo-scale', String(scale))
     // The outline follows the zoom of the mode, not Present's larger text factor.
     this.root.outline.style.setProperty('--mdo-ol-zoom', String(this.zoom[this.mode]))
     this.editor.requestMeasure()
@@ -964,11 +1034,11 @@ export class App {
   /**
    * The validator's context for a tab's note, from main's disk inputs. Never throws: when main
    * cannot answer, the note is checked against the pipeline layer alone (no set, no profile).
-   * `notice` is the neutral hint for a broken set schema.
+   * `notice` is the neutral hint for a broken set schema; `answered` is false for that fallback.
    */
   private async validationFor(
     tab: Tab,
-  ): Promise<{ ctx: ValidationContext; set: string; notice: string | null }> {
+  ): Promise<{ ctx: ValidationContext; set: string; notice: string | null; answered: boolean }> {
     const text =
       tab.id === this.shownId ? this.editor.state.doc.toString() : tab.state.doc.toString()
     const set = noteSet(text)
@@ -977,10 +1047,7 @@ export class App {
     // Main refuses a template that is neither a set name nor a .typ path (and over-long
     // values). Such a note is still checked: the installed sets come with the default request
     // (for the unknown-set finding), but none of the default set's files or profile lookup.
-    const named =
-      template === '' ||
-      (template.length <= 256 && template.toLowerCase().endsWith('.typ')) ||
-      (template.length <= 64 && SET_NAME_RE.test(template))
+    const named = mainAccepts(template)
     try {
       const inputs = await this.mdo.validationInputs(
         tab.onDisk ? tab.path : null,
@@ -995,15 +1062,75 @@ export class App {
         schemaError === null
           ? null
           : `Das Schema des Sets ${set || 'der Vorlage'} ist fehlerhaft; geprüft wird nur gegen die Pipeline-Regeln.`
-      return { ctx, set, notice }
+      return { ctx, set, notice, answered: true }
     } catch (e) {
       console.warn('validationInputs failed', e)
       return {
         ctx: { schema: PIPELINE_SCHEMA, sets: null, header: null, profile: null },
         set,
         notice: null,
+        answered: false,
       }
     }
+  }
+
+  /**
+   * Main's preview inputs for a tab's note. Not named (a `template:` main would refuse) → null,
+   * the built-in look, like validationFor's rule. A failed IPC → undefined: nothing applied.
+   */
+  private async previewFor(id: number): Promise<PreviewInputs | null | undefined> {
+    const tab = this.store.get(id)
+    if (!tab) return undefined
+    const text = id === this.shownId ? this.editor.state.doc.toString() : tab.state.doc.toString()
+    const template = topLevelValue(text, 'template') ?? ''
+    const profile = topLevelValue(text, 'profile') ?? ''
+    if (!mainAccepts(template)) return null
+    try {
+      return await this.mdo.previewInputs(
+        tab.onDisk ? tab.path : null,
+        template,
+        profile.length <= 256 ? profile : '',
+      )
+    } catch (e) {
+      console.warn('previewInputs failed', e)
+      return undefined
+    }
+  }
+
+  /** Puts a tab's preview inputs into its state and, when shown, its set's scope on #editor. */
+  private applyPreview(id: number, inputs: PreviewInputs | null): void {
+    const tab = this.store.get(id)
+    if (!tab) return
+    const { source, problem } = previewSourceFrom(inputs)
+    if (problem !== null && source && !this.previewNoticed.has(source.set)) {
+      this.previewNoticed.add(source.set)
+      this.notices.toast(problem)
+    }
+    if (inputs?.set) {
+      try {
+        this.setStyles.load(inputs.set, inputs.css)
+      } catch (e) {
+        // A broken set never throws into the editor: its rules stay out, the blocks still apply.
+        console.warn(`styles of set ${inputs.set} not loaded`, e)
+      }
+    }
+    const effects = setPreviewSource.of(source)
+    if (id === this.shownId) {
+      this.editor.dispatch({ effects })
+      this.showSet(source?.set ?? null)
+    } else this.store.updateState(id, tab.state.update({ effects }).state)
+  }
+
+  /** The set scope on #editor; an unexpected name falls back to no scope instead of throwing. */
+  private showSet(set: string | null): void {
+    try {
+      this.setStyles.show(set)
+    } catch (e) {
+      console.warn(`set ${set} not shown`, e)
+      this.setStyles.show(null)
+    }
+    // Another set (or its reloaded CSS) may bring another body font: measure its space again.
+    this.spaceAdvance.update().catch((e) => console.warn('space advance not measured', e))
   }
 
   /**
@@ -1122,6 +1249,8 @@ export class App {
     this.savedHashes.delete(id)
     this.overwrite.delete(id)
     this.saving.delete(id)
+    this.setCheck.forget(id)
+    this.setPreview.forget(id)
     // Present never shows the empty state.
     if (this.mode === 'present' && this.store.all.length === 0) await this.exitPresent()
     this.show()
@@ -1162,6 +1291,28 @@ export class App {
       return
     }
     this.show()
+  }
+
+  /**
+   * „Im Finder zeigen“ for the active note. A new note has no file until its first save, so it
+   * is saved first (like rename and export); otherwise the file manager would have nothing to show.
+   */
+  private async reveal(): Promise<void> {
+    const tab = this.store.active
+    if (!tab) return
+    if (!(await this.saveTab(tab, true))) {
+      this.notices.panel(
+        'Anzeigen nicht möglich',
+        `Die Notiz konnte nicht gespeichert werden:\n${this.saveErrors.get(tab.id) ?? ''}`,
+      )
+      return
+    }
+    try {
+      const error = await this.mdo.revealPath(tab.path)
+      if (error) this.notices.panel('Anzeigen nicht möglich', error)
+    } catch (e) {
+      this.notices.panel('Anzeigen nicht möglich', e instanceof Error ? e.message : String(e))
+    }
   }
 
   /** Context menu of a note; a right click on another tab selects that tab first. */
@@ -1457,6 +1608,9 @@ export class App {
   }
 
   private reload(tab: Tab, note: NoteFile): void {
+    // The old set description stays until main answers for the new text, so a din5008a note
+    // does not flash the memo look (blocks and scope) for one round trip.
+    const source = tab.state.field(previewSource, false) ?? null
     const state = this.closingState(
       createState(
         note.text,
@@ -1466,7 +1620,7 @@ export class App {
         this.mode,
         this.spellcheckOn && isMarkdownTab(tab),
         docKind(tab.path),
-      ),
+      ).update({ effects: setPreviewSource.of(source) }).state,
     )
     const wasOnDisk = tab.onDisk
     tab.bom = note.bom
@@ -1478,6 +1632,15 @@ export class App {
     if (this.shownId === tab.id) {
       this.editor.setState(state)
       this.outline.invalidate()
+      // setState bypasses dispatchTransactions, which schedules the check after edits.
+      void this.setCheck.now(tab.id)
+    }
+    // The new text may name another set or profile, and the set's files may have changed too:
+    // ask main again (fresh); a hidden tab asks on its next show (forgotten key).
+    this.setPreview.forget(tab.id)
+    if (this.shownId === tab.id) {
+      this.showSet(source?.set ?? null)
+      void this.setPreview.now(tab.id, true)
     }
     // A new note whose path a file took meanwhile (refused first save) is now watched.
     if (!wasOnDisk) this.syncMain()
@@ -1496,12 +1659,27 @@ export class App {
       if (this.shownId !== null) closeCompletion(this.editor)
       const state = this.closingState(tab.state)
       if (state !== tab.state) this.store.updateState(tab.id, state)
+      // The tab's own set scope before it paints (null until its inputs arrive).
+      this.showSet(state.field(previewSource, false)?.set ?? null)
       this.editor.setState(state)
       this.editor.focus()
       this.outline.invalidate()
+      // The last tab's set must not stay while main reads this one's inputs (a cache hit
+      // repaints in the same tick, so there is no flicker).
+      this.status.renderSet(null)
     }
     this.shownId = tab?.id ?? null
     void this.reportSpellLanguage(false)
+    // On opening and switching (cached inputs unless path, template: or profile: changed).
+    if (this.shownId === null) {
+      this.setCheck.cancel()
+      this.setPreview.cancel()
+      this.showSet(null)
+      this.status.renderSet(null)
+    } else {
+      void this.setCheck.now(this.shownId)
+      void this.setPreview.now(this.shownId)
+    }
     this.applyOutline()
     this.refresh()
     this.syncMain()

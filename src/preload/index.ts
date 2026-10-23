@@ -44,10 +44,15 @@ const api: MdoApi = {
   createProfile: (set, name) => ipcRenderer.invoke(Ch.createProfile, set, name),
   validationInputs: (path, template, profile) =>
     ipcRenderer.invoke(Ch.validationInputs, path, template, profile),
+  previewInputs: (path, template, profile) =>
+    ipcRenderer.invoke(Ch.previewInputs, path, template, profile),
   showNoteMenu: () => ipcRenderer.invoke(Ch.noteMenu),
+  revealPath: (path) => ipcRenderer.invoke(Ch.revealPath, path),
+  openTemplatesFolder: () => ipcRenderer.invoke(Ch.openTemplatesFolder),
   getSettingsStatus: () => ipcRenderer.invoke(Ch.settingsStatus),
   updateSettings: (patch) => ipcRenderer.invoke(Ch.updateSettings, patch),
   choosePath: (kind, current) => ipcRenderer.invoke(Ch.choosePath, kind, current),
+  pluginWasm: (name) => ipcRenderer.invoke(Ch.pluginWasm, name),
   onFullScreenLeft: (cb) => {
     ipcRenderer.on(Ch.fullScreenLeft, () => cb())
   },

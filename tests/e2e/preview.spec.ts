@@ -26,9 +26,12 @@ test('renders the PDF look', async () => {
     /mdo-al-right/,
   )
   await expect(page.locator('.cm-line.mdo-codeblock').first()).toBeVisible()
-  // The memo set uses par(justify: true); the editor justifies without hyphenation on every OS.
+  // The memo set uses par(justify: true): the app sets the paragraph itself like the PDF
+  // (paragraphs.ts, its own breaks and word spacing), never the browser's justification or
+  // hyphenation, so it is the same on every OS.
   const body = page.locator('.cm-line', { hasText: 'Ein Absatz mit' })
-  await expect(body).toHaveCSS('text-align', 'justify')
+  await expect(body).toHaveClass(/mdo-par-set/)
+  await expect(body).toHaveCSS('text-align', 'left')
   await expect(body).toHaveCSS('hyphens', 'manual')
   await expect(page.locator('.cm-line.mdo-h1')).toHaveCSS('text-align', 'left')
   await shot(page, 'preview')
@@ -153,7 +156,7 @@ test('clicks and arrow keys hit the right line below the title block and a table
   await app.close()
 })
 
-test('YAML header, code blocks and Mermaid are highlighted in both views', async () => {
+test('YAML header and code blocks are highlighted in both views, Mermaid source in Code view', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Farben.md')
   await writeFile(
@@ -184,8 +187,8 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   // JavaScript is loaded on demand from a separate chunk (CSP script-src 'self').
   await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
   await expect(page.locator('.mdo-tok-number', { hasText: '42' })).toBeVisible()
-  await expect(page.locator('.mdo-tok-keyword', { hasText: 'flowchart' })).toBeVisible()
-  await expect(page.locator('.mdo-tok-function', { hasText: '-->' })).toBeVisible()
+  // Preview draws the Mermaid block as a diagram; its highlighted source is checked in Code view.
+  await expect(page.locator('.mdo-diagram svg')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
   await expect(page.locator('.mdo-tok-string', { hasText: '"Farben"' })).toBeVisible()
   await expect(page.locator('.mdo-tok-comment', { hasText: '# Kommentar' })).toBeVisible()
@@ -193,6 +196,8 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   await clickMenu(app, 'toggle-view')
   await page.locator('.cm-editor.mdo-code').waitFor()
   await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'flowchart' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: '-->' })).toBeVisible()
   await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
   await shot(page, 'highlight-code')
   await app.close()
@@ -216,7 +221,14 @@ test('external links get an underline and a ↗ that is not document text', asyn
   )
   await expect(ext).toHaveCSS('text-decoration-style', 'solid')
   // Internal link: plain link look, no arrow.
-  await expect(line.locator('.mdo-link:not(.mdo-link-ext)')).toHaveText('Kapitel')
+  // The link may come in two spans: its last letter shares a no-break span with the hidden
+  // `](…)` and the comma, so the comma never starts a line.
+  await expect
+    .poll(() => line.locator('.mdo-link:not(.mdo-link-ext)').allTextContents())
+    .toEqual(expect.arrayContaining([expect.stringContaining('Kapite')]))
+  expect((await line.locator('.mdo-link:not(.mdo-link-ext)').allTextContents()).join('')).toBe(
+    'Kapitel',
+  )
   // A citation without a reference definition is text (CommonMark, as in the PDF): brackets stay.
   await expect(line).toContainText('Quelle [21].')
   const arrows = line.locator('.mdo-link-arrow')
@@ -333,8 +345,17 @@ test('text and tables are as wide as the memo PDF text block (145 mm)', async ()
     )
     const table = document.querySelector('.mdo-table-wrap')
     const inner = document.querySelector('table.mdo-table')
+    // A line box carries one space advance beyond the measure (break-spaces counts the space
+    // before a break); the text itself breaks in the measure.
+    const advance = (el: Element) =>
+      Number.parseFloat(getComputedStyle(el).fontSize) *
+      Number.parseFloat(
+        (document.querySelector('.cm-editor') as HTMLElement).style.getPropertyValue(
+          '--mdo-space-advance',
+        ) || '0',
+      )
     return {
-      line: line ? box(line) : 0,
+      line: line ? box(line) - advance(line) : 0,
       table: table ? box(table) : 0,
       inner: inner ? inner.getBoundingClientRect().width : 0,
     }

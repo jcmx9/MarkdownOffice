@@ -68,28 +68,42 @@ export async function resolveSet(
 }
 
 /**
- * A small text file (a set's header, a profile) as text without BOM; null when missing, not a
- * regular file, larger than 64 KiB or not UTF-8 (then a set counts as having no header file).
+ * The bytes of a regular file of at most `maxBytes`; null when missing, not a regular file or
+ * larger. Shared by the text reader below and the signature image of the preview, which has its
+ * own (larger) limit.
  */
-export async function readSmallText(p: string): Promise<string | null> {
+export async function readCapped(p: string, maxBytes: number): Promise<Buffer | null> {
   try {
     // Only regular files (symlinks followed): opening a FIFO would block a libuv thread for good.
     if (!(await stat(p)).isFile()) return null
     const fh = await open(p, OPEN_FLAGS)
-    let buf: Buffer
     try {
       if (!(await fh.stat()).isFile()) return null
-      const chunk = Buffer.alloc(MAX_BYTES + 1)
-      const { bytesRead } = await fh.read(chunk, 0, MAX_BYTES + 1, 0)
-      if (bytesRead > MAX_BYTES) return null
-      buf = chunk.subarray(0, bytesRead)
+      const chunk = Buffer.alloc(maxBytes + 1)
+      const { bytesRead } = await fh.read(chunk, 0, maxBytes + 1, 0)
+      if (bytesRead > maxBytes) return null
+      return chunk.subarray(0, bytesRead)
     } finally {
       await fh.close()
     }
+  } catch (err) {
+    if (!quiet(err)) console.warn('Markdown Office: set file skipped', p, err)
+    return null
+  }
+}
+
+/**
+ * A small text file (a set's header, a profile) as text without BOM; null when missing, not a
+ * regular file, larger than 64 KiB or not UTF-8 (then a set counts as having no header file).
+ */
+export async function readSmallText(p: string): Promise<string | null> {
+  const buf = await readCapped(p, MAX_BYTES)
+  if (buf === null) return null
+  try {
     const text = utf8.decode(buf)
     return text.startsWith(BOM) ? text.slice(1) : text
   } catch (err) {
-    if (!quiet(err)) console.warn('Markdown Office: header template skipped', p, err)
+    console.warn('Markdown Office: set file skipped', p, err)
     return null
   }
 }

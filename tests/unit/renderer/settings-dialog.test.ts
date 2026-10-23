@@ -27,6 +27,7 @@ const deps = (over: Partial<SettingsDialogDeps> = {}): SettingsDialogDeps => ({
   settings,
   status: Promise.resolve(status),
   choose: vi.fn(async () => null),
+  openTemplatesFolder: vi.fn(async () => null),
   platform: 'win32',
   checkDictionaries: vi.fn(async () => ({ kind: 'current' as const })),
   words: vi.fn(async () => []),
@@ -202,6 +203,33 @@ describe('spelling section', () => {
     await flush()
     expect(checkDictionaries).toHaveBeenCalledOnce()
     expect($('set-dict-status').textContent).toBe(text)
+  })
+
+  it('Vorlagen-Ordner öffnen asks main to open the folder and keeps the dialog open', async () => {
+    const openTemplatesFolder = vi.fn(async () => null)
+    void openSettings(deps({ openTemplatesFolder }))
+    const button = $('settings-open-templates')
+    expect(button.textContent).toBe('Vorlagen-Ordner öffnen')
+    button.click()
+    await flush()
+    expect(openTemplatesFolder).toHaveBeenCalledOnce()
+    expect($('settings-templates-status').textContent).toBe('')
+    expect(document.querySelector('dialog')?.open).toBe(true)
+  })
+
+  it.each([
+    [async () => 'Vorlagen-Ordner konnte nicht geöffnet werden: kaputt', 'kaputt'],
+    [
+      async () => {
+        throw new Error('weg')
+      },
+      'Vorlagen-Ordner nicht geöffnet: weg',
+    ],
+  ])('Vorlagen-Ordner öffnen shows a failure next to the button (%#)', async (open, text) => {
+    void openSettings(deps({ openTemplatesFolder: open }))
+    $('settings-open-templates').click()
+    await flush()
+    expect($('settings-templates-status').textContent).toContain(text)
   })
 
   it('lists own words; Entfernen removes the word and its row', async () => {

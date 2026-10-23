@@ -32,6 +32,7 @@ function complete(win = false) {
   put(join('pipeline', win ? 'convert.ps1' : 'build.sh'))
   put(join('pipeline', 'cli.js'))
   put('LICENSE')
+  put('THIRD_PARTY_NOTICES.md')
   for (const l of licenses) put(join('pipeline', 'licenses', l))
   for (const d of dictionaries) put(join('dictionaries', d))
 }
@@ -67,6 +68,7 @@ describe('checkPackedResources', () => {
     join('pipeline', 'build.sh'),
     join('pipeline', 'cli.js'),
     'LICENSE',
+    'THIRD_PARTY_NOTICES.md',
     join('pipeline', 'licenses', 'typst', 'LICENSE'),
     join('pipeline', 'licenses', 'fonts', 'A-OFL.txt'),
   ])('fails naming the missing %s', (rel) => {

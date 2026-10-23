@@ -24,7 +24,10 @@ export const Ch = {
   listProfiles: 'mdo:list-profiles',
   createProfile: 'mdo:create-profile',
   validationInputs: 'mdo:validation-inputs',
+  previewInputs: 'mdo:preview-inputs',
   noteMenu: 'mdo:note-menu',
+  revealPath: 'mdo:reveal-path',
+  openTemplatesFolder: 'mdo:open-templates-folder',
   spellReplace: 'mdo:spell-replace',
   spellRecheck: 'mdo:spell-recheck',
   spellLanguage: 'mdo:spell-language',
@@ -36,4 +39,5 @@ export const Ch = {
   settingsStatus: 'mdo:settings-get-status',
   updateSettings: 'mdo:settings-update',
   choosePath: 'mdo:settings-choose-path',
+  pluginWasm: 'mdo:plugin-wasm',
 } as const

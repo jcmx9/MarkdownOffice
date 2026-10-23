@@ -158,6 +158,11 @@ dialog.prompt input:focus-visible {
 #editor {
   flex: 1;
   min-width: 0;
+  /* A set's CSS styles the note inside this box only: paint containment clips anything a set
+     rule positions or draws outside it (it cannot cover the outline, tabs or dialogs).
+     It clips CodeMirror's tooltips too: setup.ts gives them this box as their space
+     (tooltipSpace), so autocomplete flips and shrinks to stay inside it. */
+  contain: paint;
 }
 /* Drag handle on the outline's left edge (Edit and Present): a 6px strip over the border line. */
 #outline-grip {
@@ -392,6 +397,24 @@ body.mdo-ol-resizing {
 }
 #status .file {
   cursor: context-menu;
+}
+/* The note's set reads like the file name (muted info text); only errors make it stand out. */
+#status .set {
+  padding: 0 4px;
+  color: inherit;
+  max-width: 20em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#status .set:hover,
+#status .set:active {
+  background: transparent;
+  color: var(--chrome-fg);
+}
+#status .set.error,
+#status .set.error:hover {
+  color: var(--danger);
 }
 /* Mode and view switches: flat like info text, the active side lifted, no frame. */
 .mdo-switches {

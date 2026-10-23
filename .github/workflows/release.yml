@@ -58,6 +58,9 @@ jobs:
             dist/*.zip
             dist/*.AppImage
           if-no-files-found: error
+          # Only hands the packages to the publish job; the downloads live on the GitHub
+          # release. 90 days of ~1 GB per release filled the account's Actions storage.
+          retention-days: 3
 
   publish:
     name: publish release

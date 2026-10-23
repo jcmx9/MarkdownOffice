@@ -386,20 +386,54 @@ describe('settings item', () => {
   })
 })
 
+const REVEAL_LABELS = [
+  ['darwin', 'Im Finder zeigen'],
+  ['win32', 'Im Explorer zeigen'],
+  ['linux', 'Im Dateimanager zeigen'],
+] as const
+
+describe('reveal in file manager', () => {
+  it.each(REVEAL_LABELS)(
+    '%s: Datei menu has „%s“ right after Umbenennen, no shortcut',
+    (platform, label) => {
+      const command = vi.fn()
+      const file = buildMenuTemplate(deps({ platform, command })).find((m) => m.label === 'Datei')
+      const items = (file?.submenu ?? []) as MenuItemConstructorOptions[]
+      const at = items.findIndex((i) => i.id === 'rename')
+      const reveal = items[at + 1]
+      expect(reveal?.id).toBe('reveal')
+      expect(reveal?.label).toBe(label)
+      expect(reveal?.accelerator).toBeUndefined()
+      click(reveal)
+      expect(command).toHaveBeenCalledWith('reveal')
+    },
+  )
+})
+
 describe('noteMenuTemplate', () => {
-  it('offers rename, export and close; shortcuts only shown, not registered twice', () => {
-    const command = vi.fn()
-    const items = noteMenuTemplate(command)
-    expect(items.map((i) => i.label ?? i.type)).toEqual([
-      'Umbenennen …',
-      'PDF exportieren',
-      'separator',
-      'Tab schließen',
-    ])
-    for (const i of items.filter((x) => x.type !== 'separator')) {
-      expect(i.registerAccelerator).toBe(false)
-      ;(i.click as () => void)()
-    }
-    expect(command.mock.calls.map((c) => c[0])).toEqual(['rename', 'export', 'close-tab'])
-  })
+  it.each(REVEAL_LABELS)(
+    '%s: offers rename, „%s“, export and close; shortcuts only shown, not registered twice',
+    (platform, label) => {
+      const command = vi.fn()
+      const items = noteMenuTemplate(command, platform)
+      expect(items.map((i) => i.label ?? i.type)).toEqual([
+        'Umbenennen …',
+        label,
+        'PDF exportieren',
+        'separator',
+        'Tab schließen',
+      ])
+      expect(items[1]?.accelerator).toBeUndefined()
+      for (const i of items.filter((x) => x.type !== 'separator')) {
+        expect(i.registerAccelerator).toBe(false)
+        ;(i.click as () => void)()
+      }
+      expect(command.mock.calls.map((c) => c[0])).toEqual([
+        'rename',
+        'reveal',
+        'export',
+        'close-tab',
+      ])
+    },
+  )
 })

@@ -320,11 +320,26 @@ test('the outline width is dragged by its left edge, kept across restarts, defau
   await expect(outline(page)).not.toHaveClass(/mdo-ol-custom/)
   await expect.poll(width).toBe(before)
   // Dragging in Present widens the outline for this Present only.
-  const pbox = await grip.boundingBox()
-  if (!pbox) throw new Error('no grip in Present')
-  await page.mouse.move(pbox.x + pbox.width / 2, pbox.y + 100)
-  await page.mouse.down()
-  await page.mouse.move(pbox.x + pbox.width / 2 - 80, pbox.y + 100, { steps: 5 })
+  // Entering Present asks for fullscreen, and the window can still change its size after the
+  // checks above (Linux CI: Xvfb applies it late), so a grip position measured once could be
+  // stale and the press missed the grip. Press until the drag has really started (the grip
+  // sets body.mdo-ol-resizing on pointerdown); from then on the grip captures the pointer and
+  // the new width depends only on the distance moved.
+  let start = { x: 0, y: 0 }
+  await expect(async () => {
+    const pbox = await grip.boundingBox()
+    if (!pbox) throw new Error('no grip in Present')
+    start = { x: pbox.x + pbox.width / 2, y: pbox.y + 100 }
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    try {
+      await expect(page.locator('body.mdo-ol-resizing')).toHaveCount(1, { timeout: 500 })
+    } catch (err) {
+      await page.mouse.up()
+      throw err
+    }
+  }).toPass({ timeout: 10_000 })
+  await page.mouse.move(start.x - 80, start.y, { steps: 5 })
   await page.mouse.up()
   await expect.poll(width).toBeGreaterThan(before + 60)
   await shot(page, 'outline-present-grip')

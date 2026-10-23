@@ -81,6 +81,8 @@ describe('release workflow', () => {
       'dist/*.AppImage',
     ])
     expect(up.with?.['if-no-files-found']).toBe('error')
+    // Short-lived hand-over to the publish job; long retention filled the Actions storage.
+    expect(up.with?.['retention-days']).toBe(3)
   })
 
   it('writes SHA256SUMS in a format sha256sum -c accepts', () => {

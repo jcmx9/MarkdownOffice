@@ -1,13 +1,11 @@
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { ProfileLookup } from '../core/frontmatter-validate'
-import { SET_NAME_RE } from '../core/sets'
+import { DEFAULT_SET, SET_NAME_RE } from '../core/sets'
 import type { ValidationInputs } from '../core/validation-context'
 import { isFile, listSets, readSetHeader, readSetSchema, resolveSet } from './templates'
 
 // No `electron` import: the CLI bundles this file with Node built-ins only.
-
-const DEFAULT_SET = 'memo'
 
 /**
  * `~`, `~/x` and `~\x` -> `join(homedir(), x)`. Joined, not concatenated: on Windows a plain
@@ -36,6 +34,12 @@ function typFolder(value: string, noteDir: string | null): string | null {
   return dirname(p)
 }
 
+/** Outcome of `findProfile`: like `ProfileLookup`, but a hit names the winning file. */
+export type ProfileFind =
+  | { status: 'found'; path: string }
+  | { status: 'missing'; searched: string[] }
+  | { status: 'invalid' }
+
 /**
  * Looks up the note's `profile:` exactly like `pipeline/build.sh` does (the authority; its
  * search order is also what `listProfiles` in templates.ts offers):
@@ -44,11 +48,12 @@ function typFolder(value: string, noteDir: string | null): string | null {
  *   the set folder is `<user>/<set>`, it was searched already); first hit wins;
  * - a value ending in `.yaml`/`.yml` is a path, `~` expanded, relative to the note's folder;
  * - anything else is invalid. Values with `$`/`%` (variables) are not checked: null.
+ * The preview reads the winning file (and the signature next to it), so a hit carries its path.
  */
-async function lookupProfile(
+export async function findProfile(
   value: string,
   o: { userDir: string; noteDir: string | null; set: string; setDir: string | null },
-): Promise<ProfileLookup | null> {
+): Promise<ProfileFind | null> {
   if (value === '') return null
   if (SET_NAME_RE.test(value)) {
     const dirs: string[] = []
@@ -59,7 +64,7 @@ async function lookupProfile(
       dirs.push(join(o.setDir, 'profiles'))
     }
     const files = dirs.map((d) => join(d, `${value}.yaml`))
-    for (const f of files) if (await isFile(f)) return { status: 'found' }
+    for (const f of files) if (await isFile(f)) return { status: 'found', path: f }
     return { status: 'missing', searched: dirs }
   }
   if (/\.ya?ml$/i.test(value)) {
@@ -71,7 +76,7 @@ async function lookupProfile(
       if (o.noteDir === null) return null
       p = resolve(o.noteDir, p)
     }
-    return (await isFile(p)) ? { status: 'found' } : { status: 'missing', searched: [p] }
+    return (await isFile(p)) ? { status: 'found', path: p } : { status: 'missing', searched: [p] }
   }
   return { status: 'invalid' }
 }
@@ -97,14 +102,16 @@ export async function validationInputs(o: {
   // A single .typ has no set name, but its own folder is still a search location. If that
   // folder is unknown, a profile *name* cannot be judged: not checked, never a false missing.
   const typDir = isPath ? typFolder(o.template, o.noteDir) : null
-  const profile =
+  const found =
     isPath && typDir === null && SET_NAME_RE.test(o.profile)
       ? null
-      : await lookupProfile(o.profile, {
+      : await findProfile(o.profile, {
           userDir: o.userDir,
           noteDir: o.noteDir,
           set,
           setDir: resolved ? dirname(resolved.typ) : typDir,
         })
+  // The validator only needs to know that a profile exists, never where (it runs in core).
+  const profile: ProfileLookup | null = found?.status === 'found' ? { status: 'found' } : found
   return { set, sets, header, schemaText, profile }
 }

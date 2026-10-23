@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FIELD_TYPES } from '../../src/core/frontmatter-schema'
+import { PREVIEW_ELEMENT_KEYS } from '../../src/core/preview-spec'
 
 // TEMPLATES.md documents every Typst input (`sys.inputs`) a template set receives. This test
 // keeps the guide in sync with the inputs that build.sh and convert.ps1 really pass.
@@ -23,6 +24,13 @@ function inputNames(script: string): string[] {
 const bash = inputNames(read('pipeline/build.sh'))
 const ps1 = inputNames(read('pipeline/convert.ps1'))
 const guide = read('TEMPLATES.md')
+// Every token the theme declares for sets (between the markers) is part of the contract.
+const themeBlock = (read('src/renderer/theme.css').split('/* set tokens: begin */')[1] ?? '').split(
+  '/* set tokens: end */',
+)[0]
+const tokens = [...(themeBlock ?? '').matchAll(/(--mdo-[a-z0-9-]+)\s*:/g)].map(
+  (m) => m[1] as string,
+)
 
 describe('TEMPLATES.md', () => {
   it('finds the inputs in both scripts', () => {
@@ -42,5 +50,21 @@ describe('TEMPLATES.md', () => {
 
   it.each(FIELD_TYPES)('documents the schema type `%s`', (type) => {
     expect(guide).toContain(`\`${type}\``)
+  })
+
+  it('finds the set tokens in the theme', () => {
+    expect(tokens.length).toBeGreaterThan(20)
+  })
+
+  it.each(tokens)('documents the preview token `%s`', (token) => {
+    expect(guide).toContain(`\`${token}\``)
+  })
+
+  it.each(PREVIEW_ELEMENT_KEYS)('documents the preview key `%s`', (key) => {
+    expect(guide).toContain(`\`${key}:\``)
+  })
+
+  it('no longer calls the set CSS reserved', () => {
+    expect(guide).not.toMatch(/reserved/)
   })
 })

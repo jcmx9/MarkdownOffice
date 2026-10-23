@@ -2,7 +2,7 @@
 
 > Ruhiger Markdown-Editor mit eingebauter PDF/A-Pipeline: Die Notiz sieht schon beim Tippen aus wie das PDF.
 
-**Version:** 26.10.1 · [English](README.en.md)
+**Version:** 26.10.2 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -102,7 +102,9 @@ Außerdem startet der Editor über das Startmenü (Windows), den Desktop-Eintrag
 
 Neue Notizen landen im Standardordner `~/Documents/Markdown Office/` (Windows: im Ordner „Dokumente“). Die Einstellungen liegen in `settings.json` im App-Datenordner (macOS `~/Library/Application Support/Markdown Office`, Windows `%APPDATA%\Markdown Office`, Linux `~/.config/Markdown Office`).
 
-Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdatei, fällt sie auf Systemschriften zurück. Fließtext wird wie im PDF im Blocksatz gesetzt, aber ohne Silbentrennung; getrennt wird erst beim Export durch Typst. Mod+E speichert die Notiz und exportiert sie mit der Pipeline; das PDF landet neben der Notiz (Name wie beim [Befehl](#befehl-markdown-office)) und öffnet sich im Standardprogramm.
+Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdatei, fällt sie auf Systemschriften zurück. Absätze, in denen der Cursor nicht steht, setzt die Vorschau wie das PDF: mit Typsts Silbentrennung und Zeilenumbruch, im Blocksatz mit denselben Wortabständen und mit den typografischen Zeichen des PDFs. Der Absatz mit dem Cursor zeigt den getippten Text und bricht wie der Browser um. Anführungszeichen nach `lang`, Apostroph, Halbgeviert- und Geviertstrich und Auslassungszeichen zeigt die Vorschau wie das PDF; Code, Formeln, HTML und Tabellen zeigt sie unverändert. Das PDF ersetzt derzeit auch in Tabellenzellen und eingerücktem Code (eine Eigenheit der Pipeline, die getrennt behoben wird). Links in `<…>` zeigt die Vorschau ohne die spitzen Klammern; die Zeile mit dem Cursor zeigt die getippten Zeichen, und der Text der Notiz bleibt unverändert. Mermaid-Blöcke auf oberster Ebene (` ```mermaid `) zeichnet die Vorschau (und der Präsentationsmodus) als Diagramm, mit demselben mmdr-Plugin und denselben Werten wie das PDF des Sets; ein Block innerhalb einer Liste oder eines Zitats, der Block mit dem Cursor, die Code-Ansicht und ein Diagramm, das sich nicht zeichnen lässt, zeigen den Quelltext. Ein Set ohne `mermaid:` in `name.preview.yaml` zeichnet keine Diagramme. Mod+E speichert die Notiz und exportiert sie mit der Pipeline; das PDF landet neben der Notiz (Name wie beim [Befehl](#befehl-markdown-office)) und öffnet sich im Standardprogramm.
+
+Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Absender, Anschrift, Betreff und Grußformel eines Briefs) übernimmt die Vorschau vom Set der Notiz: aus `name.css` und `name.preview.yaml` (siehe [Vorlagen-Sets](#vorlagen-sets) und TEMPLATES.md). Sets ohne diese Dateien sehen aus wie `memo`. Bei 100 % Zoom entspricht die Vorschau der Papiergröße (11 pt sind 11 pt, 165 mm sind 165 mm); Zoom und Präsentationsfaktor skalieren alle Druckgrößen gemeinsam.
 
 | Kürzel | Aktion |
 |--------|--------|
@@ -125,11 +127,11 @@ Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdate
 
 `Mod` = Cmd unter macOS, sonst Ctrl. Die Auswahl mit Shift bzw. Mod+Shift und den Pfeiltasten übernimmt CodeMirror.
 
-Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, PDF exportieren und Tab schließen. Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Rechts daneben schalten `Gliederung` und `YAML` die Gliederung (Mod+Shift+O) und den YAML-Header der Vorschau (Mod+Shift+H) ein oder aus; ist ein Schalter hervorgehoben, ist er an. `YAML` ist ausgegraut, wenn die Notiz keinen Header hat oder die Code-Ansicht (dort ist der Header immer sichtbar) aktiv ist. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht.
+Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, Im Finder zeigen (Windows: Im Explorer zeigen, Linux: Im Dateimanager zeigen), PDF exportieren und Tab schließen. „Im Finder zeigen“ steht auch im Menü „Datei“ und zeigt die aktive Notiz im Dateimanager des Systems (eine neue Notiz wird dafür zuerst gespeichert; nicht beim Präsentieren). Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Rechts daneben schalten `Gliederung` und `YAML` die Gliederung (Mod+Shift+O) und den YAML-Header der Vorschau (Mod+Shift+H) ein oder aus; ist ein Schalter hervorgehoben, ist er an. `YAML` ist ausgegraut, wenn die Notiz keinen Header hat oder die Code-Ansicht (dort ist der Header immer sichtbar) aktiv ist. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht. Neben dem Dateinamen steht das Set der Notiz (`template:`), rot bei Fehlern im YAML-Header (siehe [YAML prüfen](#frontmatter)).
 
 ### Einstellungen
 
-„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
+„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Der Knopf „Vorlagen-Ordner öffnen“ öffnet den Ordner für eigene Vorlagen-Sets (`~/Documents/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`, siehe [Vorlagen-Sets](#vorlagen-sets)) im Dateimanager und legt ihn an, wenn er fehlt. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
 
 ### Gliederung
 
@@ -272,7 +274,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 
 **Regeln:** Leere Werte (`subtitle: ""` oder nur `subtitle:`) werden ignoriert, nie ein Fehler. Ja/Nein-Schlüssel verstehen `true`/`false`, `yes`/`no`, `on`/`off` in jeder Schreibweise; ein nicht erkannter Wert erzeugt eine Warnung, der Standard bleibt. Kommentare (`# …`) dürfen auf eigenen Zeilen und hinter Werten stehen. In Pfaden (`logo:`, Bilder) werden `~`, `$VAR`, `${VAR}` und `%VAR%` ersetzt.
 
-**YAML prüfen:** Das Menü **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) prüft den Header der Notiz gegen die Regeln der Pipeline und des gewählten Sets: ungültige Werte (etwa `toc: ja`, `date: 20.10.26`, ein unbekanntes Set oder ein nicht gefundenes `profile:`), mehrfach vorkommende Schlüssel und vermutete Tippfehler. Zusätzliche eigene Schlüssel sind immer erlaubt. Der Dialog zeigt jeden Befund mit einem Korrekturvorschlag; „Übernehmen“ schreibt die angehakten Korrekturen als **einen** Undo-Schritt, alles andere in der Notiz bleibt Byte für Byte. „Fehlende ergänzen“ hängt die Schlüssel des Sets an, die der Header noch nicht hat (standardmäßig aus). Ohne Befund erscheint „YAML in Ordnung“. Beim Export prüft die App den Header still vorab; bei Fehlern meldet ein Hinweis „YAML hat n Fehler“ mit „Prüfen …“, der Export läuft trotzdem. Das gilt auch nach „Einfügen → Vorlage …“. Welche Schlüssel und Werte ein Set erwartet, steht in seiner `name.schema.yaml`, siehe [TEMPLATES.md](TEMPLATES.md) (Englisch). Dieselbe Prüfung gibt es im Terminal: [`markdown-office validate`](#yaml-prüfen).
+**YAML prüfen:** Das Menü **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) prüft den Header der Notiz gegen die Regeln der Pipeline und des gewählten Sets: ungültige Werte (etwa `toc: ja`, `date: 20.10.26`, ein unbekanntes Set oder ein nicht gefundenes `profile:`), mehrfach vorkommende Schlüssel und vermutete Tippfehler. Zusätzliche eigene Schlüssel sind immer erlaubt. Der Dialog zeigt jeden Befund mit einem Korrekturvorschlag; „Übernehmen“ schreibt die angehakten Korrekturen als **einen** Undo-Schritt, alles andere in der Notiz bleibt Byte für Byte. „Fehlende ergänzen“ hängt die Schlüssel des Sets an, die der Header noch nicht hat (standardmäßig aus). Ohne Befund erscheint „YAML in Ordnung“. Beim Export prüft die App den Header still vorab; bei Fehlern meldet ein Hinweis „YAML hat n Fehler“ mit „Prüfen …“, der Export läuft trotzdem. Das gilt auch nach „Einfügen → Vorlage …“. Nennt die Notiz ein Set (`template:`), zeigt die Statuszeile seinen Namen neben dem Dateinamen; die App prüft den Header dafür still im Hintergrund (beim Öffnen, beim Tab-Wechsel und eine halbe Sekunde nach dem letzten Tastendruck). Bei Fehlern wird der Name rot (Warnungen und Hinweise zählen nicht, auch ein nicht installiertes Set oder ein nicht gefundenes Profil ist ein Fehler), der Tooltip nennt die Anzahl („memo – 2 Fehler im YAML-Kopf“); ein Klick öffnet „YAML prüfen …“. Welche Schlüssel und Werte ein Set erwartet, steht in seiner `name.schema.yaml`, siehe [TEMPLATES.md](TEMPLATES.md) (Englisch). Dieselbe Prüfung gibt es im Terminal: [`markdown-office validate`](#yaml-prüfen).
 
 ### Logo
 
@@ -302,13 +304,14 @@ CommonMark funktioniert wie gewohnt: `*kursiv*`, `**fett**`, `` `Code` ``, Links
 
 ## Vorlagen-Sets
 
-Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu drei Dateien mit gemeinsamem Namen:
+Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu vier Dateien mit gemeinsamem Namen:
 
 | Datei | Zweck | Pflicht |
 |-------|-------|---------|
 | `name.typ` | Typst-Vorlage für das PDF | ja |
 | `name.header.md` | Frontmatter-Vorlage mit allen Schlüsseln; enthält `template: name` | nein |
-| `name.css` | Aussehen im Editor (reserviert; der Editor liest es noch nicht) | nein |
+| `name.css` | Aussehen der Vorschau im Editor (Schrift, Größen, Satzbreite) | nein |
+| `name.preview.yaml` | Blöcke über und unter dem Text in der Vorschau (Kopf und Fuß) | nein |
 
 Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
 
@@ -369,7 +372,7 @@ Ein eigenes Profil legt **Datei → Profil anlegen …** an: In einer Notiz mit 
 
 ## Schriften und Lizenzen
 
-Vorschau und PDF nutzen dieselben mitgelieferten Schriften: die variablen Source-Schriften von Adobe (Source Serif 4, Source Sans 3, Source Code Pro) und für Zeichen ohne Source-Glyph Noto Emoji und Noto Sans Symbols 2, alle unter der SIL Open Font License 1.1. Typst (Apache-2.0) und die Typst-Packages cmarker (MIT), mitex (Apache-2.0) und mmdr (MIT) stehen unter ihren eigenen Lizenzen. Die Lizenztexte liegen der App im Pipeline-Ordner unter `licenses/` bei (`typst/` mit LICENSE und NOTICE, `fonts/`, `packages/`; macOS: `Markdown Office.app/Contents/Resources/pipeline/licenses/`, Windows und Linux: `resources/pipeline/licenses/` im Installationsordner). Versionen und Prüfsummen stehen in `scripts/pipeline-assets.json`.
+Vorschau und PDF nutzen dieselben mitgelieferten Schriften: die variablen Source-Schriften von Adobe (Source Serif 4, Source Sans 3, Source Code Pro) und für Zeichen ohne Source-Glyph Noto Emoji und Noto Sans Symbols 2, alle unter der SIL Open Font License 1.1. Typst (Apache-2.0) und die Typst-Packages cmarker (MIT), mitex (Apache-2.0) und mmdr (MIT) stehen unter ihren eigenen Lizenzen. Die Lizenztexte liegen der App im Pipeline-Ordner unter `licenses/` bei (`typst/` mit LICENSE und NOTICE, `fonts/`, `packages/`; macOS: `Markdown Office.app/Contents/Resources/pipeline/licenses/`, Windows und Linux: `resources/pipeline/licenses/` im Installationsordner). Versionen und Prüfsummen stehen in `scripts/pipeline-assets.json`. Für den Absatzsatz der Vorschau enthält die App portierten Code aus Typst und hypher, die Trennmuster für Deutsch und Englisch sowie das npm-Paket `linebreak` mit Unicode-Daten; dasselbe mmdr-WebAssembly (MIT, mit mermaid-rs-renderer, MIT), das das PDF zeichnet, läuft auch in der Vorschau der App; Hinweise und Lizenztexte dazu stehen in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), das der App beiliegt (macOS: `Markdown Office.app/Contents/Resources/`, Windows und Linux: `resources/` im Installationsordner).
 
 ## Entwicklung
 
