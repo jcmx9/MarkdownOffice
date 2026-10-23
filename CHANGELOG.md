@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.2] - 2026-10-23
+
 ### Added
 - Editor: the preview and Present follow the note's template set. `<name>.css` (next to `<name>.typ`) sets font, sizes, measure, headings and tables through documented `--mdo-*` tokens and `.mdo-*` rules; `<name>.preview.yaml` describes the blocks above (`head`, replaces the front matter) and below (`foot`) the text, filled from the front matter and the sender profile (`{key}`, `{profile.key}`, `x-profile-<key>` overrides, the profile's signature as a picture). Sets without these files, a broken `.preview.yaml` (one notice per set per session) or a `.typ` path keep memo's look. The set's CSS is sanitised and scoped to the editor: only `.mdo-*` rules, no at-rules, nothing that loads a resource, `position` limited to static, relative or absolute, no `z-index`. The contract is in TEMPLATES.md §8
 - Editor: „Im Finder zeigen“ (Windows „Im Explorer zeigen“, Linux „Im Dateimanager zeigen“) in the „Datei“ menu after „Umbenennen …“ and in the note's right-click menu (tab, status-line file name) shows the active note in the system's file manager. A new note is saved first; a missing file or a path the app did not open is reported as a notice; not available while presenting
