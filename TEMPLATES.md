@@ -453,6 +453,39 @@ Only the profile keys that `.preview.yaml` names (`{profile.key}`) are read into
 
 Test a set in the editor by copying it into the templates folder and opening a note with `template: <name>`. The unit tests in `tests/unit/` and the fixture sets `tests/fixtures/sets/` show working and malicious examples. Never rely on `.css` or `.preview.yaml` for PDF output.
 
+### 8.5 Making the preview match the PDF, step by step
+
+The aim: the same font sizes, the same text width and, as far as the browser allows, the same line breaks as the PDF. Every value comes from your `.typ` or from a PDF it produced; nothing is guessed. Work through the list in this order (the later values depend on the earlier ones) and write a comment above each token saying where its value comes from, as `memo.css` and `din5008a.css` do.
+
+You need: a test note that uses every element of your set (paragraphs long enough to wrap, a list with a long item, a table, headings), its PDF, and a way to read positions from the PDF. `pdftotext -bbox note.pdf out.html` (poppler) or `mutool draw -F stext note.pdf` (MuPDF) print each word with its box in pt; baselines are the boxes' bottom edges minus the descent, but differences between two lines of the same font are exact either way.
+
+| # | Token(s) | Where the value comes from | memo | din5008a |
+|---|----------|----------------------------|------|----------|
+| 1 | `--mdo-measure` | paper width minus the left and right page margins of `#set page(margin: …)` | 210 − 35 − 30 = `145mm` | 210 − 25 − 20 = `165mm` |
+| 2 | `--mdo-body-font`, `--mdo-body-size` | `#set text(font:, size:)`; the family as one of `var(--mdo-font-sans\|serif\|code)` (§4), the size in `pt` | sans, `10pt` | serif, `11pt` |
+| 3 | `--mdo-body-weight`, `--mdo-bold-weight` | `#set text(weight:)` (Typst's default is 400); bold is that weight **plus** `strong(delta:)` (Typst's default delta is 300, so an unset delta gives 700) | 380, 380 + 180 = 560 | 400, `show strong: text(weight: 600)` = 600 |
+| 4 | `--mdo-line-height` | measure the baseline-to-baseline distance of two lines of one paragraph in the PDF and divide by the body size, or write it in `pt`. Typst's `par(leading:)` is the gap between the lines (from the cap height of one to the baseline of the next, by default), not a CSS line height: pitch = leading + cap height of the font | 0.85em → 15.1pt pitch ≈ `1.5` | 5.5pt + 7.37pt = `12.87pt` |
+| 5 | `--mdo-align`, `--mdo-word-spacing` | `#set par(justify: true)` → `justify` and `-0.045em` (see *Word spacing* in §8.1); `justify: false` → `left` and leave the word spacing at its default `0` | justify, `-0.045em` | left, — |
+| 6 | `--mdo-par-gap` | the extra distance a paragraph break adds: (baseline distance across a paragraph break) − (line pitch from row 4), measured in the PDF | `1.1em` | 23.87 − 12.87 = `11pt` |
+| 7 | `--mdo-hN-font`, `--mdo-hN-size`, `--mdo-hN-weight`, `--mdo-h1-rule`, `--mdo-h3-decoration` | your `show heading` rules per level; the weight as in row 3 (a heading inside `strong` adds the delta) | serif 14/12/10pt, 470/470/380 | serif 11pt, 600 |
+| 8 | `--mdo-list-indent` | the distance from the text block's left edge to the item text, in em of the body size: measure the x of an item's first word minus the x of a paragraph's first word in the PDF, divide by the size. In the `.typ` it is `list(indent:)` + the marker's width + `list(body-indent:)` | marker 0.72em + 0.4em = `1.12em` | 8.84pt / 11pt = `0.804em` |
+| 9 | `--mdo-table-font`, `--mdo-table-size`, `--mdo-table-weight`, `--mdo-table-tracking`, `--mdo-table-head-weight` | your `show table: set text(…)`; the head weight is the table weight plus the strong delta when the head cells are `strong` (memo: `show table.cell.where(y: 0): strong`) | sans 9pt, 500, `-0.02em`, 500 + 180 = 680 | code 10pt, 400, `0`, 600 |
+| 10 | `--mdo-code-size` | `show raw.where(block: true): set text(size:)` | `9pt` | `10pt` |
+| 11 | `nobreak:` in `<name>.preview.yaml` | the phrases and units your `.typ` joins with a no-break space (`show "z. B.": [z.~B.]`, a regex for number + unit); copy them as plain strings (§8.2). No such rules: leave the key out | 10 phrases, 19 units | — |
+| 12 | `head:`, `foot:` in `<name>.preview.yaml`, block classes in `<name>.css` | what the `.typ` prints from the front matter and the profile above and below the body, in the same order; distances measured in the PDF become `margin-*`/`padding-*` on the `.mdo-tb-*` classes | title block | letter head, closing, signature, enclosures |
+
+The optical size needs no row: the app derives `--mdo-*-opsz` from the pt sizes of rows 2 and 7 (§8.1, *Optical size*). Only fonts and sizes in `pt` derive it, so write the sizes in `pt`, not `em` or `mm`.
+
+**Checking the result.** Copy the set into the templates folder, open the test note, hide the header, set the zoom to 100 % and put the PDF next to it. At 100 % the text block has the PDF's width on screen (§8.1, *Print units and zoom*). Compare paragraph by paragraph where each line ends:
+
+- **Every line ends one or two words early or late:** the measure (row 1), the size (row 2) or the weight (row 3) is off. The weight matters: a variable font's letters get wider with its weight.
+- **Only some lines differ, all in justified paragraphs:** expected. Typst shrinks word spaces and chooses the breaks for the whole paragraph; the browser fills each line in turn. Check that `--mdo-word-spacing` is set (row 5).
+- **The PDF hyphenates a word at a line end and the preview moves it to the next line:** expected. The preview does not hyphenate yet.
+- **A list item's wrapped lines start left or right of the PDF's:** row 8.
+- **Line spacing or the gaps between paragraphs differ, the breaks do not:** rows 4 and 6; these never change a line break.
+
+What a set can reach today: memo (justified, hyphenated) matches about two thirds of all lines, din5008a (left-aligned, almost no hyphenation) every line. Hyphenation, Typst's paragraph-wide line breaking and hanging punctuation are the app's part and come with a later release; a set then needs no further values for them beyond what it already declares.
+
 ## 9. Minimal working skeleton
 
 Verified with Typst 0.15.0 and the pipeline: renders headings, callouts, task tables, table intros, definition lists, formulas, page breaks, missing and remote images, and produces PDF/A-3b with the source attached. Save as `skel.typ`.
@@ -577,6 +610,7 @@ Repository tests: `bash pipeline/tests/test-pdf.sh` (PDFs of `pipeline/tests/fix
 ## 11. Publishing a set
 
 - One repository per set: `MarkdownOffice-set-<name>` (e.g. `jcmx9/MarkdownOffice-set-memo`), with `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md`, `LICENSE`, `README.md`, `README.en.md` (content-identical), `CHANGELOG.md` at the root.
+- The README (both languages) has a section on the editor preview: which values the set declares and where each comes from (the table of §8.5 for your set), and what still differs from the PDF. memo and din5008a are examples.
 - Versions are CalVer `YY.M.MICRO`; tags are `vYY.M.MICRO` (e.g. `v26.10.0`).
 - Users install a set by copying `<name>.typ` into their templates folder.
 - To bundle a set with the app, add it to `sets` in `scripts/pipeline-assets.json`:
@@ -613,7 +647,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
-- [ ] If the set has a `.css` or `.preview.yaml`: print units for sizes, no `url()` or at-rules, `.preview.yaml` starts with `preview: 1` and only uses the documented keys (section 8); a note without them still looks right (memo fallback).
+- [ ] If the set has a `.css` or `.preview.yaml`: print units for sizes, no `url()` or at-rules, `.preview.yaml` starts with `preview: 1` and only uses the documented keys (section 8); a note without them still looks right (memo fallback). Each token's value is derived as in §8.5 and its source is written in a comment; the test note's lines end where the PDF's do, apart from the limits §8.5 names.
 - [ ] Ships `<name>.schema.yaml` for its `x-` keys (section 6, *Schema*).
 - [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
