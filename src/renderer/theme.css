@@ -8,9 +8,10 @@
  *
  * The set-dependent values are the --mdo-* set tokens on .cm-editor (block
  * "set tokens" below): memo's values are the defaults, a set's <name>.css
- * overrides them for its notes. The one exception is --mdo-word-spacing: its
- * default is 0, not memo's value (-0.045em), so sets that do not declare it
- * (din5008a, user sets) do not inherit a stop-gap meant for justified memo.
+ * overrides them for its notes. The exceptions are --mdo-word-spacing (default 0, not memo's
+ * -0.045em, a stop-gap meant for justified memo) and --mdo-numeric / --mdo-table-numeric
+ * (default normal, not memo's old-style / lining tabular figures): sets that do not declare
+ * them (din5008a, user sets) keep the font's own figures.
  * Print lengths are written
  * calc(<len> * var(--mdo-scale, 1)); --mdo-scale is the one zoom factor the
  * app sets on #editor (zoom × Present factor), so at zoom 1 a set's 11pt is
@@ -72,6 +73,12 @@
      body lines from 30 % to 68 % identical (findings §4.4). Default 0 on purpose, see above;
      memo.css sets -0.045em. Goes away with the Knuth-Plass step. */
   --mdo-word-spacing: 0;
+  /* figure style (CSS font-variant-numeric) of body text, lists, quotes and headings; memo.typ sets
+     number-type "old-style" (old-style "1627" is 19.72 pt wide, lining 18.04 pt, so lines would break
+     differently). Default normal on purpose, see above; memo.css sets oldstyle-nums. Code keeps normal. */
+  --mdo-numeric: normal;
+  /* the same for rendered tables (memo.typ table-text: lining, tabular); default normal on purpose */
+  --mdo-table-numeric: normal;
   /* list items: marker slot 0.72em + body indent 0.4em = 11.2pt in the PDF */
   --mdo-list-indent: 1.12em;
   --mdo-line-height: 1.5;
@@ -172,7 +179,8 @@
   /* only opsz, so font-weight keeps driving wght; never switch optical sizing off (the axis falls back
      to opsz 20). Fixed in pt: line breaks no longer change with the zoom. */
   font-variation-settings: "opsz" var(--mdo-body-opsz);
-  font-variant-numeric: oldstyle-nums proportional-nums;
+  /* headings, lists and quotes inherit it; code and tables reset it below */
+  font-variant-numeric: var(--mdo-numeric);
   /* Room for a classic scrollbar always: set paragraphs (paragraphs.ts) change the line heights,
      and a scrollbar appearing or vanishing with them would change the content width, which
      re-sets the paragraphs, which toggles the scrollbar back. No effect with overlay scrollbars
@@ -356,6 +364,7 @@
   color: var(--mdo-faint);
   font-family: var(--mdo-font-code);
   font-size: 0.9em;
+  font-variant-numeric: normal;
 }
 
 /* Lists: the memo set's small square */
@@ -514,12 +523,12 @@
   text-transform: uppercase;
 }
 
-/* Tables: 9pt medium, lining tabular figures, stripes, rule under head */
+/* Tables: 9pt medium, figure style from the set (memo: lining tabular), stripes, rule under head */
 .mdo-preview .cm-line:is(.mdo-table-head, .mdo-table-row, .mdo-table-delim) {
   font-family: var(--mdo-table-font);
   font-size: var(--mdo-table-size);
   font-weight: var(--mdo-table-weight);
-  font-variant-numeric: lining-nums tabular-nums;
+  font-variant-numeric: var(--mdo-table-numeric);
   text-align: left;
   hyphens: manual;
   word-spacing: normal;
@@ -551,7 +560,7 @@
   font-size: var(--mdo-table-size);
   font-weight: var(--mdo-table-weight);
   letter-spacing: var(--mdo-table-tracking);
-  font-variant-numeric: lining-nums tabular-nums;
+  font-variant-numeric: var(--mdo-table-numeric);
   text-align: left;
   hyphens: manual;
   word-spacing: normal;
@@ -593,6 +602,7 @@
   font-family: var(--mdo-font-code);
   font-size: 0.94em;
   font-weight: 400;
+  font-variant-numeric: normal;
 }
 
 /* Code blocks: 9pt code font on light grey, Typst syntax colours */
@@ -632,6 +642,7 @@
 .mdo-preview .cm-line.mdo-frontmatter {
   font-family: var(--mdo-font-code);
   font-size: 0.85em;
+  font-variant-numeric: normal;
   color: var(--mdo-faint);
   text-align: left;
   hyphens: manual;

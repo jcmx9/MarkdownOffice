@@ -32,6 +32,8 @@ const TOKEN_NAMES = [
   '--mdo-h2-opsz',
   '--mdo-h3-opsz',
   '--mdo-word-spacing',
+  '--mdo-numeric',
+  '--mdo-table-numeric',
   '--mdo-list-indent',
   '--mdo-table-head-weight',
   '--mdo-line-height',
@@ -65,8 +67,8 @@ const TOKEN_NAMES = [
 const scaled = (len: string) => `calc(${len} * var(--mdo-scale, 1))`
 
 describe('set tokens in theme.css', () => {
-  it('lists the 37 tokens of the plan', () => {
-    expect(new Set(TOKEN_NAMES).size).toBe(37)
+  it('lists the 39 tokens of the plan', () => {
+    expect(new Set(TOKEN_NAMES).size).toBe(39)
   })
 
   it.each(TOKEN_NAMES)('declares %s in the set-token block', (name) => {
@@ -116,6 +118,9 @@ describe('set tokens in theme.css', () => {
     expect(t.get('--mdo-list-indent')).toBe('1.12em')
     // the one token whose default is not memo's value: sets without it must not inherit it
     expect(t.get('--mdo-word-spacing')).toBe('0')
+    // figure style: the second and third exception, sets without it keep the font's figures
+    expect(t.get('--mdo-numeric')).toBe('normal')
+    expect(t.get('--mdo-table-numeric')).toBe('normal')
     expect(t.get('--mdo-table-weight')).toBe('500')
     expect(t.get('--mdo-table-tracking')).toBe('-0.02em')
     expect(t.get('--mdo-h1-rule')).toBe('var(--mdo-hairline)')
@@ -135,6 +140,23 @@ describe('set tokens in theme.css', () => {
       )
     }
     expect(theme).not.toContain('font-optical-sizing: none')
+  })
+
+  it('applies the figure-style tokens to text and tables, never to code', () => {
+    expect(theme).toMatch(
+      /\.mdo-preview \.cm-scroller\s*{[^}]*font-variant-numeric:\s*var\(--mdo-numeric\)/,
+    )
+    expect(theme).toMatch(
+      /\.mdo-table-head, \.mdo-table-row, \.mdo-table-delim\)\s*{[^}]*font-variant-numeric:\s*var\(--mdo-table-numeric\)/,
+    )
+    expect(theme).toMatch(
+      /table\.mdo-table\s*{[^}]*font-variant-numeric:\s*var\(--mdo-table-numeric\)/,
+    )
+    expect(theme).toMatch(/\.mdo-code-inline\s*{[^}]*font-variant-numeric:\s*normal/)
+    expect(theme).toMatch(
+      /\.mdo-codeblock, \.mdo-codefence\)\s*{[^}]*font-variant-numeric:\s*normal/,
+    )
+    expect(theme).not.toMatch(/font-variant-numeric:\s*(oldstyle|lining)/)
   })
 
   it('widens the content box by one space advance (break-spaces counts the trailing space)', () => {

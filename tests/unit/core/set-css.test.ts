@@ -307,3 +307,16 @@ describe('paragraph tokens', () => {
     ])
   })
 })
+
+describe('figure-style tokens', () => {
+  it('keeps --mdo-numeric and --mdo-table-numeric verbatim', () => {
+    const { rules, dropped } = sanitizeSetCss(
+      '.mdo-preview { --mdo-numeric: oldstyle-nums; --mdo-table-numeric: lining-nums tabular-nums }',
+    )
+    expect(dropped).toEqual([])
+    expect(rules[0]?.declarations).toEqual([
+      ['--mdo-numeric', 'oldstyle-nums'],
+      ['--mdo-table-numeric', 'lining-nums tabular-nums'],
+    ])
+  })
+})
