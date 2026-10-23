@@ -16,6 +16,7 @@ import {
   lineElement,
   type Measured,
   onceWarner,
+  type ParagraphsOptions,
   paragraphs,
   walkLine,
 } from '../../../src/renderer/editor/paragraphs'
@@ -92,6 +93,7 @@ function make(
     anchor?: number
     settings?: ParagraphSettings
     measurer?: LineMeasurer
+    extra?: ParagraphsOptions
   } = {},
 ): Made {
   let calls = 0
@@ -105,6 +107,7 @@ function make(
     setParagraph: engine,
     settings: () => o.settings ?? RAGGED,
     warn,
+    ...o.extra,
   })
   const head = o.cursor ?? doc.length
   const state = parsed(
@@ -245,40 +248,124 @@ describe('paragraphs set like Typst', () => {
     expect(String(m.warn.mock.calls[0]?.[0])).toMatch(/width/)
   })
 
-  it('falls back when the measurer has no layout or the engine throws', async () => {
-    const none = make('aaa bbb ccc ddd\n\nende', { measurer: { measure: () => null } })
-    await settle(none.view)
-    expect(none.decos()).toEqual([])
-    expect(none.warn).toHaveBeenCalled()
-
-    const warn = vi.fn()
-    const plugin = paragraphs({
-      measurer: fakeMeasurer({ first: 75 }),
-      setParagraph: () => {
-        throw new Error('boom')
+  it('a line not drawn yet is silent and retried on the next measure', async () => {
+    let tries = 0
+    const real = fakeMeasurer({ first: 75 })
+    const m = make('aaa bbb ccc ddd\n\nende', {
+      measurer: {
+        // The first measure finds no layout (fonts loading, line not drawn): expected.
+        measure: (view, line) => (++tries === 1 ? null : real.measure(view, line)),
       },
-      settings: () => RAGGED,
-      warn,
     })
-    const view = new EditorView({
-      state: parsed(
-        EditorState.create({
-          doc: 'aaa bbb ccc ddd\n\nende',
-          selection: { anchor: 20 },
-          extensions: [
-            markdown({ base: markdownLanguage }),
-            previewView.of(true),
-            previewPlugin,
-            plugin,
-          ],
-        }),
-      ),
-      parent: document.body,
+    await settle(m.view)
+    expect(m.decos()).toEqual([])
+    expect(m.warn).not.toHaveBeenCalled()
+    // Not remembered as failed: the next measure (any update) sets it.
+    m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
+    await settle(m.view)
+    expect(tries).toBe(2)
+    expect(breaks(m.decos())).toEqual(['break@8'])
+  })
+
+  it('an engine error is warned even after transient failures, once per kind', async () => {
+    const sink = vi.fn()
+    let tries = 0
+    const real = fakeMeasurer({ first: 75 })
+    const m = make('aaa bbb ccc ddd\n\nfff ggg hhh iii\n\nende', {
+      measurer: { measure: (view, line) => (++tries <= 2 ? null : real.measure(view, line)) },
+      extra: {
+        warn: onceWarner(sink),
+        setParagraph: () => {
+          throw new Error('boom')
+        },
+      },
     })
-    views.push(view)
-    await settle(view)
-    expect(view.plugin(plugin)?.decorations.size).toBe(0)
-    expect(String(warn.mock.calls[0]?.[0])).toMatch(/boom/)
+    await settle(m.view)
+    m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
+    await settle(m.view)
+    expect(m.decos()).toEqual([])
+    expect(sink).toHaveBeenCalledTimes(1)
+    expect(String(sink.mock.calls[0]?.[0])).toMatch(/boom/)
+    // Remembered as failed under this environment: not run again on the next update.
+    const before = tries
+    m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
+    await settle(m.view)
+    expect(tries).toBe(before)
+  })
+
+  it('falls back when the engine throws', async () => {
+    const m = make('aaa bbb ccc ddd\n\nende', {
+      extra: {
+        setParagraph: () => {
+          throw new Error('boom')
+        },
+      },
+    })
+    await settle(m.view)
+    expect(m.decos()).toEqual([])
+    expect(m.warn).toHaveBeenCalledWith(expect.stringMatching(/boom/), 'engine')
+  })
+
+  it('sets without hyphenation when the patterns cannot be loaded', async () => {
+    const m = make('Silbentrennung ist schwer\n\nende', {
+      settings: { ...RAGGED, hyphenate: true, lang: 'en' },
+      measurer: fakeMeasurer({ first: 100 }),
+      extra: {
+        tries: {
+          trieFor: () => undefined,
+          requestTrie: () => Promise.reject(new Error('gone')),
+        },
+      },
+    })
+    await settle(m.view)
+    expect(m.warn).toHaveBeenCalledWith(expect.stringMatching(/gone/), 'trie')
+    // overfull word, then a normal break: no hyphen
+    expect(breaks(m.decos())).toEqual(['break@15'])
+    expect(m.calls()).toBe(1)
+  })
+
+  it('a width that flips back at once keeps the current setting (hysteresis)', async () => {
+    let width = 500
+    let t = 0
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockImplementation(() => width)
+    try {
+      // The fake's line width follows the content width: 500 -> 100 px, 480 -> 80 px.
+      const real = fakeMeasurer({ first: 0 })
+      const measurer: LineMeasurer = {
+        measure: (view, line) => {
+          const m = real.measure(view, line)
+          return m && { ...m, lineWidth: () => width - 400 }
+        },
+      }
+      const m = make('aaaa bbbb cccc dddd\n\nende', { measurer, extra: { now: () => t } })
+      const poke = async () => {
+        m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
+        await settle(m.view)
+      }
+      await settle(m.view)
+      expect(breaks(m.decos())).toEqual(['break@10'])
+      width = 480 // a scrollbar appeared: re-set
+      t = 100
+      await poke()
+      expect(breaks(m.decos())).toEqual(['break@5', 'break@10', 'break@15'])
+      expect(m.calls()).toBe(2)
+      width = 500 // and vanished again within the burst: an oscillation, keep the setting
+      t = 200
+      await poke()
+      expect(breaks(m.decos())).toEqual(['break@5', 'break@10', 'break@15'])
+      width = 460 // a real resize to another width is followed
+      t = 300
+      await poke()
+      expect(m.calls()).toBe(3)
+      width = 500 // after the burst, a width seen before is followed again (from the cache)
+      t = 5000
+      await poke()
+      expect(breaks(m.decos())).toEqual(['break@10'])
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('typing in the cursor paragraph leaves other set lines cached', async () => {
@@ -469,6 +556,25 @@ describe('domMeasurer', () => {
     }
   })
 
+  it('returns null when the clone is out of step with the drawn line', async () => {
+    const m = make('aaa bbb ccc ddd\n\nende', { measurer: fakeMeasurer({ first: 75 }) })
+    await settle(m.view)
+    const clone = Node.prototype.cloneNode
+    const spy = vi.spyOn(Node.prototype, 'cloneNode').mockImplementation(function (
+      this: Node,
+      deep?: boolean,
+    ) {
+      const c = clone.call(this, deep)
+      if (c instanceof HTMLElement && c.classList.contains('cm-line')) c.append('x')
+      return c
+    })
+    try {
+      expect(domMeasurer().measure(m.view, m.view.state.doc.line(1))).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('returns null without a layout (all widths zero)', async () => {
     const m = make('aaa bbb ccc ddd\n\nende', { measurer: fakeMeasurer({ first: 75 }) })
     await settle(m.view)
@@ -482,12 +588,15 @@ describe('domMeasurer', () => {
 })
 
 describe('onceWarner', () => {
-  it('warns only once per session', () => {
+  it('warns only once per session and kind', () => {
     const sink = vi.fn()
     const warn = onceWarner(sink)
-    warn('a')
-    warn('b')
-    expect(sink).toHaveBeenCalledTimes(1)
+    warn('a', 'widths')
+    warn('b', 'widths')
+    warn('c', 'engine')
+    warn('d', 'engine')
+    expect(sink).toHaveBeenCalledTimes(2)
     expect(String(sink.mock.calls[0]?.[0])).toContain('a')
+    expect(String(sink.mock.calls[1]?.[0])).toContain('c')
   })
 })

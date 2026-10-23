@@ -16,7 +16,8 @@
  *   `word-spacing` mark. The trailing space of a line stays in the DOM before its break; the
  *   available width leaves room for it (see `domMeasurer`).
  * - Fallback: no layout (fonts loading, zero or NaN widths) or an engine error leaves the line to
- *   the browser (step 2), with one console warning per session.
+ *   the browser (step 2). Real errors warn once per session and kind; a line that is not drawn
+ *   yet or fonts still loading is expected and silent (retried on the next measure).
  */
 import { syntaxTree } from '@codemirror/language'
 import { type Extension, type Line, type Range, StateEffect } from '@codemirror/state'
@@ -71,15 +72,34 @@ export interface ParagraphsOptions {
   setParagraph?: (p: ParagraphInput) => SetLine[]
   /** The set's paragraph tokens and the note's `lang`. */
   settings?: (view: EditorView, frontmatterLang: string | undefined) => ParagraphSettings
-  warn?: (message: string) => void
+  warn?: (message: string, kind: FailureKind) => void
+  /** Where the hyphenation tries come from (tests inject a failing loader). */
+  tries?: {
+    trieFor: (lang: TrieLang) => Trie | undefined
+    requestTrie: (lang: TrieLang) => Promise<Trie>
+  }
+  /** Clock for the width hysteresis (ms). */
+  now?: () => number
 }
 
-/** A `warn` that speaks once: a fallback repeats for every line, the reason is the same. */
-export function onceWarner(sink: (message: string) => void = console.warn): (m: string) => void {
-  let warned = false
-  return (message) => {
-    if (warned) return
-    warned = true
+/**
+ * Why a line was left to the browser. Only real errors are warned about; `transient` (line not
+ * drawn, fonts loading, clone out of step) is the normal state at startup and while scrolling,
+ * and retried on the next measure.
+ */
+export type FailureKind = 'measure' | 'widths' | 'engine' | 'trie'
+
+/**
+ * A `warn` that speaks once per kind: a fallback repeats for every line with the same reason,
+ * but an engine error after, say, a broken width must still be heard.
+ */
+export function onceWarner(
+  sink: (message: string) => void = console.warn,
+): (m: string, kind: FailureKind) => void {
+  const warned = new Set<FailureKind>()
+  return (message, kind) => {
+    if (warned.has(kind)) return
+    warned.add(kind)
     sink(`paragraphs: ${message}; the line keeps the browser's wrapping`)
   }
 }
@@ -132,6 +152,8 @@ const adjustDecos = new Map<number, Decoration>()
 function adjustDeco(px: number): Decoration {
   let d = adjustDecos.get(px)
   if (!d) {
+    // Values are rounded to 1/1000 px, but a long session can still meet many: bounded.
+    if (adjustDecos.size >= 1000) adjustDecos.clear()
     d = Decoration.mark({
       class: 'mdo-par-adjust',
       attributes: { style: `word-spacing: ${px}px` },
@@ -150,6 +172,8 @@ interface SetResult {
 
 interface Failure {
   reason: string
+  /** null: transient, not warned and not remembered (retried on the next measure). */
+  kind: FailureKind | null
 }
 
 function decorate(out: Range<Decoration>[], from: number, r: SetResult): void {
@@ -217,6 +241,9 @@ function lineSignature(
 
 interface Env {
   key: string
+  /** The key without the content width (the width hysteresis compares the rest). */
+  base: string
+  width: number
   settings: ParagraphSettings
 }
 
@@ -228,16 +255,16 @@ function readEnv(
   const settings = settingsOf(view, frontmatterFields(view.state.doc).lang)
   const style = getComputedStyle(view.dom)
   // Everything a set line's widths depend on besides its own text and decorations.
-  const key = [
+  const base = [
     view.dom.closest('[data-mdo-set]')?.getAttribute('data-mdo-set') ?? '',
     style.getPropertyValue('--mdo-scale').trim(),
     style.getPropertyValue('--mdo-space-advance').trim(),
-    view.contentDOM.clientWidth,
     view.state.facet(presentMode),
     fontGen,
     JSON.stringify(settings),
   ].join('|')
-  return { key, settings }
+  const width = view.contentDOM.clientWidth
+  return { key: `${base}|${width}`, base, width, settings }
 }
 
 function hyphenLang(settings: ParagraphSettings): TrieLang | null {
@@ -261,9 +288,10 @@ function setLine(
   try {
     m = o.measurer.measure(view, c.line)
   } catch (e) {
-    return { reason: `measuring failed (${String(e)})` }
+    return { reason: `measuring failed (${String(e)})`, kind: 'measure' }
   }
-  if (!m) return { reason: 'no layout to measure (fonts loading or line not drawn)' }
+  // Not drawn, fonts loading, clone out of step: expected; the next measure tries again.
+  if (!m) return { reason: 'no layout to measure', kind: null }
   const { docPos } = m
   const len = m.text.length
 
@@ -280,9 +308,9 @@ function setLine(
   const first = m.lineWidth(0) - ((x[0] ?? 0) - x0)
   const rest = m.lineWidth(1)
   if (!x.every(Number.isFinite) || !((x[text.length] ?? 0) - (x[0] ?? 0) > 0)) {
-    return { reason: 'zero or NaN character widths' }
+    return { reason: 'zero or NaN character widths', kind: 'widths' }
   }
-  if (!(first > 0) || !(rest > 0)) return { reason: 'zero or NaN line width' }
+  if (!(first > 0) || !(rest > 0)) return { reason: 'zero or NaN line width', kind: 'widths' }
 
   // Doc offset where display char i starts; a widget's start is right after the char before it.
   const before = (i: number): number => {
@@ -328,7 +356,10 @@ function setLine(
       fontSize: () => size,
     })
   } catch (e) {
-    return { reason: `line breaking failed (${e instanceof Error ? e.message : String(e)})` }
+    return {
+      reason: `line breaking failed (${e instanceof Error ? e.message : String(e)})`,
+      kind: 'engine',
+    }
   }
 
   const from = c.line.from
@@ -442,7 +473,9 @@ const FONT_PROPS = [
  *   negative text-indent, so line 0 counts from its first char (lineWidth(0) = width minus that
  *   char's offset from the content box's left edge, which the engine then counts from the
  *   item's text);
- * - quotes and alerts: their paddings and the alert bar narrow the content box the same way.
+ * - quotes and alerts: their paddings and the alert bar narrow the content box the same way;
+ * - Present: its 70ch column has no extra space advance (theme.css), so lines are set in 70ch
+ *   minus one space. Harmless: Present deliberately differs from the PDF's measure anyway.
  */
 export function domMeasurer(): LineMeasurer {
   let batch: Map<number, Measured | null> | null = null
@@ -613,6 +646,12 @@ const paragraphsMeasured = StateEffect.define<null>()
 
 const CACHE_MAX = 2000
 const defaultWarn = onceWarner()
+/**
+ * A width change that returns to the width before the current one within this time is taken
+ * as an oscillation, not a resize: setting changes line heights, which can toggle a classic
+ * scrollbar, which changes the width back (theme.css reserves the gutter, this is the backstop).
+ */
+const WIDTH_BURST_MS = 1000
 
 interface ReadResult {
   env: Env
@@ -628,6 +667,8 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       options.settings ??
       ((view, lang) => paragraphSettings(getComputedStyle(view.contentDOM), lang)),
     warn: options.warn ?? defaultWarn,
+    tries: options.tries ?? { trieFor, requestTrie },
+    now: options.now ?? (() => performance.now()),
   }
   // Shared by every view and tab of this extension: keys carry everything a result depends on,
   // so switching tabs or toggling Present back finds the earlier results. LRU by Map order.
@@ -642,6 +683,8 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       /** Keys that could not be set under the current environment (not retried until it changes). */
       private failed = new Set<string>()
       private fontGen = 0
+      /** The content width before the current environment's, and when it changed. */
+      private prevWidth: { width: number; at: number } | null = null
       private destroyed = false
       private queued = false
       private readonly observers: Array<{ disconnect(): void }> = []
@@ -742,9 +785,27 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         return Decoration.set(out, true)
       }
 
+      /**
+       * The measure read phase. The DOM measurer inserts its clone and hyphen probes into the
+       * editor here and removes them before returning (finally): a read phase must leave the
+       * DOM as it found it, because the other requests of the cycle read it too. Their layout
+       * is the same again; at most the next reader pays one more layout pass. Were anything
+       * ever left behind, this request would have to stay the cycle's last reader.
+       */
       private read(view: EditorView): ReadResult | null {
         if (this.destroyed) return null
-        const env = readEnv(view, this.fontGen, o.settings)
+        let env = readEnv(view, this.fontGen, o.settings)
+        const cur = this.env
+        if (
+          cur &&
+          env.base === cur.base &&
+          env.width !== cur.width &&
+          this.prevWidth?.width === env.width &&
+          o.now() - this.prevWidth.at < WIDTH_BURST_MS
+        ) {
+          // Back to the previous-but-one width at once: keep the current setting (hysteresis).
+          env = cur
+        }
         const results = new Map<string, SetResult | Failure>()
         const failed = env.key === this.env?.key ? this.failed : new Set<string>()
         const todo = this.candidates(env).filter((c) => !cache.has(c.key) && !failed.has(c.key))
@@ -752,17 +813,17 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         const lang = hyphenLang(env.settings)
         const tries: Partial<Record<TrieLang, Trie>> = {}
         if (lang) {
-          const trie = trieFor(lang)
+          const trie = o.tries.trieFor(lang)
           if (trie) tries[lang] = trie
           else if (!unloadable.has(lang)) {
             // Set once the trie is there: breaks without hyphenation would jump a moment later.
             const again = () => {
               if (!this.destroyed) this.view.requestMeasure(this.request)
             }
-            requestTrie(lang).then(again, (e) => {
+            o.tries.requestTrie(lang).then(again, (e) => {
               // Never retried in this session: the paragraphs are then set without hyphenation.
               unloadable.add(lang)
-              o.warn(`hyphenation patterns (${lang}) not loaded: ${String(e)}`)
+              o.warn(`hyphenation patterns (${lang}) not loaded: ${String(e)}`, 'trie')
               again()
             })
             return { env, results }
@@ -783,20 +844,28 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       private write(r: ReadResult | null): void {
         if (!r || this.destroyed) return
         const changed = r.env.key !== this.env?.key
-        if (changed) this.failed = new Set()
+        if (changed) {
+          this.failed = new Set()
+          if (this.env && this.env.base === r.env.base) {
+            this.prevWidth = { width: this.env.width, at: o.now() }
+          }
+        }
         this.env = r.env
+        let set = false
         for (const [key, res] of r.results) {
           if ('reason' in res) {
+            if (res.kind === null) continue
             // Bounded like the cache: a long session of failing edits must not grow it.
             if (this.failed.size >= CACHE_MAX) this.failed.clear()
             this.failed.add(key)
-            o.warn(res.reason)
+            o.warn(res.reason, res.kind)
             continue
           }
+          set = true
           cache.set(key, res)
           if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string)
         }
-        if ((changed || r.results.size > 0) && !this.queued) {
+        if ((changed || set) && !this.queued) {
           this.queued = true
           // Not from inside the measure cycle (no dispatch while CodeMirror updates); still
           // before the next paint.

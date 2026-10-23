@@ -173,6 +173,11 @@
      to opsz 20). Fixed in pt: line breaks no longer change with the zoom. */
   font-variation-settings: "opsz" var(--mdo-body-opsz);
   font-variant-numeric: oldstyle-nums proportional-nums;
+  /* Room for a classic scrollbar always: set paragraphs (paragraphs.ts) change the line heights,
+     and a scrollbar appearing or vanishing with them would change the content width, which
+     re-sets the paragraphs, which toggles the scrollbar back. No effect with overlay scrollbars
+     (macOS default); Present shares the rule (same loop there), the Code view does not need it. */
+  scrollbar-gutter: stable;
 }
 .mdo-preview .cm-content {
   /* border-box: the measure plus the content's 1.5em side padding and CodeMirror's line
@@ -182,6 +187,12 @@
      The app measures the advance per set (--mdo-space-advance). */
   max-width: calc(var(--mdo-measure) + var(--mdo-space-advance, 0.2em) + 3em + 8px);
   margin: 0 auto;
+  /* A set line never wraps (white-space: pre): an overfull one (a word or URL longer than the
+     line, which Typst lets overhang) and its trailing space may run past the text block. It
+     overhangs into the side padding like the PDF's margin and is clipped at the content's edge,
+     so the editor never gets a horizontal scrollbar from it. `clip`, not `hidden`: no scroll
+     container, the vertical overflow stays visible. */
+  overflow-x: clip;
   padding: 2em 1.5em 40vh;
 }
 /* memo set: par(justify: true). Typst hyphenates in the PDF; the editor never does. */

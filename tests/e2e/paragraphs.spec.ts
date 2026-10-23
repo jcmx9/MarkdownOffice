@@ -31,7 +31,9 @@ async function open(set: string | null) {
   await writeFile(note, await noteWith(set))
   const launched = await launch({ dirs, args: [note] })
   await launched.page.locator('.cm-editor.mdo-preview').waitFor()
-  if (set) await expect(launched.page.locator('#editor')).toHaveAttribute('data-mdo-set', set)
+  // Without `template:` the bundled memo applies: wait for its scope too, so the paragraph is
+  // not measured before the set's tokens arrived.
+  await expect(launched.page.locator('#editor')).toHaveAttribute('data-mdo-set', set ?? 'memo')
   await launched.page.evaluate(() => document.fonts.ready)
   return launched
 }
@@ -49,12 +51,16 @@ const rows = (page: Page) =>
     const s = getComputedStyle(line)
     const editor = line.closest('.cm-editor') as HTMLElement
     const content = line.closest('.cm-content') as HTMLElement
-    const em = Number.parseFloat(editor.style.getPropertyValue('--mdo-space-advance') || '0.2')
+    // As paragraphs.ts spaceAdvancePx: em or px, 0.2em without the token.
+    const raw = editor.style.getPropertyValue('--mdo-space-advance').trim()
+    const fs = Number.parseFloat(getComputedStyle(content).fontSize)
+    const n = Number.parseFloat(raw)
+    const space = raw.endsWith('px') ? n : raw.endsWith('em') ? n * fs : 0.2 * fs
     const measure =
       line.clientWidth -
       Number.parseFloat(s.paddingLeft) -
       Number.parseFloat(s.paddingRight) -
-      em * Number.parseFloat(getComputedStyle(content).fontSize)
+      space
     const byRow = new Map<number, { left: number; right: number }>()
     const range = document.createRange()
     const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
@@ -91,12 +97,16 @@ test('memo sets a justified paragraph like the PDF: breaks, hyphens, full lines'
   const { app, page } = await open(null)
   const par = paragraph(page)
   await expect(par).toHaveClass(/mdo-par-set/)
-  expect(await par.locator('br.mdo-par-break').count()).toBeGreaterThanOrEqual(1)
-  expect(await par.locator('.mdo-par-hyphen').count()).toBeGreaterThanOrEqual(1)
-  const { measure, widths } = await rows(page)
-  expect(widths.length).toBeGreaterThan(2)
+  await expect.poll(() => par.locator('br.mdo-par-break').count()).toBeGreaterThanOrEqual(1)
+  await expect.poll(() => par.locator('.mdo-par-hyphen').count()).toBeGreaterThanOrEqual(1)
   // Justified: every line but the last fills the measure exactly (the engine's word spacing).
-  for (const w of widths.slice(0, -1)) expect(Math.abs(w - measure)).toBeLessThanOrEqual(1)
+  // Polled: a late font load or the space-advance measurement may re-set the paragraph once.
+  await expect
+    .poll(async () => {
+      const { measure, widths } = await rows(page)
+      return widths.length > 2 && widths.slice(0, -1).every((w) => Math.abs(w - measure) <= 1)
+    })
+    .toBe(true)
   await shot(page, 'paragraphs-memo')
 
   // The cursor's paragraph goes back to the editor's own wrapping; leaving sets it again.
@@ -114,7 +124,7 @@ test('memo sets a justified paragraph like the PDF: breaks, hyphens, full lines'
       hasText: 'Die Vereinbarung über die Zusammenarbeit',
     })
     await expect(present).toHaveCount(1)
-    expect(await present.locator('br.mdo-par-break').count()).toBeGreaterThanOrEqual(1)
+    await expect.poll(() => present.locator('br.mdo-par-break').count()).toBeGreaterThanOrEqual(1)
     passed = true
   } finally {
     // Closing an app in a real fullscreen Space is the known CI launch-hang trigger.
@@ -128,7 +138,7 @@ test('din5008a (left aligned) sets the paragraph without hyphenation', async () 
   const { app, page } = await open('din5008a')
   const par = paragraph(page)
   await expect(par).toHaveClass(/mdo-par-set/)
-  expect(await par.locator('br.mdo-par-break').count()).toBeGreaterThanOrEqual(1)
+  await expect.poll(() => par.locator('br.mdo-par-break').count()).toBeGreaterThanOrEqual(1)
   await expect(page.locator('.mdo-par-hyphen')).toHaveCount(0)
   await app.close()
 })
