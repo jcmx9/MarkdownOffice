@@ -77,19 +77,21 @@ describe('sanitizeDiagramSvg', () => {
           '<use href="#r"/>' +
           '<style>rect { fill: url(https://example.com) }</style>' +
           '<circle cx="1" cy="1" r="1" style="fill: url(https://example.com/t)" onload="alert(1)" xlink:href="x"/>' +
-          '<rect id="r" width="1" height="1" fill="url(https://example.com/#x)" stroke="url(#r)"/>',
+          '<rect id="r" width="1" height="1" fill="url(https://example.com/#x)" stroke="url(#r)"/>' +
+          // Chromium parses presentation attributes as CSS, where escapes spell url( unseen.
+          '<rect width="2" height="2" fill="\\75 rl(https://example.com/e)" stroke="u\\rl(x)"/>',
         'width="100" height="50" viewBox="0 0 100 50" onload="alert(1)"',
       ),
     )
     expect(out).not.toBeNull()
     const root = out as SVGSVGElement
     // The link goes, its drawing stays (mmdr wraps the whole node in the <a>).
-    expect(tags(root)).toEqual(['svg', 'title', 'rect', 'text', 'circle', 'rect'])
+    expect(tags(root)).toEqual(['svg', 'title', 'rect', 'text', 'circle', 'rect', 'rect'])
     expect(root.textContent).toBe('tipStart')
     for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
       for (const attr of Array.from(el.attributes)) {
         expect(attr.name).not.toMatch(/^on|href/i)
-        expect(attr.value).not.toMatch(/javascript:|url\((?!#)/i)
+        expect(attr.value).not.toMatch(/javascript:|url\((?!#)|\\/i)
         // The only style is the font mapping the sanitiser writes itself.
         if (attr.name === 'style') expect(attr.value).toBe('font-family: var(--mdo-font-sans)')
       }
@@ -99,6 +101,15 @@ describe('sanitizeDiagramSvg', () => {
     const last = root.querySelectorAll('rect')[1]
     expect(last?.hasAttribute('fill')).toBe(false)
     expect(last?.getAttribute('stroke')).toBe('url(#d1-r)')
+    const escaped = root.querySelectorAll('rect')[2]
+    expect(escaped?.hasAttribute('fill')).toBe(false)
+    expect(escaped?.hasAttribute('stroke')).toBe(false)
+  })
+
+  it('writes a px size as the plain number the widget reads', () => {
+    const out = clean(svg('<rect width="1" height="1"/>', 'width="400px" height="200.5px"'))
+    expect(out?.getAttribute('width')).toBe('400')
+    expect(out?.getAttribute('height')).toBe('200.5')
   })
 
   it('never copies attributes in foreign namespaces', () => {

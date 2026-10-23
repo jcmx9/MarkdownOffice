@@ -3,8 +3,10 @@
  * untrusted (a `click A "javascript:…"` line becomes an `<a href>`), so the SVG is never inserted
  * as markup: it is parsed as XML and rebuilt node by node from an allowlist derived from what
  * mmdr emits (tests/fixtures/mermaid). Everything else is dropped: links, scripts,
- * foreignObject, images, `<use>`, `<style>`, `style`/`class`/`on*` attributes, any `href`, and
- * `url(…)` values other than references to ids of the same diagram.
+ * foreignObject, images, `<use>`, `<style>`, `style`/`class`/`on*` attributes, any `href`,
+ * `url(…)` values other than references to ids of the same diagram, and any value with a
+ * backslash (Chromium parses presentation attributes as CSS, where `\75 rl(` or `u\rl(` spell
+ * `url(` past a plain-text check; mmdr never writes one).
  */
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -105,7 +107,11 @@ const ATTRIBUTES = new Set([
 /** `url(#id)` in any quoting; the only `url(…)` form that survives. */
 const LOCAL_REF = /^url\(\s*(['"]?)#([^'"()\s]+)\1\s*\)$/
 
-const NUMBER = /^\d*\.?\d+(?:px)?$/
+/**
+ * A plain size; `px` is the same user unit, so it is dropped (the widget reads the number).
+ * Any other width or height (`100%`, `em`, missing) is replaced from the viewBox.
+ */
+const NUMBER = /^(\d*\.?\d+)(?:px)?$/
 
 /**
  * The PDF draws the theme's font (memo: SourceSans3VF); the preview uses the same bundled
@@ -166,6 +172,8 @@ export function sanitizeDiagramSvg(
         continue
       }
       if (!ATTRIBUTES.has(attr.name)) continue
+      // A CSS escape could spell url( unseen (see above).
+      if (attr.value.includes('\\')) continue
       if (attr.name === 'id') {
         ids.add(attr.value)
         el.setAttribute('id', `${idPrefix}-${attr.value}`)
@@ -196,9 +204,14 @@ export function sanitizeDiagramSvg(
     .split(/[\s,]+/)
     .map(Number)
   const [, , boxW, boxH] = box
-  if (box.length === 4 && box.every(Number.isFinite)) {
-    if (!NUMBER.test(root.getAttribute('width') ?? '')) root.setAttribute('width', String(boxW))
-    if (!NUMBER.test(root.getAttribute('height') ?? '')) root.setAttribute('height', String(boxH))
+  const fromBox = box.length === 4 && box.every(Number.isFinite)
+  for (const [name, fallback] of [
+    ['width', boxW],
+    ['height', boxH],
+  ] as const) {
+    const size = NUMBER.exec(root.getAttribute(name) ?? '')?.[1]
+    if (size !== undefined) root.setAttribute(name, size)
+    else if (fromBox) root.setAttribute(name, String(fallback))
   }
   return root
 }
