@@ -156,7 +156,7 @@ test('clicks and arrow keys hit the right line below the title block and a table
   await app.close()
 })
 
-test('YAML header, code blocks and Mermaid are highlighted in both views', async () => {
+test('YAML header and code blocks are highlighted in both views, Mermaid source in Code view', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Farben.md')
   await writeFile(
@@ -187,8 +187,8 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   // JavaScript is loaded on demand from a separate chunk (CSP script-src 'self').
   await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
   await expect(page.locator('.mdo-tok-number', { hasText: '42' })).toBeVisible()
-  await expect(page.locator('.mdo-tok-keyword', { hasText: 'flowchart' })).toBeVisible()
-  await expect(page.locator('.mdo-tok-function', { hasText: '-->' })).toBeVisible()
+  // Preview draws the Mermaid block as a diagram; its highlighted source is checked in Code view.
+  await expect(page.locator('.mdo-diagram svg')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
   await expect(page.locator('.mdo-tok-string', { hasText: '"Farben"' })).toBeVisible()
   await expect(page.locator('.mdo-tok-comment', { hasText: '# Kommentar' })).toBeVisible()
@@ -196,6 +196,8 @@ test('YAML header, code blocks and Mermaid are highlighted in both views', async
   await clickMenu(app, 'toggle-view')
   await page.locator('.cm-editor.mdo-code').waitFor()
   await expect(page.locator('.mdo-tok-keyword', { hasText: 'const' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-keyword', { hasText: 'flowchart' })).toBeVisible()
+  await expect(page.locator('.mdo-tok-function', { hasText: '-->' })).toBeVisible()
   await expect(page.locator('.mdo-tok-function', { hasText: 'title' })).toBeVisible()
   await shot(page, 'highlight-code')
   await app.close()
