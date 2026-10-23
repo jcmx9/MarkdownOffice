@@ -607,6 +607,30 @@
   font-variant-numeric: normal;
 }
 
+/* Mermaid widget (cursor elsewhere): like memo.typ's raw.where(lang: "mermaid") block, centred
+   with 1.4em above and below. Same side insets as a .cm-line (as the table widget), so the
+   measured content box is the text width diagrams.ts fits the SVG into. */
+.mdo-preview .mdo-diagram {
+  padding: 1.4em calc(2px + var(--mdo-space-advance, 0.2em)) 1.4em 6px;
+  cursor: text;
+}
+.mdo-preview .mdo-diagram svg {
+  display: block;
+  margin: 0 auto;
+  /* Until the measure sets the fitted width (the height follows the viewBox). */
+  max-width: 100%;
+  height: auto;
+}
+/* Quiet notice under a block that could not be drawn, or under an empty drawing */
+.mdo-preview .mdo-diagram-notice {
+  font-family: var(--mdo-font-sans);
+  font-size: calc(8pt * var(--mdo-scale, 1));
+  font-style: italic;
+  color: var(--mdo-faint);
+  text-align: center;
+  padding: 0.3em 0 0.6em;
+}
+
 /* Code blocks: 9pt code font on light grey, Typst syntax colours */
 .mdo-preview .cm-line:is(.mdo-codeblock, .mdo-codefence) {
   font-family: var(--mdo-font-code);

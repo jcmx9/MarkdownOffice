@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadTypstPlugin } from '../../../src/core/typst-plugin'
+import { loadTypstPlugin, TypstPluginError } from '../../../src/core/typst-plugin'
 
 // The real plugin the PDF export runs (fetched by npm run assets); no stand-in, so the host is
 // checked against the protocol mmdr actually speaks.
@@ -39,6 +39,24 @@ describe.skipIf(skip)('loadTypstPlugin (mmdr)', () => {
         new Uint8Array(),
       ),
     ).toThrow(/\S/)
+  })
+
+  it("marks the error result as the plugin's own error (the instance stays usable)", async () => {
+    const plugin = await load()
+    // Callers tell a reported error (keep the instance) from a trap (drop it) by this class.
+    let error: unknown
+    try {
+      plugin.call(
+        'render',
+        enc.encode('x'),
+        enc.encode('modern'),
+        enc.encode('{'),
+        new Uint8Array(),
+      )
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(TypstPluginError)
   })
 
   it('throws for an export the plugin does not have', async () => {

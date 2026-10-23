@@ -13,6 +13,15 @@
  * type stripping (pipeline/tests/mermaid-core.mts) alike.
  */
 
+/**
+ * The plugin's own error result (export returned 1). Anything else a call throws (a
+ * WebAssembly trap, a stack overflow) may leave the instance's memory in an unknown state, so
+ * callers drop the instance then and keep it for this one.
+ */
+export class TypstPluginError extends Error {
+  override name = 'TypstPluginError'
+}
+
 export interface TypstPlugin {
   /** Calls the export `name`; returns its output bytes or throws its error message. */
   call(name: string, ...args: Uint8Array[]): Uint8Array
@@ -55,7 +64,7 @@ export async function loadTypstPlugin(bytes: Uint8Array): Promise<TypstPlugin> {
       try {
         const code = (fn as (...lengths: number[]) => number)(...input.map((a) => a.length))
         const out = result ?? new Uint8Array()
-        if (code !== 0) throw new Error(decoder.decode(out))
+        if (code !== 0) throw new TypstPluginError(decoder.decode(out))
         return out
       } finally {
         // Release the caller's buffers; the next call sets its own.
