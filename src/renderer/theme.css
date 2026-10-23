@@ -76,6 +76,12 @@
   --mdo-list-indent: 1.12em;
   --mdo-line-height: 1.5;
   --mdo-align: justify;
+  /* Typst's text.hyphenate: auto follows --mdo-align (justified -> hyphenate), true/false force */
+  --mdo-hyphenate: auto;
+  /* Typst's par.costs, percent; only justified paragraphs are optimised with them. memo.typ
+     sets runt 200 %, so a set mirroring it declares that here */
+  --mdo-hyphenation-cost: 100%;
+  --mdo-runt-cost: 100%;
   /* the blank line between paragraphs carries the paragraph gap */
   --mdo-par-gap: 1.1em;
   /* memo text block: A4 minus margins 35 mm + 30 mm = 145 mm, the width the text breaks in */

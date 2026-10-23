@@ -345,6 +345,9 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-bold-weight` | `560` | weight of `**bold**` |
 | `--mdo-line-height` | `1.5` | line height |
 | `--mdo-align` | `justify` | text alignment of paragraphs |
+| `--mdo-hyphenate` | `auto` | hyphenation: `auto` follows `--mdo-align` like Typst's `text.hyphenate: auto` (justified hyphenates), `true` / `false` force it |
+| `--mdo-hyphenation-cost` | `100%` | Typst's `par.costs` hyphenation in percent; used only for justified paragraphs |
+| `--mdo-runt-cost` | `100%` | Typst's `par.costs` runt (short last line) in percent; used only for justified paragraphs; memo.typ sets `200%` |
 | `--mdo-par-gap` | `1.1em` | the gap a blank line makes between paragraphs |
 | `--mdo-measure` | `145mm` | width of the text block |
 | `--mdo-heading-font` | `var(--mdo-font-serif)` | heading font family |
