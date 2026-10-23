@@ -26,9 +26,12 @@ test('renders the PDF look', async () => {
     /mdo-al-right/,
   )
   await expect(page.locator('.cm-line.mdo-codeblock').first()).toBeVisible()
-  // The memo set uses par(justify: true); the editor justifies without hyphenation on every OS.
+  // The memo set uses par(justify: true): the app sets the paragraph itself like the PDF
+  // (paragraphs.ts, its own breaks and word spacing), never the browser's justification or
+  // hyphenation, so it is the same on every OS.
   const body = page.locator('.cm-line', { hasText: 'Ein Absatz mit' })
-  await expect(body).toHaveCSS('text-align', 'justify')
+  await expect(body).toHaveClass(/mdo-par-set/)
+  await expect(body).toHaveCSS('text-align', 'left')
   await expect(body).toHaveCSS('hyphens', 'manual')
   await expect(page.locator('.cm-line.mdo-h1')).toHaveCSS('text-align', 'left')
   await shot(page, 'preview')

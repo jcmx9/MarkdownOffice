@@ -292,7 +292,7 @@ export function alertTitle(state: EditorState, type: string): string {
   const titles = lang.startsWith('de') ? ALERT_TITLES.de : ALERT_TITLES.en
   return titles[type] ?? type
 }
-const ALERT_RE = /^\s*>\s*\[!(note|tip|important|warning|caution)\]\s*$/i
+export const ALERT_RE = /^\s*>\s*\[!(note|tip|important|warning|caution)\]\s*$/i
 
 class BulletWidget extends WidgetType {
   override eq(): boolean {

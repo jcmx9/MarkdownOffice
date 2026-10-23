@@ -28,6 +28,7 @@ import { mdoMarkdown } from './markdown'
 import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
+import { paragraphsPlugin } from './paragraphs'
 import { previewPlugin } from './preview'
 import { previewSource } from './preview-source'
 import { previewView } from './rendered'
@@ -90,6 +91,8 @@ export function viewExtensions(view: View): Extension {
         previewView.of(true),
         typoMask,
         previewPlugin,
+        // after previewPlugin: it reads the preview's decorations of the lines it sets
+        paragraphsPlugin,
         tableField,
         headerFold,
         footBlock,

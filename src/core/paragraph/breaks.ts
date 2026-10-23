@@ -53,6 +53,34 @@ export interface BreakOptions {
 
 const SOFT_HYPHEN = '­'
 
+/**
+ * Hyphen points per word, memoized per trie: the preview re-sets paragraphs on every width or
+ * set change and words repeat across a note, while each lookup walks the trie byte by byte.
+ * The trie fixes the language (and so the minimums). Bounded: cleared when full, so a long
+ * session never grows it without limit. Callers only read the arrays.
+ */
+const hyphenCache = new WeakMap<Trie, Map<string, readonly number[]>>()
+const HYPHEN_CACHE_MAX = 20_000
+
+function cachedHyphenPoints(
+  word: string,
+  trie: Trie,
+  min: { left: number; right: number },
+): readonly number[] {
+  let cache = hyphenCache.get(trie)
+  if (!cache) {
+    cache = new Map()
+    hyphenCache.set(trie, cache)
+  }
+  let points = cache.get(word)
+  if (!points) {
+    if (cache.size >= HYPHEN_CACHE_MAX) cache.clear()
+    points = hyphenPoints(word, trie, min)
+    cache.set(word, points)
+  }
+  return points
+}
+
 // Rust's `char::is_alphabetic` is the Unicode `Alphabetic` property (a bit wider than \p{L}).
 const ALPHABETIC = /^\p{Alphabetic}+$/u
 
@@ -165,7 +193,7 @@ export function breakPoints(text: string, opts: BreakOptions): BreakPoint[] {
         if (!ALPHABETIC.test(segment)) continue
         // Typst counts chars (code points), not bytes or UTF-16 units; it saturates at 255 (u8).
         const count = [...segment].length
-        for (const h of hyphenPoints(segment, hyph.trie, hyph.min)) {
+        for (const h of cachedHyphenPoints(segment, hyph.trie, hyph.min)) {
           const before = [...segment.slice(0, h)].length
           const left = Math.min(before, 255)
           const right = Math.min(count - before, 255)

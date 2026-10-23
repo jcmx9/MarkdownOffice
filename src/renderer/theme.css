@@ -401,6 +401,21 @@
 .mdo-preview .mdo-nobreak {
   text-wrap-mode: nowrap;
 }
+/* Paragraphs set like the PDF (paragraphs.ts): the engine's breaks are <br class="mdo-par-break">
+   widgets (after a <span class="mdo-par-hyphen"> when hyphenated), so the browser must neither
+   wrap nor stretch the line itself; spaces stay natural except inside a line's word-spacing mark
+   (.mdo-par-adjust, inline style). The measuring clone (.mdo-par-measure) gets the same, so its
+   one unwrapped line yields the natural x positions. !important: a set rule must not bring
+   wrapping, word spacing or justification back into a set line (the set CSS sanitiser strips
+   !important from set rules). The cursor's paragraph never has these classes (step-2 wrapping). */
+.mdo-preview .cm-line:is(.mdo-par-set, .mdo-par-measure) {
+  /* biome-ignore lint/complexity/noImportantStyles: set lines are broken by the engine only */
+  white-space: pre !important;
+  /* biome-ignore lint/complexity/noImportantStyles: natural spaces, the marks adjust them */
+  word-spacing: 0 !important;
+  /* biome-ignore lint/complexity/noImportantStyles: justified by the marks, not the browser */
+  text-align: left !important;
+}
 .mdo-preview .mdo-bullet::before {
   display: inline-block;
   width: 0.32em;
