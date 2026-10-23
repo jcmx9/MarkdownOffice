@@ -126,8 +126,9 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 The line break class table inside `linebreak` (`classes.trie`) is generated from `LineBreak.txt` of
 the Unicode Character Database (Unicode 13.0, per linebreak's readme). Unicode data files are
-licensed under the Unicode License (Unicode Data Files and Software License; current text at
-https://www.unicode.org/license.txt). Its copyright and permission notice:
+licensed under the Unicode Data Files and Software License that Unicode 13.0 was released under,
+reproduced below (unicode.org now publishes Unicode License V3 at
+https://www.unicode.org/license.txt for current data). Its copyright and permission notice:
 
 COPYRIGHT AND PERMISSION NOTICE
 
