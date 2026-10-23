@@ -307,7 +307,72 @@ describe('parsePreviewSpec', () => {
   })
 
   it('treats a missing head or foot as empty', () => {
-    expect(parsePreviewSpec('preview: 1')).toEqual({ ok: true, spec: { head: [], foot: [] } })
+    expect(parsePreviewSpec('preview: 1')).toEqual({
+      ok: true,
+      spec: { head: [], foot: [], nobreak: { words: [], units: [] } },
+    })
+  })
+})
+
+describe('nobreak', () => {
+  const parse = (extra: string) => parsePreviewSpec(`preview: 1\n${extra}`)
+
+  it('is empty for a parsed set without the key', () => {
+    const r = parse('head: []')
+    expect(r.ok && r.spec.nobreak).toEqual({ words: [], units: [] })
+  })
+
+  it('reads words and units', () => {
+    const r = parse('nobreak:\n  words: ["z. B.", "u. a."]\n  units: [mm, "%", "€"]\n')
+    expect(r.ok && r.spec.nobreak).toEqual({ words: ['z. B.', 'u. a.'], units: ['mm', '%', '€'] })
+  })
+
+  it('takes either sub-key alone and an empty list', () => {
+    const r = parse('nobreak:\n  units: []\n')
+    expect(r.ok && r.spec.nobreak).toEqual({ words: [], units: [] })
+  })
+
+  it('cuts lists at 200 entries and drops entries over 40 characters, staying ok', () => {
+    const many = Array.from({ length: 250 }, (_, i) => `w${i} x`)
+    const r = parsePreviewSpec(
+      `preview: 1\nnobreak:\n  words: ${JSON.stringify([...many, 'x'.repeat(41)])}\n`,
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.spec.nobreak.words).toHaveLength(200)
+    expect(r.spec.nobreak.words[0]).toBe('w0 x')
+    const long = parsePreviewSpec(`preview: 1\nnobreak:\n  units: ["${'u'.repeat(41)}", mm]\n`)
+    expect(long.ok && long.spec.nobreak.units).toEqual(['mm'])
+  })
+
+  it.each([
+    ['nobreak: [a]'],
+    ['nobreak:\n  words: z. B.'],
+    ['nobreak:\n  words: [1]'],
+    ['nobreak:\n  units: [[mm]]'],
+    ['nobreak:\n  regex: ["a"]'],
+  ])('refuses %j', (t) => {
+    const r = parse(t)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).not.toBe('')
+  })
+
+  it("MEMO_PREVIEW carries memo.typ's lists", () => {
+    expect(MEMO_PREVIEW.nobreak.words).toEqual([
+      'z. B.',
+      'u. a.',
+      'd. h.',
+      'u. Ä.',
+      'o. Ä.',
+      'u. U.',
+      'z. T.',
+      'i. d. R.',
+      's. o.',
+      's. u.',
+    ])
+    expect(MEMO_PREVIEW.nobreak.units).toEqual(
+      'pt px mm cm km kg mg MB GB KB TB ms dpi ppi °C % € £ $'.split(' '),
+    )
   })
 })
 
@@ -339,6 +404,7 @@ describe('profileKeys', () => {
           when: [],
         },
       ],
+      nobreak: { words: [], units: [] },
     }
     expect([...profileKeys(spec)].sort()).toEqual(['de', 'iban', 'phone'])
     expect(profileKeys(MEMO_PREVIEW).size).toBe(0)

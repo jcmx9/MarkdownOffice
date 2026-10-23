@@ -355,12 +355,15 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-h1-color`, `--mdo-h2-color`, `--mdo-h3-color` | `var(--mdo-heading)` | colour per level |
 | `--mdo-h1-rule` | `var(--mdo-hairline)` | colour of the line under H1 |
 | `--mdo-h3-decoration` | `underline` | text decoration of H3 |
+| `--mdo-body-opsz`, `--mdo-h1-opsz`, `--mdo-h2-opsz`, `--mdo-h3-opsz` | `10`, `14`, `12`, `10` | optical size (`opsz` axis) of the serif variable fonts; unitless, in pt; derived, see below |
 | `--mdo-table-font` | `var(--mdo-body-font)` | table font family |
 | `--mdo-table-size` | `9pt` | table size |
 | `--mdo-table-weight` | `500` | table weight |
 | `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
 | `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
 | `--mdo-titleblock-align` | `center` | alignment of the head block |
+
+**Optical size.** Typst sets a variable font's `opsz` axis to the font size in pt, which changes glyph widths and so the line breaks. The preview must do the same, independent of the zoom. You normally write nothing: when a rule sets `--mdo-body-size`, `--mdo-h1-size`, `--mdo-h2-size` or `--mdo-h3-size` to a plain pt length (`11pt`, `10.5pt`), the app adds the matching `--mdo-<role>-opsz` with that number (`11`, `10.5`; not zoomed). Write the opsz token yourself in the same rule to override it. Sizes in other units (`em`, `px`, `mm`, `var()`, `calc()`) or no size token derive nothing, and that role keeps the default above.
 
 Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
 
@@ -396,7 +399,7 @@ foot:                       # after the last line of the text
     when: "{x-closing}"
 ```
 
-The file is a map with `preview: 1` and the lists `head` and `foot` (both optional). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
+The file is a map with `preview: 1`, the lists `head` and `foot` and the map `nobreak` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
 
 Keys of an element:
 
@@ -407,6 +410,16 @@ Keys of an element:
 - `label:` a text shown before the content, either a string or a map by language (`de`, `en`, …): the note's `lang` without region, then `de`, then the first entry.
 - `today:` `true` makes an empty or missing `{date}` today's date (as the PDF does); without it an empty date stays empty.
 - `when:` one placeholder or a list; all must hold. A value holds when it is not empty and not `false`, `False` or `FALSE`. Other words (`no`, `nein`, `0`) count as present. A string with several placeholders holds only if all of them hold; a `when` without any placeholder always holds.
+
+**`nobreak:` (optional).** Lists the places where the PDF must not break a line (memo.typ turns the space into a no-break space), so the preview does not break there either:
+
+```yaml
+nobreak:
+  words: ["z. B.", "u. a.", "i. d. R."]   # literal phrases, matched as written
+  units: [mm, kg, "%", "€"]               # a digit, a space and one of these stays together
+```
+
+Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together (a set without `.preview.yaml` gets memo's lists). The note's text is not changed; the preview only forbids the line break.
 
 Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
 

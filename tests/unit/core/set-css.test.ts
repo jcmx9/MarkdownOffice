@@ -12,6 +12,7 @@ describe('sanitizeSetCss', () => {
         declarations: [
           ['--mdo-body-size', 'calc(11pt * var(--mdo-scale, 1))'],
           ['--mdo-line-height', '1.5'],
+          ['--mdo-body-opsz', '11'],
         ],
       },
     ])
@@ -164,12 +165,62 @@ describe('sanitizeSetCss', () => {
     ]
     expect(
       sanitizeSetCss(`.mdo-preview .cm-line { ${decls.join('; ')} }`).rules[0]?.declarations,
-    ).toHaveLength(decls.length)
+      // + the opsz derived from `--mdo-body-size: 11pt`
+    ).toHaveLength(decls.length + 1)
   })
   it.each(['url(x)', 'image(x)', 'element(#a)', 'expression(alert(1))', 'src(x)', 'u r l(x)'])(
     'drops loading function %s',
     (v) => expect(sanitizeSetCss(`.mdo-a { background: ${v} }`).rules).toEqual([]),
   )
+})
+
+describe('sanitizeSetCss optical size', () => {
+  const decls = (css: string) => sanitizeSetCss(css).rules.flatMap((r) => r.declarations)
+
+  it.each([
+    ['body', '--mdo-body-size: 11pt', '--mdo-body-opsz', '11'],
+    ['h1', '--mdo-h1-size: 14pt', '--mdo-h1-opsz', '14'],
+    ['h2', '--mdo-h2-size: 10.5pt', '--mdo-h2-opsz', '10.5'],
+    ['h3', '--mdo-h3-size: 12pt !important', '--mdo-h3-opsz', '12'],
+  ])('derives the %s opsz from a pt size', (_n, decl, prop, value) => {
+    expect(decls(`.mdo-preview { ${decl} }`)).toContainEqual([prop, value])
+  })
+
+  it('derives from every size in one rule and leaves the size itself scaled', () => {
+    const d = decls('.mdo-preview { --mdo-body-size: 11pt; --mdo-h1-size: 11pt }')
+    expect(d).toContainEqual(['--mdo-body-size', 'calc(11pt * var(--mdo-scale, 1))'])
+    expect(d.filter(([p]) => p.endsWith('-opsz'))).toEqual([
+      ['--mdo-body-opsz', '11'],
+      ['--mdo-h1-opsz', '11'],
+    ])
+  })
+
+  it.each([
+    '--mdo-body-size: 1.2em',
+    '--mdo-body-size: 14px',
+    '--mdo-body-size: 4mm',
+    '--mdo-body-size: var(--x)',
+    '--mdo-body-size: calc(10pt + 1pt)',
+    '--mdo-table-size: 9pt',
+  ])('derives nothing from %s', (decl) => {
+    expect(decls(`.mdo-preview { ${decl} }`).some(([p]) => p.endsWith('-opsz'))).toBe(false)
+  })
+
+  it('keeps an explicit opsz of the same rule, before or after the size', () => {
+    for (const css of [
+      '.mdo-preview { --mdo-body-size: 11pt; --mdo-body-opsz: 9 }',
+      '.mdo-preview { --mdo-body-opsz: 9; --mdo-body-size: 11pt }',
+    ])
+      expect(decls(css).filter(([p]) => p === '--mdo-body-opsz')).toEqual([
+        ['--mdo-body-opsz', '9'],
+      ])
+  })
+
+  it('derives nothing for a size the sanitiser dropped', () => {
+    expect(decls('.mdo-preview { --mdo-body-size: 0pt }').some(([p]) => p.endsWith('opsz'))).toBe(
+      false,
+    )
+  })
 })
 
 describe('scaleLengths', () => {

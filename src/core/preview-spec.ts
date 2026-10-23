@@ -38,7 +38,13 @@ export interface PreviewElement {
 export interface PreviewSpec {
   head: PreviewElement[]
   foot: PreviewElement[]
+  /** Where lines must not break, like the PDF's no-break spaces (`nobreak.ts`). */
+  nobreak: { words: string[]; units: string[] }
 }
+
+// Lists from a set file are cut here, so a huge one cannot slow the editor down.
+const NOBREAK_MAX_ENTRIES = 200
+const NOBREAK_MAX_LENGTH = 40
 
 /** memo's title block as it was hard-wired before sets could describe it ("date · author"). */
 export const MEMO_PREVIEW: PreviewSpec = {
@@ -49,6 +55,42 @@ export const MEMO_PREVIEW: PreviewSpec = {
     { class: 'meta', parts: ['{date}', '{author}'], sep: ' · ', today: false, when: ['{author}'] },
   ],
   foot: [],
+  // memo.typ's no-break show rules (lines 455-466), so memo's built-in look breaks like its PDF.
+  nobreak: {
+    words: [
+      'z. B.',
+      'u. a.',
+      'd. h.',
+      'u. Ä.',
+      'o. Ä.',
+      'u. U.',
+      'z. T.',
+      'i. d. R.',
+      's. o.',
+      's. u.',
+    ],
+    units: [
+      'pt',
+      'px',
+      'mm',
+      'cm',
+      'km',
+      'kg',
+      'mg',
+      'MB',
+      'GB',
+      'KB',
+      'TB',
+      'ms',
+      'dpi',
+      'ppi',
+      '°C',
+      '%',
+      '€',
+      '£',
+      '$',
+    ],
+  },
 }
 
 const CONTENT_KEYS = ['text', 'parts', 'lines', 'image'] as const
@@ -114,6 +156,22 @@ function parseElement(raw: unknown, at: string): PreviewElement | string {
   return el
 }
 
+/** The `nobreak:` map: lists of literal strings; too long entries are dropped, long lists cut. */
+function parseNobreak(raw: unknown): PreviewSpec['nobreak'] | string {
+  if (!isMap(raw)) return '„nobreak" muss eine Zuordnung (words, units) sein'
+  const out: PreviewSpec['nobreak'] = { words: [], units: [] }
+  for (const k of Object.keys(raw))
+    if (k !== 'words' && k !== 'units')
+      return `nobreak: unbekannter Schlüssel „${k}" (erlaubt: words, units)`
+  for (const k of ['words', 'units'] as const) {
+    const list = raw[k]
+    if (list === undefined || list === null) continue
+    if (!isStrings(list)) return `nobreak: „${k}" muss eine Liste von Texten sein`
+    out[k] = list.filter((s) => s.length <= NOBREAK_MAX_LENGTH).slice(0, NOBREAK_MAX_ENTRIES)
+  }
+  return out
+}
+
 /** Parses a `<name>.preview.yaml`; any deviation from the grammar refuses the whole file. */
 export function parsePreviewSpec(text: string): Parsed {
   let doc: unknown
@@ -128,11 +186,19 @@ export function parsePreviewSpec(text: string): Parsed {
   }
   if (!isMap(doc)) return { ok: false, error: 'oberste Ebene muss eine Zuordnung sein' }
   for (const k of Object.keys(doc))
-    if (k !== 'preview' && k !== 'head' && k !== 'foot')
-      return { ok: false, error: `unbekannter Schlüssel „${k}" (erlaubt: preview, head, foot)` }
+    if (k !== 'preview' && k !== 'head' && k !== 'foot' && k !== 'nobreak')
+      return {
+        ok: false,
+        error: `unbekannter Schlüssel „${k}" (erlaubt: preview, head, foot, nobreak)`,
+      }
   if (doc.preview !== 1)
     return { ok: false, error: '„preview: 1" fehlt oder hat eine unbekannte Version' }
-  const spec: PreviewSpec = { head: [], foot: [] }
+  const spec: PreviewSpec = { head: [], foot: [], nobreak: { words: [], units: [] } }
+  if (doc.nobreak !== undefined && doc.nobreak !== null) {
+    const nb = parseNobreak(doc.nobreak)
+    if (typeof nb === 'string') return { ok: false, error: nb }
+    spec.nobreak = nb
+  }
   for (const part of ['head', 'foot'] as const) {
     const list = doc[part]
     if (list === undefined || list === null) continue

@@ -29,6 +29,9 @@ const BLOCK_CLASS_RE = /\.mdo-(?:tb-[a-z0-9-]+|titleblock|footblock)(?![\w-])/
 // Foreground colours that would make text invisible: `transparent`, any alpha channel.
 const HIDDEN_COLOR_RE = /transparent|#(?:[0-9a-f]{4}|[0-9a-f]{8})\b|rgba\(|hsla\(|\/|color-mix\(/
 const ZERO_RE = /^[+-]?(?:0+\.?0*|\.0+)(?:[a-z]+|%)?$/
+// Typst 0.15 sets a variable font's `opsz` to the size in pt; the preview must do the same.
+const OPSZ_SIZE_RE = /^--mdo-(body|h1|h2|h3)-size$/
+const PT_SIZE_RE = /^(?:\d+\.?\d*|\.\d+)pt$/i
 const LENGTH_RE = /(^|[^\w.#-])(-?(?:\d+\.?\d*|\.\d+))(px|pt|pc|mm|cm|in|q)\b/gi
 
 /** Index just past the string starting at `i` (a quote), or -1 if it never closes on its line. */
@@ -230,6 +233,33 @@ function sanitizeDeclaration(raw: string, text: boolean): [string, string] | str
   return [property, scaleLengths(value)]
 }
 
+/**
+ * `--mdo-<role>-opsz` for each kept `--mdo-<role>-size` of a rule given in plain pt, unless the
+ * same rule names that opsz itself (before or after the size).
+ */
+function derivedOpsz(
+  body: string,
+  kept: SetCssRule['declarations'],
+): Array<[property: string, value: string]> {
+  const out: Array<[string, string]> = []
+  const keptProps = new Set(kept.map(([p]) => p))
+  for (const raw of splitTop(body, ';')) {
+    const colon = raw.indexOf(':')
+    if (colon < 0) continue
+    const property = raw.slice(0, colon).trim().toLowerCase()
+    const role = OPSZ_SIZE_RE.exec(property)?.[1]
+    if (role === undefined || !keptProps.has(property)) continue
+    const opsz = `--mdo-${role}-opsz`
+    if (keptProps.has(opsz) || out.some(([p]) => p === opsz)) continue
+    const value = raw
+      .slice(colon + 1)
+      .trim()
+      .replace(IMPORTANT_RE, '')
+    if (PT_SIZE_RE.test(value)) out.push([opsz, String(Number.parseFloat(value))])
+  }
+  return out
+}
+
 /** The selector list's parts, or why the whole rule is dropped. */
 function sanitizeSelectors(prelude: string): string[] | string {
   const text = prelude.trim()
@@ -298,6 +328,11 @@ export function sanitizeSetCss(css: string): { rules: SetCssRule[]; dropped: str
       if (typeof verdict === 'string') dropped.push(verdict)
       else declarations.push(verdict)
     }
+    // Without an explicit opsz the browser picks one from the (zoomed) px size, so line breaks
+    // would change with the zoom and differ from the PDF. A pt size gives the PDF's value; the
+    // number stays unscaled because opsz is a font axis, not a length. Other units: no guess.
+    for (const [property, value] of derivedOpsz(src.slice(stop + 1, block.end - 1), declarations))
+      declarations.push([property, value])
     if (declarations.length > 0) rules.push({ selectors, declarations })
   }
   return { rules, dropped }
