@@ -1,0 +1,8 @@
+flowchart TD
+  A[Entwurf schreiben] --> B{Freigabe?}
+  B -->|ja| C[PDF/A exportieren]
+  B -->|nein| D[Überarbeiten]
+  D --> A
+  subgraph Ablage
+    C --> E[(Archiv)]
+  end

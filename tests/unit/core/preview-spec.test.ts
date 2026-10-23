@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type FlatValue, readFlatYaml } from '../../../src/core/flat-yaml'
+import { MEMO_MERMAID } from '../../../src/core/mermaid'
 import {
   MEMO_PREVIEW,
   type PreviewElement,
@@ -309,7 +310,7 @@ describe('parsePreviewSpec', () => {
   it('treats a missing head or foot as empty', () => {
     expect(parsePreviewSpec('preview: 1')).toEqual({
       ok: true,
-      spec: { head: [], foot: [], nobreak: { words: [], units: [] } },
+      spec: { head: [], foot: [], nobreak: { words: [], units: [] }, mermaid: null },
     })
   })
 })
@@ -405,8 +406,102 @@ describe('profileKeys', () => {
         },
       ],
       nobreak: { words: [], units: [] },
+      mermaid: null,
     }
     expect([...profileKeys(spec)].sort()).toEqual(['de', 'iban', 'phone'])
     expect(profileKeys(MEMO_PREVIEW).size).toBe(0)
+  })
+})
+
+describe('mermaid', () => {
+  const MM = `preview: 1
+mermaid:
+  base-theme: default
+  theme: { primary_color: "#f4f2ee", font_family: Inter }
+  layout: { node_spacing: 25, rank_spacing: 35.5 }
+  max-height: 12cm
+  font-weight: 500
+`
+  const mm = (body: string) => parsePreviewSpec(`preview: 1\nmermaid:\n${body}`)
+
+  it('reads the kebab-case keys into MermaidOptions', () => {
+    const r = parsePreviewSpec(MM)
+    expect(r.ok && r.spec.mermaid).toEqual({
+      baseTheme: 'default',
+      theme: { primary_color: '#f4f2ee', font_family: 'Inter' },
+      layout: { node_spacing: 25, rank_spacing: 35.5 },
+      maxHeight: '12cm',
+      fontWeight: 500,
+    })
+  })
+
+  it('reads max-height alone; the rest defaults to modern, no overrides, no font-weight', () => {
+    const r = mm('  max-height: 8.5cm\n')
+    expect(r.ok && r.spec.mermaid).toEqual({
+      baseTheme: 'modern',
+      theme: {},
+      layout: {},
+      maxHeight: '8.5cm',
+      fontWeight: null,
+    })
+  })
+
+  it('without max-height only the text width caps a diagram (maxHeight null)', () => {
+    const r = mm('  base-theme: modern\n')
+    expect(r.ok && r.spec.mermaid).toEqual({
+      baseTheme: 'modern',
+      theme: {},
+      layout: {},
+      maxHeight: null,
+      fontWeight: null,
+    })
+    const blank = mm('  max-height:\n')
+    expect(blank.ok && blank.spec.mermaid?.maxHeight).toBeNull()
+  })
+
+  it('a valid file without mermaid draws no diagrams', () => {
+    const r = parsePreviewSpec('preview: 1\nhead: []\n')
+    expect(r.ok && r.spec.mermaid).toBeNull()
+    const empty = parsePreviewSpec('preview: 1\nmermaid:\n')
+    expect(empty.ok && empty.spec.mermaid).toBeNull()
+  })
+
+  it('memo carries its own options', () => {
+    expect(MEMO_PREVIEW.mermaid).toBe(MEMO_MERMAID)
+  })
+
+  it.each([
+    ['not a map', ''],
+    ['unknown key', '  max-height: 1cm\n  colour: red\n'],
+    ['max-height without unit', '  max-height: 12\n'],
+    ['max-height em', '  max-height: 12em\n'],
+    ['max-height number', '  max-height: [1]\n'],
+    ['base-theme number', '  max-height: 1cm\n  base-theme: 3\n'],
+    ['base-theme too long', `  max-height: 1cm\n  base-theme: ${'a'.repeat(65)}\n`],
+    ['theme list', '  max-height: 1cm\n  theme: [a]\n'],
+    ['theme number value', '  max-height: 1cm\n  theme: { a: 1 }\n'],
+    ['theme long value', `  max-height: 1cm\n  theme: { a: "${'x'.repeat(65)}" }\n`],
+    ['theme bad key', '  max-height: 1cm\n  theme: { "a b": x }\n'],
+    ['layout string', '  max-height: 1cm\n  layout: { a: x }\n'],
+    ['layout infinite', '  max-height: 1cm\n  layout: { a: .inf }\n'],
+    ['font-weight string', '  max-height: 1cm\n  font-weight: bold\n'],
+    ['font-weight fraction', '  max-height: 1cm\n  font-weight: 450.5\n'],
+    ['font-weight 0', '  max-height: 1cm\n  font-weight: 0\n'],
+    ['font-weight 1001', '  max-height: 1cm\n  font-weight: 1001\n'],
+  ])('refuses the file: %s', (name, body) => {
+    const r = name === 'not a map' ? parsePreviewSpec('preview: 1\nmermaid: [a]\n') : mm(body)
+    expect(r.ok).toBe(false)
+  })
+
+  it('caps the theme at 64 entries', () => {
+    const entries = Array.from({ length: 65 }, (_, i) => `k${i}: x`).join(', ')
+    expect(mm(`  max-height: 1cm\n  theme: { ${entries} }\n`).ok).toBe(false)
+    const ok = Array.from({ length: 64 }, (_, i) => `k${i}: x`).join(', ')
+    expect(mm(`  max-height: 1cm\n  theme: { ${ok} }\n`).ok).toBe(true)
+  })
+
+  it('caps the layout at 64 entries', () => {
+    const entries = Array.from({ length: 65 }, (_, i) => `k${i}: 1`).join(', ')
+    expect(mm(`  max-height: 1cm\n  layout: { ${entries} }\n`).ok).toBe(false)
   })
 })

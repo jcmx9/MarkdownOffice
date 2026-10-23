@@ -2,6 +2,7 @@
 import { ensureSyntaxTree, foldedRanges } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
+import { diagrams } from '../../../src/renderer/editor/diagrams'
 import { headerHidden } from '../../../src/renderer/editor/header'
 import { presentMode } from '../../../src/renderer/editor/mode'
 import {
@@ -66,6 +67,16 @@ describe('createState wiring', () => {
     expect(createState('---\na: 1\n---\nx', '\n', 'preview', true).selection.main.head).toBe(13)
     expect(createState('---\na: 1\n---\nx', '\n', 'preview', false).selection.main.head).toBe(0)
     expect(createState('x', '\n', 'preview', true).selection.main.head).toBe(0)
+  })
+})
+
+describe('diagrams wiring', () => {
+  it('draws diagrams in Preview and Present, never in the Code view', () => {
+    expect(createState('x', '\n', 'code').field(diagrams.field, false)).toBeUndefined()
+    expect(createState('x', '\n', 'preview').field(diagrams.field, false)).toBeDefined()
+    // Present always runs with the Preview's extensions (app.ts effectiveView).
+    const present = createState('x', '\n', 'preview', false, 'present')
+    expect(present.field(diagrams.field, false)).toBeDefined()
   })
 })
 

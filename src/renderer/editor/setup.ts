@@ -20,6 +20,7 @@ import {
   tooltips,
 } from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
+import { diagrams } from './diagrams'
 import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
@@ -94,6 +95,8 @@ export function viewExtensions(view: View): Extension {
         // after previewPlugin: it reads the preview's decorations of the lines it sets
         paragraphsPlugin,
         tableField,
+        // Mermaid blocks as the PDF draws them; one plugin and cache for every tab.
+        diagrams.extension,
         headerFold,
         footBlock,
       ]

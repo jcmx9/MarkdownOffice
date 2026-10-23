@@ -1,0 +1,11 @@
+classDiagram
+  class Note {
+    +String path
+    +save() bool
+  }
+  class Set {
+    +String name
+    +render(Note) Pdf
+  }
+  Set ..> Note : liest
+  Note <|-- Brief

@@ -394,6 +394,8 @@ Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-
 
 **Classes.** Besides tokens a set may style the blocks of `.preview.yaml`: `.mdo-titleblock` (the head), `.mdo-footblock` (the foot), each element as `.mdo-tb-<class>`, its label as `.mdo-tb-label`, the single lines of `lines:` as `.mdo-tb-line`. Declarations such as `margin`, `text-align`, `font-size` and `position: relative|absolute` (to let a signature overlap lines) are fine.
 
+A drawn Mermaid diagram (§8.2, `mermaid:`) sits in a `.mdo-diagram` block. It is not one of the head and foot blocks: a rule on `.mdo-diagram` is a rule that may reach the note's text, so it keeps only the typography and spacing properties of the list above (`margin*`, `padding*`, `background*`, `border*`, `font*`, `color`, `min-height`, …), nothing else. The app's own spacing is 1.4em above and below; the diagram is centred and scaled to the block's content box, so horizontal `padding` narrows the room it is fitted into. The SVG inside is not part of the set-CSS contract: it is drawn as the PDF draws it, and rules aimed at it are unsupported.
+
 **Fonts.** Only the bundled families are available ("mdo Sans", "mdo Serif", "mdo Code", see section 4 and `src/renderer/ui/fonts.ts`); name them through the tokens or `var(--mdo-font-*)`. `@font-face` is dropped.
 
 ### 8.2 `<name>.preview.yaml`
@@ -424,7 +426,7 @@ foot:                       # after the last line of the text
     when: "{x-closing}"
 ```
 
-The file is a map with `preview: 1`, the lists `head` and `foot` and the map `nobreak` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
+The file is a map with `preview: 1`, the lists `head` and `foot` and the maps `nobreak` and `mermaid` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
 
 Keys of an element:
 
@@ -446,6 +448,21 @@ nobreak:
 
 Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together. A set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's lists. The note's text is not changed; the preview only forbids the line break. Code (inline and blocks), tables and the front matter are left out.
 
+**`mermaid:` (optional).** The arguments your `.typ` passes to mmdr's `mermaid-svg` (and the size rule around it), so the preview draws a diagram with the same plugin and the same values as the PDF:
+
+```yaml
+mermaid:
+  base-theme: modern            # default "modern"; "default" is Mermaid's own theme
+  theme: { primary_color: "#f4f2ee", font_family: SourceSans3VF }   # mmdr theme fields, strings
+  layout: { node_spacing: 25, rank_spacing: 35 }                     # numbers
+  max-height: 12cm              # optional: the largest height a diagram is scaled to (mm, cm, pt, in)
+  font-weight: 500              # optional: written before every font-family in the SVG (1-1000)
+```
+
+Every key is optional. The preview scales a diagram by the same rule as memo.typ, `natural size × min(1, text width / natural width, max-height / natural height)`; take `max-height` from your `.typ`'s size rule (a length in `mm`, `cm`, `pt` or `in`; a relative one makes the whole file invalid). If your `.typ` caps only the width, leave `max-height` out: the preview then caps the width only, like your PDF. Without `theme`/`layout` mmdr uses its base theme alone, without `font-weight` the SVG is left as drawn. `theme` and `layout` take at most 64 entries (names `a-z`, `0-9`, `_`; theme values are strings up to 64 characters, layout values numbers), an unknown key or a wrong type makes the whole file invalid. The `font_family` of the theme is mapped to the bundled families (a name containing `SourceSerif` becomes the serif font, one containing `SourceCode` the code font, anything else the sans font), because the preview cannot load others.
+
+Which blocks are drawn: fenced ` ```mermaid ` blocks on the top level of the note, like tables. A block inside a list or a quote stays code, as does the block that holds the cursor or a selection, every block in the code view, and a diagram that cannot be drawn (a notice under it says so). The note's text never changes. Both Preview and Present draw diagrams. A valid file without `mermaid:` means the set draws no diagrams, every block stays code; a set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's options. The SVG is not shown as markup: the app rebuilds it from the elements mmdr emits and drops links, scripts, `foreignObject`, images, `use`, `style` elements, `href`, `on*`, `class` and `style` attributes, so a `click` line in a note never becomes a link.
+
 Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
 
 Omission: an element with at least one placeholder whose placeholders are all empty is left out. An element made of literal text only is always shown. All text is inserted as text, never as HTML.
@@ -461,9 +478,10 @@ Only the profile keys that `.preview.yaml` names (`{profile.key}`) are read into
 | Case | Result |
 |------|--------|
 | no `<name>.css` | built-in memo look |
-| no `<name>.preview.yaml` | memo's title block (toptitle, title, subtitle, date and author) |
-| invalid `<name>.preview.yaml` | memo's title block, and one notice per set per session |
-| `template:` is a `.typ` path or an unknown set | built-in memo look and blocks |
+| no `<name>.preview.yaml` | memo's title block (toptitle, title, subtitle, date and author) and memo's Mermaid options (diagrams are drawn) |
+| invalid `<name>.preview.yaml` | memo's title block, memo's `nobreak:` lists and memo's Mermaid options, and one notice per set per session |
+| valid `<name>.preview.yaml` without `mermaid:` | no diagrams drawn, every Mermaid block stays code |
+| `template:` is a `.typ` path or an unknown set | built-in memo look, blocks and Mermaid options |
 
 Test a set in the editor by copying it into the templates folder and opening a note with `template: <name>`. The unit tests in `tests/unit/` and the fixture sets `tests/fixtures/sets/` show working and malicious examples. Never rely on `.css` or `.preview.yaml` for PDF output.
 
@@ -489,6 +507,7 @@ You need: a test note that uses every element of your set (paragraphs long enoug
 | 9 | `--mdo-table-font`, `--mdo-table-size`, `--mdo-table-weight`, `--mdo-table-tracking`, `--mdo-table-head-weight` | your `show table: set text(…)`; the head weight is the table weight plus the strong delta when the head cells are `strong` (memo: `show table.cell.where(y: 0): strong`) | sans 9pt, 500, `-0.02em`, 500 + 180 = 680 | code 10pt, 400, `0`, 600 |
 | 10 | `--mdo-code-size` | `show raw.where(block: true): set text(size:)` | `9pt` | `10pt` |
 | 11 | `nobreak:` in `<name>.preview.yaml` | the phrases and units your `.typ` joins with a no-break space (`show "z. B.": [z.~B.]`, a regex for number + unit); copy them as plain strings (§8.2). No such rules: leave the key out | 10 phrases, 19 units | — |
+| 11a | `mermaid:` in `<name>.preview.yaml` | the arguments of your `.typ`'s `mermaid-svg` call and its size rule: `base-theme`, the `theme` dict (mmdr field names), the `layout` dict, the `max-height` of the `box`/`scale` (none if it caps only the width), and a `font-weight` only if the `.typ` writes one into the SVG (§8.2). No Mermaid rule: leave the key out | memo.typ's theme, layout `node_spacing: 25, rank_spacing: 35`, `12cm`, weight 500 | see the set's `din5008a.preview.yaml` |
 | 12 | `head:`, `foot:` in `<name>.preview.yaml`, block classes in `<name>.css` | what the `.typ` prints from the front matter and the profile above and below the body, in the same order; distances measured in the PDF become `margin-*`/`padding-*` on the `.mdo-tb-*` classes | title block | letter head, closing, signature, enclosures |
 
 The optical size needs no row: the app derives `--mdo-*-opsz` from the pt sizes of rows 2 and 7 (§8.1, *Optical size*). Only fonts and sizes in `pt` derive it, so write the sizes in `pt`, not `em` or `mm`.

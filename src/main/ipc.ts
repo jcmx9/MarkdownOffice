@@ -25,6 +25,7 @@ import {
 } from './files'
 import { setWindowFullScreen } from './fullscreen'
 import { noteMenuTemplate } from './menu'
+import { pluginWasm } from './plugins'
 import { previewInputs } from './preview-inputs'
 import { createProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
@@ -46,6 +47,8 @@ class SaveConflict extends Error {}
 
 export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(Ch.startup, () => ctx.startup())
+  // Typst's WebAssembly plugins for the preview; the renderer names a key, main owns the path.
+  ipcMain.handle(Ch.pluginWasm, (_e, name: unknown) => pluginWasm(ctx.pipeline.paths.root, name))
   ipcMain.handle(Ch.listSnippets, () => loadUserSnippets(ctx.settings.snippetFolder))
   ipcMain.handle(Ch.noteMenu, (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)

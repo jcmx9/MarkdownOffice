@@ -215,6 +215,8 @@ export interface MdoApi {
   updateSettings(patch: SettingsPatch): Promise<Settings>
   /** Native picker; resolves to the canonical path, or null when cancelled. */
   choosePath(kind: ChooseKind, current: string): Promise<string | null>
+  /** Bytes of a pipeline WebAssembly plugin (same file the PDF uses); main owns the path. */
+  pluginWasm(name: 'mmdr' | 'mitex'): Promise<Uint8Array>
 }
 
 /** A template set as the "new from template" picker lists it (discovered on disk, never hard-coded). */

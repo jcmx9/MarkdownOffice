@@ -1,0 +1,6 @@
+stateDiagram-v2
+  [*] --> Bearbeiten
+  Bearbeiten --> Gespeichert : Speichern
+  Gespeichert --> Bearbeiten : Tippen
+  Gespeichert --> Exportiert : Export
+  Exportiert --> [*]
