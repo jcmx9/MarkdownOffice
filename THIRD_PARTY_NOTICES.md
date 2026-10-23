@@ -164,6 +164,26 @@ WebAssembly build of mermaid-rs-renderer (https://github.com/1jehuang/mermaid-rs
 renderer for Mermaid diagrams. The PDF pipeline has always shipped it (Typst runs it); the app's editor
 preview now runs the very same file in the UI as well (`src/core/typst-plugin.ts`, `src/core/mermaid.ts`,
 loaded by the main process through `src/main/plugins.ts`), and sanitises its SVG output before showing
-it. The package's licence text ships with the app as `pipeline/licenses/packages/mmdr/LICENSE`
-(MIT, Copyright (c) 2026 Huynh Tien); mermaid-rs-renderer is under the MIT licence as well, with the
-permission text given above for `linebreak`.
+it. The package's licence text ships with the app as `pipeline/licenses/packages/mmdr/LICENSE`.
+Its copyright line is the one in that file, Copyright (c) 2026 Huynh Tien (the package's
+`typst.toml` names HSGamer as author). The renderer inside is under the MIT licence with the line
+"Copyright (c) 2026 mermaid-rs-renderer contributors" (its LICENSE file). Both are the standard MIT
+permission text, which follows with each holder's line:
+
+Copyright (c) 2026 Huynh Tien
+Copyright (c) 2026 mermaid-rs-renderer contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
