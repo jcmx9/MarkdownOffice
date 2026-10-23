@@ -25,6 +25,9 @@ extraResources:
   # The app's own licence (AGPL-3.0-or-later) travels with every copy: <resources>/LICENSE.
   - from: LICENSE
     to: LICENSE
+  # Notices for the code and data ported into the editor preview (Typst, hypher patterns, linebreak).
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
   - from: build/pipeline-assets/sets
     to: sets
   # Allowlist: both pipeline scripts, the Typst building blocks (lib/), the fallback logo

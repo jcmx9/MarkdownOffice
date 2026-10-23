@@ -15,4 +15,4 @@ Read by `src/core/paragraph/hyphenate.ts`, a TypeScript port of hypher's lookup.
 
 - hypher code and the trie format: `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`), Laurenz Mädje and contributors.
 - German patterns (`de.bin`, from `hyph-de-1996.tex`, hyph-utf8): MIT. Copyright (C) 2013-2021 Stephan Hennig, Werner Lemberg, Günter Milde, Sander van Geloven, Georg Pfeiffer, Gisbert W. Selke, Tobias Wendorf, Keno Wehr (Deutschsprachige Trennmustermannschaft).
-- English patterns (`en.bin`, from `hyph-en-us.tex`, TeX hyphenation patterns by Knuth and Liang, with later updates): permissive licence as stated in the hypher repository's `patterns/` directory, which only includes permissively licensed patterns.
+- English patterns (`en.bin`, from `hyph-en-us.tex`, version 2005-05-30, hyph-utf8): Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken; the file header states: "Copying and distribution of this file, with or without modification, are permitted in any medium without royalty provided the copyright notice and this notice are preserved." Full notices in `THIRD_PARTY_NOTICES.md` at the repository root.
