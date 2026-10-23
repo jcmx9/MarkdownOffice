@@ -29,4 +29,16 @@ trap cleanup EXIT
 "${typst}" eval 'query(<out>).first().value' --in "${test_dir}/typography.typ" \
   --root "${test_dir}/.." >"${out_dir}/typst.json"
 # The core file is plain TypeScript run by type stripping; the package has no "type": "module".
-node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON "${test_dir}/typography-core.mts" "${test_dir}/fixtures/typography.txt" "${out_dir}/typst.json"
+# Floor: Node 22.12 (the repo's engines). Type stripping is on by default from 22.18 / 23.6;
+# older 22.x releases need the flag, which they accept (process.features.typescript is false).
+node_flags=(--disable-warning=MODULE_TYPELESS_PACKAGE_JSON)
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+node_minor="$(node -p 'process.versions.node.split(".")[1]')"
+if (( node_major < 22 || (node_major == 22 && node_minor < 12) )); then
+  printf 'FEHLER: Node %s ist zu alt (mindestens 22.12)\n' "$(node --version)" >&2
+  exit 1
+fi
+if [[ "$(node -p 'Boolean(process.features.typescript)')" != "true" ]]; then
+  node_flags+=(--experimental-strip-types)
+fi
+node "${node_flags[@]}" "${test_dir}/typography-core.mts" "${test_dir}/fixtures/typography.txt" "${out_dir}/typst.json"
