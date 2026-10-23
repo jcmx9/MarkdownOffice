@@ -39,4 +39,5 @@ export const Ch = {
   settingsStatus: 'mdo:settings-get-status',
   updateSettings: 'mdo:settings-update',
   choosePath: 'mdo:settings-choose-path',
+  pluginWasm: 'mdo:plugin-wasm',
 } as const

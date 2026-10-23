@@ -2,9 +2,13 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      'wasm-unsafe-eval' only allows compiling WebAssembly (no eval of strings): the preview runs
+      Typst's mmdr plugin, the same file the PDF uses, to draw Mermaid diagrams.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' mdo-font:; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' mdo-font:; img-src 'self' data:"
     />
     <title>Markdown Office</title>
   </head>

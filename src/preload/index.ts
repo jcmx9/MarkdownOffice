@@ -52,6 +52,7 @@ const api: MdoApi = {
   getSettingsStatus: () => ipcRenderer.invoke(Ch.settingsStatus),
   updateSettings: (patch) => ipcRenderer.invoke(Ch.updateSettings, patch),
   choosePath: (kind, current) => ipcRenderer.invoke(Ch.choosePath, kind, current),
+  pluginWasm: (name) => ipcRenderer.invoke(Ch.pluginWasm, name),
   onFullScreenLeft: (cb) => {
     ipcRenderer.on(Ch.fullScreenLeft, () => cb())
   },
