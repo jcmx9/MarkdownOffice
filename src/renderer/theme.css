@@ -726,6 +726,14 @@
 .mdo-preview .mdo-footblock-none {
   padding: 0;
 }
+/* One paragraph gap above the foot, as a blank line would carry it (footblock.ts). Blank lines
+   at the end of the note collapse, so the gap is the same with or without them. */
+.mdo-preview .mdo-footblock-gap {
+  height: var(--mdo-par-gap);
+}
+.mdo-preview .cm-content > .cm-line.mdo-foot-gap {
+  line-height: 0;
+}
 /* One line of a `lines:` block (address, attachments) and the label above it. */
 .mdo-preview .mdo-tb-line,
 .mdo-preview .mdo-tb-label {

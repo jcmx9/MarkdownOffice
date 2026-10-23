@@ -1,6 +1,6 @@
 import { chromeButton } from './chrome-button'
 import { Clock } from './clock'
-import { ModeSwitches } from './switches'
+import { lift, ModeSwitches } from './switches'
 import { zoomLabel } from './zoom'
 
 export { formatClock } from './clock'
@@ -17,12 +17,16 @@ export interface InfoLineActions {
   showCode(): void
   zoomIn(): void
   zoomOut(): void
+  /** Outline on/off for Present (the same command as Mod+Shift+O). */
+  toggleOutline(): void
 }
 
-/** Present's only chrome: clock, mode and view switches, tabs, zoom, save state. */
+/** Present's only chrome: clock, mode and view switches, outline toggle, tabs, zoom, save state. */
 export class InfoLine {
   private readonly clock: Clock
   private readonly switches: ModeSwitches
+  /** Like Edit's status line; the YAML toggle stays out because Present refuses it. */
+  private readonly outline: HTMLButtonElement
   private readonly tabs = document.createElement('span')
   private readonly zoom = document.createElement('span')
   private readonly state = document.createElement('span')
@@ -45,6 +49,15 @@ export class InfoLine {
       },
     })
     this.switches.render('present', 'preview', true)
+    this.outline = chromeButton(
+      'il-outline',
+      'Gliederung',
+      'Gliederung ein/aus (Mod+Shift+O)',
+      () => actions.toggleOutline(),
+    )
+    const toggles = document.createElement('span')
+    toggles.className = 'mdo-switches'
+    toggles.append(this.outline)
     this.tabs.className = 'mdo-il-tabs'
     this.zoom.className = 'mdo-il-zoom'
     this.zoom.dataset.testid = 'il-zoom'
@@ -55,6 +68,7 @@ export class InfoLine {
     el.replaceChildren(
       this.clock.el,
       this.switches.el,
+      toggles,
       this.tabs,
       spacer,
       chromeButton('il-zoom-out', '−', 'Verkleinern', () => actions.zoomOut()),
@@ -72,7 +86,14 @@ export class InfoLine {
     this.clock.stop()
   }
 
-  render(tabs: readonly InfoLineTab[], active: number, saveText: string, zoom: number): void {
+  render(
+    tabs: readonly InfoLineTab[],
+    active: number,
+    saveText: string,
+    zoom: number,
+    outline = false,
+  ): void {
+    lift(this.outline, outline)
     // Update in place; only a changed tab count adds or removes buttons at the end.
     while (this.tabButtons.length > tabs.length) this.tabButtons.pop()?.remove()
     while (this.tabButtons.length < tabs.length) {

@@ -64,7 +64,7 @@ function group(a: HTMLButtonElement, b: HTMLButtonElement): HTMLSpanElement {
   return g
 }
 
-function lift(b: HTMLButtonElement, on: boolean): void {
+export function lift(b: HTMLButtonElement, on: boolean): void {
   b.classList.toggle('active', on)
   b.setAttribute('aria-pressed', String(on))
 }

@@ -49,8 +49,8 @@ const foot = (v: EditorView) => v.contentDOM.querySelector('.mdo-footblock')
 /** Positions of the foot widgets in the state's decoration set. */
 function footAt(v: EditorView): number[] {
   const out: number[] = []
-  v.state.field(footBlock).between(0, v.state.doc.length, (from) => {
-    out.push(from)
+  v.state.field(footBlock).between(0, v.state.doc.length, (from, _to, deco) => {
+    if (deco.spec.widget) out.push(from)
   })
   return out
 }
@@ -141,6 +141,49 @@ describe('footBlock', () => {
     expect(headCollapsed(v.state)).toBe(true)
     expect(footAt(v)).toEqual([NOTE.length])
     expect(foot(v)).not.toBeNull()
+    v.destroy()
+  })
+
+  it('starts one paragraph gap below the text, however many blank lines end the note', () => {
+    const gapped = (doc: string) => {
+      const parent = document.createElement('div')
+      document.body.append(parent)
+      const v = new EditorView({ state: createState(doc, '\n', 'preview', true), parent })
+      v.dispatch({ effects: setPreviewSource.of(source()) })
+      v.dispatch({ selection: { anchor: 0 } })
+      return v
+    }
+    for (const doc of [NOTE, `${NOTE}\n`, `${NOTE}\n\n\n`]) {
+      const v = gapped(doc)
+      // The foot carries the gap itself …
+      expect(foot(v)?.firstElementChild?.className).toBe('mdo-footblock-gap')
+      // … and every trailing blank line collapses.
+      const trailing = doc.length - NOTE.length
+      expect(v.contentDOM.querySelectorAll('.cm-line.mdo-foot-gap').length).toBe(trailing)
+      v.destroy()
+    }
+  })
+
+  it('a trailing blank line holding the cursor keeps its height', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const doc = `${NOTE}\n\n`
+    const v = new EditorView({ state: createState(doc, '\n', 'preview', true), parent })
+    v.dispatch({ effects: setPreviewSource.of(source()) })
+    v.dispatch({ selection: { anchor: 0 } })
+    expect(v.contentDOM.querySelectorAll('.cm-line.mdo-foot-gap').length).toBe(2)
+    v.dispatch({ selection: { anchor: doc.length } })
+    expect(v.contentDOM.querySelectorAll('.cm-line.mdo-foot-gap').length).toBe(1)
+    v.destroy()
+  })
+
+  it('no gap without a foot to show (no closing)', () => {
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const doc = '---\nx-subject: Angebot\n---\n\nText\n'
+    const v = new EditorView({ state: createState(doc, '\n', 'preview', true), parent })
+    v.dispatch({ effects: setPreviewSource.of(source()) })
+    expect(v.contentDOM.querySelector('.mdo-footblock-gap')).toBeNull()
     v.destroy()
   })
 })

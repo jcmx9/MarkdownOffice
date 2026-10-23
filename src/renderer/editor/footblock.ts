@@ -1,4 +1,4 @@
-import type { EditorState } from '@codemirror/state'
+import type { EditorState, Range } from '@codemirror/state'
 import { StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 import type { PreviewBlock } from '../../core/preview-spec'
@@ -21,12 +21,39 @@ class FootBlockWidget extends WidgetType {
     )
   }
   override toDOM(): HTMLElement {
-    return renderBlocks(this.blocks, { part: 'foot', signature: this.signature, empty: 'none' })
+    const el = renderBlocks(this.blocks, { part: 'foot', signature: this.signature, empty: 'none' })
+    // The PDF starts the foot one paragraph gap below the text (din5008a.typ: parbreak()),
+    // however the note ends; the trailing blank lines collapse (gapLines), so this carries it.
+    if (!el.classList.contains('mdo-footblock-none')) {
+      const gap = document.createElement('div')
+      gap.className = 'mdo-footblock-gap'
+      el.prepend(gap)
+    }
+    return el
   }
   // Not editable: clicks in the foot never place the cursor there or start a selection.
   override ignoreEvent(): boolean {
     return true
   }
+}
+
+const trailingGap = Decoration.line({ class: 'mdo-foot-gap' })
+
+/**
+ * Blank lines at the end of the note, which Markdown and the PDF ignore: collapsed like the
+ * blank lines around a heading, so the gap above the foot does not depend on whether the note
+ * ends with a line break. A blank line holding the cursor or selection keeps its height.
+ */
+function gapLines(state: EditorState): Range<Decoration>[] {
+  const out: Range<Decoration>[] = []
+  const { doc, selection } = state
+  for (let n = doc.lines; n > 1; n--) {
+    const l = doc.line(n)
+    if (l.text.trim() !== '') break
+    if (selection.ranges.some((r) => r.from <= l.to && r.to >= l.from)) continue
+    out.push(trailingGap.range(l.from))
+  }
+  return out.reverse()
 }
 
 function build(state: EditorState): DecorationSet {
@@ -37,6 +64,7 @@ function build(state: EditorState): DecorationSet {
   if (!blocks.length) return Decoration.none
   const signature = state.field(previewSource, false)?.signature ?? null
   return Decoration.set([
+    ...gapLines(state),
     // side 1 after the last position: the cursor at doc.length stays before it, never inside.
     Decoration.widget({
       widget: new FootBlockWidget(blocks, signature),
@@ -51,10 +79,10 @@ export const footBlock: StateField<DecorationSet> = StateField.define<Decoration
   create: build,
   update(deco, tr) {
     // Covers header toggle, mode switch, snippet session end and selection moves onto or off
-    // the header; other cursor moves leave the foot alone.
+    // the header; a selection change also moves the cursor onto or off a trailing blank line.
     const flipped = headCollapsed(tr.startState) !== headCollapsed(tr.state)
     const sourced = tr.effects.some((e) => e.is(setPreviewSource))
-    return tr.docChanged || flipped || sourced ? build(tr.state) : deco
+    return tr.docChanged || flipped || sourced || tr.selection ? build(tr.state) : deco
   },
   provide: (f) => EditorView.decorations.from(f),
 })

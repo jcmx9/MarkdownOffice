@@ -467,7 +467,7 @@ Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value 
 
 Omission: an element with at least one placeholder whose placeholders are all empty is left out. An element made of literal text only is always shown. All text is inserted as text, never as HTML.
 
-**Where the blocks appear.** The head replaces the front matter in the preview with the header hidden and in Present; the foot sits after the text under the same conditions. Neither appears in the code view.
+**Where the blocks appear.** The head replaces the front matter in the preview with the header hidden and in Present; the foot sits after the text under the same conditions. Neither appears in the code view. The foot starts one paragraph gap (`--mdo-par-gap`, the height of a blank line) below the last line of text, as a `parbreak()` before the closing does in the PDF: the app puts that gap at the top of `.mdo-footblock` (`.mdo-footblock-gap`) and collapses blank lines at the end of the note, so the gap is the same whether the note ends with a line break or not. Measure your foot's spacing from there.
 
 ### 8.3 Profile access
 
