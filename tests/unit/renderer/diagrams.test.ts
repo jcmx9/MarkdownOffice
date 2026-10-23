@@ -328,6 +328,53 @@ describe('diagram widget', () => {
     expect(dom.querySelector('marker')?.getAttribute('id')).toMatch(/^mdo-dg\d+-m$/)
   })
 
+  it('gives every shown copy of a cached drawing its own ids (two identical blocks)', async () => {
+    const fake = fakePlugin(
+      () =>
+        `<svg xmlns="${SVG_NS}" width="20" height="10" viewBox="0 0 20 10"><defs><marker id="m"><path d="M0 0"/></marker><linearGradient id="g"><stop offset="0"/></linearGradient></defs><path id="e" d="M0 0 L5 5" marker-end="url(#m)" stroke="url(#g)"/></svg>`,
+    )
+    const block = `\`\`\`mermaid\n${FLOW}\n\`\`\``
+    const doc = `${block}\n\n${block}\n\nx`
+    const { d, state } = make(doc, doc.length, { load: async () => fake.plugin })
+    const widgets = shown(d, await settled(d, state)).map((s) => s.widget)
+    expect(widgets).toHaveLength(2)
+    // One drawing for both blocks, two DOM copies.
+    expect(fake.sources).toHaveLength(1)
+    const doms = widgets.map((w) => w.toDOM(stubView) as HTMLElement)
+    const idsOf = (dom: HTMLElement) =>
+      Array.from(dom.querySelectorAll('[id]')).map((e) => e.getAttribute('id') as string)
+    const [a, b] = doms.map(idsOf)
+    expect(a).toHaveLength(3)
+    expect(b).toHaveLength(3)
+    expect(a?.filter((id) => b?.includes(id))).toEqual([])
+    for (const id of [...(a ?? []), ...(b ?? [])]) expect(id).toMatch(/^mdo-dg\d+-[meg]$/)
+    // Every url(#…) points at an id of its own copy.
+    for (const dom of doms) {
+      const own = new Set(idsOf(dom))
+      const refs = Array.from(dom.querySelectorAll('*')).flatMap((el) =>
+        Array.from(el.attributes)
+          .map((attr) => /^url\(#(.+)\)$/.exec(attr.value)?.[1])
+          .filter((v) => v !== undefined),
+      )
+      expect(refs).toHaveLength(2)
+      for (const ref of refs) expect(own.has(ref)).toBe(true)
+    }
+    // A redraw of the same widget gets fresh ids too (CodeMirror may call toDOM again).
+    const again = idsOf(widgets[0]?.toDOM(stubView) as HTMLElement)
+    expect(again.filter((id) => a?.includes(id))).toEqual([])
+  })
+
+  it('reads a px size as its number (natural size for the fit and the height estimate)', async () => {
+    const fake = fakePlugin(
+      () =>
+        `<svg xmlns="${SVG_NS}" width="400px" height="200px" viewBox="0 0 400 200"><text x="1" y="1">x</text></svg>`,
+    )
+    const { d, state } = make(NOTE, AFTER, { load: async () => fake.plugin })
+    const widget = shown(d, await settled(d, state))[0]?.widget as WidgetType
+    // 200px is below memo's 12cm max-height: the natural height plus the spacing.
+    expect(widget.estimatedHeight).toBeCloseTo(200 + 2 * 18.7)
+  })
+
   it('click on the diagram moves the cursor into the block (source for editing)', async () => {
     const fake = fakePlugin()
     const d = createDiagrams({ load: async () => fake.plugin, warn: () => {} })

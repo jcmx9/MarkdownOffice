@@ -52,6 +52,8 @@ type Entry =
       key: string
       /** The sanitised SVG (never attached; widgets show clones). */
       svg: SVGSVGElement
+      /** The id prefix the sanitiser gave `svg`; each clone swaps it for its own. */
+      prefix: string
       width: number
       height: number
       /** Valid, but nothing drawn besides the background. */
@@ -155,6 +157,32 @@ function blockText(
   return { from: open.from, to: last.to, text: lines.join('\n') }
 }
 
+/**
+ * Id prefixes `mdo-dg<n>`, one per sanitised drawing and one per shown copy: two blocks with
+ * the same source share a cache entry, and their markers must not share ids in the DOM.
+ */
+let prefixes = 0
+const nextPrefix = (): string => `mdo-dg${++prefixes}`
+
+/**
+ * Moves a clone of a sanitised drawing to a fresh id prefix. The clone only holds the forms
+ * the sanitiser wrote: `id="<prefix>-…"` and `url(#<prefix>-…)` (in fill, stroke, marker-*).
+ */
+function reprefix(svg: SVGSVGElement, from: string, to: string): SVGSVGElement {
+  const id = `${from}-`
+  const ref = `url(#${from}-`
+  for (const el of [svg, ...Array.from(svg.querySelectorAll('*'))]) {
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name === 'id' && attr.value.startsWith(id)) {
+        el.setAttribute('id', `${to}-${attr.value.slice(id.length)}`)
+      } else if (attr.value.startsWith(ref)) {
+        el.setAttribute(attr.name, `url(#${to}-${attr.value.slice(ref.length)}`)
+      }
+    }
+  }
+  return svg
+}
+
 /** Per widget DOM: disconnects its observers. */
 const fitters = new WeakMap<HTMLElement, () => void>()
 
@@ -175,8 +203,12 @@ class DiagramWidget extends WidgetType {
   override toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'mdo-diagram'
-    // A clone of the sanitised tree: DOM nodes only, never markup.
-    const svg = this.entry.svg.cloneNode(true) as SVGSVGElement
+    // A clone of the sanitised tree: DOM nodes only, never markup; with ids of its own.
+    const svg = reprefix(
+      this.entry.svg.cloneNode(true) as SVGSVGElement,
+      this.entry.prefix,
+      nextPrefix(),
+    )
     wrap.append(svg)
     if (this.entry.empty) wrap.append(notice(DIAGRAM_EMPTY))
     wrap.addEventListener('mousedown', (e) => {
@@ -267,8 +299,6 @@ export function createDiagrams(options: DiagramsOptions = {}) {
   let loadFailed = false
   const cache = new Map<string, Entry>()
   const warned = new Set<Reason>()
-  /** Gives every drawing its own id prefix, `mdo-dg<n>`, so markers never collide. */
-  let drawn = 0
 
   function warnOnce(reason: Reason, detail: unknown): void {
     if (warned.has(reason)) return
@@ -328,8 +358,9 @@ export function createDiagrams(options: DiagramsOptions = {}) {
       return store({ ok: false, key })
     }
     let svg: SVGSVGElement | null = null
+    const prefix = nextPrefix()
     try {
-      svg = sanitize(raw, `mdo-dg${++drawn}`, document)
+      svg = sanitize(raw, prefix, document)
     } catch (e) {
       // Pathological input (deep nesting) can exhaust the stack.
       warnOnce('sanitize', e)
@@ -341,7 +372,7 @@ export function createDiagrams(options: DiagramsOptions = {}) {
     }
     const width = Number(svg.getAttribute('width'))
     const height = Number(svg.getAttribute('height'))
-    return store({ ok: true, key, svg, width, height, empty: drawsNothing(svg) })
+    return store({ ok: true, key, svg, prefix, width, height, empty: drawsNothing(svg) })
   }
 
   function build(state: EditorState): DiagramsValue {

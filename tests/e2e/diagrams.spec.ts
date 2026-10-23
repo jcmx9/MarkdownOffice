@@ -11,16 +11,26 @@ const SOURCE = join(ROOT, 'pipeline', 'tests', 'fixtures', 'mermaid', 'flowchart
 const REFERENCE = join(ROOT, 'tests', 'fixtures', 'mermaid', 'flowchart.svg')
 const linux = process.platform === 'linux'
 
-const fullScreen = (app: ElectronApplication) =>
-  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false)
+/** Leaves Present the way present.spec does: toggled off, then out of the real fullscreen. */
+async function leavePresent(app: ElectronApplication, page: Page): Promise<void> {
+  if ((await page.locator('body.mdo-mode-present').count()) > 0) {
+    await clickMenu(app, 'toggle-present')
+  }
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  if (!linux) {
+    const full = () =>
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false)
+    await expect.poll(full, { timeout: 10_000 }).toBe(false)
+  }
+}
 
 /**
  * A serialiser-independent form of an SVG tree: elements, sorted attributes and text, one per
  * line. The expected side is built by happy-dom in Node, the shown side by Chromium, so their
  * XMLSerializers may differ in details (namespace declarations, self-closing tags) the
  * comparison is not about. Normalised on purpose:
- * - id prefixes: every drawing gets `mdo-dg<n>-` (n counts the window's drawings), the
- *   reference is sanitised with `mdo-dg0-`; both become `ID-`;
+ * - id prefixes: every shown copy gets `mdo-dg<n>-` (n counts the window's drawings and
+ *   copies), the reference is sanitised with `mdo-dg0-`; both become `ID-`;
  * - the root's width and height: the widget sets the fitted width and drops the height (the
  *   viewBox keeps the aspect), which depends on the window, not on the drawing.
  * Self-contained, so Playwright can run it in the page as well.
@@ -92,8 +102,9 @@ test('a mermaid block shows the PDF’s diagram in Preview and Present, the sour
   const { app, page } = await openFlowchart()
   const expected = await expectedDrawing()
 
-  // Preview: the diagram instead of the source, the sanitised reference drawing.
-  await expect(diagram(page)).toBeVisible()
+  // Preview: the diagram instead of the source, the sanitised reference drawing. The first
+  // diagram waits for the plugin's wasm to load and compile.
+  await expect(diagram(page)).toBeVisible({ timeout: 15_000 })
   await expect(sourceLine(page)).toHaveCount(0)
   expect(await diagram(page).evaluate(canonical)).toBe(expected)
   // Fitted by the measure: a width in px, no height (the viewBox keeps the aspect).
@@ -108,13 +119,19 @@ test('a mermaid block shows the PDF’s diagram in Preview and Present, the sour
   expect(fit.svg).toBeLessThanOrEqual(fit.text + 0.5)
   await shot(page, 'diagram-preview')
 
-  // Present uses the same widget.
+  // Present uses the same widget. Always left again: a failed assertion must not leave a
+  // fullscreen Space behind (the next launch hangs on it).
   await clickMenu(app, 'toggle-present')
-  await expect(page.locator('.cm-editor.mdo-present .mdo-diagram svg')).toBeVisible()
-  expect(await diagram(page).evaluate(canonical)).toBe(expected)
-  await clickMenu(app, 'toggle-present')
-  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
-  if (!linux) await expect.poll(() => fullScreen(app), { timeout: 10_000 }).toBe(false)
+  let passed = false
+  try {
+    await expect(page.locator('.cm-editor.mdo-present .mdo-diagram svg')).toBeVisible()
+    expect(await diagram(page).evaluate(canonical)).toBe(expected)
+    passed = true
+  } finally {
+    // After a failure, leaving must not hide the assertion's own error.
+    if (passed) await leavePresent(app, page)
+    else await leavePresent(app, page).catch(() => {})
+  }
 
   // Code view: only the source.
   await clickMenu(app, 'toggle-view')
