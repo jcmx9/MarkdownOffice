@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language'
-import type { EditorState, Range, TransactionSpec } from '@codemirror/state'
+import type { EditorState, Range, Text, TransactionSpec } from '@codemirror/state'
 import {
   Decoration,
   type DecorationSet,
@@ -11,10 +11,12 @@ import {
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
 import { nobreakRanges } from '../../core/nobreak'
 import { MEMO_PREVIEW, type PreviewSpec } from '../../core/preview-spec'
+import { bodyStart, skipMask, smartTypography } from '../../core/typography'
 import { frontmatterFields } from './frontmatter'
 import { EXTERNAL_DEST } from './inline-render'
 import { isRealLink, referenceLabels } from './link-refs'
 import { previewSource } from './preview-source'
+import { lineIsRendered } from './rendered'
 
 export type PreviewRange = { from: number; to: number }
 
@@ -261,6 +263,10 @@ export function visitInline(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefi
     const external = externalDest(cx.state, ref.node) !== null
     cx.out.push(markDeco(external ? 'mdo-link mdo-link-ext' : 'mdo-link').range(ref.from, ref.to))
     if (external) cx.out.push(linkArrow.range(ref.to))
+    // The PDF prints the link without its `<` `>`; the cursor line keeps them to edit.
+    if (lineIsRendered(cx.state, cx.state.doc.lineAt(ref.from))) {
+      for (const m of ref.node.getChildren('LinkMark')) cx.out.push(hide.range(m.from, m.to))
+    }
     return false
   }
   if (name === 'Escape') {
@@ -505,6 +511,7 @@ export function buildPreview(
       },
     })
   }
+  showTypography(state, tree, ranges, out)
   keepHiddenMarksAttached(state, out)
   markNobreakPhrases(state, tree, ranges, out)
   return Decoration.set(out, true)
@@ -549,9 +556,9 @@ function keepHiddenMarksAttached(state: EditorState, out: Range<Decoration>[]): 
 // layout, the front matter is the head block's source.
 const NOBREAK_SKIP = new Set(['InlineCode', 'FencedCode', 'CodeBlock', 'Table', 'Frontmatter'])
 
-function inSkipped(tree: Tree, pos: number, side: -1 | 1): boolean {
+function inSkipped(tree: Tree, pos: number, side: -1 | 1, skip = NOBREAK_SKIP): boolean {
   for (let n: SyntaxNode | null = tree.resolveInner(pos, side); n; n = n.parent) {
-    if (NOBREAK_SKIP.has(n.name)) return true
+    if (skip.has(n.name)) return true
   }
   return false
 }
@@ -583,6 +590,102 @@ function markNobreakPhrases(
         const b = line.from + r.to
         if (inSkipped(tree, a, 1) || inSkipped(tree, b, -1)) continue
         out.push(nobreakMark.range(a, b))
+      }
+    }
+  }
+}
+
+/**
+ * A typographic character the PDF prints in place of the source characters (`„` for `"`, `–`
+ * for `--`, …). Shown over them by a replace decoration, so the note keeps its bytes and the
+ * cursor still steps over the source characters. Equal by text, so a rebuild reuses the DOM.
+ */
+class TypoWidget extends WidgetType {
+  constructor(readonly text: string) {
+    super()
+  }
+  override eq(other: TypoWidget): boolean {
+    return other.text === this.text
+  }
+  toDOM(): HTMLElement {
+    const s = document.createElement('span')
+    s.textContent = this.text
+    return s
+  }
+}
+// A handful of characters in all: one decoration each, shared by every rebuild.
+const typoDecos = new Map<string, Decoration>()
+function typoDeco(text: string): Decoration {
+  let deco = typoDecos.get(text)
+  if (!deco) {
+    deco = Decoration.replace({ widget: new TypoWidget(text), rf: 'typo' })
+    typoDecos.set(text, deco)
+  }
+  return deco
+}
+
+// The syntax tree's say on top of markdown.typ's own skip rules: code is verbatim, a table has
+// its own widget, the front matter is the header's source, HTML is passed through untouched.
+const TYPO_SKIP = new Set([
+  ...NOBREAK_SKIP,
+  'HTMLBlock',
+  'HTMLTag',
+  'CommentBlock',
+  'Comment',
+  'ProcessingInstructionBlock',
+])
+
+interface TypoDoc {
+  /** Lines (0-based) markdown.typ's skip-mask leaves alone: front matter, fences, $$, comments. */
+  skipped: boolean[]
+  lang: string
+}
+// Per document, not per pass: a selection change rebuilds the decorations with the same doc.
+const typoDocs = new WeakMap<Text, TypoDoc>()
+function typoDoc(doc: Text): TypoDoc {
+  let td = typoDocs.get(doc)
+  if (!td) {
+    const lines: string[] = []
+    for (const l of doc.iterLines()) lines.push(l)
+    // The pipeline strips the front matter before smart-typography: mask the body alone.
+    const start = bodyStart(lines)
+    const skipped = [...lines.slice(0, start).map(() => true), ...skipMask(lines.slice(start))]
+    // memo.typ: lang from the front matter, `de` without; smart-typography tests starts-with("de").
+    td = { skipped, lang: frontmatterFields(doc).lang || 'de' }
+    typoDocs.set(doc, td)
+  }
+  return td
+}
+
+/**
+ * The characters markdown.typ's smart-typography puts into the PDF (quotes per `lang`, dashes,
+ * ellipsis), shown in rendered lines only (lineIsRendered: never the cursor line, never the
+ * Code view). Nothing where another replace decoration already hides the source (link URLs,
+ * marks), so two replacements never overlap.
+ */
+function showTypography(
+  state: EditorState,
+  tree: Tree,
+  ranges: readonly PreviewRange[],
+  out: Range<Decoration>[],
+): void {
+  const doc = state.doc
+  const td = typoDoc(doc)
+  const replaced = out.filter((r) => r.from < r.to && (r.value === hide || r.value.spec.widget))
+  const covered = (from: number, to: number) => replaced.some((r) => r.from < to && r.to > from)
+  const done = new Set<number>()
+  for (const { from, to } of ranges) {
+    for (let pos = from; pos <= to; ) {
+      const line = doc.lineAt(pos)
+      pos = line.to + 1
+      if (done.has(line.from)) continue
+      done.add(line.from)
+      if (td.skipped[line.number - 1] || !lineIsRendered(state, line)) continue
+      for (const sub of smartTypography(line.text, td.lang)) {
+        const a = line.from + sub.from
+        const b = line.from + sub.to
+        if (inSkipped(tree, a, 1, TYPO_SKIP) || covered(a, b)) continue
+        out.push(typoDeco(sub.text).range(a, b))
       }
     }
   }

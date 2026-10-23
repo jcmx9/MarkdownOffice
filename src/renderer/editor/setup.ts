@@ -30,6 +30,7 @@ import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
 import { previewPlugin } from './preview'
 import { previewSource } from './preview-source'
+import { previewView } from './rendered'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
@@ -85,6 +86,7 @@ export function viewExtensions(view: View): Extension {
     : [
         foldGutter(),
         EditorView.editorAttributes.of({ class: 'mdo-preview' }),
+        previewView.of(true),
         previewPlugin,
         tableField,
         headerFold,

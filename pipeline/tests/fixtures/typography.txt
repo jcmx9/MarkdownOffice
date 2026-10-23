@@ -1,0 +1,51 @@
+Er sagte "Hallo" und 'tschüss'.
+He said "hi" and 'bye'.
+("a") –"b" /"c" "d" —"e" «"f" ["g"] {"h"} -"i"
+a -- "b" --- 'c' ... d...
+geht's, it's the 90's, rock'n'roll, a'b'c
+a"" and b'' and """ and '''
+-----x ---- ...... ....
+"'x'" '"y"' „schon“ ‚da‘
+a "b" `"c" -- d` "e" ``"f"`` 'g'
+`x`"a" `y`'b'
+"a" $x -- "y"$ "b" $only one
+$a$"b"$c$ 'd'
+😀"a" -- b 'ä' «x»'y'
+Zitat: > "z" und - "Liste"
+> "quoted" -- text
+- "item" 'two'
+1. "num" ...
+# "Heading" -- here
+<div class="x">
+a <span>"b"</span>
+a <!-- "b" --> "c"
+see <https://example.com/a--b> "x"
+a < b and "c"
+---
+| -- | "x" |
+|:--|--:|
+***
+===
+  "indented" -- code?
+tab	"tab"	'x'
+```
+"in fence" -- x
+```
+~~~~
+'tilde' ...
+~~~
+~~~~
+$$
+"math" -- x
+$$
+$$ "one" -- line $$
+"after math"
+<!--
+"comment" -- still
+-->
+"after comment"
+text <!-- open
+"in comment"
+-->
+`<!--` "not a comment"
+"done"

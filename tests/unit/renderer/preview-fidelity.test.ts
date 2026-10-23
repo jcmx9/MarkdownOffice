@@ -7,6 +7,7 @@ import { MEMO_PREVIEW, type PreviewSpec } from '../../../src/core/preview-spec'
 import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
 import { buildPreview, previewPlugin } from '../../../src/renderer/editor/preview'
 import { previewSource, setPreviewSource } from '../../../src/renderer/editor/preview-source'
+import { previewView } from '../../../src/renderer/editor/rendered'
 import { parsed } from './parsed'
 import { rf } from './preview-helper'
 
@@ -217,5 +218,70 @@ describe('no-break phrases from the set description', () => {
     })
     expect(marks()).toEqual([])
     view.destroy()
+  })
+})
+
+/**
+ * Typography widgets and hidden ranges of the Preview (`previewView` on), as `rf:text@from-to`;
+ * the cursor defaults to the trailing `ende` line.
+ */
+function typo(text: string, cursor?: number, preview = true): string[] {
+  const doc = `${text}\n\nende`
+  const state = parsed(
+    EditorState.create({
+      doc,
+      selection: { anchor: cursor ?? doc.length },
+      extensions: [
+        markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+        previewView.of(preview),
+      ],
+    }),
+  )
+  const out: string[] = []
+  buildPreview(state).between(0, state.doc.length, (from, to, d) => {
+    const spec = d.spec as { rf: string; widget?: { text?: string } }
+    if (spec.rf === 'typo') out.push(`typo:${spec.widget?.text}@${from}-${to}`)
+    if (spec.rf === 'hide') out.push(`hide@${from}-${to}`)
+  })
+  return out
+}
+
+describe('typographic characters as in the PDF (markdown.typ smart-typography)', () => {
+  it('shows „…“ for quotes in a rendered line', () => {
+    // Er sagte "Hallo" -- ok...: " at 9 and 15, -- 17-19, ... 22-25
+    expect(typo('Er sagte "Hallo" -- ok...')).toEqual([
+      'typo:„@9-10',
+      'typo:“@15-16',
+      'typo:–@17-19',
+      'typo:…@22-25',
+    ])
+  })
+  it('shows raw quotes in the cursor line', () => {
+    expect(typo('Er sagte "Hallo"', 3)).toEqual([])
+    expect(typo('"a"\n"b"', 5)).toEqual(['typo:„@0-1', 'typo:“@2-3'])
+  })
+  it('shows raw quotes in the Code view', () => {
+    expect(typo('Er sagte "Hallo"', undefined, false)).toEqual([])
+  })
+  it('inline code keeps its quotes', () => {
+    const t = typo('a "b" `"c"`').filter((x) => x.startsWith('typo'))
+    expect(t).toEqual(['typo:„@2-3', 'typo:“@4-5'])
+  })
+  it('takes English quotes from lang: en', () => {
+    // front matter lines: 0-3, 4-12, 13-16; "x" at 17-20
+    expect(typo('---\nlang: en\n---\n"x"')).toEqual(['typo:“@17-18', 'typo:”@19-20'])
+  })
+  it('leaves code blocks, $$ blocks, HTML and tables alone', () => {
+    expect(typo('```\n"a"\n```')).toEqual([])
+    expect(typo('    "indented"')).toEqual([])
+    expect(typo('$$\n"m"\n$$')).toEqual([])
+    expect(typo('<div>\n"h"\n</div>')).toEqual([])
+    expect(typo('a <b>"x"</b>')).toEqual([])
+    expect(typo('| "a" |\n|---|\n| "b" |', 0)).toEqual([])
+  })
+  it('autolink shows without angle brackets', () => {
+    // <https://x.de> 0-14
+    expect(typo('<https://x.de>')).toEqual(['hide@0-1', 'hide@13-14'])
+    expect(typo('<https://x.de>', 3)).toEqual([])
   })
 })
