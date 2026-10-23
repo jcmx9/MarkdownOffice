@@ -385,6 +385,47 @@ describe('paragraphs set like Typst', () => {
       })
     })
 
+    it('a lasting oscillation latches on the narrow setting; a real resize is followed', async () => {
+      width = 500
+      t = 0
+      await run(async (m, poke) => {
+        width = 480 // W -> N: followed
+        t = 100
+        await poke()
+        width = 500 // N -> W within the burst: held, a timer is armed
+        t = 200
+        await poke()
+        t = 1200 // the timer releases: set for W
+        await vi.advanceTimersByTimeAsync(1000)
+        ;(m.view as unknown as { measure(): void }).measure()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(breaks(m.decos())).toEqual(WIDE)
+        width = 480 // which brings N back: followed (narrower)
+        t = 1300
+        await poke()
+        expect(breaks(m.decos())).toEqual(NARROW)
+        const timers = vi.getTimerCount()
+        width = 500 // and W again right after the release: an oscillation
+        t = 1400
+        await poke()
+        expect(vi.getTimerCount()).toBe(timers) // no second timer
+        expect(breaks(m.decos())).toEqual(NARROW)
+        t = 5000
+        await vi.advanceTimersByTimeAsync(5000)
+        await poke()
+        expect(breaks(m.decos())).toEqual(NARROW) // stable on N, also later
+        const calls = m.calls()
+        width = 460 // a real resize to a third width ends the latch
+        t = 5100
+        await poke()
+        expect(m.calls()).toBe(calls + 1)
+        width = 500 // and W is then followed again
+        t = 9000
+        await poke()
+        expect(breaks(m.decos())).toEqual(WIDE)
+      })
+    })
+
     it('a narrower width is never held (the lines would be overfull)', async () => {
       width = 480
       t = 0
@@ -400,6 +441,29 @@ describe('paragraphs set like Typst', () => {
         expect(breaks(m.decos())).toEqual(NARROW)
       })
     })
+  })
+
+  it('counts measure passes, not lines, and never while fonts load', async () => {
+    const doc = Array.from({ length: 12 }, (_, i) => `aaa bbb ccc ${i}`).join('\n\n')
+    // One pass with 12 unmeasurable lines is one pass, not twelve.
+    const one = make(`${doc}\n\nende`, { measurer: { measure: () => null } })
+    await settle(one.view)
+    expect(one.warn).not.toHaveBeenCalled()
+    // Fonts still loading: transient by definition, never counted.
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: { status: 'loading', addEventListener() {}, removeEventListener() {} },
+    })
+    try {
+      const loading = make('aaa bbb ccc ddd\n\nende', { measurer: { measure: () => null } })
+      for (let i = 0; i < 12; i++) {
+        loading.view.dispatch({ selection: { anchor: loading.view.state.doc.length } })
+        await settle(loading.view)
+      }
+      expect(loading.warn).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(document, 'fonts')
+    }
   })
 
   it('warns once when the measurer keeps returning no layout', async () => {

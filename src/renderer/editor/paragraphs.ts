@@ -652,7 +652,7 @@ const defaultWarn = onceWarner()
  * scrollbar, which changes the width back (theme.css reserves the gutter, this is the backstop).
  */
 const WIDTH_BURST_MS = 1000
-/** Transient failures in a row (same environment) after which the measurer is suspect. */
+/** Measure passes in a row that set nothing (same environment) before the measurer is suspect. */
 const NULLS_BEFORE_WARNING = 10
 
 interface ReadResult {
@@ -689,8 +689,12 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       private prevWidth: { width: number; at: number } | null = null
       /** Re-measures when a held width burst is over. */
       private holdTimer: ReturnType<typeof setTimeout> | null = null
-      /** Transient (null) measurements in a row under one environment. */
+      /** Read cycles in a row (one environment, fonts loaded) that measured no line at all. */
       private nulls = 0
+      /** When the last hold timer released its width (detects a hold right after it). */
+      private releasedAt: number | null = null
+      /** Two widths the layout oscillates between; the narrow setting is kept for both. */
+      private latch: { narrow: number; wide: number } | null = null
       private destroyed = false
       private queued = false
       private readonly observers: Array<{ disconnect(): void }> = []
@@ -804,7 +808,18 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         let env = readEnv(view, this.fontGen, o.settings)
         const cur = this.env
         const prev = this.prevWidth
+        const latch = this.latch
         if (
+          latch &&
+          !(cur && env.base === cur.base && [latch.narrow, latch.wide].includes(env.width))
+        ) {
+          // Another width or another environment: a real change, the oscillation is over.
+          this.latch = null
+        }
+        if (this.latch && cur && cur.width === this.latch.narrow) {
+          // Oscillating between two widths: stay on the narrow setting, which fits both.
+          env = cur
+        } else if (
           cur &&
           prev &&
           env.base === cur.base &&
@@ -817,10 +832,16 @@ export function paragraphs(options: ParagraphsOptions = {}) {
           // Back to the previous-but-one width at once: keep the current setting (hysteresis),
           // but only until the burst is over; then the width that stayed is followed.
           env = cur
-          if (this.holdTimer === null) {
+          if (this.releasedAt !== null && o.now() - this.releasedAt < WIDTH_BURST_MS) {
+            // Held again right after a release: setting each width brings back the other one
+            // (a scrollbar toggled by the line heights). Latch on the narrow setting, no new
+            // timer: following would flash between the two layouts about once per second.
+            this.latch = { narrow: cur.width, wide: prev.width }
+          } else if (this.holdTimer === null) {
             this.holdTimer = setTimeout(
               () => {
                 this.holdTimer = null
+                this.releasedAt = o.now()
                 if (!this.destroyed) this.view.requestMeasure(this.request)
               },
               WIDTH_BURST_MS - (o.now() - prev.at) + 1,
@@ -876,16 +897,7 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         let set = false
         for (const [key, res] of r.results) {
           if ('reason' in res) {
-            if (res.kind === null) {
-              // Expected now and then; a measurer that never measures must not stay silent.
-              if (++this.nulls === NULLS_BEFORE_WARNING) {
-                o.warn(
-                  `no layout in ${NULLS_BEFORE_WARNING} measurements in a row (${res.reason})`,
-                  'measure',
-                )
-              }
-              continue
-            }
+            if (res.kind === null) continue
             // Bounded like the cache: a long session of failing edits must not grow it.
             if (this.failed.size >= CACHE_MAX) this.failed.clear()
             this.failed.add(key)
@@ -896,6 +908,17 @@ export function paragraphs(options: ParagraphsOptions = {}) {
           this.nulls = 0
           cache.set(key, res)
           if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string)
+        }
+        // Expected now and then; a measurer that never measures must not stay silent. Counted
+        // per read cycle (one cycle may hold many lines) and never while fonts load (transient
+        // by definition, the loadingdone retry follows).
+        const allNull =
+          r.results.size > 0 &&
+          [...r.results.values()].every((res) => 'reason' in res && res.kind === null)
+        if (allNull && this.view.dom.ownerDocument.fonts?.status !== 'loading') {
+          if (++this.nulls === NULLS_BEFORE_WARNING) {
+            o.warn(`no layout in ${NULLS_BEFORE_WARNING} measure passes in a row`, 'measure')
+          }
         }
         if ((changed || set) && !this.queued) {
           this.queued = true
