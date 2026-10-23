@@ -320,7 +320,7 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
 test('the space advance is measured and no-break phrases and list items get their classes', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Nobreak.md')
-  // The built-in memo look (no set): memo's nobreak list applies.
+  // No template: the bundled memo set applies, so its .preview.yaml's nobreak list (memo 26.10.7+).
   // Right below the front matter, so the line is rendered (the end of the note may lie outside
   // the viewport, where CodeMirror draws nothing).
   const text = (await memoNoteWith(null)).replace(
@@ -341,13 +341,6 @@ test('the space advance is measured and no-break phrases and list items get thei
   const em = Number.parseFloat(await advance())
   expect(em).toBeGreaterThanOrEqual(0.15)
   expect(em).toBeLessThanOrEqual(0.3)
-  console.log('DEBUG-NOBREAK', await page.locator('.cm-line', { hasText: 'Das gilt' }).innerHTML())
-  console.log(
-    'DEBUG-SRC',
-    await page.evaluate(() =>
-      JSON.stringify((window as unknown as { mdoDebug?: unknown }).mdoDebug ?? null),
-    ),
-  )
   await expect(page.locator('.cm-content .mdo-nobreak', { hasText: 'z. B.' })).toHaveCount(1)
   await expect(page.locator('.cm-content .mdo-nobreak', { hasText: '5 mm' })).toHaveCount(1)
   // the three items of the task list carry the hanging indent
