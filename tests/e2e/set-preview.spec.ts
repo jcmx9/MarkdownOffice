@@ -94,11 +94,18 @@ const letterMeasures = (page: Page) =>
         getComputedStyle(document.querySelector('.cm-scroller') as Element).fontSize,
       ),
       lineHeight: Number.parseFloat(s.lineHeight),
-      // Content box: the width the text breaks in (CodeMirror pads every line by 6px + 2px).
+      // Content box minus the one space advance the line box carries (under break-spaces the
+      // space before a break counts): the width the text itself breaks in.
       measure:
         line.getBoundingClientRect().width -
         Number.parseFloat(s.paddingLeft) -
-        Number.parseFloat(s.paddingRight),
+        Number.parseFloat(s.paddingRight) -
+        Number.parseFloat(s.fontSize) *
+          Number.parseFloat(
+            (document.querySelector('.cm-editor') as HTMLElement).style.getPropertyValue(
+              '--mdo-space-advance',
+            ) || '0',
+          ),
     }
   })
 
@@ -305,8 +312,46 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
   ] as const) {
     await tabs(page).filter({ hasText: name }).click()
     await setShown(page, set)
-    await expect.poll(look).toEqual(memo)
+    // A set without files gets the built-in --mdo-word-spacing 0, not memo's -0.045em: its
+    // measured space, and with it the text block, is a little wider (theme.css, set tokens).
+    await expect
+      .poll(async () => (set === 'fx-plain' ? { ...(await look()), line: memo.line } : look()))
+      .toEqual(memo)
   }
+  await tabs(page).filter({ hasText: 'Plain.md' }).click()
+  await setShown(page, 'fx-plain')
+  await expect.poll(async () => ((await look()).line ?? 0) > (memo.line ?? 0)).toBe(true)
+  await app.close()
+})
+
+test('the space advance is measured and no-break phrases and list items get their classes', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Nobreak.md')
+  // No template: the bundled memo set applies, so its .preview.yaml's nobreak list (memo 26.10.7+).
+  // Right below the front matter, so the line is rendered (the end of the note may lie outside
+  // the viewport, where CodeMirror draws nothing).
+  const text = (await memoNoteWith(null)).replace(
+    /^(---\n[\s\S]*?\n---\n)/,
+    '$1\nDas gilt z. B. für Abstände von 5 mm.\n',
+  )
+  expect(text).toContain('z. B.')
+  await writeFile(note, text)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  // Source Sans: one space is 0.2em; measured on the editor element after the fonts loaded.
+  const advance = () =>
+    page
+      .locator('.cm-editor')
+      .evaluate((el) => (el as HTMLElement).style.getPropertyValue('--mdo-space-advance'))
+  await expect.poll(advance).toMatch(/^[0-9.]+em$/)
+  const em = Number.parseFloat(await advance())
+  expect(em).toBeGreaterThanOrEqual(0.15)
+  expect(em).toBeLessThanOrEqual(0.3)
+  await expect(page.locator('.cm-content .mdo-nobreak', { hasText: 'z. B.' })).toHaveCount(1)
+  await expect(page.locator('.cm-content .mdo-nobreak', { hasText: '5 mm' })).toHaveCount(1)
+  // the three items of the task list carry the hanging indent
+  await expect(page.locator('.cm-line.mdo-list-item')).toHaveCount(3)
   await app.close()
 })
 

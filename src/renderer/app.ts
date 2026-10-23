@@ -66,6 +66,7 @@ import { SetPreview } from './ui/set-preview'
 import { inputsKey, SetCheck } from './ui/set-status'
 import { SetStyles } from './ui/set-styles'
 import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './ui/settings'
+import { SpaceAdvance } from './ui/space-advance'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
 import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
@@ -119,6 +120,7 @@ export class App {
   /** The shown note's set look: its scoped CSS and its head/foot description per tab. */
   private readonly setPreview: SetPreview
   private readonly setStyles: SetStyles
+  private readonly spaceAdvance: SpaceAdvance
   /** Sets whose broken `.preview.yaml` notice was already shown this session. */
   private readonly previewNoticed = new Set<string>()
   private readonly notices: Notices
@@ -244,6 +246,8 @@ export class App {
       },
     })
     this.setStyles = new SetStyles(document, root.editor)
+    // On the editor element: the set's scoped tokens sit there (`#editor[…] .mdo-preview`).
+    this.spaceAdvance = new SpaceAdvance(() => this.editor.dom)
     this.setPreview = new SetPreview({
       // Same key as the set check: only path, template: and profile: change the inputs.
       key: (id) => {
@@ -1125,6 +1129,8 @@ export class App {
       console.warn(`set ${set} not shown`, e)
       this.setStyles.show(null)
     }
+    // Another set (or its reloaded CSS) may bring another body font: measure its space again.
+    this.spaceAdvance.update().catch((e) => console.warn('space advance not measured', e))
   }
 
   /**

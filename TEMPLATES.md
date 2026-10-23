@@ -319,7 +319,7 @@ Both are UTF-8 and at most 64 KiB. A file that is missing, too large or broken n
 - A declaration containing `url(`, `image(`, `image-set(`, `element(`, `expression(` or `src(` (case-insensitive, whitespace ignored) is dropped, so a set can load nothing. Fonts and pictures come from the app, not from CSS.
 - `!important` is stripped (the app's own `!important`, e.g. Present's `max-width: 70ch`, always wins).
 - A declaration with an unbalanced string or bracket, an invalid property name or an empty value is dropped.
-- `--mdo-scale` and `z-index` are dropped. `position` may be `static`, `relative` or `absolute`, never `fixed` or `sticky`.
+- `--mdo-scale`, `--mdo-space-advance`, `--mdo-list-lead`, `--mdo-list-extra`, `--mdo-list-hang` (values the app writes itself) and `z-index` are dropped. An `--mdo-*-opsz` with a unit (`11pt`) is dropped too: the axis takes a plain number. `position` may be `static`, `relative` or `absolute`, never `fixed` or `sticky`.
 - `content` may only decorate: `none`, `normal` or one string without letters or digits (`"▪ "`, `"– "`). A set cannot write text into the preview that is not in the note or the profile; `attr()`, `counter()` and words are dropped.
 - **The note's text stays visible.** A rule counts as a block rule when every selector's last part (outside parentheses) names a head or foot block class (`.mdo-titleblock`, `.mdo-footblock`, `.mdo-tb-*`) and no `~` or `+` leads there; block rules may use every property above. All other rules may reach the note's own lines and keep only typography and spacing: `font` and `font-*`, `line-height`, `letter-spacing`, `word-spacing`, `text-align`, `text-indent`, `text-transform`, `text-decoration*`, `text-underline-offset`, `hyphens`, `tab-size`, `color`, `background`, `background-color`, `margin*`, `padding*`, `border*`, `min-height` and the `--mdo-*` tokens. On them `color` and the `--mdo-*-color` tokens must be opaque (no `transparent`, no alpha, no `color-mix()`), and `font-size`, the `font` size and the `--mdo-*-size` tokens must not be zero. A colour equal to the background or a tiny size still hides text; these limits remove the direct levers, not every possibility.
 
@@ -341,8 +341,8 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 |-------|--------------|---------|
 | `--mdo-body-font` | `var(--mdo-font-sans)` | body font family |
 | `--mdo-body-size` | `10pt` | body size (zoomed) |
-| `--mdo-body-weight` | `400` | body weight |
-| `--mdo-bold-weight` | `600` | weight of `**bold**` |
+| `--mdo-body-weight` | `380` | body weight |
+| `--mdo-bold-weight` | `560` | weight of `**bold**` |
 | `--mdo-line-height` | `1.5` | line height |
 | `--mdo-align` | `justify` | text alignment of paragraphs |
 | `--mdo-par-gap` | `1.1em` | the gap a blank line makes between paragraphs |
@@ -351,16 +351,30 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-heading-align` | `left` | heading alignment |
 | `--mdo-h1-font`, `--mdo-h2-font`, `--mdo-h3-font` | `var(--mdo-heading-font)` | font per level |
 | `--mdo-h1-size`, `--mdo-h2-size`, `--mdo-h3-size` | `14pt`, `12pt`, `10pt` | size per level |
-| `--mdo-h1-weight`, `--mdo-h2-weight`, `--mdo-h3-weight` | `560`, `560`, `400` | weight per level |
+| `--mdo-h1-weight`, `--mdo-h2-weight`, `--mdo-h3-weight` | `470`, `470`, `380` | weight per level |
 | `--mdo-h1-color`, `--mdo-h2-color`, `--mdo-h3-color` | `var(--mdo-heading)` | colour per level |
 | `--mdo-h1-rule` | `var(--mdo-hairline)` | colour of the line under H1 |
 | `--mdo-h3-decoration` | `underline` | text decoration of H3 |
+| `--mdo-body-opsz`, `--mdo-h1-opsz`, `--mdo-h2-opsz`, `--mdo-h3-opsz` | `10`, `14`, `12`, `10` | optical size (`opsz` axis) of the serif variable fonts; unitless, in pt; derived, see below |
 | `--mdo-table-font` | `var(--mdo-body-font)` | table font family |
 | `--mdo-table-size` | `9pt` | table size |
 | `--mdo-table-weight` | `500` | table weight |
+| `--mdo-table-head-weight` | `680` | weight of the table head row |
+| `--mdo-word-spacing` | `0` | extra word spacing in body text and headings (not tables, not code); stop-gap for justified sets, see below |
+| `--mdo-list-indent` | `1.12em` | hanging indent of list items: the bullet or task box and the space after it fill it, continuation lines start at it; see *Lists* below |
 | `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
 | `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
 | `--mdo-titleblock-align` | `center` | alignment of the head block |
+
+**Optical size.** Typst sets a variable font's `opsz` axis to the font size in pt, which changes glyph widths and so the line breaks. The preview must do the same, independent of the zoom. You normally write nothing: when a rule sets `--mdo-body-size`, `--mdo-h1-size`, `--mdo-h2-size` or `--mdo-h3-size` to a plain pt length (`11pt`, `10.5pt`), the app adds the matching `--mdo-<role>-opsz` with that number (`11`, `10.5`; not zoomed). Write the opsz token yourself in the same rule to override it (unitless: `--mdo-body-opsz: 11`). If a rule sets a size twice, the last kept declaration counts, as in the browser. Sizes in other units (`em`, `px`, `mm`, `var()`, `calc()`) or no size token derive nothing, and that role keeps the default above.
+
+**Weights.** The defaults are the weights Typst prints for memo (`memo.typ`: text 380, bold 380 + 180, headings 470, table head 500 + 180), not the nominal 400/600. The advances of a variable font change with its weight, so only the real weights break lines like the PDF. Set the weights your `.typ` uses.
+
+**Space advance.** The preview wraps with the space before a break counted, so the text block is one space wider than `--mdo-measure`, and a list marker plus its space fill `--mdo-list-indent`. The app measures that space in your body font (with `--mdo-word-spacing`) when the set is shown and its fonts have loaded, and sets `--mdo-space-advance` on the editor; you write nothing (a set's own value is dropped). Set the body font and word spacing through the tokens; rules on `.cm-content` or `.cm-line` are measured too.
+
+**Lists.** Bullets and task boxes sit in a 0.72em slot; slot plus space fill `--mdo-list-indent`, and the wrapped lines of the item start at the same place, inside quotes and alerts too. Ordered numbers sit in a right-aligned slot of the same width that grows by `1ch` for every digit beyond one of the list's widest number, so the items of one list share one text start (Typst's enum puts the text after the widest number plus its own `body-indent`, so ordered lists can start a little differently from the PDF). Nested items keep their source indent on the first line, and their wrapped lines hang under their own text (the source indent counts in space advances; an indent with tabs hangs at the indent only). On a justified line the space after the marker stretches with the others, so the first line's text can start slightly right of the indent; the breaks are not affected.
+
+**Word spacing.** Typst shrinks the spaces of justified lines down to two thirds to fit more words; the browser cannot. `--mdo-word-spacing` approximates it with a fixed offset (memo: `-0.045em`; the browser stretches the spaces of full lines back). It is the one token whose default is not memo's value: it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`. It will go away when the preview gets Typst's own line breaking.
 
 Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
 
@@ -396,7 +410,7 @@ foot:                       # after the last line of the text
     when: "{x-closing}"
 ```
 
-The file is a map with `preview: 1` and the lists `head` and `foot` (both optional). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
+The file is a map with `preview: 1`, the lists `head` and `foot` and the map `nobreak` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
 
 Keys of an element:
 
@@ -407,6 +421,16 @@ Keys of an element:
 - `label:` a text shown before the content, either a string or a map by language (`de`, `en`, …): the note's `lang` without region, then `de`, then the first entry.
 - `today:` `true` makes an empty or missing `{date}` today's date (as the PDF does); without it an empty date stays empty.
 - `when:` one placeholder or a list; all must hold. A value holds when it is not empty and not `false`, `False` or `FALSE`. Other words (`no`, `nein`, `0`) count as present. A string with several placeholders holds only if all of them hold; a `when` without any placeholder always holds.
+
+**`nobreak:` (optional).** Lists the places where the PDF must not break a line (memo.typ turns the space into a no-break space), so the preview does not break there either:
+
+```yaml
+nobreak:
+  words: ["z. B.", "u. a.", "i. d. R."]   # literal phrases, matched as written
+  units: [mm, kg, "%", "€"]               # a digit, a space and one of these stays together
+```
+
+Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together. A set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's lists. The note's text is not changed; the preview only forbids the line break. Code (inline and blocks), tables and the front matter are left out.
 
 Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
 

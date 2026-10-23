@@ -29,6 +29,24 @@ const BLOCK_CLASS_RE = /\.mdo-(?:tb-[a-z0-9-]+|titleblock|footblock)(?![\w-])/
 // Foreground colours that would make text invisible: `transparent`, any alpha channel.
 const HIDDEN_COLOR_RE = /transparent|#(?:[0-9a-f]{4}|[0-9a-f]{8})\b|rgba\(|hsla\(|\/|color-mix\(/
 const ZERO_RE = /^[+-]?(?:0+\.?0*|\.0+)(?:[a-z]+|%)?$/
+// Typst 0.15 sets a variable font's `opsz` to the size in pt; the preview must do the same.
+const OPSZ_SIZE_RE = /^--mdo-(body|h1|h2|h3)-size$/
+const PT_SIZE_RE = /^(?:\d+\.?\d*|\.\d+)pt$/i
+const OPSZ_PROP_RE = /^--mdo-[a-z0-9-]+-opsz$/
+// A number token with a unit (`11pt`, `.5em`, `10%`); `var(--mdo-h1-opsz)` is not one.
+const UNIT_NUMBER_RE = /(?:^|[^\w-])(?:\d+\.?\d*|\.\d+)[a-z%]/i
+/**
+ * Values the app writes itself: the zoom factor, the measured space advance and the per-line
+ * list hang. A set overriding them (even on a deeper element) would break the zoom contract or
+ * the list and measure maths, so they are reserved like the zoom factor.
+ */
+const APP_OWNED = new Set([
+  '--mdo-scale',
+  '--mdo-space-advance',
+  '--mdo-list-lead',
+  '--mdo-list-extra',
+  '--mdo-list-hang',
+])
 const LENGTH_RE = /(^|[^\w.#-])(-?(?:\d+\.?\d*|\.\d+))(px|pt|pc|mm|cm|in|q)\b/gi
 
 /** Index just past the string starting at `i` (a quote), or -1 if it never closes on its line. */
@@ -194,6 +212,14 @@ function textRuleVerdict(property: string, lower: string, squashed: string): str
   return null
 }
 
+/** A declaration's value without `!important`, as written. */
+function rawValue(raw: string): string {
+  return raw
+    .slice(raw.indexOf(':') + 1)
+    .trim()
+    .replace(IMPORTANT_RE, '')
+}
+
 /** A declaration's verdict: the kept pair, or why it was dropped. */
 function sanitizeDeclaration(raw: string, text: boolean): [string, string] | string {
   const colon = raw.indexOf(':')
@@ -201,15 +227,15 @@ function sanitizeDeclaration(raw: string, text: boolean): [string, string] | str
   const property = raw.slice(0, colon).trim().toLowerCase()
   // The app's own `!important` (Present's 70ch measure) must always win. Stripped before every
   // check below so `position: fixed !important` is judged as `fixed`.
-  const value = raw
-    .slice(colon + 1)
-    .trim()
-    .replace(IMPORTANT_RE, '')
+  const value = rawValue(raw)
   const lower = value.toLowerCase()
   const squashed = lower.replace(/\s+/g, '')
   if (!TOKEN_PROP_RE.test(property) && !PLAIN_PROP_RE.test(property)) return `property ${property}`
-  // The app owns the zoom factor; a set overriding it would break the zoom contract.
-  if (property === '--mdo-scale') return '--mdo-scale'
+  if (APP_OWNED.has(property)) return property
+  // opsz is a font axis: `11pt` would be scaled into an invalid value that silently falls back to
+  // the browser's automatic opsz, so say why instead.
+  if (OPSZ_PROP_RE.test(property) && UNIT_NUMBER_RE.test(value))
+    return `${property}: unitless number expected`
   if (property === 'z-index') return 'z-index'
   // Allowlist, not blocklist: `fixed`/`sticky` (also `-webkit-sticky`, or via `var()`) would
   // escape the editor's paint containment or overlay the app's chrome.
@@ -228,6 +254,27 @@ function sanitizeDeclaration(raw: string, text: boolean): [string, string] | str
     if (verdict) return verdict
   }
   return [property, scaleLengths(value)]
+}
+
+/**
+ * `--mdo-<role>-opsz` for each `--mdo-<role>-size` whose effective (last kept, unscaled)
+ * declaration in the rule is a plain, finite pt length, unless the rule keeps that opsz itself
+ * (before or after the size). A dropped declaration never counts, like in the browser.
+ */
+function derivedOpsz(kept: Array<[property: string, raw: string]>): Array<[string, string]> {
+  const last = new Map<string, string>()
+  for (const [property, raw] of kept) if (OPSZ_SIZE_RE.test(property)) last.set(property, raw)
+  const keptProps = new Set(kept.map(([p]) => p))
+  const out: Array<[string, string]> = []
+  for (const [property, raw] of last) {
+    const role = OPSZ_SIZE_RE.exec(property)?.[1]
+    const opsz = `--mdo-${role}-opsz`
+    if (keptProps.has(opsz) || !PT_SIZE_RE.test(raw)) continue
+    const pt = Number.parseFloat(raw)
+    // `999…pt` parses to Infinity: no axis value, keep the browser's default.
+    if (Number.isFinite(pt)) out.push([opsz, String(pt)])
+  }
+  return out
 }
 
 /** The selector list's parts, or why the whole rule is dropped. */
@@ -292,12 +339,21 @@ export function sanitizeSetCss(css: string): { rules: SetCssRule[]; dropped: str
     // One selector that may reach the note's text puts the whole rule under the text limits.
     const text = !selectors.every(isBlockSelector)
     const declarations: SetCssRule['declarations'] = []
+    // the kept declarations before scaling, for the opsz derivation below
+    const unscaled: Array<[string, string]> = []
     for (const raw of splitTop(src.slice(stop + 1, block.end - 1), ';')) {
       if (raw.trim() === '') continue
       const verdict = sanitizeDeclaration(raw, text)
       if (typeof verdict === 'string') dropped.push(verdict)
-      else declarations.push(verdict)
+      else {
+        declarations.push(verdict)
+        unscaled.push([verdict[0], rawValue(raw)])
+      }
     }
+    // Without an explicit opsz the browser picks one from the (zoomed) px size, so line breaks
+    // would change with the zoom and differ from the PDF. A pt size gives the PDF's value; the
+    // number stays unscaled because opsz is a font axis, not a length. Other units: no guess.
+    for (const [property, value] of derivedOpsz(unscaled)) declarations.push([property, value])
     if (declarations.length > 0) rules.push({ selectors, declarations })
   }
   return { rules, dropped }
