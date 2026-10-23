@@ -435,7 +435,7 @@ mermaid:
     })
   })
 
-  it('defaults base-theme to modern, theme and layout to none, font-weight to null', () => {
+  it('reads max-height alone; the rest defaults to modern, no overrides, no font-weight', () => {
     const r = mm('  max-height: 8.5cm\n')
     expect(r.ok && r.spec.mermaid).toEqual({
       baseTheme: 'modern',
@@ -444,6 +444,19 @@ mermaid:
       maxHeight: '8.5cm',
       fontWeight: null,
     })
+  })
+
+  it('without max-height only the text width caps a diagram (maxHeight null)', () => {
+    const r = mm('  base-theme: modern\n')
+    expect(r.ok && r.spec.mermaid).toEqual({
+      baseTheme: 'modern',
+      theme: {},
+      layout: {},
+      maxHeight: null,
+      fontWeight: null,
+    })
+    const blank = mm('  max-height:\n')
+    expect(blank.ok && blank.spec.mermaid?.maxHeight).toBeNull()
   })
 
   it('a valid file without mermaid draws no diagrams', () => {
@@ -459,7 +472,6 @@ mermaid:
 
   it.each([
     ['not a map', ''],
-    ['max-height missing', '  base-theme: modern\n'],
     ['unknown key', '  max-height: 1cm\n  colour: red\n'],
     ['max-height without unit', '  max-height: 12\n'],
     ['max-height em', '  max-height: 12em\n'],

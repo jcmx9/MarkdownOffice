@@ -379,7 +379,8 @@ export function createDiagrams(options: DiagramsOptions = {}) {
     const opts = (state.field(previewSource, false)?.spec ?? MEMO_PREVIEW).mermaid
     // No Preview, or a set whose .typ draws no diagrams: every block stays code.
     if (!state.facet(previewView) || !opts) return { deco: Decoration.none, pending: false }
-    const maxHeightPx = lengthToPx(opts.maxHeight) ?? 0
+    // 0 = no height cap (a set without max-height): fitDiagramWidth then caps the width only.
+    const maxHeightPx = opts.maxHeight === null ? 0 : (lengthToPx(opts.maxHeight) ?? 0)
     const out: Range<Decoration>[] = []
     let pending = false
     syntaxTree(state).iterate({

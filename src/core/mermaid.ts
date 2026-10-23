@@ -15,8 +15,11 @@ export interface MermaidOptions {
   theme: Record<string, string>
   /** Layout overrides (node_spacing, rank_spacing, …); empty = none. */
   layout: Record<string, number>
-  /** Largest height the set scales a diagram to (a CSS/Typst length, e.g. "12cm"). */
-  maxHeight: string
+  /**
+   * Largest height the set scales a diagram to (a CSS/Typst length, e.g. "12cm"), or null when
+   * the set's .typ caps only the width.
+   */
+  maxHeight: string | null
   /** font-weight written before every font-family attribute, or null to leave the SVG as is. */
   fontWeight: number | null
 }

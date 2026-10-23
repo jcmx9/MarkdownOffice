@@ -450,6 +450,10 @@ describe('fitDiagramWidth (memo.typ: min(1, width / natural, max-height / natura
       9,
     )
   })
+  it('caps the width only when the set has no max-height (0)', () => {
+    expect(fitDiagramWidth({ width: 300, height: 1000 }, 548, 0, 1)).toBe(300)
+    expect(fitDiagramWidth({ width: 1096, height: 3000 }, 548, 0, 1)).toBe(548)
+  })
   it('ignores an unmeasured text width', () => {
     expect(fitDiagramWidth({ width: 300, height: 100 }, 0, maxH, 1)).toBe(300)
   })

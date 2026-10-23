@@ -186,10 +186,11 @@ const MERMAID_NAME_RE = /^[a-z0-9_]+$/
 const MAX_HEIGHT_RE = /^\d+(\.\d+)?(mm|cm|pt|in)$/
 
 /**
- * The `mermaid:` map: the plugin arguments of the set's .typ. Only `max-height` is required (the
- * preview must scale a diagram into the page like the PDF does); the rest defaults like mmdr's
- * lib.typ (base theme "modern", no theme or layout overrides) and the SVG stays untouched
- * without `font-weight`.
+ * The `mermaid:` map: the plugin arguments of the set's .typ. Every key is optional: the plugin
+ * arguments default like mmdr's lib.typ (base theme "modern", no theme or layout overrides), the
+ * SVG stays untouched without `font-weight`, and without `max-height` only the text width caps a
+ * diagram, as in a .typ whose size rule has no height (owner decision 2026-10-23: a set author
+ * should not have to invent a height their PDF does not use).
  */
 function parseMermaid(raw: unknown): MermaidOptions | string {
   if (!isMap(raw)) return '„mermaid" muss eine Zuordnung sein'
@@ -200,7 +201,7 @@ function parseMermaid(raw: unknown): MermaidOptions | string {
     baseTheme: 'modern',
     theme: {},
     layout: {},
-    maxHeight: '',
+    maxHeight: null,
     fontWeight: null,
   }
   const base = raw['base-theme']
@@ -231,9 +232,11 @@ function parseMermaid(raw: unknown): MermaidOptions | string {
     }
   }
   const height = raw['max-height']
-  if (typeof height !== 'string' || !MAX_HEIGHT_RE.test(height))
-    return 'mermaid: „max-height" fehlt oder ist keine Länge (z. B. 12cm; mm, cm, pt, in)'
-  out.maxHeight = height
+  if (height !== undefined && height !== null) {
+    if (typeof height !== 'string' || !MAX_HEIGHT_RE.test(height))
+      return 'mermaid: „max-height" muss eine Länge sein (z. B. 12cm; mm, cm, pt, in)'
+    out.maxHeight = height
+  }
   const weight = raw['font-weight']
   if (weight !== undefined && weight !== null) {
     if (typeof weight !== 'number' || !Number.isInteger(weight) || weight < 1 || weight > 1000)
