@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   applySubstitutions,
-  bodyStart,
   skipMask,
   smartTypography,
   smartTypographyLines,
@@ -74,14 +73,5 @@ describe('smartTypographyLines (skip-mask)', () => {
   })
   it('masks a one-line $$ block only on its own line', () => {
     expect(skipMask(['$$ x $$', 'a'])).toEqual([true, false])
-  })
-})
-
-describe('bodyStart (markdown.typ strip-frontmatter)', () => {
-  it('finds the line after the front matter', () => {
-    expect(bodyStart(['---', 'a: b', '---', 'x'])).toBe(3)
-    expect(bodyStart(['---', 'a: b', '...', 'x'])).toBe(3)
-    expect(bodyStart(['---', 'a: b'])).toBe(0)
-    expect(bodyStart(['x'])).toBe(0)
   })
 })

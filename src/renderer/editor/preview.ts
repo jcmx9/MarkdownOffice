@@ -1,5 +1,5 @@
 import { syntaxTree } from '@codemirror/language'
-import type { EditorState, Range, Text, TransactionSpec } from '@codemirror/state'
+import type { EditorState, Range, TransactionSpec } from '@codemirror/state'
 import {
   Decoration,
   type DecorationSet,
@@ -11,12 +11,13 @@ import {
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
 import { nobreakRanges } from '../../core/nobreak'
 import { MEMO_PREVIEW, type PreviewSpec } from '../../core/preview-spec'
-import { bodyStart, skipMask, smartTypography } from '../../core/typography'
+import { smartTypography } from '../../core/typography'
 import { frontmatterFields } from './frontmatter'
 import { EXTERNAL_DEST } from './inline-render'
 import { isRealLink, referenceLabels } from './link-refs'
 import { previewSource } from './preview-source'
-import { lineIsRendered } from './rendered'
+import { lineIsRendered, selectionTouches } from './rendered'
+import { typoMaskOf } from './typo-mask'
 
 export type PreviewRange = { from: number; to: number }
 
@@ -134,8 +135,7 @@ function makeCx(
   ranges: readonly PreviewRange[] = [{ from: 0, to: state.doc.length }],
 ): PreviewCx {
   const doc = state.doc
-  const touches = (from: number, to: number) =>
-    state.selection.ranges.some((r) => r.from <= to && r.to >= from)
+  const touches = (from: number, to: number) => selectionTouches(state, from, to)
   const slice = (from: number, to: number) => doc.sliceString(from, to)
   // Definitions may sit anywhere (usually at the end, outside the viewport): collected from
   // the whole tree, once per pass and only when a link without destination needs them.
@@ -635,28 +635,6 @@ const TYPO_SKIP = new Set([
   'ProcessingInstructionBlock',
 ])
 
-interface TypoDoc {
-  /** Lines (0-based) markdown.typ's skip-mask leaves alone: front matter, fences, $$, comments. */
-  skipped: boolean[]
-  lang: string
-}
-// Per document, not per pass: a selection change rebuilds the decorations with the same doc.
-const typoDocs = new WeakMap<Text, TypoDoc>()
-function typoDoc(doc: Text): TypoDoc {
-  let td = typoDocs.get(doc)
-  if (!td) {
-    const lines: string[] = []
-    for (const l of doc.iterLines()) lines.push(l)
-    // The pipeline strips the front matter before smart-typography: mask the body alone.
-    const start = bodyStart(lines)
-    const skipped = [...lines.slice(0, start).map(() => true), ...skipMask(lines.slice(start))]
-    // memo.typ: lang from the front matter, `de` without; smart-typography tests starts-with("de").
-    td = { skipped, lang: frontmatterFields(doc).lang || 'de' }
-    typoDocs.set(doc, td)
-  }
-  return td
-}
-
 /**
  * The characters markdown.typ's smart-typography puts into the PDF (quotes per `lang`, dashes,
  * ellipsis), shown in rendered lines only (lineIsRendered: never the cursor line, never the
@@ -670,9 +648,18 @@ function showTypography(
   out: Range<Decoration>[],
 ): void {
   const doc = state.doc
-  const td = typoDoc(doc)
-  const replaced = out.filter((r) => r.from < r.to && (r.value === hide || r.value.spec.widget))
-  const covered = (from: number, to: number) => replaced.some((r) => r.from < to && r.to > from)
+  const tm = typoMaskOf(state)
+  // Sorted by start; the substitutions come in document order, so one sweep finds overlaps:
+  // ranges ending before a substitution can never cover a later one.
+  const replaced = out
+    .filter((r) => r.from < r.to && (r.value === hide || r.value.spec.widget))
+    .sort((x, y) => x.from - y.from)
+  let next = 0
+  const covered = (from: number, to: number): boolean => {
+    while (next < replaced.length && (replaced[next]?.to ?? 0) <= from) next++
+    // The first remaining range starts earliest: if it starts at or after `to`, all do.
+    return next < replaced.length && (replaced[next]?.from ?? to) < to
+  }
   const done = new Set<number>()
   for (const { from, to } of ranges) {
     for (let pos = from; pos <= to; ) {
@@ -680,8 +667,8 @@ function showTypography(
       pos = line.to + 1
       if (done.has(line.from)) continue
       done.add(line.from)
-      if (td.skipped[line.number - 1] || !lineIsRendered(state, line)) continue
-      for (const sub of smartTypography(line.text, td.lang)) {
+      if (tm.mask[line.number - 1] || !lineIsRendered(state, line)) continue
+      for (const sub of smartTypography(line.text, tm.lang)) {
         const a = line.from + sub.from
         const b = line.from + sub.to
         if (inSkipped(tree, a, 1, TYPO_SKIP) || covered(a, b)) continue

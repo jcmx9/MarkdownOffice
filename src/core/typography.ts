@@ -1,7 +1,6 @@
 /**
  * The typographic characters the PDF prints, as a port of pipeline/lib/markdown.typ
- * (`smart-typography`, `smart-text`, `smart-quotes`, `skip-mask`, `code-mask`,
- * `strip-frontmatter`). cmarker runs with smart punctuation off, so these string rules alone
+ * (`smart-typography`, `smart-text`, `smart-quotes`, `skip-mask`, `code-mask`). cmarker runs with smart punctuation off, so these string rules alone
  * decide what the PDF shows for `"`, `'`, `--`, `---` and `...`; the preview shows the same
  * characters without touching the note's bytes, so it reports substitutions (offsets into the
  * source line) instead of a new string.
@@ -133,40 +132,72 @@ export function smartTypography(line: string, lang: string): Substitution[] {
 }
 
 /**
- * markdown.typ code-mask: lines of fenced code blocks (fences included) and of HTML comments
- * that span several lines.
+ * What markdown.typ's skip-mask knows at the start of a line: an open fence, an open multi-line
+ * HTML comment, an open `$$` block. The mask of a line depends only on this and the line, so the
+ * preview can rescan from an edit on and stop where the carry meets the old one again.
+ * Treated as immutable: maskLine returns the same object when nothing changes.
  */
-export function codeMask(lines: readonly string[]): boolean[] {
-  const mask: boolean[] = []
-  let fence: string | null = null
-  let comment = false
-  for (const l of lines) {
-    if (comment) {
-      mask.push(true)
-      if (l.includes('-->')) comment = false
-      continue
-    }
-    const m = FENCE_RE.exec(l)
-    if (fence === null) {
-      if (m) {
-        fence = m[1] ?? null
-        mask.push(true)
-      } else {
-        // A comment still open at the end of the line (inline code does not count).
-        const t = l.replace(INLINE_CODE_RE, '')
-        comment = t.includes('<!--') && !(t.split('<!--').pop() ?? '').includes('-->')
-        mask.push(comment)
-      }
-    } else {
-      mask.push(true)
-      const f = m?.[1]
-      const ch = fence.charAt(0)
-      if (f && f.charAt(0) === ch && f.length >= fence.length && trimChar(l.trim(), ch) === '') {
-        fence = null
-      }
-    }
+export interface MaskCarry {
+  readonly fence: string | null
+  readonly comment: boolean
+  readonly math: boolean
+}
+
+export const MASK_START: MaskCarry = { fence: null, comment: false, math: false }
+
+export const sameCarry = (a: MaskCarry, b: MaskCarry): boolean =>
+  a === b || (a.fence === b.fence && a.comment === b.comment && a.math === b.math)
+
+const carry = (c: MaskCarry, change: Partial<MaskCarry>): MaskCarry => {
+  const next = { ...c, ...change }
+  return sameCarry(next, MASK_START) ? MASK_START : next
+}
+
+/**
+ * One line of markdown.typ skip-mask: code-mask (fenced code with its fences, HTML comments
+ * over several lines) and then display formulas (`$$ … $$` over lines) on the lines code-mask
+ * left free. Both passes of the Typst version run per line here; the math pass only reads the
+ * code mask of the same line, so one pass gives the same result.
+ */
+export function maskLine(c: MaskCarry, l: string): [boolean, MaskCarry] {
+  let next = c
+  let masked: boolean
+  // code-mask
+  if (c.comment) {
+    if (l.includes('-->')) next = carry(next, { comment: false })
+    return [true, next]
   }
-  return mask
+  const m = FENCE_RE.exec(l)
+  if (c.fence === null) {
+    if (m) {
+      return [true, carry(next, { fence: m[1] ?? null })]
+    }
+    // A comment still open at the end of the line (inline code does not count).
+    const t = l.replace(INLINE_CODE_RE, '')
+    const comment = t.includes('<!--') && !(t.split('<!--').pop() ?? '').includes('-->')
+    if (comment) next = carry(next, { comment: true })
+    masked = comment
+  } else {
+    const f = m?.[1]
+    const ch = c.fence.charAt(0)
+    if (f && f.charAt(0) === ch && f.length >= c.fence.length && trimChar(l.trim(), ch) === '') {
+      next = carry(next, { fence: null })
+    }
+    return [true, next]
+  }
+  if (masked) return [true, next]
+  // skip-mask's $$ pass
+  const t = l.trim()
+  if (next.math) {
+    if (t.endsWith('$$')) next = carry(next, { math: false })
+    return [true, next]
+  }
+  if (t.startsWith('$$')) {
+    // "$$ x $$" on one line closes right away
+    if (t === '$$' || !t.slice(2).trim().endsWith('$$')) next = carry(next, { math: true })
+    return [true, next]
+  }
+  return [false, next]
 }
 
 /** Typst's `str.trim(pattern)`: repeated `pattern` removed at both ends. */
@@ -178,42 +209,20 @@ function trimChar(s: string, ch: string): string {
   return s.slice(a, b)
 }
 
-/** markdown.typ skip-mask: code-mask plus display formulas (`$$ … $$` over lines). */
+/** markdown.typ skip-mask: code-mask plus display formulas, over a note's lines. */
 export function skipMask(lines: readonly string[]): boolean[] {
-  const mask = codeMask(lines)
-  let inMath = false
-  lines.forEach((l, i) => {
-    if (mask[i]) return
-    const t = l.trim()
-    if (inMath) {
-      mask[i] = true
-      if (t.endsWith('$$')) inMath = false
-    } else if (t.startsWith('$$')) {
-      mask[i] = true
-      // "$$ x $$" on one line closes right away
-      if (t === '$$' || !t.slice(2).trim().endsWith('$$')) inMath = true
-    }
+  let c = MASK_START
+  return lines.map((l) => {
+    const [masked, next] = maskLine(c, l)
+    c = next
+    return masked
   })
-  return mask
 }
 
 /** markdown.typ smart-typography over a note's lines (front matter already removed). */
 export function smartTypographyLines(lines: readonly string[], lang: string): Substitution[][] {
   const mask = skipMask(lines)
   return lines.map((l, i) => (mask[i] ? [] : smartTypography(l, lang)))
-}
-
-/**
- * The index of the first body line, as markdown.typ strip-frontmatter cuts it: after the line
- * that closes a leading `---` block (`---` or `...`); 0 without a closed block.
- */
-export function bodyStart(lines: readonly string[]): number {
-  if (lines.length === 0 || (lines[0] ?? '').trimEnd() !== '---') return 0
-  for (let i = 1; i < lines.length; i++) {
-    const t = (lines[i] ?? '').trimEnd()
-    if (t === '---' || t === '...') return i + 1
-  }
-  return 0
 }
 
 /** The line as the PDF prints it after `subs` (sorted, non-overlapping). */

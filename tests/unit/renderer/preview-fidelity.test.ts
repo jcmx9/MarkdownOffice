@@ -277,7 +277,8 @@ describe('typographic characters as in the PDF (markdown.typ smart-typography)',
     expect(typo('$$\n"m"\n$$')).toEqual([])
     expect(typo('<div>\n"h"\n</div>')).toEqual([])
     expect(typo('a <b>"x"</b>')).toEqual([])
-    expect(typo('| "a" |\n|---|\n| "b" |', 0)).toEqual([])
+    // cursor on the trailing line: the Table node, not the cursor, keeps the cells raw
+    expect(typo('| "a" |\n|---|\n| "b" |')).toEqual([])
   })
   it('autolink shows without angle brackets', () => {
     // <https://x.de> 0-14

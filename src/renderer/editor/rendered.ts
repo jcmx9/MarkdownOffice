@@ -15,6 +15,13 @@ export const previewView = Facet.define<boolean, boolean>({
  * change either way). "Touches" includes the line's ends, like the preview's mark reveal.
  */
 export function lineIsRendered(state: EditorState, line: Line): boolean {
-  if (!state.facet(previewView)) return false
-  return !state.selection.ranges.some((r) => r.from <= line.to && r.to >= line.from)
+  return state.facet(previewView) && !selectionTouches(state, line.from, line.to)
+}
+
+/**
+ * Whether a selection range touches `from`…`to`, ends included: a cursor right before or after
+ * a mark reveals it, and the cursor at a line's end keeps that line raw.
+ */
+export function selectionTouches(state: EditorState, from: number, to: number): boolean {
+  return state.selection.ranges.some((r) => r.from <= to && r.to >= from)
 }

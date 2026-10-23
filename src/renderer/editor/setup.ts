@@ -35,6 +35,7 @@ import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
 import { tableField } from './tables'
+import { typoMask } from './typo-mask'
 
 export const viewCompartment = new Compartment()
 
@@ -87,6 +88,7 @@ export function viewExtensions(view: View): Extension {
         foldGutter(),
         EditorView.editorAttributes.of({ class: 'mdo-preview' }),
         previewView.of(true),
+        typoMask,
         previewPlugin,
         tableField,
         headerFold,

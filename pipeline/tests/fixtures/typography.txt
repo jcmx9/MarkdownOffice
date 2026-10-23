@@ -49,3 +49,14 @@ text <!-- open
 -->
 `<!--` "not a comment"
 "done"
+$$
+<!-- opens in math
+"in comment" $$ -->
+"still math" $$
+"after"
+$$
+```
+"fence in math"
+```
+$$
+"out"
