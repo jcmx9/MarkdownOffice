@@ -1,0 +1,8 @@
+sequenceDiagram
+  participant E as Editor
+  participant P as Pipeline
+  E->>P: Notiz exportieren
+  activate P
+  P-->>E: PDF/A-3b fertig
+  deactivate P
+  Note over E,P: offline, ohne Netz

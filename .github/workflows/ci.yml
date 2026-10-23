@@ -124,6 +124,12 @@ jobs:
         if: runner.os != 'Windows'
         run: bash pipeline/tests/test-typography.sh
 
+      # The preview's Mermaid diagrams (src/core/mermaid.ts running the bundled mmdr wasm)
+      # against Typst running the same plugin with memo's arguments, plus the committed references.
+      - name: Mermaid parity (core against Typst)
+        if: runner.os != 'Windows'
+        run: bash pipeline/tests/test-mermaid.sh
+
       # The reference PDFs were extracted with Homebrew's poppler on macOS; other poppler builds
       # lay text out slightly differently.
       - name: Pipeline equivalence (set memo against the references)
