@@ -370,6 +370,8 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 
 **Weights.** The defaults are the weights Typst prints for memo (`memo.typ`: text 380, bold 380 + 180, headings 470, table head 500 + 180), not the nominal 400/600. The advances of a variable font change with its weight, so only the real weights break lines like the PDF. Set the weights your `.typ` uses.
 
+**Space advance.** The preview wraps with the space before a break counted, so the text block is one space wider than `--mdo-measure`, and a list marker plus its space fill `--mdo-list-indent`. The app measures that space in your body font (with `--mdo-word-spacing`) when the set is shown and its fonts have loaded, and sets `--mdo-space-advance` on the editor; you write nothing.
+
 **Word spacing.** Typst shrinks the spaces of justified lines down to two thirds to fit more words; the browser cannot. `--mdo-word-spacing` approximates it with a fixed offset (memo: `-0.045em`; the browser stretches the spaces of full lines back). It is the one token whose default is not memo's value: it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`. It will go away when the preview gets Typst's own line breaking.
 
 Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
@@ -426,7 +428,7 @@ nobreak:
   units: [mm, kg, "%", "€"]               # a digit, a space and one of these stays together
 ```
 
-Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together (a set without `.preview.yaml` gets memo's lists). The note's text is not changed; the preview only forbids the line break.
+Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together (a set without `.preview.yaml` gets memo's lists). The note's text is not changed; the preview only forbids the line break. Code (inline and blocks), tables and the front matter are left out.
 
 Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
 

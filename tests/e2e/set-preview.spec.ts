@@ -310,6 +310,30 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
   await app.close()
 })
 
+test('the space advance is measured and no-break phrases and list items get their classes', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Nobreak.md')
+  // The built-in memo look (no set): memo's nobreak list applies.
+  await writeFile(note, `${await memoNoteWith(null)}\nDas gilt z. B. für Abstände von 5 mm.\n`)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  // Source Sans: one space is 0.2em; measured on the editor element after the fonts loaded.
+  const advance = () =>
+    page
+      .locator('.cm-editor')
+      .evaluate((el) => (el as HTMLElement).style.getPropertyValue('--mdo-space-advance'))
+  await expect.poll(advance).toMatch(/^[0-9.]+em$/)
+  const em = Number.parseFloat(await advance())
+  expect(em).toBeGreaterThanOrEqual(0.15)
+  expect(em).toBeLessThanOrEqual(0.3)
+  await expect(page.locator('.cm-content .mdo-nobreak', { hasText: 'z. B.' })).toHaveCount(1)
+  await expect(page.locator('.cm-content .mdo-nobreak', { hasText: '5 mm' })).toHaveCount(1)
+  // the three items of the task list carry the hanging indent
+  await expect(page.locator('.cm-line.mdo-list-item')).toHaveCount(3)
+  await app.close()
+})
+
 test('two tabs with different sets never mix', async () => {
   const dirs = await makeDirs()
   await installSet(dirs, 'fx-brief')

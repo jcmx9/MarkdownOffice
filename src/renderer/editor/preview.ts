@@ -8,10 +8,13 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view'
-import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common'
+import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common'
+import { nobreakRanges } from '../../core/nobreak'
+import { MEMO_PREVIEW, type PreviewSpec } from '../../core/preview-spec'
 import { frontmatterFields } from './frontmatter'
 import { EXTERNAL_DEST } from './inline-render'
 import { isRealLink, referenceLabels } from './link-refs'
+import { previewSource } from './preview-source'
 
 export type PreviewRange = { from: number; to: number }
 
@@ -20,6 +23,10 @@ const lineDeco = (cls: string) => Decoration.line({ class: cls, rf: `line:${cls}
 const markDeco = (cls: string) => Decoration.mark({ class: cls, rf: `mark:${cls}` })
 const faint = markDeco('mdo-mark')
 const listMark = markDeco('mdo-mark mdo-list-mark')
+// white-space: nowrap (theme.css): no line break inside, the source stays byte-exact.
+const nobreakMark = markDeco('mdo-nobreak')
+// Hanging indent (theme.css): continuation lines start where the item's text does, like the PDF.
+const listItem = lineDeco('mdo-list-item')
 
 const INLINE: Record<string, { cls: string; marks: string[] }> = {
   Emphasis: { cls: 'mdo-em', marks: ['EmphasisMark'] },
@@ -313,7 +320,11 @@ export function visitBlock(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefin
   switch (ref.name) {
     case 'ListMark': {
       const item = ref.node.parent
-      if (item?.parent?.name !== 'BulletList') return
+      const list = item?.parent?.name
+      if (!item || (list !== 'BulletList' && list !== 'OrderedList')) return
+      // Every item's first line, nested ones too (their source indent stays as it renders).
+      out.push(listItem.range(doc.lineAt(ref.from).from))
+      if (list !== 'BulletList') return
       if (item.getChild('Task')) {
         const space = doc.sliceString(ref.to, ref.to + 1) === ' ' ? 1 : 0
         out.push(hide.range(ref.from, ref.to + space))
@@ -441,7 +452,87 @@ export function buildPreview(
       },
     })
   }
+  keepHiddenMarksAttached(state, out)
+  markNobreakPhrases(state, tree, ranges, out)
   return Decoration.set(out, true)
+}
+
+const isLowSurrogate = (c: number) => c >= 0xdc00 && c <= 0xdfff
+const isHighSurrogate = (c: number) => c >= 0xd800 && c <= 0xdbff
+
+/**
+ * A hidden mark renders as an empty span between two `<img class="cm-widgetBuffer">`, and an
+ * `<img>` is an atomic inline: Chromium may wrap before or after it, so `**fett**,` could start
+ * a line with the comma (findings step2 §3 M). Typst sees no mark there. Each run of adjacent
+ * hidden marks with text on both sides gets a nowrap span from the character before to the
+ * character after; the widget buffers themselves stay untouched (CodeMirror needs them for
+ * the cursor). A mark revealed at the cursor has no `hide` range, so it gets no span either.
+ */
+function keepHiddenMarksAttached(state: EditorState, out: Range<Decoration>[]): void {
+  const doc = state.doc
+  const runs = out
+    .filter((r) => r.value === hide)
+    .map((r) => ({ from: r.from, to: r.to }))
+    .sort((a, b) => a.from - b.from)
+  for (let i = 0; i < runs.length; i++) {
+    const from = runs[i]?.from ?? 0
+    let to = runs[i]?.to ?? 0
+    // `](url)` is four hidden ranges in a row: one run, one span.
+    while (i + 1 < runs.length && runs[i + 1]?.from === to) to = runs[++i]?.to ?? to
+    const line = doc.lineAt(from)
+    if (from <= line.from || to >= line.to) continue
+    const text = line.text
+    let a = from - line.from - 1
+    let b = to - line.from + 1
+    if (!/\S/.test(text.charAt(a)) || !/\S/.test(text.charAt(b - 1))) continue
+    // Never cut a surrogate pair (emoji) in half: the span would split its two code units.
+    if (a > 0 && isLowSurrogate(text.charCodeAt(a))) a--
+    if (b < text.length && isHighSurrogate(text.charCodeAt(b - 1))) b++
+    out.push(nobreakMark.range(line.from + a, line.from + b))
+  }
+}
+
+// Where a set's no-break phrases do not apply: code is shown verbatim, tables have their own
+// layout, the front matter is the head block's source.
+const NOBREAK_SKIP = new Set(['InlineCode', 'FencedCode', 'CodeBlock', 'Table', 'Frontmatter'])
+
+function inSkipped(tree: Tree, pos: number, side: -1 | 1): boolean {
+  for (let n: SyntaxNode | null = tree.resolveInner(pos, side); n; n = n.parent) {
+    if (NOBREAK_SKIP.has(n.name)) return true
+  }
+  return false
+}
+
+/**
+ * The set's no-break phrases (`nobreak:` in its `.preview.yaml`, memo's lists for memo or no
+ * set) as nowrap spans: `z. B.` or `5 mm` never break across lines, like the PDF's U+00A0
+ * from memo.typ's show rules, without inserting a character into the note.
+ */
+function markNobreakPhrases(
+  state: EditorState,
+  tree: Tree,
+  ranges: readonly PreviewRange[],
+  out: Range<Decoration>[],
+): void {
+  const nb: PreviewSpec['nobreak'] = (state.field(previewSource, false)?.spec ?? MEMO_PREVIEW)
+    .nobreak
+  if (nb.words.length === 0 && nb.units.length === 0) return
+  const doc = state.doc
+  const done = new Set<number>()
+  for (const { from, to } of ranges) {
+    for (let pos = from; pos <= to; ) {
+      const line = doc.lineAt(pos)
+      pos = line.to + 1
+      if (done.has(line.from)) continue
+      done.add(line.from)
+      for (const r of nobreakRanges(line.text, nb)) {
+        const a = line.from + r.from
+        const b = line.from + r.to
+        if (inSkipped(tree, a, 1) || inSkipped(tree, b, -1)) continue
+        out.push(nobreakMark.range(a, b))
+      }
+    }
+  }
 }
 
 export const previewPlugin = ViewPlugin.fromClass(
@@ -455,7 +546,9 @@ export const previewPlugin = ViewPlugin.fromClass(
         u.docChanged ||
         u.viewportChanged ||
         u.selectionSet ||
-        syntaxTree(u.startState) !== syntaxTree(u.state)
+        syntaxTree(u.startState) !== syntaxTree(u.state) ||
+        // another set description brings other no-break phrases
+        u.startState.field(previewSource, false) !== u.state.field(previewSource, false)
       ) {
         this.decorations = buildPreview(u.state, u.view.visibleRanges)
       }
