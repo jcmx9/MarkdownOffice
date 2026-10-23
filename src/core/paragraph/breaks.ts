@@ -1,3 +1,14 @@
+/*
+ * Portions ported from Typst v0.15.0 (https://github.com/typst/typst, commit 3ae5277):
+ * `crates/typst-layout/src/inline/linebreak.rs` (fns `breakpoints`, `linebreak_link`,
+ * `hyphenations`) and `crates/typst-syntax/src/lexer.rs` (fn `link_prefix`).
+ * Copyright Typst contributors. Licensed under the Apache License, Version 2.0; see
+ * vendor/typst/LICENSE and vendor/typst/README.md.
+ * Modified: ported to TypeScript, UTF-16 offsets instead of UTF-8 bytes, `linebreak` (UAX #14) and
+ * `Intl.Segmenter` (UAX #29) instead of ICU4X and unicode-segmentation, breaks collected into an
+ * array instead of a callback, break kinds reduced to normal/hyphen/soft.
+ */
+
 /**
  * Line break opportunities exactly where Typst 0.15.0 finds them
  * (`crates/typst-layout/src/inline/linebreak.rs`, fn `breakpoints`), so the preview can only
@@ -5,7 +16,8 @@
  *
  * - UAX #14 opportunities. Typst uses ICU4X; the browser has no line segmenter (`Intl.Segmenter`
  *   stops at words), so `linebreak` 1.1.0 stands in. It implements Unicode 13, ICU4X 2.2 a newer
- *   version, so rare classes (German quotes „“, « ») may differ.
+ *   version, so rare classes (German quotes „“, « ») may differ. Typst's special segmenters are
+ *   not ported: the CJ segmenter for lang zh/ja and ICU4X's LSTM model for SE-Asian scripts.
  * - Typst's own rule for links, which replaces UAX #14 inside a URL (fn `linebreak_link`).
  * - Hyphenation points inside purely alphabetic words (fn `hyphenations`), via the hypher port.
  *
@@ -22,6 +34,13 @@ export interface BreakPoint {
   /** UTF-16 offset in the display string where the next line would start. */
   index: number
   kind: BreakKind
+  /**
+   * Kind `hyphen` only: code points before / after the break within its UAX #29 word segment,
+   * as Typst's `Breakpoint::Hyphen(l, r)` (fn `hyphenations`) carries them for the extra cost of
+   * hyphenating close to a word end.
+   */
+  left?: number
+  right?: number
 }
 
 export interface BreakOptions {
@@ -144,14 +163,21 @@ export function breakPoints(text: string, opts: BreakOptions): BreakPoint[] {
     if (hyph && last < point) {
       for (const { segment, index } of words.segment(text.slice(last, point))) {
         if (!ALPHABETIC.test(segment)) continue
+        // Typst counts chars (code points), not bytes or UTF-16 units; it saturates at 255 (u8).
+        const count = [...segment].length
         for (const h of hyphenPoints(segment, hyph.trie, hyph.min)) {
-          out.push({ index: last + index + h, kind: 'hyphen' })
+          const before = [...segment.slice(0, h)].length
+          const left = Math.min(before, 255)
+          const right = Math.min(count - before, 255)
+          out.push({ index: last + index + h, kind: 'hyphen', left, right })
         }
       }
     }
 
     // The end of the text is Typst's final Mandatory break, not an opportunity to choose.
     if (point < text.length) {
+      // Typst marks breaks after BK/CR/LF/NL as Mandatory; this interface has no such kind, so
+      // they are reported as normal and the caller must split hard line breaks itself.
       // A soft hyphen is a Normal break in Typst, but the line then ends in a visible hyphen.
       out.push({ index: point, kind: text[point - 1] === SOFT_HYPHEN ? 'soft' : 'normal' })
     }

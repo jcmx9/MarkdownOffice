@@ -73,7 +73,34 @@ describe('breakPoints', () => {
   it('maps regional tags to their language', () => {
     const text = 'Zusammenarbeit'
     expect(mark(text, breakPoints(text, { ...de, lang: 'de-AT' }))).toBe('Zu-sam-men-ar-beit')
-    expect(breakPoints(text, { ...de, lang: 'en-GB' })).not.toEqual(breakPoints(text, de))
+    // hypher 0.1.5 (en) splits the same word elsewhere: Zusam-me-nar-beit.
+    expect(mark(text, breakPoints(text, { ...de, lang: 'en-GB' }))).toBe('Zusam-me-nar-beit')
+  })
+
+  it('carries code points before and after a hyphen within its word, like Hyphen(l, r)', () => {
+    // "Mess-Ergebnis": the part "Ergebnis" (8 chars) is the word, not the whole compound.
+    const hyphens = breakPoints('Mess-Ergebnis', de).filter((p) => p.kind === 'hyphen')
+    expect(hyphens).toEqual([
+      { index: 7, kind: 'hyphen', left: 2, right: 6 },
+      { index: 10, kind: 'hyphen', left: 5, right: 3 },
+    ])
+    // Counted in code points: "ü" is one char in "Glückwunsch" (Glück-wunsch).
+    const gl = breakPoints('Glückwunsch', de).find((p) => p.index === 5)
+    expect(gl).toEqual({ index: 5, kind: 'hyphen', left: 5, right: 6 })
+  })
+
+  it('reports a break after a newline as normal (no mandatory kind)', () => {
+    expect(breakPoints('ab\ncd', { ...de, hyphenate: false })).toEqual([
+      { index: 3, kind: 'normal' },
+    ])
+  })
+
+  it('pins the breaks around German quotes (linebreak 1.1.0, Unicode 13)', () => {
+    // Recorded from the current implementation for a later parity check against Typst's ICU4X.
+    const text = 'Er sagte „ja“ und ‚nein‘ dazu'
+    expect(mark(text, breakPoints(text, { ...de, hyphenate: false }))).toBe(
+      'Er |sagte |„ja“ |und |‚nein‘ |dazu',
+    )
   })
 
   it('hyphenate false gives only normal points', () => {
