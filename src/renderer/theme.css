@@ -8,10 +8,11 @@
  *
  * The set-dependent values are the --mdo-* set tokens on .cm-editor (block
  * "set tokens" below): memo's values are the defaults, a set's <name>.css
- * overrides them for its notes. Three tokens default to normal / 0 instead of memo's value:
- * --mdo-word-spacing (0, not memo's -0.045em, a stop-gap meant for justified memo),
- * --mdo-numeric and --mdo-table-numeric (normal, not memo's old-style / lining tabular): sets that do not declare
- * them (din5008a, user sets) keep the font's own figures.
+ * overrides them for its notes. Four tokens default to other values than memo's, which memo
+ * declares in memo.css: --mdo-word-spacing (0, not memo's -0.045em, a stop-gap meant for
+ * justified memo), --mdo-numeric and --mdo-table-numeric (normal, not memo's old-style /
+ * lining tabular: sets that do not declare them, such as din5008a and user sets, keep the
+ * font's own figures) and --mdo-runt-cost (100 %, Typst's default, not memo.typ's 200 %).
  * Print lengths are written
  * calc(<len> * var(--mdo-scale, 1)); --mdo-scale is the one zoom factor the
  * app sets on #editor (zoom × Present factor), so at zoom 1 a set's 11pt is
@@ -203,7 +204,8 @@
   overflow-x: clip;
   padding: 2em 1.5em 40vh;
 }
-/* memo set: par(justify: true). Typst hyphenates in the PDF; the editor never does. */
+/* memo set: par(justify: true). The browser never hyphenates (hyphens: manual): the paragraphs
+   plugin inserts Typst's hyphens as widgets; the cursor's paragraph shows none, like the source. */
 .mdo-preview .cm-line {
   text-align: var(--mdo-align);
   hyphens: manual;

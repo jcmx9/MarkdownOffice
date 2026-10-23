@@ -335,10 +335,10 @@ Both are UTF-8 and at most 64 KiB. A file that is missing, too large or broken n
 }
 ```
 
-Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-table-font`) are resolved on `.mdo-preview` itself, so override them there too, in the same rule; a rule on a deeper element would not reach them. The defaults are memo's values, except for three tokens that default to `0` / `normal`: `--mdo-word-spacing`, `--mdo-numeric` and `--mdo-table-numeric`:
+Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-table-font`) are resolved on `.mdo-preview` itself, so override them there too, in the same rule; a rule on a deeper element would not reach them. The defaults are memo's values, except for four tokens that memo declares itself in memo.css: `--mdo-word-spacing` (default `0`, memo `-0.045em`), `--mdo-numeric` and `--mdo-table-numeric` (default `normal`, memo `oldstyle-nums` / `lining-nums tabular-nums`) and `--mdo-runt-cost` (default `100%`, Typst's own, memo `200%`):
 
-| Token | memo default | Meaning |
-|-------|--------------|---------|
+| Token | Default | Meaning |
+|-------|---------|---------|
 | `--mdo-body-font` | `var(--mdo-font-sans)` | body font family |
 | `--mdo-body-size` | `10pt` | body size (zoomed) |
 | `--mdo-body-weight` | `380` | body weight |
@@ -386,9 +386,9 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 - The paragraph with the cursor or a selection keeps the browser's wrapping until the cursor leaves it, so it may break differently while you edit it.
 - Code, tables and other raw blocks are not set; while fonts are still loading, or when a paragraph cannot be measured, the browser wraps it as before.
 
-**Figure style.** Figure styles and widths differ in advance ("1627" in Source Sans is 19.72 pt old-style at the font's default width, as the PDF prints it for memo; with `proportional-nums` added it is 18.04 pt), so the preview must match the PDF's for the same line breaks. `--mdo-numeric` and `--mdo-table-numeric` take a `font-variant-numeric` value. Typst's `number-width: auto` (its default) keeps the font's default width, so it adds no width word. Three tokens default to `normal` / `0` instead of memo's value: `--mdo-word-spacing`, `--mdo-numeric` and `--mdo-table-numeric`; a set that does not declare the figure tokens keeps the font's own figures. Declare them when the `.typ` sets a number type.
+**Figure style.** Figure styles and widths differ in advance ("1627" in Source Sans is 19.72 pt old-style at the font's default width, as the PDF prints it for memo; with `proportional-nums` added it is 18.04 pt), so the preview must match the PDF's for the same line breaks. `--mdo-numeric` and `--mdo-table-numeric` take a `font-variant-numeric` value. Typst's `number-width: auto` (its default) keeps the font's default width, so it adds no width word. `--mdo-numeric` and `--mdo-table-numeric` are two of the four tokens whose default is not memo's value (see the list above the table): they default to `normal`, so a set that does not declare them keeps the font's own figures. Declare them when the `.typ` sets a number type.
 
-**Word spacing.** `--mdo-word-spacing` is an offset for the paragraphs the app does not set itself: the paragraph with the cursor and the fallback above. It is no longer needed for the line breaks of the other paragraphs, where the app shrinks and stretches the spaces itself. It is one of the three tokens whose default is not memo's value (with `--mdo-numeric` and `--mdo-table-numeric`, see *Figure style*): it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`.
+**Word spacing.** `--mdo-word-spacing` is an offset for the paragraphs the app does not set itself: the paragraph with the cursor and the fallback above. It is no longer needed for the line breaks of the other paragraphs, where the app shrinks and stretches the spaces itself. It is one of the four tokens whose default is not memo's value (see the list above the table): it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`.
 
 Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
 
