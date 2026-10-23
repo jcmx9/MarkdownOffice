@@ -7,7 +7,7 @@ function style(tokens: Record<string, string>): CSSStyleDeclaration {
 }
 
 describe('paragraphSettings', () => {
-  it('defaults: justified, hyphenation follows, costs 1, lang de', () => {
+  it('without tokens: ragged, no hyphenation, costs 1, lang de', () => {
     expect(paragraphSettings(style({}), undefined)).toEqual({
       justify: false,
       hyphenate: false,
@@ -53,6 +53,8 @@ describe('paragraphSettings', () => {
   })
   it.each([
     ['EN-US', 'en'],
+    [' en ', 'en'],
+    ['  ', 'de'],
     ['de_AT', 'de'],
     ['fr', 'fr'],
     ['', 'de'],

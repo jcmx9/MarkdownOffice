@@ -27,7 +27,8 @@ export function paragraphSettings(
   const h = token('--mdo-hyphenate')
   // Typst's `hyphenate: auto` hyphenates exactly when the text is justified; unknown -> auto.
   const hyphenate = h === 'true' ? true : h === 'false' ? false : justify
-  const lang = (frontmatterLang ?? '').toLowerCase().split(/[-_]/)[0] || 'de'
+  // Front matter values may carry spaces (`lang:  de `); Typst's set reads the trimmed tag.
+  const lang = (frontmatterLang ?? '').trim().toLowerCase().split(/[-_]/)[0] || 'de'
   return {
     justify,
     hyphenate,
