@@ -12,15 +12,33 @@ modified: the line breaking and line layout of `crates/typst-layout/src/inline/l
 `line.rs` and the link prefix rule of `crates/typst-syntax/src/lexer.rs`
 (`src/core/paragraph/breaks.ts`, `src/core/paragraph/linebreak.ts`; table in `vendor/typst/README.md`).
 
-Copyright Typst contributors. Licensed under the Apache License, Version 2.0 (`vendor/typst/LICENSE`),
-http://www.apache.org/licenses/LICENSE-2.0
+Copyright Typst contributors. Licensed under the Apache License, Version 2.0,
+http://www.apache.org/licenses/LICENSE-2.0. The full licence text and Typst's NOTICE ship with the
+app as `pipeline/licenses/typst/LICENSE` and `pipeline/licenses/typst/NOTICE` (the same files as
+`vendor/typst/LICENSE` in the source repository).
 
 ## hypher 0.1.5 - MIT OR Apache-2.0
 
 The hyphenation lookup (`src/core/paragraph/hyphenate.ts`) is a TypeScript port of hypher
 (https://github.com/typst/hypher, tag `v0.1.5`), and `vendor/hypher/de.bin` and `en.bin` are its
 binary tries. Copyright Laurenz Mädje and contributors. Licensed under the MIT licence or the
-Apache License 2.0, at your option (`vendor/hypher/LICENSE-MIT`, `vendor/hypher/LICENSE-APACHE`).
+Apache License 2.0, at your option; Markdown Office uses it under the MIT licence, whose full text
+follows (the source repository also keeps `vendor/hypher/LICENSE-MIT` and `LICENSE-APACHE`).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### German patterns (`de.bin`) - MIT
 
@@ -75,3 +93,64 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Bundled dependencies of linebreak - MIT
+
+`linebreak` brings three small packages that are bundled with it; their LICENSE files do not travel
+with the bundle either. Each is under the MIT licence with the permission text given above for
+`linebreak` (repeated once below for completeness).
+
+- `unicode-trie` 2.0.0 (https://github.com/devongovett/unicode-trie), reads the line break class
+  table. Copyright 2018 Devon Govett.
+- `tiny-inflate` 1.0.3 (https://github.com/devongovett/tiny-inflate), decompresses that table.
+  Copyright (c) 2015-present Devon Govett.
+- `base64-js` 0.0.8 (https://github.com/beatgammit/base64-js), decodes the embedded table.
+  Copyright (c) 2014 T. Jameson Little.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Unicode line break data - Unicode License
+
+The line break class table inside `linebreak` (`classes.trie`) is generated from `LineBreak.txt` of
+the Unicode Character Database (Unicode 13.0, per linebreak's readme). Unicode data files are
+licensed under the Unicode License (Unicode Data Files and Software License; current text at
+https://www.unicode.org/license.txt). Its copyright and permission notice:
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright © 1991-2020 Unicode, Inc. All rights reserved. Distributed under the Terms of Use in
+https://www.unicode.org/copyright.html.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of the Unicode data
+files and any associated documentation (the "Data Files") or Unicode software and any associated
+documentation (the "Software") to deal in the Data Files or Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish, distribute, and/or sell copies
+of the Data Files or Software, and to permit persons to whom the Data Files or Software are
+furnished to do so, provided that either (a) this copyright and permission notice appear with all
+copies of the Data Files or Software, or (b) this copyright and permission notice appear in
+associated Documentation.
+
+THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT OF THIRD PARTY RIGHTS. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN
+THIS NOTICE BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+FILES OR SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder shall not be used in advertising
+or otherwise to promote the sale, use or other dealings in these Data Files or Software without
+prior written authorization of the copyright holder.
