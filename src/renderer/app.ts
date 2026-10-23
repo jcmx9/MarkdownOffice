@@ -266,6 +266,7 @@ export class App {
       showCode: () => void this.command('toggle-view'),
       zoomIn: () => this.setZoom(zoomIn(this.zoom[this.mode])),
       zoomOut: () => this.setZoom(zoomOut(this.zoom[this.mode])),
+      toggleOutline: () => void this.command('toggle-outline'),
     })
     this.outline = new OutlineSync(
       new Outline(root.outline, {
@@ -1760,6 +1761,7 @@ export class App {
         this.store.activeIndex,
         saveText(state, error),
         this.zoom.present,
+        this.outlineOn.present,
       )
     }
   }

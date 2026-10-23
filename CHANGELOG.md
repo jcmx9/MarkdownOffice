@@ -5,6 +5,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Present: the info line has the „Gliederung“ toggle (Mod+Shift+O) like Edit's status line; lifted while the outline is shown
+
+### Fixed
+- Editor: the foot of a set (din5008a: closing, signature, signer) starts one paragraph gap below the text, as in the PDF, also when the note does not end with a line break; blank lines at the end of the note no longer change that gap. Documented in TEMPLATES.md §8
+
 ## [26.10.2] - 2026-10-23
 
 ### Added
