@@ -98,6 +98,9 @@ function update(old: TypoMask, tr: Transaction): TypoMask {
   scan(doc, start, k, carry[k] ?? MASK_START, mask, carry, (i, c) => {
     const j = i - delta
     if (i <= endB || j < 0 || j >= old.mask.length) return false
+    // Both lines must be body lines: a front matter line is masked whatever its carry, so an
+    // edit that shifts lines inside the front matter (same start index) must not match there.
+    if (i < start || j < old.start) return false
     if (!sameCarry(c, old.carry[j] ?? MASK_START)) return false
     tail = j
     return true

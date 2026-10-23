@@ -51,22 +51,55 @@ describe('typoMask (incremental skip-mask)', () => {
     expect(s.field(typoMask).start).toBe(5)
     expect(mask(s)).toEqual(fresh(s.doc))
   })
+  it('an edit that shifts lines inside the front matter remasks the body', () => {
+    // start stays 4: the inserted `---` closes the block early, `a` and `"q"` become body
+    let s = make('---\na\n"q"\n---\nb')
+    s = s.update({ changes: { from: 4, insert: 'y\nz\n---\n' } }).state
+    expect(s.field(typoMask).start).toBe(4)
+    expect(mask(s)).toEqual(fresh(s.doc))
+    // the mirror case: body lines move into the front matter at the same start index
+    s = make('---\na\n---\n"x"\n---\nb')
+    s = s.update({ changes: { from: 4, to: 13, insert: '?' } }).state
+    expect(mask(s)).toEqual(fresh(s.doc))
+  })
   it('matches a fresh scan after random edits', () => {
-    const pieces = ['```', '~~~', '$$', '<!--', '-->', '"q"', 'text', '$$ x $$', '---', '', '\n']
+    const pieces = [
+      '```',
+      '~~~',
+      '$$',
+      '<!--',
+      '-->',
+      '"q"',
+      'text',
+      '$$ x $$',
+      '---',
+      '...',
+      'lang: en',
+      '',
+      '\n',
+    ]
     let seed = 7
+    // the high bits: an LCG's low bits cycle quickly
     const rnd = (n: number) => {
       seed = (seed * 1103515245 + 12345) % 2147483648
-      return seed % n
+      return Math.floor(seed / 65536) % n
     }
-    let s = make('---\nlang: en\n---\n```\n"a"\n```\n$$\nb\n$$\n"c"')
-    for (let i = 0; i < 400; i++) {
-      const from = rnd(s.doc.length + 1)
-      const to = Math.min(s.doc.length, from + rnd(6))
-      const insert = `${pieces[rnd(pieces.length)]}${rnd(2) ? '\n' : ''}`
-      s = s.update({ changes: { from, to, insert } }).state
-      expect(mask(s)).toEqual(fresh(s.doc))
-      expect(s.field(typoMask).carry.length).toBe(s.doc.lines + 1)
-      expect(s.field(typoMask).lang).toBe(frontmatterFields(s.doc).lang || 'de')
+    const start = '---\nlang: en\nx: 1\n---\n```\n"a"\n```\n$$\nb\n$$\n"c"'
+    // Short runs from a note with front matter, so many edits land in or around it.
+    for (let run = 0; run < 40; run++) {
+      let s = make(start)
+      for (let i = 0; i < 30; i++) {
+        // every other edit lands in the first lines, where the front matter is
+        const from = rnd(2) === 0 ? rnd(Math.min(s.doc.length, 24) + 1) : rnd(s.doc.length + 1)
+        const to = Math.min(s.doc.length, from + rnd(8))
+        // one to three pieces as lines, so an insert can close or reopen the front matter
+        const parts = Array.from({ length: 1 + rnd(3) }, () => pieces[rnd(pieces.length)])
+        const insert = `${parts.join('\n')}${rnd(2) ? '\n' : ''}`
+        s = s.update({ changes: { from, to, insert } }).state
+        expect(mask(s)).toEqual(fresh(s.doc))
+        expect(s.field(typoMask).carry.length).toBe(s.doc.lines + 1)
+        expect(s.field(typoMask).lang).toBe(frontmatterFields(s.doc).lang || 'de')
+      }
     }
   })
 })
