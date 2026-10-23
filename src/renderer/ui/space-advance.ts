@@ -43,10 +43,11 @@ const realDeps: SpaceAdvanceDeps = {
 }
 
 /**
- * A hidden copy of a preview body line: `.mdo-preview .cm-scroller .cm-line` picks up the body
- * font, weight, optical size and word spacing from theme.css and the set's scoped rules, in Code
- * view too. Inserted only for the synchronous measurement, so no test or code ever sees a second
- * `.cm-scroller`; outside the content DOM, so CodeMirror's observer never notices it.
+ * A hidden copy of a preview body line: `.mdo-preview .cm-scroller .cm-content .cm-line` picks up
+ * the body font, weight, optical size and word spacing from theme.css and the set's scoped rules
+ * (also those a set puts on `.cm-content`), in Code view too. Inserted only for the synchronous
+ * measurement, so no test or code ever sees a second `.cm-scroller`; outside the real content
+ * DOM, so CodeMirror's observer never notices it.
  */
 function probe(doc: Document): { root: HTMLElement; span: HTMLElement } {
   const root = doc.createElement('div')
@@ -56,13 +57,16 @@ function probe(doc: Document): { root: HTMLElement; span: HTMLElement } {
     'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:0;overflow:hidden'
   const scroller = doc.createElement('div')
   scroller.className = 'cm-scroller'
+  const content = doc.createElement('div')
+  content.className = 'cm-content'
   const line = doc.createElement('div')
   line.className = 'cm-line'
   const span = doc.createElement('span')
   span.style.whiteSpace = 'pre'
   span.textContent = ' '
   line.append(span)
-  scroller.append(line)
+  content.append(line)
+  scroller.append(content)
   root.append(scroller)
   return { root, span }
 }

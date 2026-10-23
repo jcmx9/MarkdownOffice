@@ -347,21 +347,53 @@
   /* the memo set's marker-slot: bullet square and task box share one 0.72em field */
   display: inline-block;
   width: 0.72em;
-  /* + the visible space ≈ the memo set's body-indent 0.4em */
   /* marker slot + space = --mdo-list-indent, so the first line's text starts where the
      hanging lines do (the space is the measured body advance) */
   margin-right: calc(var(--mdo-list-indent) - 0.72em - var(--mdo-space-advance, 0.2em));
   text-align: center;
 }
-/* hanging indent: continuation lines sit at the indent, not under the marker (the PDF indents
-   all lines by 1.12em; before, they ran 11pt too wide). Class set by the preview decorations. */
-.mdo-preview .cm-line.mdo-list-item {
-  padding-left: var(--mdo-list-indent);
-  text-indent: calc(-1 * var(--mdo-list-indent));
+/* Ordered markers are text of varying width: a right-aligned slot (Typst's number-align: end)
+   that, with the space, fills the indent. It grows by 1ch per digit beyond one of the list's
+   widest number (--mdo-list-extra, set by the preview), so all items of a list share one slot
+   and their wrapped lines line up. A marker wider than its slot (unusual digits) pushes its
+   text right of the hanging lines; the PDF's enum indent differs anyway (widest number +
+   body-indent). */
+.mdo-preview .mdo-ol-mark {
+  display: inline-block;
+  min-width: calc(
+    var(--mdo-list-indent) -
+    var(--mdo-space-advance, 0.2em) +
+    var(--mdo-list-extra, 0) *
+    1ch
+  );
+  text-align: right;
 }
-/* no-break phrases and hidden marks: the source stays byte-exact, no U+00A0 inserted */
+/* hanging indent: continuation lines sit at the indent, not under the marker (the PDF indents
+   all lines by 1.12em; before, they ran 11pt too wide). Class set by the preview decorations.
+   The hang also covers the item's visible source indent (nested items, --mdo-list-lead spaces)
+   and the wider number slot, so wrapped lines sit under the item's own text. */
+.mdo-preview .cm-line.mdo-list-item {
+  --mdo-list-hang: calc(
+    var(--mdo-list-indent) +
+    var(--mdo-list-lead, 0) *
+    var(--mdo-space-advance, 0.2em) +
+    var(--mdo-list-extra, 0) *
+    1ch
+  );
+  /* on top of CodeMirror's 6px line padding (base theme), which body lines keep: without it
+     the marker stuck out 6px and the lines ran 6px wider than the PDF's */
+  padding-left: calc(6px + var(--mdo-list-hang));
+  text-indent: calc(-1 * var(--mdo-list-hang));
+}
+/* text-indent is inherited: inline-blocks (marker slots, widgets) would shift their content */
+.mdo-preview .cm-line.mdo-list-item * {
+  text-indent: 0;
+}
+/* no-break phrases and hidden marks: the source stays byte-exact, no U+00A0 inserted.
+   Only the wrap mode: `white-space: nowrap` would also collapse CodeMirror's break-spaces, so
+   `z.  B.` would draw one space and the cursor would stick on the collapsed one. */
 .mdo-preview .mdo-nobreak {
-  white-space: nowrap;
+  text-wrap-mode: nowrap;
 }
 .mdo-preview .mdo-bullet::before {
   display: inline-block;
@@ -378,7 +410,8 @@
   font: inherit;
   width: 0.72em;
   height: 0.72em;
-  margin: 0 0.15em 0 0;
+  /* box + space = --mdo-list-indent, like the bullet slot */
+  margin: 0 calc(var(--mdo-list-indent) - 0.72em - var(--mdo-space-advance, 0.2em)) 0 0;
   border: 0.7pt solid var(--mdo-task-border);
   border-radius: 1.5pt;
   background: transparent;
@@ -415,6 +448,16 @@
   border-left: 2.5pt solid var(--mdo-alert-color);
   background: color-mix(in srgb, var(--mdo-alert-color) 7%, var(--mdo-bg));
   font-style: normal;
+}
+/* Lists in quotes and alerts: the block's own padding plus the hang. Same specificity as the
+   rules above would let the later quote/alert padding win while the list's text-indent still
+   pulled the marker out of the quote or onto the alert bar. Alert last, in the order of the
+   rules above (a quote nested in an alert carries both classes). */
+.mdo-preview .cm-line.mdo-quote.mdo-list-item {
+  padding-left: calc(2em + var(--mdo-list-hang));
+}
+.mdo-preview .cm-line.mdo-alert.mdo-list-item {
+  padding-left: calc(1em + var(--mdo-list-hang));
 }
 .mdo-preview .mdo-alert-note {
   --mdo-alert-color: var(--mdo-alert-note);

@@ -153,13 +153,53 @@ describe('set tokens in theme.css', () => {
     expect(theme).toMatch(/\.mdo-codeblock, \.mdo-codefence\)\s*{[^}]*word-spacing:\s*normal/)
   })
 
-  it('hangs list items by --mdo-list-indent', () => {
-    expect(theme).toMatch(
-      /\.cm-line\.mdo-list-item\s*{[^}]*padding-left:\s*var\(--mdo-list-indent\);[^}]*text-indent:\s*calc\(-1 \* var\(--mdo-list-indent\)\)/,
+  /** The declarations of the first rule whose selector ends exactly with `sel`. */
+  function rule(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const m = new RegExp(`${esc}\\s*{([^}]*)}`).exec(theme)
+    expect(m, sel).not.toBeNull()
+    return (m?.[1] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ')
+  }
+
+  it('hangs list items by the indent plus their own lead and number digits', () => {
+    const r = rule('.mdo-preview .cm-line.mdo-list-item')
+    expect(r).toContain(
+      '--mdo-list-hang: calc( var(--mdo-list-indent) + var(--mdo-list-lead, 0) * var(--mdo-space-advance, 0.2em) + var(--mdo-list-extra, 0) * 1ch );',
     )
-    expect(theme).toContain(
-      'margin-right: calc(var(--mdo-list-indent) - 0.72em - var(--mdo-space-advance, 0.2em))',
+    // CodeMirror's 6px line padding stays: the marker lines up with the body text (I1)
+    expect(r).toContain('padding-left: calc(6px + var(--mdo-list-hang));')
+    expect(r).toContain('text-indent: calc(-1 * var(--mdo-list-hang));')
+    // inline-blocks (marker slots) inherit text-indent and would shift their content
+    expect(rule('.mdo-preview .cm-line.mdo-list-item *')).toContain('text-indent: 0;')
+  })
+
+  it('adds the hang to the padding of quotes and alerts (I2)', () => {
+    expect(rule('.mdo-preview .cm-line.mdo-quote.mdo-list-item')).toContain(
+      'padding-left: calc(2em + var(--mdo-list-hang));',
     )
+    expect(rule('.mdo-preview .cm-line.mdo-alert.mdo-list-item')).toContain(
+      'padding-left: calc(1em + var(--mdo-list-hang));',
+    )
+    // the combined rules come after the alert rule, so the alert one wins on alert lines
+    const quote = theme.indexOf('.mdo-preview .cm-line.mdo-quote.mdo-list-item')
+    const alert = theme.indexOf('.mdo-preview .cm-line.mdo-alert.mdo-list-item')
+    expect(theme.indexOf('.mdo-preview .cm-line.mdo-alert {')).toBeLessThan(quote)
+    expect(quote).toBeLessThan(alert)
+  })
+
+  it('fills the indent with marker + space for bullets, tasks and numbers', () => {
+    const slot = 'calc(var(--mdo-list-indent) - 0.72em - var(--mdo-space-advance, 0.2em))'
+    expect(rule('.mdo-preview .mdo-list-mark')).toContain(`margin-right: ${slot};`)
+    expect(rule('.mdo-preview .mdo-task')).toContain(`margin: 0 ${slot} 0 0;`)
+    expect(rule('.mdo-preview .mdo-ol-mark')).toContain(
+      'min-width: calc( var(--mdo-list-indent) - var(--mdo-space-advance, 0.2em) + var(--mdo-list-extra, 0) * 1ch );',
+    )
+  })
+
+  it('suppresses wrapping in no-break spans without collapsing their spaces', () => {
+    const r = rule('.mdo-preview .mdo-nobreak')
+    expect(r).toContain('text-wrap-mode: nowrap;')
+    expect(r).not.toContain('white-space')
   })
 
   it('never declares the app-owned scale', () => {

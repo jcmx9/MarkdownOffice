@@ -23,10 +23,55 @@ const lineDeco = (cls: string) => Decoration.line({ class: cls, rf: `line:${cls}
 const markDeco = (cls: string) => Decoration.mark({ class: cls, rf: `mark:${cls}` })
 const faint = markDeco('mdo-mark')
 const listMark = markDeco('mdo-mark mdo-list-mark')
-// white-space: nowrap (theme.css): no line break inside, the source stays byte-exact.
+// text-wrap-mode: nowrap (theme.css): no line break inside, the source stays byte-exact.
 const nobreakMark = markDeco('mdo-nobreak')
 // Hanging indent (theme.css): continuation lines start where the item's text does, like the PDF.
 const listItem = lineDeco('mdo-list-item')
+// A number slot (theme.css) so `1.` + space fills the indent like the bullet slot does.
+const olMark = markDeco('mdo-ol-mark')
+const listItemVariants = new Map<string, Decoration>()
+
+/**
+ * The list line class plus what theme.css needs to hang the wrapped lines under the item's own
+ * text: `lead` visible spaces before the marker (nested items keep their source indent) and
+ * `extra` digits beyond one in the list's widest number (its slot grows by 1ch each).
+ */
+function listItemDeco(lead: number, extra: number): Decoration {
+  const style = [
+    lead > 0 ? `--mdo-list-lead: ${lead}` : '',
+    extra > 0 ? `--mdo-list-extra: ${extra}` : '',
+  ]
+    .filter(Boolean)
+    .join('; ')
+  if (style === '') return listItem
+  let deco = listItemVariants.get(style)
+  if (!deco) {
+    deco = Decoration.line({
+      class: 'mdo-list-item',
+      attributes: { style },
+      rf: 'line:mdo-list-item',
+    })
+    listItemVariants.set(style, deco)
+  }
+  return deco
+}
+
+/**
+ * Spaces left visible before a list marker: the quote marks and the space after each are hidden.
+ * Tabs end at a tab stop, not after a fixed number of space advances: no lead then.
+ */
+function listLead(prefix: string): number {
+  const visible = prefix.replace(/> ?/g, '')
+  return /^ *$/.test(visible) ? Math.min(visible.length, 64) : 0
+}
+
+/** Digits beyond one in the widest number of an ordered list (numbers ascend: the last one). */
+function listExtraDigits(mark: SyntaxNodeRef, list: SyntaxNode): number {
+  const last = list.lastChild?.getChild('ListMark')
+  const widest = Math.max(mark.to - mark.from, last ? last.to - last.from : 0)
+  // the marker is the number plus `.` or `)`
+  return Math.max(0, widest - 2)
+}
 
 const INLINE: Record<string, { cls: string; marks: string[] }> = {
   Emphasis: { cls: 'mdo-em', marks: ['EmphasisMark'] },
@@ -323,8 +368,16 @@ export function visitBlock(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefin
       const list = item?.parent?.name
       if (!item || (list !== 'BulletList' && list !== 'OrderedList')) return
       // Every item's first line, nested ones too (their source indent stays as it renders).
-      out.push(listItem.range(doc.lineAt(ref.from).from))
-      if (list !== 'BulletList') return
+      const line = doc.lineAt(ref.from)
+      const lead = listLead(doc.sliceString(line.from, ref.from))
+      const ordered = list === 'OrderedList' ? item.parent : null
+      const extra = ordered ? listExtraDigits(ref, ordered) : 0
+      out.push(listItemDeco(lead, extra).range(line.from))
+      if (ordered) {
+        // the cursor line too: the number is plain text either way, so nothing jumps
+        out.push(olMark.range(ref.from, ref.to))
+        return
+      }
       if (item.getChild('Task')) {
         const space = doc.sliceString(ref.to, ref.to + 1) === ' ' ? 1 : 0
         out.push(hide.range(ref.from, ref.to + space))

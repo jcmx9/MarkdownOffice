@@ -49,9 +49,68 @@ describe('list items carry the hanging-indent line class', () => {
       'line:mdo-list-item@10-10',
     ])
   })
+  it('marks list items inside quotes and alerts too (the CSS adds both paddings)', () => {
+    const q = rf('> - a\n> - b')
+    expect(q).toContain('line:mdo-quote@0-0')
+    expect(lists(q)).toEqual(['line:mdo-list-item@0-0', 'line:mdo-list-item@6-6'])
+    const a = rf('> [!NOTE]\n> - a', 20)
+    expect(a.some((x) => x.startsWith('line:mdo-alert') && x.endsWith('@10-10'))).toBe(true)
+    expect(lists(a)).toEqual(['line:mdo-list-item@10-10'])
+  })
   it('leaves a continuation line of an item alone', () => {
     // "- a" 0-3, "  weiter" 4-12: the hanging indent already places it
     expect(lists(rf('- a\n  weiter'))).toEqual(['line:mdo-list-item@0-0'])
+  })
+})
+
+/** The per-line hang variables of each list item line (empty for a top-level bullet). */
+function hangs(text: string, cursor?: number): string[] {
+  const state = withSpec(text, null)
+  const pos = cursor ?? state.doc.length
+  const s = state.update({ selection: { anchor: pos } }).state
+  const out: string[] = []
+  buildPreview(s).between(0, s.doc.length, (from, _to, d) => {
+    const spec = d.spec as { rf: string; attributes?: { style?: string } }
+    if (spec.rf === 'line:mdo-list-item') out.push(`${from}:${spec.attributes?.style ?? ''}`)
+  })
+  return out
+}
+
+describe('list items hang under their own text', () => {
+  it('counts the visible source indent of nested items in spaces', () => {
+    // "- a" 0-3, "  - b" 4-9, "    - c" 10-17
+    expect(hangs('- a\n  - b\n    - c')).toEqual([
+      '0:',
+      '4:--mdo-list-lead: 2',
+      '10:--mdo-list-lead: 4',
+    ])
+  })
+  it('does not count the hidden quote mark and its space', () => {
+    // "> - a" 0-5, ">   - b" 6-13
+    expect(hangs('> - a\n>   - b')).toEqual(['0:', '6:--mdo-list-lead: 2'])
+  })
+  it('gives up on tabs (their width is a tab stop, not spaces)', () => {
+    expect(hangs('- a\n\t- b')).toEqual(['0:', '4:'])
+  })
+  it('widens the number slot by the extra digits of the list', () => {
+    const ten = Array.from({ length: 10 }, (_, i) => `${i + 1}. x`).join('\n')
+    const h = hangs(ten)
+    expect(h).toHaveLength(10)
+    for (const x of h) expect(x).toMatch(/:--mdo-list-extra: 1$/)
+    expect(hangs('1. a\n2. b')).toEqual(['0:', '5:'])
+  })
+})
+
+describe('ordered markers sit in a number slot', () => {
+  it('marks the number on every line, the cursor line too (nothing jumps)', () => {
+    // "1. a" 0-4, "10) b" 5-10
+    expect(rf('1. a\n\n10) b').filter((x) => x.startsWith('mark:mdo-ol-mark'))).toEqual([
+      'mark:mdo-ol-mark@0-2',
+      'mark:mdo-ol-mark@6-9',
+    ])
+    expect(rf('1. a', 1).filter((x) => x.startsWith('mark:mdo-ol-mark'))).toEqual([
+      'mark:mdo-ol-mark@0-2',
+    ])
   })
 })
 
@@ -90,7 +149,14 @@ describe('hidden marks never become break opportunities', () => {
     })
     const view = new EditorView({ state: parsed(state), parent: document.body })
     view.dispatch({ selection: { anchor: doc.length } })
-    expect(view.contentDOM.querySelectorAll('.mdo-nobreak').length).toBeGreaterThan(0)
+    // the hidden ** and the widget buffers around it sit inside the nowrap span with the comma,
+    // so no break opportunity is left between "t" and ","
+    const spans = [...view.contentDOM.querySelectorAll('span.mdo-nobreak')]
+    const fett = spans.find((s) => s.textContent === 't,')
+    expect(fett?.querySelectorAll('img.cm-widgetBuffer').length).toBe(2)
+    expect(fett?.querySelector('span[contenteditable="false"]')).not.toBeNull()
+    const link = spans.find((s) => s.textContent === 'k.')
+    expect(link?.querySelectorAll('img.cm-widgetBuffer').length).toBeGreaterThanOrEqual(2)
     // the text stays byte-exact
     expect(view.state.doc.toString()).toBe(doc)
     view.destroy()

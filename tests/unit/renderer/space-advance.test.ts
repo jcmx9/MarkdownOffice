@@ -43,7 +43,8 @@ describe('SpaceAdvance', () => {
     // the probe carries the preview classes (any mode) and is gone afterwards
     const probe = seen as HTMLElement | null
     expect(probe?.textContent).toBe(' ')
-    expect(probe?.closest('.mdo-preview .cm-scroller .cm-line')).not.toBeNull()
+    // .cm-content too: a set may set the body font or word spacing there (allowed selector)
+    expect(probe?.closest('.mdo-preview .cm-scroller .cm-content .cm-line')).not.toBeNull()
     expect(host.querySelector('.mdo-preview')).toBeNull()
   })
 

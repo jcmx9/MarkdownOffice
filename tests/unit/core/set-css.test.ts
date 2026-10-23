@@ -31,6 +31,10 @@ describe('sanitizeSetCss', () => {
     'background: u\\72l(x)',
     'background-image: image-set("a.png" 1x)',
     '--mdo-scale: 1',
+    '--mdo-space-advance: 3em',
+    '--mdo-list-lead: 9',
+    '--mdo-list-extra: 9',
+    '--mdo-list-hang: 9em',
     'position: fixed',
     'position: sticky',
     'z-index: 9',
@@ -214,6 +218,30 @@ describe('sanitizeSetCss optical size', () => {
       expect(decls(css).filter(([p]) => p === '--mdo-body-opsz')).toEqual([
         ['--mdo-body-opsz', '9'],
       ])
+  })
+
+  // The effective value is the last kept declaration, as in the browser's cascade.
+  it.each([
+    ['--mdo-body-size: 11pt; --mdo-body-size: 1.2em', null],
+    ['--mdo-body-size: 1.2em; --mdo-body-size: 11pt', '11'],
+    ['--mdo-body-size: 0pt; --mdo-body-size: 1.2em', null],
+    ['--mdo-body-size: 12pt; --mdo-body-size: 0pt', '12'],
+    [`--mdo-body-size: ${'9'.repeat(400)}pt`, null],
+  ])('derives from the effective size: %s', (body, want) => {
+    const opsz = decls(`.mdo-preview { ${body} }`).filter(([p]) => p === '--mdo-body-opsz')
+    expect(opsz).toEqual(want === null ? [] : [['--mdo-body-opsz', want]])
+  })
+
+  it('drops an opsz with a unit (the axis takes a plain number) and derives instead', () => {
+    const { rules, dropped } = sanitizeSetCss(
+      '.mdo-preview { --mdo-body-opsz: 11pt; --mdo-body-size: 10pt; --mdo-h1-opsz: 14 }',
+    )
+    expect(dropped).toEqual(['--mdo-body-opsz: unitless number expected'])
+    const d = rules.flatMap((r) => r.declarations).filter(([p]) => p.endsWith('-opsz'))
+    expect(d).toEqual([
+      ['--mdo-h1-opsz', '14'],
+      ['--mdo-body-opsz', '10'],
+    ])
   })
 
   it('derives nothing for a size the sanitiser dropped', () => {

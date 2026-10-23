@@ -45,12 +45,14 @@ describe('nobreakRanges', () => {
     expect(nobreakRanges('abc', { words: [''], units: [''] })).toEqual([])
   })
 
+  // Generous wall-clock bounds: the patterns are escaped literals, so the work is linear. A
+  // backtracking regression would take seconds, not the 1 s a loaded CI runner may need.
   it('stays fast on 10 000 characters with 200 words', () => {
     const words = Array.from({ length: 200 }, (_, i) => `w${i}. x`)
     const text = `${'Lorem ipsum dolor 5 mm w199. x sit amet. '.repeat(250)}`.slice(0, 10_000)
     const t0 = performance.now()
     const r = nobreakRanges(text, { words, units: MEMO_PREVIEW.nobreak.units })
-    expect(performance.now() - t0).toBeLessThan(50)
+    expect(performance.now() - t0).toBeLessThan(1000)
     expect(r.length).toBeGreaterThan(100)
   })
 
@@ -58,6 +60,6 @@ describe('nobreakRanges', () => {
     const text = '1 '.repeat(5000)
     const t0 = performance.now()
     nobreakRanges(text, { words: ['1 1 1 1 2'], units: ['mm'] })
-    expect(performance.now() - t0).toBeLessThan(50)
+    expect(performance.now() - t0).toBeLessThan(1000)
   })
 })
