@@ -216,7 +216,14 @@ test('external links get an underline and a ↗ that is not document text', asyn
   )
   await expect(ext).toHaveCSS('text-decoration-style', 'solid')
   // Internal link: plain link look, no arrow.
-  await expect(line.locator('.mdo-link:not(.mdo-link-ext)')).toHaveText('Kapitel')
+  // The link may come in two spans: its last letter shares a no-break span with the hidden
+  // `](…)` and the comma, so the comma never starts a line.
+  await expect
+    .poll(() => line.locator('.mdo-link:not(.mdo-link-ext)').allTextContents())
+    .toEqual(expect.arrayContaining([expect.stringContaining('Kapite')]))
+  expect((await line.locator('.mdo-link:not(.mdo-link-ext)').allTextContents()).join('')).toBe(
+    'Kapitel',
+  )
   // A citation without a reference definition is text (CommonMark, as in the PDF): brackets stay.
   await expect(line).toContainText('Quelle [21].')
   const arrows = line.locator('.mdo-link-arrow')
@@ -333,8 +340,17 @@ test('text and tables are as wide as the memo PDF text block (145 mm)', async ()
     )
     const table = document.querySelector('.mdo-table-wrap')
     const inner = document.querySelector('table.mdo-table')
+    // A line box carries one space advance beyond the measure (break-spaces counts the space
+    // before a break); the text itself breaks in the measure.
+    const advance = (el: Element) =>
+      Number.parseFloat(getComputedStyle(el).fontSize) *
+      Number.parseFloat(
+        (document.querySelector('.cm-editor') as HTMLElement).style.getPropertyValue(
+          '--mdo-space-advance',
+        ) || '0',
+      )
     return {
-      line: line ? box(line) : 0,
+      line: line ? box(line) - advance(line) : 0,
       table: table ? box(table) : 0,
       inner: inner ? inner.getBoundingClientRect().width : 0,
     }

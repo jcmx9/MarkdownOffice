@@ -94,11 +94,18 @@ const letterMeasures = (page: Page) =>
         getComputedStyle(document.querySelector('.cm-scroller') as Element).fontSize,
       ),
       lineHeight: Number.parseFloat(s.lineHeight),
-      // Content box: the width the text breaks in (CodeMirror pads every line by 6px + 2px).
+      // Content box minus the one space advance the line box carries (under break-spaces the
+      // space before a break counts): the width the text itself breaks in.
       measure:
         line.getBoundingClientRect().width -
         Number.parseFloat(s.paddingLeft) -
-        Number.parseFloat(s.paddingRight),
+        Number.parseFloat(s.paddingRight) -
+        Number.parseFloat(s.fontSize) *
+          Number.parseFloat(
+            (document.querySelector('.cm-editor') as HTMLElement).style.getPropertyValue(
+              '--mdo-space-advance',
+            ) || '0',
+          ),
     }
   })
 
@@ -314,7 +321,14 @@ test('the space advance is measured and no-break phrases and list items get thei
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Nobreak.md')
   // The built-in memo look (no set): memo's nobreak list applies.
-  await writeFile(note, `${await memoNoteWith(null)}\nDas gilt z. B. für Abstände von 5 mm.\n`)
+  // Right below the front matter, so the line is rendered (the end of the note may lie outside
+  // the viewport, where CodeMirror draws nothing).
+  const text = (await memoNoteWith(null)).replace(
+    /^(---\n[\s\S]*?\n---\n)/,
+    '$1\nDas gilt z. B. für Abstände von 5 mm.\n',
+  )
+  expect(text).toContain('z. B.')
+  await writeFile(note, text)
   const { app, page } = await launch({ dirs, args: [note] })
   await page.locator('.cm-editor.mdo-preview').waitFor()
   await page.evaluate(() => document.fonts.ready)

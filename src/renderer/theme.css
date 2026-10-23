@@ -507,8 +507,9 @@
 
 /* Table widget (cursor elsewhere): like the memo set's #show table */
 .mdo-preview .mdo-table-wrap {
-  /* Same side insets as a .cm-line, so a table spans exactly the text width. */
-  padding: 1.2em 2px 1.4em 6px;
+  /* Same side insets as a .cm-line, so a table spans exactly the text width; the right inset
+     also takes the one space advance the content box carries for text lines (.cm-content). */
+  padding: 1.2em calc(2px + var(--mdo-space-advance, 0.2em)) 1.4em 6px;
   overflow-x: auto;
   cursor: text;
 }
