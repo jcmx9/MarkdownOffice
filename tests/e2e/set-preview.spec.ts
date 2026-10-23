@@ -341,6 +341,8 @@ test('the space advance is measured and no-break phrases and list items get thei
   const em = Number.parseFloat(await advance())
   expect(em).toBeGreaterThanOrEqual(0.15)
   expect(em).toBeLessThanOrEqual(0.3)
+  console.log('DEBUG-NOBREAK', await page.locator('.cm-line', { hasText: 'Das gilt' }).innerHTML())
+  console.log('DEBUG-SRC', await page.evaluate(() => JSON.stringify((window as unknown as { mdoDebug?: unknown }).mdoDebug ?? null)))
   await expect(page.locator('.cm-content .mdo-nobreak', { hasText: 'z. B.' })).toHaveCount(1)
   await expect(page.locator('.cm-content .mdo-nobreak', { hasText: '5 mm' })).toHaveCount(1)
   // the three items of the task list carry the hanging indent
