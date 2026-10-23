@@ -10,3 +10,4 @@ where the PDF does:
 |------------------------------|-----------|
 | `crates/typst-layout/src/inline/linebreak.rs` (`breakpoints`, `linebreak_link`, `hyphenations`) | `src/core/paragraph/breaks.ts` |
 | `crates/typst-syntax/src/lexer.rs` (`link_prefix`) | `src/core/paragraph/breaks.ts` |
+| `crates/typst-layout/src/inline/linebreak.rs` (`linebreak`, `linebreak_simple`, `linebreak_optimized*`, `ratio_and_cost`, `raw_ratio`, `raw_cost`, `CostMetrics`, `Estimates`) and `crates/typst-layout/src/inline/line.rs` (`line`, `commit`) | `src/core/paragraph/linebreak.ts` |

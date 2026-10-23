@@ -1,3 +1,4 @@
+// Not named linebreak.d.ts: next to linebreak.ts TypeScript would take it as that file's types.
 // linebreak 1.1.0 ships no types; only the part breaks.ts uses is declared.
 declare module 'linebreak' {
   interface Break {
