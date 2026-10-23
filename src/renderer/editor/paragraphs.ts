@@ -652,6 +652,8 @@ const defaultWarn = onceWarner()
  * scrollbar, which changes the width back (theme.css reserves the gutter, this is the backstop).
  */
 const WIDTH_BURST_MS = 1000
+/** Transient failures in a row (same environment) after which the measurer is suspect. */
+const NULLS_BEFORE_WARNING = 10
 
 interface ReadResult {
   env: Env
@@ -685,6 +687,10 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       private fontGen = 0
       /** The content width before the current environment's, and when it changed. */
       private prevWidth: { width: number; at: number } | null = null
+      /** Re-measures when a held width burst is over. */
+      private holdTimer: ReturnType<typeof setTimeout> | null = null
+      /** Transient (null) measurements in a row under one environment. */
+      private nulls = 0
       private destroyed = false
       private queued = false
       private readonly observers: Array<{ disconnect(): void }> = []
@@ -747,6 +753,7 @@ export function paragraphs(options: ParagraphsOptions = {}) {
 
       destroy(): void {
         this.destroyed = true
+        if (this.holdTimer !== null) clearTimeout(this.holdTimer)
         for (const ob of this.observers) ob.disconnect()
         this.view.dom.ownerDocument.fonts?.removeEventListener('loadingdone', this.onFonts)
       }
@@ -796,15 +803,29 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         if (this.destroyed) return null
         let env = readEnv(view, this.fontGen, o.settings)
         const cur = this.env
+        const prev = this.prevWidth
         if (
           cur &&
+          prev &&
           env.base === cur.base &&
-          env.width !== cur.width &&
-          this.prevWidth?.width === env.width &&
-          o.now() - this.prevWidth.at < WIDTH_BURST_MS
+          // Only a wider return is held: the current lines then still fit. A narrower one
+          // would leave them overfull (and clipped by .cm-content), so it is always followed.
+          env.width > cur.width &&
+          prev.width === env.width &&
+          o.now() - prev.at < WIDTH_BURST_MS
         ) {
-          // Back to the previous-but-one width at once: keep the current setting (hysteresis).
+          // Back to the previous-but-one width at once: keep the current setting (hysteresis),
+          // but only until the burst is over; then the width that stayed is followed.
           env = cur
+          if (this.holdTimer === null) {
+            this.holdTimer = setTimeout(
+              () => {
+                this.holdTimer = null
+                if (!this.destroyed) this.view.requestMeasure(this.request)
+              },
+              WIDTH_BURST_MS - (o.now() - prev.at) + 1,
+            )
+          }
         }
         const results = new Map<string, SetResult | Failure>()
         const failed = env.key === this.env?.key ? this.failed : new Set<string>()
@@ -846,6 +867,7 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         const changed = r.env.key !== this.env?.key
         if (changed) {
           this.failed = new Set()
+          this.nulls = 0
           if (this.env && this.env.base === r.env.base) {
             this.prevWidth = { width: this.env.width, at: o.now() }
           }
@@ -854,7 +876,16 @@ export function paragraphs(options: ParagraphsOptions = {}) {
         let set = false
         for (const [key, res] of r.results) {
           if ('reason' in res) {
-            if (res.kind === null) continue
+            if (res.kind === null) {
+              // Expected now and then; a measurer that never measures must not stay silent.
+              if (++this.nulls === NULLS_BEFORE_WARNING) {
+                o.warn(
+                  `no layout in ${NULLS_BEFORE_WARNING} measurements in a row (${res.reason})`,
+                  'measure',
+                )
+              }
+              continue
+            }
             // Bounded like the cache: a long session of failing edits must not grow it.
             if (this.failed.size >= CACHE_MAX) this.failed.clear()
             this.failed.add(key)
@@ -862,6 +893,7 @@ export function paragraphs(options: ParagraphsOptions = {}) {
             continue
           }
           set = true
+          this.nulls = 0
           cache.set(key, res)
           if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string)
         }

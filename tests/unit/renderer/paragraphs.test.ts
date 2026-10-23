@@ -324,48 +324,92 @@ describe('paragraphs set like Typst', () => {
     expect(m.calls()).toBe(1)
   })
 
-  it('a width that flips back at once keeps the current setting (hysteresis)', async () => {
+  describe('width hysteresis', () => {
     let width = 500
     let t = 0
-    const spy = vi
-      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
-      .mockImplementation(() => width)
-    try {
-      // The fake's line width follows the content width: 500 -> 100 px, 480 -> 80 px.
-      const real = fakeMeasurer({ first: 0 })
-      const measurer: LineMeasurer = {
-        measure: (view, line) => {
-          const m = real.measure(view, line)
-          return m && { ...m, lineWidth: () => width - 400 }
-        },
-      }
-      const m = make('aaaa bbbb cccc dddd\n\nende', { measurer, extra: { now: () => t } })
-      const poke = async () => {
-        m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
-        await settle(m.view)
-      }
-      await settle(m.view)
-      expect(breaks(m.decos())).toEqual(['break@10'])
-      width = 480 // a scrollbar appeared: re-set
-      t = 100
-      await poke()
-      expect(breaks(m.decos())).toEqual(['break@5', 'break@10', 'break@15'])
-      expect(m.calls()).toBe(2)
-      width = 500 // and vanished again within the burst: an oscillation, keep the setting
-      t = 200
-      await poke()
-      expect(breaks(m.decos())).toEqual(['break@5', 'break@10', 'break@15'])
-      width = 460 // a real resize to another width is followed
-      t = 300
-      await poke()
-      expect(m.calls()).toBe(3)
-      width = 500 // after the burst, a width seen before is followed again (from the cache)
-      t = 5000
-      await poke()
-      expect(breaks(m.decos())).toEqual(['break@10'])
-    } finally {
-      spy.mockRestore()
+    // The fake's line width follows the content width: 500 -> 100 px, 480 -> 80 px.
+    const measurer: LineMeasurer = {
+      measure: (view, line) => {
+        const m = fakeMeasurer({ first: 0 }).measure(view, line)
+        return m && { ...m, lineWidth: () => width - 400 }
+      },
     }
+    const WIDE = ['break@10']
+    const NARROW = ['break@5', 'break@10', 'break@15']
+
+    async function run(body: (m: Made, poke: () => Promise<void>) => Promise<void>) {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const spy = vi
+        .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+        .mockImplementation(() => width)
+      try {
+        const m = make('aaaa bbbb cccc dddd\n\nende', { measurer, extra: { now: () => t } })
+        const flush = async () => {
+          for (let i = 0; i < 3; i++) {
+            ;(m.view as unknown as { measure(): void }).measure()
+            await vi.advanceTimersByTimeAsync(0)
+          }
+        }
+        await flush()
+        await body(m, async () => {
+          m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
+          await flush()
+        })
+      } finally {
+        spy.mockRestore()
+        vi.useRealTimers()
+      }
+    }
+
+    it('a wider width flipping back is held for the burst, then followed', async () => {
+      width = 500
+      t = 0
+      await run(async (m, poke) => {
+        expect(breaks(m.decos())).toEqual(WIDE)
+        width = 480 // a scrollbar appeared: re-set
+        t = 100
+        await poke()
+        expect(breaks(m.decos())).toEqual(NARROW)
+        expect(m.calls()).toBe(2)
+        width = 500 // vanished again within the burst: an oscillation, keep the setting
+        t = 200
+        await poke()
+        expect(breaks(m.decos())).toEqual(NARROW)
+        // Burst over without any interaction: the width that stayed is followed (cache).
+        t = 1200
+        await vi.advanceTimersByTimeAsync(1000)
+        ;(m.view as unknown as { measure(): void }).measure()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(breaks(m.decos())).toEqual(WIDE)
+        expect(m.calls()).toBe(2)
+      })
+    })
+
+    it('a narrower width is never held (the lines would be overfull)', async () => {
+      width = 480
+      t = 0
+      await run(async (m, poke) => {
+        expect(breaks(m.decos())).toEqual(NARROW)
+        width = 500 // outline closed
+        t = 100
+        await poke()
+        expect(breaks(m.decos())).toEqual(WIDE)
+        width = 480 // and opened again at once: followed, not held
+        t = 200
+        await poke()
+        expect(breaks(m.decos())).toEqual(NARROW)
+      })
+    })
+  })
+
+  it('warns once when the measurer keeps returning no layout', async () => {
+    const m = make('aaa bbb ccc ddd\n\nende', { measurer: { measure: () => null } })
+    for (let i = 0; i < 12; i++) {
+      m.view.dispatch({ selection: { anchor: m.view.state.doc.length } })
+      await settle(m.view)
+    }
+    expect(m.warn.mock.calls.filter((c) => c[1] === 'measure')).toHaveLength(1)
+    expect(String(m.warn.mock.calls.find((c) => c[1] === 'measure')?.[0])).toMatch(/in a row/)
   })
 
   it('typing in the cursor paragraph leaves other set lines cached', async () => {
