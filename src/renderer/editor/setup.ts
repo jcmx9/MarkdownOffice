@@ -28,12 +28,15 @@ import { mdoMarkdown } from './markdown'
 import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
+import { paragraphsPlugin } from './paragraphs'
 import { previewPlugin } from './preview'
 import { previewSource } from './preview-source'
+import { previewView } from './rendered'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
 import { tableField } from './tables'
+import { typoMask } from './typo-mask'
 
 export const viewCompartment = new Compartment()
 
@@ -85,7 +88,11 @@ export function viewExtensions(view: View): Extension {
     : [
         foldGutter(),
         EditorView.editorAttributes.of({ class: 'mdo-preview' }),
+        previewView.of(true),
+        typoMask,
         previewPlugin,
+        // after previewPlugin: it reads the preview's decorations of the lines it sets
+        paragraphsPlugin,
         tableField,
         headerFold,
         footBlock,

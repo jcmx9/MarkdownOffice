@@ -8,9 +8,11 @@
  *
  * The set-dependent values are the --mdo-* set tokens on .cm-editor (block
  * "set tokens" below): memo's values are the defaults, a set's <name>.css
- * overrides them for its notes. The one exception is --mdo-word-spacing: its
- * default is 0, not memo's value (-0.045em), so sets that do not declare it
- * (din5008a, user sets) do not inherit a stop-gap meant for justified memo.
+ * overrides them for its notes. Four tokens default to other values than memo's, which memo
+ * declares in memo.css: --mdo-word-spacing (0, not memo's -0.045em, a stop-gap meant for
+ * justified memo), --mdo-numeric and --mdo-table-numeric (normal, not memo's old-style /
+ * lining tabular: sets that do not declare them, such as din5008a and user sets, keep the
+ * font's own figures) and --mdo-runt-cost (100 %, Typst's default, not memo.typ's 200 %).
  * Print lengths are written
  * calc(<len> * var(--mdo-scale, 1)); --mdo-scale is the one zoom factor the
  * app sets on #editor (zoom × Present factor), so at zoom 1 a set's 11pt is
@@ -72,10 +74,22 @@
      body lines from 30 % to 68 % identical (findings §4.4). Default 0 on purpose, see above;
      memo.css sets -0.045em. Goes away with the Knuth-Plass step. */
   --mdo-word-spacing: 0;
+  /* figure style (CSS font-variant-numeric) of body text, lists, quotes and headings; memo.typ sets
+     number-type "old-style" (old-style "1627" at the font's default width is 19.72 pt; the former hard-coded
+     proportional-nums gave 18.04 pt, so lines broke differently). Default normal on purpose, see above; memo.css sets oldstyle-nums. Code keeps normal. */
+  --mdo-numeric: normal;
+  /* the same for rendered tables (memo.typ table-text: lining, tabular); default normal on purpose */
+  --mdo-table-numeric: normal;
   /* list items: marker slot 0.72em + body indent 0.4em = 11.2pt in the PDF */
   --mdo-list-indent: 1.12em;
   --mdo-line-height: 1.5;
   --mdo-align: justify;
+  /* Typst's text.hyphenate: auto follows --mdo-align (justified -> hyphenate), true/false force */
+  --mdo-hyphenate: auto;
+  /* Typst's par.costs, percent; only justified paragraphs are optimised with them. memo.typ
+     sets runt 200 %, so a set mirroring it declares that here */
+  --mdo-hyphenation-cost: 100%;
+  --mdo-runt-cost: 100%;
   /* the blank line between paragraphs carries the paragraph gap */
   --mdo-par-gap: 1.1em;
   /* memo text block: A4 minus margins 35 mm + 30 mm = 145 mm, the width the text breaks in */
@@ -166,7 +180,13 @@
   /* only opsz, so font-weight keeps driving wght; never switch optical sizing off (the axis falls back
      to opsz 20). Fixed in pt: line breaks no longer change with the zoom. */
   font-variation-settings: "opsz" var(--mdo-body-opsz);
-  font-variant-numeric: oldstyle-nums proportional-nums;
+  /* headings, lists and quotes inherit it; code and tables reset it below */
+  font-variant-numeric: var(--mdo-numeric);
+  /* Room for a classic scrollbar always: set paragraphs (paragraphs.ts) change the line heights,
+     and a scrollbar appearing or vanishing with them would change the content width, which
+     re-sets the paragraphs, which toggles the scrollbar back. No effect with overlay scrollbars
+     (macOS default); Present shares the rule (same loop there), the Code view does not need it. */
+  scrollbar-gutter: stable;
 }
 .mdo-preview .cm-content {
   /* border-box: the measure plus the content's 1.5em side padding and CodeMirror's line
@@ -176,9 +196,16 @@
      The app measures the advance per set (--mdo-space-advance). */
   max-width: calc(var(--mdo-measure) + var(--mdo-space-advance, 0.2em) + 3em + 8px);
   margin: 0 auto;
+  /* A set line never wraps (white-space: pre): an overfull one (a word or URL longer than the
+     line, which Typst lets overhang) and its trailing space may run past the text block. It
+     overhangs into the side padding like the PDF's margin and is clipped at the content's edge,
+     so the editor never gets a horizontal scrollbar from it. `clip`, not `hidden`: no scroll
+     container, the vertical overflow stays visible. */
+  overflow-x: clip;
   padding: 2em 1.5em 40vh;
 }
-/* memo set: par(justify: true). Typst hyphenates in the PDF; the editor never does. */
+/* memo set: par(justify: true). The browser never hyphenates (hyphens: manual): the paragraphs
+   plugin inserts Typst's hyphens as widgets; the cursor's paragraph shows none, like the source. */
 .mdo-preview .cm-line {
   text-align: var(--mdo-align);
   hyphens: manual;
@@ -339,6 +366,7 @@
   color: var(--mdo-faint);
   font-family: var(--mdo-font-code);
   font-size: 0.9em;
+  font-variant-numeric: normal;
 }
 
 /* Lists: the memo set's small square */
@@ -394,6 +422,21 @@
    `z.  B.` would draw one space and the cursor would stick on the collapsed one. */
 .mdo-preview .mdo-nobreak {
   text-wrap-mode: nowrap;
+}
+/* Paragraphs set like the PDF (paragraphs.ts): the engine's breaks are <br class="mdo-par-break">
+   widgets (after a <span class="mdo-par-hyphen"> when hyphenated), so the browser must neither
+   wrap nor stretch the line itself; spaces stay natural except inside a line's word-spacing mark
+   (.mdo-par-adjust, inline style). The measuring clone (.mdo-par-measure) gets the same, so its
+   one unwrapped line yields the natural x positions. !important: a set rule must not bring
+   wrapping, word spacing or justification back into a set line (the set CSS sanitiser strips
+   !important from set rules). The cursor's paragraph never has these classes (step-2 wrapping). */
+.mdo-preview .cm-line:is(.mdo-par-set, .mdo-par-measure) {
+  /* biome-ignore lint/complexity/noImportantStyles: set lines are broken by the engine only */
+  white-space: pre !important;
+  /* biome-ignore lint/complexity/noImportantStyles: natural spaces, the marks adjust them */
+  word-spacing: 0 !important;
+  /* biome-ignore lint/complexity/noImportantStyles: justified by the marks, not the browser */
+  text-align: left !important;
 }
 .mdo-preview .mdo-bullet::before {
   display: inline-block;
@@ -482,12 +525,12 @@
   text-transform: uppercase;
 }
 
-/* Tables: 9pt medium, lining tabular figures, stripes, rule under head */
+/* Tables: 9pt medium, figure style from the set (memo: lining tabular), stripes, rule under head */
 .mdo-preview .cm-line:is(.mdo-table-head, .mdo-table-row, .mdo-table-delim) {
   font-family: var(--mdo-table-font);
   font-size: var(--mdo-table-size);
   font-weight: var(--mdo-table-weight);
-  font-variant-numeric: lining-nums tabular-nums;
+  font-variant-numeric: var(--mdo-table-numeric);
   text-align: left;
   hyphens: manual;
   word-spacing: normal;
@@ -519,7 +562,7 @@
   font-size: var(--mdo-table-size);
   font-weight: var(--mdo-table-weight);
   letter-spacing: var(--mdo-table-tracking);
-  font-variant-numeric: lining-nums tabular-nums;
+  font-variant-numeric: var(--mdo-table-numeric);
   text-align: left;
   hyphens: manual;
   word-spacing: normal;
@@ -561,6 +604,7 @@
   font-family: var(--mdo-font-code);
   font-size: 0.94em;
   font-weight: 400;
+  font-variant-numeric: normal;
 }
 
 /* Code blocks: 9pt code font on light grey, Typst syntax colours */
@@ -600,6 +644,7 @@
 .mdo-preview .cm-line.mdo-frontmatter {
   font-family: var(--mdo-font-code);
   font-size: 0.85em;
+  font-variant-numeric: normal;
   color: var(--mdo-faint);
   text-align: left;
   hyphens: manual;

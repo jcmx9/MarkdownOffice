@@ -51,6 +51,8 @@ export function checkPackedResources(o) {
     join('pipeline', 'cli.js'),
     // The app's own licence text (AGPL-3.0-or-later): it must travel with every copy.
     'LICENSE',
+    // Notices for the ported Typst code and the hyphenation patterns of the editor preview.
+    'THIRD_PARTY_NOTICES.md',
     ...o.licenses.map((l) => join('pipeline', 'licenses', ...l.split('/'))),
     ...(platform === 'darwin' ? [] : (o.dictionaries ?? []).map((f) => join('dictionaries', f))),
   ]

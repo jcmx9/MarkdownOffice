@@ -335,16 +335,19 @@ Both are UTF-8 and at most 64 KiB. A file that is missing, too large or broken n
 }
 ```
 
-Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-table-font`) are resolved on `.mdo-preview` itself, so override them there too, in the same rule; a rule on a deeper element would not reach them. The defaults are memo's values:
+Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-table-font`) are resolved on `.mdo-preview` itself, so override them there too, in the same rule; a rule on a deeper element would not reach them. The defaults are memo's values, except for four tokens that memo declares itself in memo.css: `--mdo-word-spacing` (default `0`, memo `-0.045em`), `--mdo-numeric` and `--mdo-table-numeric` (default `normal`, memo `oldstyle-nums` / `lining-nums tabular-nums`) and `--mdo-runt-cost` (default `100%`, Typst's own, memo `200%`):
 
-| Token | memo default | Meaning |
-|-------|--------------|---------|
+| Token | Default | Meaning |
+|-------|---------|---------|
 | `--mdo-body-font` | `var(--mdo-font-sans)` | body font family |
 | `--mdo-body-size` | `10pt` | body size (zoomed) |
 | `--mdo-body-weight` | `380` | body weight |
 | `--mdo-bold-weight` | `560` | weight of `**bold**` |
 | `--mdo-line-height` | `1.5` | line height |
 | `--mdo-align` | `justify` | text alignment of paragraphs |
+| `--mdo-hyphenate` | `auto` | hyphenation: `auto` follows `--mdo-align` like Typst's `text.hyphenate: auto` (justified hyphenates), `true` / `false` force it |
+| `--mdo-hyphenation-cost` | `100%` | Typst's `par.costs` hyphenation in percent; used only for justified paragraphs |
+| `--mdo-runt-cost` | `100%` | Typst's `par.costs` runt (short last line) in percent; used only for justified paragraphs. The theme's default is `100%` (Typst's); memo.typ uses `200%` and declares it in memo.css |
 | `--mdo-par-gap` | `1.1em` | the gap a blank line makes between paragraphs |
 | `--mdo-measure` | `145mm` | width of the text block |
 | `--mdo-heading-font` | `var(--mdo-font-serif)` | heading font family |
@@ -360,7 +363,9 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-table-size` | `9pt` | table size |
 | `--mdo-table-weight` | `500` | table weight |
 | `--mdo-table-head-weight` | `680` | weight of the table head row |
-| `--mdo-word-spacing` | `0` | extra word spacing in body text and headings (not tables, not code); stop-gap for justified sets, see below |
+| `--mdo-word-spacing` | `0` | extra word spacing, now only for the paragraph with the cursor and for the fallback (paragraphs the app does not set itself); see below |
+| `--mdo-numeric` | `normal` | figure style of body text, lists, quotes and headings: a CSS `font-variant-numeric` value (`oldstyle-nums`, `lining-nums`, `tabular-nums`, `proportional-nums`, combinable). Code stays `normal`. Not memo's value (`oldstyle-nums`), see below |
+| `--mdo-table-numeric` | `normal` | the same for rendered tables (memo: `lining-nums tabular-nums`) |
 | `--mdo-list-indent` | `1.12em` | hanging indent of list items: the bullet or task box and the space after it fill it, continuation lines start at it; see *Lists* below |
 | `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
 | `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
@@ -374,7 +379,16 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 
 **Lists.** Bullets and task boxes sit in a 0.72em slot; slot plus space fill `--mdo-list-indent`, and the wrapped lines of the item start at the same place, inside quotes and alerts too. Ordered numbers sit in a right-aligned slot of the same width that grows by `1ch` for every digit beyond one of the list's widest number, so the items of one list share one text start (Typst's enum puts the text after the widest number plus its own `body-indent`, so ordered lists can start a little differently from the PDF). Nested items keep their source indent on the first line, and their wrapped lines hang under their own text (the source indent counts in space advances; an indent with tabs hangs at the indent only). On a justified line the space after the marker stretches with the others, so the first line's text can start slightly right of the indent; the breaks are not affected.
 
-**Word spacing.** Typst shrinks the spaces of justified lines down to two thirds to fit more words; the browser cannot. `--mdo-word-spacing` approximates it with a fixed offset (memo: `-0.045em`; the browser stretches the spaces of full lines back). It is the one token whose default is not memo's value: it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`. It will go away when the preview gets Typst's own line breaking.
+**Paragraphs.** The app sets rendered paragraphs the way Typst 0.15.0 does, so the preview breaks lines where the PDF does: hyphenation with Typst's German and English patterns (the language is the front matter's `lang:`: `de` German, `en` English, a missing `lang:` counts as `de`, other languages are not hyphenated), the best breaks for the whole paragraph in justified text (Typst's optimized line breaking with its costs), and word spaces shrunk (down to two thirds) or stretched per line so justified lines fill the measure. Hyphenated breaks show a hyphen. What is set: body paragraphs, list items, and paragraphs in quotes and alerts. What is not: headings, tables, code and other raw blocks stay as they were. Tokens: `--mdo-align` (justified paragraphs get the optimal breaks; others get the first-fit breaks of ragged text), `--mdo-hyphenate`, `--mdo-hyphenation-cost`, `--mdo-runt-cost`. Limits:
+
+- One source line is one paragraph. A Markdown paragraph hard-wrapped over several source lines is set per line, not as a whole; write a paragraph as one line to get the PDF's breaks.
+- No hanging punctuation (Typst's `overhang`): a line that ends in a comma or hyphen is not allowed to protrude.
+- The paragraph with the cursor or a selection keeps the browser's wrapping until the cursor leaves it, so it may break differently while you edit it.
+- Code, tables and other raw blocks are not set; while fonts are still loading, or when a paragraph cannot be measured, the browser wraps it as before.
+
+**Figure style.** Figure styles and widths differ in advance ("1627" in Source Sans is 19.72 pt old-style at the font's default width, as the PDF prints it for memo; with `proportional-nums` added it is 18.04 pt), so the preview must match the PDF's for the same line breaks. `--mdo-numeric` and `--mdo-table-numeric` take a `font-variant-numeric` value. Typst's `number-width: auto` (its default) keeps the font's default width, so it adds no width word. `--mdo-numeric` and `--mdo-table-numeric` are two of the four tokens whose default is not memo's value (see the list above the table): they default to `normal`, so a set that does not declare them keeps the font's own figures. Declare them when the `.typ` sets a number type.
+
+**Word spacing.** `--mdo-word-spacing` is an offset for the paragraphs the app does not set itself: the paragraph with the cursor and the fallback above. It is no longer needed for the line breaks of the other paragraphs, where the app shrinks and stretches the spaces itself. It is one of the four tokens whose default is not memo's value (see the list above the table): it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`.
 
 Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
 
@@ -465,7 +479,10 @@ You need: a test note that uses every element of your set (paragraphs long enoug
 | 2 | `--mdo-body-font`, `--mdo-body-size` | `#set text(font:, size:)`; the family as one of `var(--mdo-font-sans\|serif\|code)` (§4), the size in `pt` | sans, `10pt` | serif, `11pt` |
 | 3 | `--mdo-body-weight`, `--mdo-bold-weight` | `#set text(weight:)` (Typst's default is 400); bold is that weight **plus** `strong(delta:)` (Typst's default delta is 300, so an unset delta gives 700) | 380, 380 + 180 = 560 | 400, `show strong: text(weight: 600)` = 600 |
 | 4 | `--mdo-line-height` | measure the baseline-to-baseline distance of two lines of one paragraph in the PDF and divide by the body size, or write it in `pt`. Typst's `par(leading:)` is the gap between the lines (from the cap height of one to the baseline of the next, by default), not a CSS line height: pitch = leading + cap height of the font | 0.85em → 15.1pt pitch ≈ `1.5` | 5.5pt + 7.37pt = `12.87pt` |
-| 5 | `--mdo-align`, `--mdo-word-spacing` | `#set par(justify: true)` → `justify` and `-0.045em` (see *Word spacing* in §8.1); `justify: false` → `left` and leave the word spacing at its default `0` | justify, `-0.045em` | left, — |
+| 5 | `--mdo-align`, `--mdo-word-spacing` | `#set par(justify: true)` → `justify`; `justify: false` → `left`. The word spacing only matters for the cursor paragraph and the fallback (see *Word spacing* in §8.1): memo keeps `-0.045em`, a left-aligned set leaves it at `0` | justify, `-0.045em` | left, — |
+| 5a | `--mdo-hyphenate` | `#set text(hyphenate:)`: `auto` (Typst's default) hyphenates justified text only and is the token's default; write `true` or `false` only when the `.typ` forces it. The language comes from `lang:`, nothing to set | `auto` (memo.typ: `true`, same result as justified) | `auto` (no hyphenation) |
+| 5b | `--mdo-hyphenation-cost`, `--mdo-runt-cost` | `#set par(costs: (hyphenation: …, runt: …))`, in percent; Typst's defaults are 100 % each, and the tokens' defaults are the same, so write them only where the `.typ` differs. Only justified paragraphs use them | runt `200%` (`memo.typ`: `costs: (orphan: 200%, widow: 200%, runt: 200%)`), hyphenation default | defaults |
+| 5c | `--mdo-numeric`, `--mdo-table-numeric` | `#set text(number-type:, number-width:)` (and the same inside `show table: set text(…)`): `old-style` → `oldstyle-nums`, `lining` → `lining-nums`, `number-width: "tabular"` → `tabular-nums`, `"proportional"` → `proportional-nums`; `number-width: auto` (Typst's default) adds no width word, so write `proportional-nums` only when the `.typ` says "proportional" and `tabular-nums` only for "tabular"; write both words when both are set. Not set → `normal` | `oldstyle-nums`; tables `lining-nums tabular-nums` | `normal`, `normal` |
 | 6 | `--mdo-par-gap` | the extra distance a paragraph break adds: (baseline distance across a paragraph break) − (line pitch from row 4), measured in the PDF | `1.1em` | 23.87 − 12.87 = `11pt` |
 | 7 | `--mdo-hN-font`, `--mdo-hN-size`, `--mdo-hN-weight`, `--mdo-h1-rule`, `--mdo-h3-decoration` | your `show heading` rules per level; the weight as in row 3 (a heading inside `strong` adds the delta) | serif 14/12/10pt, 470/470/380 | serif 11pt, 600 |
 | 8 | `--mdo-list-indent` | the distance from the text block's left edge to the item text, in em of the body size: measure the x of an item's first word minus the x of a paragraph's first word in the PDF, divide by the size. In the `.typ` it is `list(indent:)` + the marker's width + `list(body-indent:)` | marker 0.72em + 0.4em = `1.12em` | 8.84pt / 11pt = `0.804em` |
@@ -479,12 +496,12 @@ The optical size needs no row: the app derives `--mdo-*-opsz` from the pt sizes 
 **Checking the result.** Copy the set into the templates folder, open the test note, hide the header, set the zoom to 100 % and put the PDF next to it. At 100 % the text block has the PDF's width on screen (§8.1, *Print units and zoom*). Compare paragraph by paragraph where each line ends:
 
 - **Every line ends one or two words early or late:** the measure (row 1), the size (row 2) or the weight (row 3) is off. The weight matters: a variable font's letters get wider with its weight.
-- **Only some lines differ, all in justified paragraphs:** expected. Typst shrinks word spaces and chooses the breaks for the whole paragraph; the browser fills each line in turn. Check that `--mdo-word-spacing` is set (row 5).
-- **The PDF hyphenates a word at a line end and the preview moves it to the next line:** expected. The preview does not hyphenate yet.
+- **Only some lines differ, all in justified paragraphs:** check the costs (row 5b) and `--mdo-hyphenate` (row 5a), and that the paragraph is one source line (a hard-wrapped paragraph is set per line, §8.1 *Paragraphs*). The paragraph with the cursor always differs while you edit it.
+- **The PDF hyphenates a word and the preview does not, or the other way round:** `--mdo-hyphenate` (row 5a) or the note's `lang:` differs from the PDF's.
 - **A list item's wrapped lines start left or right of the PDF's:** row 8.
 - **Line spacing or the gaps between paragraphs differ, the breaks do not:** rows 4 and 6; these never change a line break.
 
-What a set can reach today: memo (justified, hyphenated) matches about two thirds of all lines, din5008a (left-aligned, almost no hyphenation) every line. Hyphenation, Typst's paragraph-wide line breaking and hanging punctuation are the app's part and come with a later release; a set then needs no further values for them beyond what it already declares.
+What a set can reach: the app now hyphenates and breaks justified paragraphs like Typst, so for a set that declares rows 1 to 5b, expect nearly every line to end where the PDF's does: measured on a long memo dossier, 98 % of the lines (118 of 120) and 96 % of the paragraphs end like the PDF; din5008a (left-aligned) matches every line. Remaining differences are the limits listed under *Paragraphs* in §8.1 (hard-wrapped source lines, no hanging punctuation, the cursor paragraph, code and tables).
 
 ## 9. Minimal working skeleton
 

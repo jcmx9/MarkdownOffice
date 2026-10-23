@@ -293,3 +293,30 @@ describe('scopeSetCss', () => {
       ),
     ).toBe('#e .mdo-a { color: red; }\n#e .mdo-b { margin: 0; --mdo-x: 1; }'))
 })
+
+describe('paragraph tokens', () => {
+  it('keeps hyphenation and cost tokens verbatim', () => {
+    const { rules, dropped } = sanitizeSetCss(
+      '.mdo-preview { --mdo-runt-cost: 200%; --mdo-hyphenate: false; --mdo-hyphenation-cost: 100% }',
+    )
+    expect(dropped).toEqual([])
+    expect(rules[0]?.declarations).toEqual([
+      ['--mdo-runt-cost', '200%'],
+      ['--mdo-hyphenate', 'false'],
+      ['--mdo-hyphenation-cost', '100%'],
+    ])
+  })
+})
+
+describe('figure-style tokens', () => {
+  it('keeps --mdo-numeric and --mdo-table-numeric verbatim', () => {
+    const { rules, dropped } = sanitizeSetCss(
+      '.mdo-preview { --mdo-numeric: oldstyle-nums; --mdo-table-numeric: lining-nums tabular-nums }',
+    )
+    expect(dropped).toEqual([])
+    expect(rules[0]?.declarations).toEqual([
+      ['--mdo-numeric', 'oldstyle-nums'],
+      ['--mdo-table-numeric', 'lining-nums tabular-nums'],
+    ])
+  })
+})
