@@ -8,9 +8,9 @@
  *
  * The set-dependent values are the --mdo-* set tokens on .cm-editor (block
  * "set tokens" below): memo's values are the defaults, a set's <name>.css
- * overrides them for its notes. The exceptions are --mdo-word-spacing (default 0, not memo's
- * -0.045em, a stop-gap meant for justified memo) and --mdo-numeric / --mdo-table-numeric
- * (default normal, not memo's old-style / lining tabular figures): sets that do not declare
+ * overrides them for its notes. Three tokens default to normal / 0 instead of memo's value:
+ * --mdo-word-spacing (0, not memo's -0.045em, a stop-gap meant for justified memo),
+ * --mdo-numeric and --mdo-table-numeric (normal, not memo's old-style / lining tabular): sets that do not declare
  * them (din5008a, user sets) keep the font's own figures.
  * Print lengths are written
  * calc(<len> * var(--mdo-scale, 1)); --mdo-scale is the one zoom factor the
@@ -74,8 +74,8 @@
      memo.css sets -0.045em. Goes away with the Knuth-Plass step. */
   --mdo-word-spacing: 0;
   /* figure style (CSS font-variant-numeric) of body text, lists, quotes and headings; memo.typ sets
-     number-type "old-style" (old-style "1627" is 19.72 pt wide, lining 18.04 pt, so lines would break
-     differently). Default normal on purpose, see above; memo.css sets oldstyle-nums. Code keeps normal. */
+     number-type "old-style" (old-style "1627" at the font's default width is 19.72 pt; the former hard-coded
+     proportional-nums gave 18.04 pt, so lines broke differently). Default normal on purpose, see above; memo.css sets oldstyle-nums. Code keeps normal. */
   --mdo-numeric: normal;
   /* the same for rendered tables (memo.typ table-text: lining, tabular); default normal on purpose */
   --mdo-table-numeric: normal;
