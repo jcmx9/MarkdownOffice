@@ -341,8 +341,8 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 |-------|--------------|---------|
 | `--mdo-body-font` | `var(--mdo-font-sans)` | body font family |
 | `--mdo-body-size` | `10pt` | body size (zoomed) |
-| `--mdo-body-weight` | `400` | body weight |
-| `--mdo-bold-weight` | `600` | weight of `**bold**` |
+| `--mdo-body-weight` | `380` | body weight |
+| `--mdo-bold-weight` | `560` | weight of `**bold**` |
 | `--mdo-line-height` | `1.5` | line height |
 | `--mdo-align` | `justify` | text alignment of paragraphs |
 | `--mdo-par-gap` | `1.1em` | the gap a blank line makes between paragraphs |
@@ -351,7 +351,7 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-heading-align` | `left` | heading alignment |
 | `--mdo-h1-font`, `--mdo-h2-font`, `--mdo-h3-font` | `var(--mdo-heading-font)` | font per level |
 | `--mdo-h1-size`, `--mdo-h2-size`, `--mdo-h3-size` | `14pt`, `12pt`, `10pt` | size per level |
-| `--mdo-h1-weight`, `--mdo-h2-weight`, `--mdo-h3-weight` | `560`, `560`, `400` | weight per level |
+| `--mdo-h1-weight`, `--mdo-h2-weight`, `--mdo-h3-weight` | `470`, `470`, `380` | weight per level |
 | `--mdo-h1-color`, `--mdo-h2-color`, `--mdo-h3-color` | `var(--mdo-heading)` | colour per level |
 | `--mdo-h1-rule` | `var(--mdo-hairline)` | colour of the line under H1 |
 | `--mdo-h3-decoration` | `underline` | text decoration of H3 |
@@ -359,11 +359,18 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-table-font` | `var(--mdo-body-font)` | table font family |
 | `--mdo-table-size` | `9pt` | table size |
 | `--mdo-table-weight` | `500` | table weight |
+| `--mdo-table-head-weight` | `680` | weight of the table head row |
+| `--mdo-word-spacing` | `0` | extra word spacing in body text and headings (not tables, not code); stop-gap for justified sets, see below |
+| `--mdo-list-indent` | `1.12em` | hanging indent of list items: the marker and the space after it fill it, continuation lines start at it |
 | `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
 | `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
 | `--mdo-titleblock-align` | `center` | alignment of the head block |
 
 **Optical size.** Typst sets a variable font's `opsz` axis to the font size in pt, which changes glyph widths and so the line breaks. The preview must do the same, independent of the zoom. You normally write nothing: when a rule sets `--mdo-body-size`, `--mdo-h1-size`, `--mdo-h2-size` or `--mdo-h3-size` to a plain pt length (`11pt`, `10.5pt`), the app adds the matching `--mdo-<role>-opsz` with that number (`11`, `10.5`; not zoomed). Write the opsz token yourself in the same rule to override it. Sizes in other units (`em`, `px`, `mm`, `var()`, `calc()`) or no size token derive nothing, and that role keeps the default above.
+
+**Weights.** The defaults are the weights Typst prints for memo (`memo.typ`: text 380, bold 380 + 180, headings 470, table head 500 + 180), not the nominal 400/600. The advances of a variable font change with its weight, so only the real weights break lines like the PDF. Set the weights your `.typ` uses.
+
+**Word spacing.** Typst shrinks the spaces of justified lines down to two thirds to fit more words; the browser cannot. `--mdo-word-spacing` approximates it with a fixed offset (memo: `-0.045em`; the browser stretches the spaces of full lines back). It is the one token whose default is not memo's value: it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`. It will go away when the preview gets Typst's own line breaking.
 
 Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
 

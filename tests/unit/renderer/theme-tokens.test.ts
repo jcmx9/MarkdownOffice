@@ -27,6 +27,13 @@ const TOKEN_NAMES = [
   '--mdo-body-size',
   '--mdo-body-weight',
   '--mdo-bold-weight',
+  '--mdo-body-opsz',
+  '--mdo-h1-opsz',
+  '--mdo-h2-opsz',
+  '--mdo-h3-opsz',
+  '--mdo-word-spacing',
+  '--mdo-list-indent',
+  '--mdo-table-head-weight',
   '--mdo-line-height',
   '--mdo-align',
   '--mdo-par-gap',
@@ -58,8 +65,8 @@ const TOKEN_NAMES = [
 const scaled = (len: string) => `calc(${len} * var(--mdo-scale, 1))`
 
 describe('set tokens in theme.css', () => {
-  it('lists the 30 tokens of the plan', () => {
-    expect(new Set(TOKEN_NAMES).size).toBe(30)
+  it('lists the 37 tokens of the plan', () => {
+    expect(new Set(TOKEN_NAMES).size).toBe(37)
   })
 
   it.each(TOKEN_NAMES)('declares %s in the set-token block', (name) => {
@@ -94,14 +101,65 @@ describe('set tokens in theme.css', () => {
     expect(t.get('--mdo-align')).toBe('justify')
     expect(t.get('--mdo-par-gap')).toBe('1.1em')
     expect(t.get('--mdo-line-height')).toBe('1.5')
-    expect(t.get('--mdo-h1-weight')).toBe('560')
-    expect(t.get('--mdo-h3-weight')).toBe('400')
-    expect(t.get('--mdo-bold-weight')).toBe('600')
+    // the PDF's real weights (memo.typ weight-text 380, strong +180, weight-heading 470)
+    expect(t.get('--mdo-body-weight')).toBe('380')
+    expect(t.get('--mdo-bold-weight')).toBe('560')
+    expect(t.get('--mdo-h1-weight')).toBe('470')
+    expect(t.get('--mdo-h2-weight')).toBe('470')
+    expect(t.get('--mdo-h3-weight')).toBe('380')
+    expect(t.get('--mdo-table-head-weight')).toBe('680')
+    // Typst sets opsz to the size in pt
+    expect(t.get('--mdo-body-opsz')).toBe('10')
+    expect(t.get('--mdo-h1-opsz')).toBe('14')
+    expect(t.get('--mdo-h2-opsz')).toBe('12')
+    expect(t.get('--mdo-h3-opsz')).toBe('10')
+    expect(t.get('--mdo-list-indent')).toBe('1.12em')
+    // the one token whose default is not memo's value: sets without it must not inherit it
+    expect(t.get('--mdo-word-spacing')).toBe('0')
     expect(t.get('--mdo-table-weight')).toBe('500')
     expect(t.get('--mdo-table-tracking')).toBe('-0.02em')
     expect(t.get('--mdo-h1-rule')).toBe('var(--mdo-hairline)')
     expect(t.get('--mdo-h3-decoration')).toBe('underline')
     expect(t.get('--mdo-titleblock-align')).toBe('center')
+  })
+
+  it('sets the optical size in pt on the scroller and the heading lines', () => {
+    expect(theme).toMatch(
+      /\.mdo-preview \.cm-scroller\s*{[^}]*font-variation-settings:\s*"opsz" var\(--mdo-body-opsz\)/,
+    )
+    for (const n of [1, 2, 3]) {
+      expect(theme).toMatch(
+        new RegExp(
+          `\\.mdo-h${n}\\s*{[^}]*font-variation-settings:\\s*"opsz" var\\(--mdo-h${n}-opsz\\)`,
+        ),
+      )
+    }
+    expect(theme).not.toContain('font-optical-sizing: none')
+  })
+
+  it('widens the content box by one space advance (break-spaces counts the trailing space)', () => {
+    expect(theme).toContain(
+      'max-width: calc(var(--mdo-measure) + var(--mdo-space-advance, 0.2em) + 3em + 8px)',
+    )
+  })
+
+  it('keeps word spacing off tables and code', () => {
+    expect(theme).toMatch(
+      /\.mdo-preview \.cm-line\s*{[^}]*word-spacing:\s*var\(--mdo-word-spacing\)/,
+    )
+    expect(theme).toMatch(
+      /\.mdo-table-head, \.mdo-table-row, \.mdo-table-delim\)\s*{[^}]*word-spacing:\s*normal/,
+    )
+    expect(theme).toMatch(/\.mdo-codeblock, \.mdo-codefence\)\s*{[^}]*word-spacing:\s*normal/)
+  })
+
+  it('hangs list items by --mdo-list-indent', () => {
+    expect(theme).toMatch(
+      /\.cm-line\.mdo-list-item\s*{[^}]*padding-left:\s*var\(--mdo-list-indent\);[^}]*text-indent:\s*calc\(-1 \* var\(--mdo-list-indent\)\)/,
+    )
+    expect(theme).toContain(
+      'margin-right: calc(var(--mdo-list-indent) - 0.72em - var(--mdo-space-advance, 0.2em))',
+    )
   })
 
   it('never declares the app-owned scale', () => {

@@ -1,12 +1,17 @@
 /*
  * Markdown Office editor theme. Every value mirrors the PDF of the document
  * set (memo.typ), from which this stylesheet was originally derived.
- * Weights are nominal (400/500/600): Chromium draws the variable Source
- * fonts lighter than PDF viewers, the set sets its PDF slightly below.
+ * Weights are the PDF's real ones (380/470/560, 680 for table heads): the
+ * advances of the variable Source fonts change with wght, so only the real
+ * weights break lines like the PDF. Chromium draws them lighter than PDF
+ * viewers; that is accepted (no text stroke, no darker colour).
  *
  * The set-dependent values are the --mdo-* set tokens on .cm-editor (block
  * "set tokens" below): memo's values are the defaults, a set's <name>.css
- * overrides them for its notes. Print lengths are written
+ * overrides them for its notes. The one exception is --mdo-word-spacing: its
+ * default is 0, not memo's value (-0.045em), so sets that do not declare it
+ * (din5008a, user sets) do not inherit a stop-gap meant for justified memo.
+ * Print lengths are written
  * calc(<len> * var(--mdo-scale, 1)); --mdo-scale is the one zoom factor the
  * app sets on #editor (zoom × Present factor), so at zoom 1 a set's 11pt is
  * 11 CSS pt and every size scales together.
@@ -53,8 +58,22 @@
   /* memo body: Source Sans 10pt, line height 1.5, justified */
   --mdo-body-font: var(--mdo-font-sans);
   --mdo-body-size: calc(10pt * var(--mdo-scale, 1));
-  --mdo-body-weight: 400;
-  --mdo-bold-weight: 600;
+  /* weights as memo.typ prints them: text 380, strong 380 + delta 180, headings 470 (findings
+     step2 §4.2: 400/600 made the text 0.7 % wider than the PDF) */
+  --mdo-body-weight: 380;
+  --mdo-bold-weight: 560;
+  /* optical size: Typst sets opsz = font size in pt, Chromium's auto would use CSS px and
+     change with the zoom (din5008a: 3.6 % narrower). Unitless pt, not zoomed. */
+  --mdo-body-opsz: 10;
+  --mdo-h1-opsz: 14;
+  --mdo-h2-opsz: 12;
+  --mdo-h3-opsz: 10;
+  /* stand-in for Typst's shrinking of word spaces (down to 2/3) in justified text: takes memo
+     body lines from 30 % to 68 % identical (findings §4.4). Default 0 on purpose, see above;
+     memo.css sets -0.045em. Goes away with the Knuth-Plass step. */
+  --mdo-word-spacing: 0;
+  /* list items: marker slot 0.72em + body indent 0.4em = 11.2pt in the PDF */
+  --mdo-list-indent: 1.12em;
   --mdo-line-height: 1.5;
   --mdo-align: justify;
   /* the blank line between paragraphs carries the paragraph gap */
@@ -71,9 +90,9 @@
   --mdo-h1-size: calc(14pt * var(--mdo-scale, 1));
   --mdo-h2-size: calc(12pt * var(--mdo-scale, 1));
   --mdo-h3-size: calc(10pt * var(--mdo-scale, 1));
-  --mdo-h1-weight: 560;
-  --mdo-h2-weight: 560;
-  --mdo-h3-weight: 400;
+  --mdo-h1-weight: 470;
+  --mdo-h2-weight: 470;
+  --mdo-h3-weight: 380;
   --mdo-h1-color: var(--mdo-heading);
   --mdo-h2-color: var(--mdo-heading);
   --mdo-h3-color: var(--mdo-heading);
@@ -83,6 +102,8 @@
   --mdo-table-font: var(--mdo-body-font);
   --mdo-table-size: calc(9pt * var(--mdo-scale, 1));
   --mdo-table-weight: 500;
+  /* table head: 500 + strong delta 180 */
+  --mdo-table-head-weight: 680;
   --mdo-table-tracking: -0.02em;
   /* code blocks 9pt (inline code stays 0.9em of the surrounding text) */
   --mdo-code-size: calc(9pt * var(--mdo-scale, 1));
@@ -142,12 +163,18 @@
   font-size: var(--mdo-body-size);
   line-height: var(--mdo-line-height);
   font-weight: var(--mdo-body-weight);
+  /* only opsz, so font-weight keeps driving wght; never switch optical sizing off (the axis falls back
+     to opsz 20). Fixed in pt: line breaks no longer change with the zoom. */
+  font-variation-settings: "opsz" var(--mdo-body-opsz);
   font-variant-numeric: oldstyle-nums proportional-nums;
 }
 .mdo-preview .cm-content {
   /* border-box: the measure plus the content's 1.5em side padding and CodeMirror's line
-     padding (6px + 2px), so the lines break in exactly the PDF's width (it was 37.4em). */
-  max-width: calc(var(--mdo-measure) + 3em + 8px);
+     padding (6px + 2px), so the lines break in exactly the PDF's width (it was 37.4em).
+     Plus one space advance: under break-spaces the space before a break counts, so a line must
+     fit text + space (0.49 % of the measure in memo, 0.56 % in din5008a; findings §3 S).
+     The app measures the advance per set (--mdo-space-advance). */
+  max-width: calc(var(--mdo-measure) + var(--mdo-space-advance, 0.2em) + 3em + 8px);
   margin: 0 auto;
   padding: 2em 1.5em 40vh;
 }
@@ -155,13 +182,14 @@
 .mdo-preview .cm-line {
   text-align: var(--mdo-align);
   hyphens: manual;
+  /* headings share this rule on purpose; tables and code reset it below */
+  word-spacing: var(--mdo-word-spacing);
 }
 
 /* Headings: serif, flush-left (H4–H6 follow the heading font at body size, italic) */
 .mdo-preview .cm-line:is(.mdo-h1, .mdo-h2, .mdo-h3, .mdo-h4, .mdo-h5, .mdo-h6) {
   font-family: var(--mdo-heading-font);
   color: var(--mdo-heading);
-  font-weight: 560;
   text-align: var(--mdo-heading-align);
   hyphens: manual;
 }
@@ -169,25 +197,28 @@
   font-family: var(--mdo-h1-font);
   font-size: var(--mdo-h1-size);
   font-weight: var(--mdo-h1-weight);
+  font-variation-settings: "opsz" var(--mdo-h1-opsz);
   color: var(--mdo-h1-color);
 }
 .mdo-preview .cm-line.mdo-h2 {
   font-family: var(--mdo-h2-font);
   font-size: var(--mdo-h2-size);
   font-weight: var(--mdo-h2-weight);
+  font-variation-settings: "opsz" var(--mdo-h2-opsz);
   color: var(--mdo-h2-color);
 }
 .mdo-preview .cm-line.mdo-h3 {
   font-family: var(--mdo-h3-font);
   font-size: var(--mdo-h3-size);
   font-weight: var(--mdo-h3-weight);
+  font-variation-settings: "opsz" var(--mdo-h3-opsz);
   color: var(--mdo-h3-color);
   text-decoration: var(--mdo-h3-decoration);
   text-decoration-thickness: 0.5pt;
   text-underline-offset: 2pt;
 }
 .mdo-preview .cm-line:is(.mdo-h4, .mdo-h5, .mdo-h6) {
-  font-weight: 400;
+  font-weight: var(--mdo-body-weight);
   font-style: italic;
 }
 
@@ -317,8 +348,20 @@
   display: inline-block;
   width: 0.72em;
   /* + the visible space ≈ the memo set's body-indent 0.4em */
-  margin-right: 0.15em;
+  /* marker slot + space = --mdo-list-indent, so the first line's text starts where the
+     hanging lines do (the space is the measured body advance) */
+  margin-right: calc(var(--mdo-list-indent) - 0.72em - var(--mdo-space-advance, 0.2em));
   text-align: center;
+}
+/* hanging indent: continuation lines sit at the indent, not under the marker (the PDF indents
+   all lines by 1.12em; before, they ran 11pt too wide). Class set by the preview decorations. */
+.mdo-preview .cm-line.mdo-list-item {
+  padding-left: var(--mdo-list-indent);
+  text-indent: calc(-1 * var(--mdo-list-indent));
+}
+/* no-break phrases and hidden marks: the source stays byte-exact, no U+00A0 inserted */
+.mdo-preview .mdo-nobreak {
+  white-space: nowrap;
 }
 .mdo-preview .mdo-bullet::before {
   display: inline-block;
@@ -404,9 +447,10 @@
   font-variant-numeric: lining-nums tabular-nums;
   text-align: left;
   hyphens: manual;
+  word-spacing: normal;
 }
 .mdo-preview .cm-line.mdo-table-head {
-  font-weight: 600;
+  font-weight: var(--mdo-table-head-weight);
   border-bottom: 0.7pt solid var(--mdo-table-head-rule);
 }
 .mdo-preview .cm-line.mdo-table-delim {
@@ -434,6 +478,7 @@
   font-variant-numeric: lining-nums tabular-nums;
   text-align: left;
   hyphens: manual;
+  word-spacing: normal;
 }
 /* Column widths as Typst's auto columns (tables.ts typstAutoColumns): measured with
    .mdo-table-measure (auto layout at max-content), then fixed via <col> widths. */
@@ -452,7 +497,7 @@
   border-left: 0.4pt solid var(--mdo-table-rule);
 }
 .mdo-preview table.mdo-table th {
-  font-weight: 600;
+  font-weight: var(--mdo-table-head-weight);
   text-align: center;
   border-bottom: 0.7pt solid var(--mdo-table-head-rule);
 }
@@ -482,6 +527,7 @@
   background: var(--mdo-code-bg);
   text-align: left;
   hyphens: manual;
+  word-spacing: normal;
 }
 .mdo-preview .cm-line.mdo-codefence {
   color: var(--mdo-faint);
@@ -530,7 +576,9 @@
   margin-bottom: 0.56em;
   font-family: var(--mdo-font-serif);
   font-size: 1.6em;
-  font-weight: 560;
+  /* memo title: Serif 470 at opsz 16pt (findings §1) */
+  font-weight: 470;
+  font-variation-settings: "opsz" 16;
   line-height: 1.2;
   color: var(--mdo-heading);
 }
@@ -538,6 +586,8 @@
   margin-bottom: 0.92em;
   font-family: var(--mdo-font-serif);
   font-size: 1.2em;
+  /* memo subtitle: opsz 12pt */
+  font-variation-settings: "opsz" 12;
   color: var(--mdo-chrome);
 }
 .mdo-preview .mdo-tb-meta {
