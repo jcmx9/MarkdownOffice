@@ -2,7 +2,7 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.1 · [Deutsch](README.md)
+**Version:** 26.10.2 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -102,7 +102,9 @@ The editor also starts from the Start menu (Windows), the desktop entry (Linux) 
 
 New notes go to the default folder `~/Documents/Markdown Office/` (Windows: in the "Documents" folder). Settings live in `settings.json` in the app data folder (macOS `~/Library/Application Support/Markdown Office`, Windows `%APPDATA%\Markdown Office`, Linux `~/.config/Markdown Office`).
 
-The preview uses the PDF's bundled fonts; if a font file is missing, it falls back to system fonts. Body text is justified as in the PDF, but without hyphenation; Typst hyphenates only on export. Mod+E saves the note and exports it with the pipeline; the PDF lands next to the note (named as by the [command](#the-markdown-office-command)) and opens in the default viewer.
+The preview uses the PDF's bundled fonts; if a font file is missing, it falls back to system fonts. Paragraphs without the cursor are set like the PDF: with Typst's hyphenation and line breaking, justified with the same word spacing and with the PDF's typographic characters. The paragraph with the cursor shows the typed text and wraps like the browser. The preview shows quotes per `lang`, the apostrophe, en and em dashes and the ellipsis as the PDF does; code, formulas, HTML and tables stay raw. The PDF currently also substitutes in table cells and indented code (a pipeline quirk, to be fixed separately). Links in `<…>` show without the angle brackets; the line with the cursor shows the typed characters, and the note's text stays unchanged. The preview (and Present) draws top-level Mermaid blocks (` ```mermaid `) as diagrams, with the same mmdr plugin and the same values as the set's PDF; a block inside a list or a quote, the block with the cursor, the code view and a diagram that cannot be drawn show the source. A set without `mermaid:` in `name.preview.yaml` draws no diagrams. Mod+E saves the note and exports it with the pipeline; the PDF lands next to the note (named as by the [command](#the-markdown-office-command)) and opens in the default viewer.
+
+Font, sizes, text width and the blocks above and below the text (such as a letter's sender, address, subject and closing) come from the note's set in the preview: from `name.css` and `name.preview.yaml` (see [Template sets](#template-sets) and TEMPLATES.md). Sets without these files look like `memo`. At 100 % zoom the preview matches the paper size (11 pt is 11 pt, 165 mm is 165 mm); zoom and the Present factor scale all print sizes together.
 
 | Shortcut | Action |
 |----------|--------|
@@ -125,11 +127,11 @@ The preview uses the PDF's bundled fonts; if a font file is missing, it falls ba
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
 
-Right-clicking a tab or the file name in the status line opens a menu with rename, export PDF and close tab. The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view.
+Right-clicking a tab or the file name in the status line opens a menu with rename, „Im Finder zeigen“ (Windows: „Im Explorer zeigen“, Linux: „Im Dateimanager zeigen“), export PDF and close tab. „Im Finder zeigen“ is also in the „Datei“ menu and shows the active note in the system's file manager (a new note is saved first; not while presenting). The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view. Next to the file name stands the note's set (`template:`), red when the YAML header has errors (see [Check YAML](#front-matter)).
 
 ### Settings
 
-„Einstellungen …“ (macOS Cmd+, in the app menu, otherwise Ctrl+, in the „Datei“ menu) opens the dialog: default folder for new notes, snippet folder, font factor in presentation mode and the default for the YAML header in the preview (as YAML or as title block) as well as spelling (switch, automatic dictionary updates, own words). A read-only status block shows the version of the pipeline and of the bundled Typst. Changing the default folder never moves or deletes files. The dialog names values it did not take after saving; the previous value stays in effect for them.
+„Einstellungen …“ (macOS Cmd+, in the app menu, otherwise Ctrl+, in the „Datei“ menu) opens the dialog: default folder for new notes, snippet folder, font factor in presentation mode and the default for the YAML header in the preview (as YAML or as title block) as well as spelling (switch, automatic dictionary updates, own words). A read-only status block shows the version of the pipeline and of the bundled Typst. The button „Vorlagen-Ordner öffnen“ opens the folder for your own template sets (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`, see [Template sets](#template-sets)) in the file manager and creates it when it is missing. Changing the default folder never moves or deletes files. The dialog names values it did not take after saving; the previous value stays in effect for them.
 
 ### Outline
 
@@ -272,7 +274,7 @@ hard_breaks: false           # line breaks become spaces
 
 **Rules:** empty values (`subtitle: ""` or just `subtitle:`) are ignored, never an error. Yes/no keys accept `true`/`false`, `yes`/`no`, `on`/`off` in any case; an unrecognised value produces a warning and the default applies. Comments (`# …`) may stand on their own lines and after values. In paths (`logo:`, images) `~`, `$VAR`, `${VAR}` and `%VAR%` are expanded.
 
-**Check YAML:** the menu **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) checks the note's header against the rules of the pipeline and of the chosen set: invalid values (for example `toc: ja`, `date: 20.10.26`, an unknown set or a `profile:` that is not found), repeated keys and presumed typos. Extra keys of your own are always allowed. The dialog shows every finding with a suggested fix; „Übernehmen“ writes the ticked fixes as **one** undo step, everything else in the note stays byte for byte. „Fehlende ergänzen“ appends the set's keys the header does not have yet (off by default). Without findings „YAML in Ordnung“ appears. On export the app checks the header silently first; with errors a notice „YAML hat n Fehler“ offers „Prüfen …“, and the export runs anyway. The same goes for „Einfügen → Vorlage …“. Which keys and values a set expects is described in its `name.schema.yaml`, see [TEMPLATES.md](TEMPLATES.md). The same check exists in the terminal: [`markdown-office validate`](#check-yaml).
+**Check YAML:** the menu **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) checks the note's header against the rules of the pipeline and of the chosen set: invalid values (for example `toc: ja`, `date: 20.10.26`, an unknown set or a `profile:` that is not found), repeated keys and presumed typos. Extra keys of your own are always allowed. The dialog shows every finding with a suggested fix; „Übernehmen“ writes the ticked fixes as **one** undo step, everything else in the note stays byte for byte. „Fehlende ergänzen“ appends the set's keys the header does not have yet (off by default). Without findings „YAML in Ordnung“ appears. On export the app checks the header silently first; with errors a notice „YAML hat n Fehler“ offers „Prüfen …“, and the export runs anyway. The same goes for „Einfügen → Vorlage …“. When the note names a set (`template:`), the status line shows its name next to the file name; for this the app checks the header silently in the background (on opening, on switching tabs and half a second after the last keystroke). With errors the name turns red (warnings and hints do not count; a set that is not installed or a profile that is not found is an error too), the tooltip gives the count („memo – 2 Fehler im YAML-Kopf“); a click opens „YAML prüfen …“. Which keys and values a set expects is described in its `name.schema.yaml`, see [TEMPLATES.md](TEMPLATES.md). The same check exists in the terminal: [`markdown-office validate`](#check-yaml).
 
 ### Logo
 
@@ -302,13 +304,14 @@ CommonMark works as usual: `*italic*`, `**bold**`, `` `code` ``, links, lists, q
 
 ## Template sets
 
-A template set defines how a document looks. It consists of up to three files sharing one name:
+A template set defines how a document looks. It consists of up to four files sharing one name:
 
 | File | Purpose | Required |
 |------|---------|----------|
 | `name.typ` | Typst template for the PDF | yes |
 | `name.header.md` | Front-matter template with all keys; contains `template: name` | no |
-| `name.css` | Look in the editor (reserved; the editor does not read it yet) | no |
+| `name.css` | Look of the preview in the editor (font, sizes, text width) | no |
+| `name.preview.yaml` | Blocks above and below the text in the preview (head and foot) | no |
 
 The set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), the default layout, and the set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), DIN 5008 Form A letters) ship with the app. Your own sets live as `name.typ` or as a folder `name/name.typ` (e.g. a cloned set repo) in the folder `~/Documents/Markdown Office/Vorlagen/` (Windows: `Documents\Markdown Office\Vorlagen\`) and take precedence over a bundled set of the same name. Names use `a-z`, `0-9`, `_` and `-`.
 
@@ -369,7 +372,7 @@ In the profile the sender address consists of `street`, `zip` (postal code, in q
 
 ## Fonts and licences
 
-Preview and PDF use the same bundled fonts: Adobe's variable Source fonts (Source Serif 4, Source Sans 3, Source Code Pro) and, for characters without a Source glyph, Noto Emoji and Noto Sans Symbols 2, all under the SIL Open Font License 1.1. Typst (Apache-2.0) and the Typst packages cmarker (MIT), mitex (Apache-2.0) and mmdr (MIT) carry their own licences. The licence texts ship with the app in the pipeline folder under `licenses/` (`typst/` with LICENSE and NOTICE, `fonts/`, `packages/`; macOS: `Markdown Office.app/Contents/Resources/pipeline/licenses/`, Windows and Linux: `resources/pipeline/licenses/` in the install folder). Versions and checksums are in `scripts/pipeline-assets.json`.
+Preview and PDF use the same bundled fonts: Adobe's variable Source fonts (Source Serif 4, Source Sans 3, Source Code Pro) and, for characters without a Source glyph, Noto Emoji and Noto Sans Symbols 2, all under the SIL Open Font License 1.1. Typst (Apache-2.0) and the Typst packages cmarker (MIT), mitex (Apache-2.0) and mmdr (MIT) carry their own licences. The licence texts ship with the app in the pipeline folder under `licenses/` (`typst/` with LICENSE and NOTICE, `fonts/`, `packages/`; macOS: `Markdown Office.app/Contents/Resources/pipeline/licenses/`, Windows and Linux: `resources/pipeline/licenses/` in the install folder). Versions and checksums are in `scripts/pipeline-assets.json`. For the preview's paragraph setting the app contains code ported from Typst and hypher, the German and English hyphenation patterns and the npm package `linebreak` with Unicode data; the same mmdr WebAssembly (MIT, built on mermaid-rs-renderer, MIT) that draws the PDF also runs in the app's preview; their notices and licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which ships with the app (macOS: `Markdown Office.app/Contents/Resources/`, Windows and Linux: `resources/` in the install folder).
 
 ## Development
 

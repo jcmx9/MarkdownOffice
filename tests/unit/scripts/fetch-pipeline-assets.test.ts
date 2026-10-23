@@ -349,6 +349,53 @@ describe('fetchAssets', () => {
     )
   })
 
+  it('retries a download that failed with a server error', async () => {
+    const manifest = makeManifest()
+    let failures = 2
+    const flaky = async (url: string) => {
+      if (url === 'https://x.test/Raw.ttf' && failures-- > 0) throw new Error('HTTP 503')
+      return download(url)
+    }
+    const log: string[] = []
+    await run(manifest, {
+      download: flaky,
+      retryDelays: [0, 0, 0],
+      log: (m: string) => log.push(m),
+    })
+    expect(existsSync(join(outDir, 'fonts', 'Raw.ttf'))).toBe(true)
+    expect(log.filter((m) => m.includes('erneuter Versuch'))).toHaveLength(2)
+  })
+
+  it('retries a network error', async () => {
+    const manifest = makeManifest()
+    let failures = 1
+    const flaky = async (url: string) => {
+      if (failures-- > 0) throw new TypeError('fetch failed')
+      return download(url)
+    }
+    await run(manifest, { download: flaky, retryDelays: [0] })
+    expect(existsSync(join(outDir, 'fonts', 'Raw.ttf'))).toBe(true)
+  })
+
+  it('gives up after the last retry with the last error', async () => {
+    const manifest = makeManifest()
+    const down = async (url: string) => {
+      calls.push(url)
+      throw new Error('HTTP 503')
+    }
+    await expect(run(manifest, { download: down, retryDelays: [0, 0, 0] })).rejects.toThrow(
+      /Download fehlgeschlagen: .* \(HTTP 503\)/,
+    )
+    expect(calls).toHaveLength(4)
+  })
+
+  it('does not retry a client error', async () => {
+    const manifest = makeManifest()
+    served.delete('https://x.test/Raw.ttf')
+    await expect(run(manifest, { retryDelays: [0, 0, 0] })).rejects.toThrow(/HTTP 404/)
+    expect(calls.filter((u) => u === 'https://x.test/Raw.ttf')).toHaveLength(1)
+  })
+
   it('rejects an unknown target before downloading anything', async () => {
     await expect(run(makeManifest(), { target: 'linux-arm64' })).rejects.toThrow(
       'Kein Typst für linux-arm64',

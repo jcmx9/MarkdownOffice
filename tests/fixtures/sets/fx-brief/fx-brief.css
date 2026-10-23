@@ -1,0 +1,29 @@
+/* din5008a-like test set: Serif 11pt, ragged, 165 mm. */
+.mdo-preview {
+  --mdo-body-font: var(--mdo-font-serif);
+  --mdo-body-size: 11pt;
+  --mdo-line-height: 12.9pt;
+  --mdo-align: left;
+  --mdo-par-gap: 11pt;
+  --mdo-measure: 165mm;
+  --mdo-h1-size: 11pt;
+  --mdo-h2-size: 11pt;
+  --mdo-h3-size: 11pt;
+  --mdo-h1-weight: 600;
+  --mdo-h2-weight: 600;
+  --mdo-h3-weight: 600;
+  --mdo-h1-rule: transparent;
+  --mdo-h3-decoration: none;
+  --mdo-titleblock-align: left;
+}
+.mdo-preview .mdo-tb-sender {
+  font-family: var(--mdo-font-sans);
+  font-size: 9pt;
+}
+.mdo-preview .mdo-tb-date {
+  text-align: right;
+}
+.mdo-preview .mdo-tb-subject {
+  margin-top: 2em;
+  font-weight: 600;
+}

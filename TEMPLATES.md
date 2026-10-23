@@ -12,7 +12,8 @@ A set is a Typst template plus optional companion files, all sharing one name:
 |------|----------|---------|---------|
 | `<name>.typ` | yes | pipeline (Typst) | Builds the whole PDF: page layout, metadata, and the body via cmarker |
 | `<name>.header.md` | no | editor (new notes, *Einfügen → Vorlage …*) | Front-matter template with every key the set understands |
-| `<name>.css` | no | nobody yet (reserved) | Editor preview overrides |
+| `<name>.css` | no | editor preview | Look of the preview and Present: tokens and `.mdo-*` rules (§8) |
+| `<name>.preview.yaml` | no | editor preview | Head and foot blocks of the preview, filled from front matter and profile (§8) |
 
 **Name rule:** `^[a-z0-9_-]+$` (lowercase letters, digits, `_`, `-`). Anything else is not treated as a set name. A value ending in `.typ` (case-insensitive) is a single template file instead.
 
@@ -22,7 +23,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 |-------|--------|-------|
 | User folder | `<MDO_TEMPLATES>/<name>.typ` | flat file, no sub-folder; default `~/Documents/Markdown Office/Vorlagen/` (Windows: the *Documents* folder + `\Markdown Office\Vorlagen`) |
 | Bundled sets | `<MDO_SETS_DIR>/<name>/<name>.typ` | default `<pipeline>/../sets`; the app ships `<resources>/sets/memo/` |
-| Set repository | `<name>.typ`, `<name>.css`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
+| Set repository | `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
 
 Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`) and the bundled store packages (`@preview/…`), see §4. On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
 
@@ -75,6 +76,8 @@ A set that needs a sender (a letter) reads a profile: a YAML file plus the files
 |---|---|
 | a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `<name>.yaml` 1. in `profiles/` in the note's folder (or `MDO_BASE_DIR`), 2. in `<set>/profiles/` in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`; the set's profiles, also for a bundled set – only when `template:` is a set name, not a `.typ` file), 3. in `profiles/` in the templates folder (shared by all sets), 4. in `profiles/` in the folder of the resolved set (its example profiles) – the first existing file wins |
 | a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
+
+**Overriding values per note.** A set that prints profile values may let the note override single ones: `x-profile-<key>` in the front matter replaces the profile's `<key>` (for example `x-profile-phone`). The editor preview follows the same convention for `{profile.<key>}` (section 8). `signature` cannot be overridden: it names a file next to the profile.
 
 A folder `Vorlagen/<set>/` that holds only `profiles/` (no `<set>.typ`) does not shadow the bundled set: a set is resolved by its `.typ` only.
 
@@ -293,9 +296,231 @@ Every set must produce a valid **PDF/A-3b** with the source attached, like `memo
 | Metadata | — | memo: `title` = `doctitle` or `title`; `author` = `author` split at `,`; `description` = `doctitle`; `keywords` = `toptitle` + `"Markdown Office " + version` |
 | Colours | — | Use `luma()` for greys (stored as single-channel grey); Typst 0.15 cannot embed CMYK in PDF/A |
 
-## 8. Editor preview CSS
+## 8. Editor preview: `<name>.css` and `<name>.preview.yaml`
 
-`<name>.css` is reserved for editor overrides: the editor brings its own preview look (derived from `memo.typ`) and a set may later override it only via the CSS variables `--mdo-*` and the classes `.mdo-*`. The editor does not load set CSS yet; `memo.css` contains no rules. Ship an empty or minimal file with a comment; never rely on it for PDF output.
+The editor preview and Present mode take their look from the note's set. Two optional files next to `<name>.typ` describe it; neither has any influence on the PDF.
+
+| File | Describes |
+|------|-----------|
+| `<name>.css` | font, sizes, measure, colours and the look of the blocks (print units) |
+| `<name>.preview.yaml` | the blocks above (`head`) and below (`foot`) the text, filled from the front matter and the profile |
+
+Both are UTF-8 and at most 64 KiB. A file that is missing, too large or broken never stops the editor; the fallbacks are listed at the end of this section. Which set a note uses follows `template:` (no key: `memo`); a `.typ` path or a set that is not installed gets the built-in memo look.
+
+### 8.1 `<name>.css`
+
+**Scope.** The app puts every rule under `#editor[data-mdo-set="<name>"]`, so two tabs with different sets never mix and a set cannot style anything outside the editor (the editor also clips with `contain: paint`). Write plain rules; do not write the scope yourself.
+
+**What survives the sanitiser.** The file is rebuilt from the rules that pass; everything else is dropped and logged:
+
+- Only rules whose every selector starts with `.mdo-` followed by at least one of `a-z`, `0-9`, `-` stay. One foreign selector in a list drops the whole rule.
+- All at-rules are dropped (`@import`, `@font-face`, `@media`, `@supports`, …). Nested rules are dropped.
+- `{`, `}`, `\` or `<` in a selector or value drop the rule or the declaration (CSS escapes could spell `url(`).
+- A declaration containing `url(`, `image(`, `image-set(`, `element(`, `expression(` or `src(` (case-insensitive, whitespace ignored) is dropped, so a set can load nothing. Fonts and pictures come from the app, not from CSS.
+- `!important` is stripped (the app's own `!important`, e.g. Present's `max-width: 70ch`, always wins).
+- A declaration with an unbalanced string or bracket, an invalid property name or an empty value is dropped.
+- `--mdo-scale`, `--mdo-space-advance`, `--mdo-list-lead`, `--mdo-list-extra`, `--mdo-list-hang` (values the app writes itself) and `z-index` are dropped. An `--mdo-*-opsz` with a unit (`11pt`) is dropped too: the axis takes a plain number. `position` may be `static`, `relative` or `absolute`, never `fixed` or `sticky`.
+- `content` may only decorate: `none`, `normal` or one string without letters or digits (`"▪ "`, `"– "`). A set cannot write text into the preview that is not in the note or the profile; `attr()`, `counter()` and words are dropped.
+- **The note's text stays visible.** A rule counts as a block rule when every selector's last part (outside parentheses) names a head or foot block class (`.mdo-titleblock`, `.mdo-footblock`, `.mdo-tb-*`) and no `~` or `+` leads there; block rules may use every property above. All other rules may reach the note's own lines and keep only typography and spacing: `font` and `font-*`, `line-height`, `letter-spacing`, `word-spacing`, `text-align`, `text-indent`, `text-transform`, `text-decoration*`, `text-underline-offset`, `hyphens`, `tab-size`, `color`, `background`, `background-color`, `margin*`, `padding*`, `border*`, `min-height` and the `--mdo-*` tokens. On them `color` and the `--mdo-*-color` tokens must be opaque (no `transparent`, no alpha, no `color-mix()`), and `font-size`, the `font` size and the `--mdo-*-size` tokens must not be zero. A colour equal to the background or a tiny size still hides text; these limits remove the direct levers, not every possibility.
+
+**Print units and zoom.** Write sizes in print units (`11pt`, `165mm`). The sanitiser multiplies every absolute length (`px pt pc mm cm in Q`, outside strings) by the app's zoom factor `--mdo-scale`. At 100 % zoom a set's `11pt` is 11 CSS pt and `165mm` is 165 CSS mm, i.e. the paper size; the zoom and the Present factor scale all print sizes together by the same factor. Relative units (`em`, `ch`, unitless line heights) follow on their own. Present keeps its `70ch` measure.
+
+**Tokens.** The app declares the tokens on the `.cm-editor` element, which also carries the class `.mdo-preview`. A set changes them with a rule on `.mdo-preview`:
+
+```css
+.mdo-preview {
+  --mdo-body-font: var(--mdo-font-serif);
+  --mdo-body-size: 11pt;
+  --mdo-measure: 165mm;
+}
+```
+
+Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-table-font`) are resolved on `.mdo-preview` itself, so override them there too, in the same rule; a rule on a deeper element would not reach them. The defaults are memo's values, except for four tokens that memo declares itself in memo.css: `--mdo-word-spacing` (default `0`, memo `-0.045em`), `--mdo-numeric` and `--mdo-table-numeric` (default `normal`, memo `oldstyle-nums` / `lining-nums tabular-nums`) and `--mdo-runt-cost` (default `100%`, Typst's own, memo `200%`):
+
+| Token | Default | Meaning |
+|-------|---------|---------|
+| `--mdo-body-font` | `var(--mdo-font-sans)` | body font family |
+| `--mdo-body-size` | `10pt` | body size (zoomed) |
+| `--mdo-body-weight` | `380` | body weight |
+| `--mdo-bold-weight` | `560` | weight of `**bold**` |
+| `--mdo-line-height` | `1.5` | line height |
+| `--mdo-align` | `justify` | text alignment of paragraphs |
+| `--mdo-hyphenate` | `auto` | hyphenation: `auto` follows `--mdo-align` like Typst's `text.hyphenate: auto` (justified hyphenates), `true` / `false` force it |
+| `--mdo-hyphenation-cost` | `100%` | Typst's `par.costs` hyphenation in percent; used only for justified paragraphs |
+| `--mdo-runt-cost` | `100%` | Typst's `par.costs` runt (short last line) in percent; used only for justified paragraphs. The theme's default is `100%` (Typst's); memo.typ uses `200%` and declares it in memo.css |
+| `--mdo-par-gap` | `1.1em` | the gap a blank line makes between paragraphs |
+| `--mdo-measure` | `145mm` | width of the text block |
+| `--mdo-heading-font` | `var(--mdo-font-serif)` | heading font family |
+| `--mdo-heading-align` | `left` | heading alignment |
+| `--mdo-h1-font`, `--mdo-h2-font`, `--mdo-h3-font` | `var(--mdo-heading-font)` | font per level |
+| `--mdo-h1-size`, `--mdo-h2-size`, `--mdo-h3-size` | `14pt`, `12pt`, `10pt` | size per level |
+| `--mdo-h1-weight`, `--mdo-h2-weight`, `--mdo-h3-weight` | `470`, `470`, `380` | weight per level |
+| `--mdo-h1-color`, `--mdo-h2-color`, `--mdo-h3-color` | `var(--mdo-heading)` | colour per level |
+| `--mdo-h1-rule` | `var(--mdo-hairline)` | colour of the line under H1 |
+| `--mdo-h3-decoration` | `underline` | text decoration of H3 |
+| `--mdo-body-opsz`, `--mdo-h1-opsz`, `--mdo-h2-opsz`, `--mdo-h3-opsz` | `10`, `14`, `12`, `10` | optical size (`opsz` axis) of the serif variable fonts; unitless, in pt; derived, see below |
+| `--mdo-table-font` | `var(--mdo-body-font)` | table font family |
+| `--mdo-table-size` | `9pt` | table size |
+| `--mdo-table-weight` | `500` | table weight |
+| `--mdo-table-head-weight` | `680` | weight of the table head row |
+| `--mdo-word-spacing` | `0` | extra word spacing, now only for the paragraph with the cursor and for the fallback (paragraphs the app does not set itself); see below |
+| `--mdo-numeric` | `normal` | figure style of body text, lists, quotes and headings: a CSS `font-variant-numeric` value (`oldstyle-nums`, `lining-nums`, `tabular-nums`, `proportional-nums`, combinable). Code stays `normal`. Not memo's value (`oldstyle-nums`), see below |
+| `--mdo-table-numeric` | `normal` | the same for rendered tables (memo: `lining-nums tabular-nums`) |
+| `--mdo-list-indent` | `1.12em` | hanging indent of list items: the bullet or task box and the space after it fill it, continuation lines start at it; see *Lists* below |
+| `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
+| `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
+| `--mdo-titleblock-align` | `center` | alignment of the head block |
+
+**Optical size.** Typst sets a variable font's `opsz` axis to the font size in pt, which changes glyph widths and so the line breaks. The preview must do the same, independent of the zoom. You normally write nothing: when a rule sets `--mdo-body-size`, `--mdo-h1-size`, `--mdo-h2-size` or `--mdo-h3-size` to a plain pt length (`11pt`, `10.5pt`), the app adds the matching `--mdo-<role>-opsz` with that number (`11`, `10.5`; not zoomed). Write the opsz token yourself in the same rule to override it (unitless: `--mdo-body-opsz: 11`). If a rule sets a size twice, the last kept declaration counts, as in the browser. Sizes in other units (`em`, `px`, `mm`, `var()`, `calc()`) or no size token derive nothing, and that role keeps the default above.
+
+**Weights.** The defaults are the weights Typst prints for memo (`memo.typ`: text 380, bold 380 + 180, headings 470, table head 500 + 180), not the nominal 400/600. The advances of a variable font change with its weight, so only the real weights break lines like the PDF. Set the weights your `.typ` uses.
+
+**Space advance.** The preview wraps with the space before a break counted, so the text block is one space wider than `--mdo-measure`, and a list marker plus its space fill `--mdo-list-indent`. The app measures that space in your body font (with `--mdo-word-spacing`) when the set is shown and its fonts have loaded, and sets `--mdo-space-advance` on the editor; you write nothing (a set's own value is dropped). Set the body font and word spacing through the tokens; rules on `.cm-content` or `.cm-line` are measured too.
+
+**Lists.** Bullets and task boxes sit in a 0.72em slot; slot plus space fill `--mdo-list-indent`, and the wrapped lines of the item start at the same place, inside quotes and alerts too. Ordered numbers sit in a right-aligned slot of the same width that grows by `1ch` for every digit beyond one of the list's widest number, so the items of one list share one text start (Typst's enum puts the text after the widest number plus its own `body-indent`, so ordered lists can start a little differently from the PDF). Nested items keep their source indent on the first line, and their wrapped lines hang under their own text (the source indent counts in space advances; an indent with tabs hangs at the indent only). On a justified line the space after the marker stretches with the others, so the first line's text can start slightly right of the indent; the breaks are not affected.
+
+**Paragraphs.** The app sets rendered paragraphs the way Typst 0.15.0 does, so the preview breaks lines where the PDF does: hyphenation with Typst's German and English patterns (the language is the front matter's `lang:`: `de` German, `en` English, a missing `lang:` counts as `de`, other languages are not hyphenated), the best breaks for the whole paragraph in justified text (Typst's optimized line breaking with its costs), and word spaces shrunk (down to two thirds) or stretched per line so justified lines fill the measure. Hyphenated breaks show a hyphen. What is set: body paragraphs, list items, and paragraphs in quotes and alerts. What is not: headings, tables, code and other raw blocks stay as they were. Tokens: `--mdo-align` (justified paragraphs get the optimal breaks; others get the first-fit breaks of ragged text), `--mdo-hyphenate`, `--mdo-hyphenation-cost`, `--mdo-runt-cost`. Limits:
+
+- One source line is one paragraph. A Markdown paragraph hard-wrapped over several source lines is set per line, not as a whole; write a paragraph as one line to get the PDF's breaks.
+- No hanging punctuation (Typst's `overhang`): a line that ends in a comma or hyphen is not allowed to protrude.
+- The paragraph with the cursor or a selection keeps the browser's wrapping until the cursor leaves it, so it may break differently while you edit it.
+- Code, tables and other raw blocks are not set; while fonts are still loading, or when a paragraph cannot be measured, the browser wraps it as before.
+
+**Figure style.** Figure styles and widths differ in advance ("1627" in Source Sans is 19.72 pt old-style at the font's default width, as the PDF prints it for memo; with `proportional-nums` added it is 18.04 pt), so the preview must match the PDF's for the same line breaks. `--mdo-numeric` and `--mdo-table-numeric` take a `font-variant-numeric` value. Typst's `number-width: auto` (its default) keeps the font's default width, so it adds no width word. `--mdo-numeric` and `--mdo-table-numeric` are two of the four tokens whose default is not memo's value (see the list above the table): they default to `normal`, so a set that does not declare them keeps the font's own figures. Declare them when the `.typ` sets a number type.
+
+**Word spacing.** `--mdo-word-spacing` is an offset for the paragraphs the app does not set itself: the paragraph with the cursor and the fallback above. It is no longer needed for the line breaks of the other paragraphs, where the app shrinks and stretches the spaces itself. It is one of the four tokens whose default is not memo's value (see the list above the table): it is `0`, so a set that does not declare it gets no offset. Use it for justified sets only; left-aligned sets leave it at `0`.
+
+Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-font-sans`, `--mdo-font-serif`, `--mdo-font-code` belong to the app's theme (light and dark); use them with `var()` so the set follows the theme.
+
+**Classes.** Besides tokens a set may style the blocks of `.preview.yaml`: `.mdo-titleblock` (the head), `.mdo-footblock` (the foot), each element as `.mdo-tb-<class>`, its label as `.mdo-tb-label`, the single lines of `lines:` as `.mdo-tb-line`. Declarations such as `margin`, `text-align`, `font-size` and `position: relative|absolute` (to let a signature overlap lines) are fine.
+
+A drawn Mermaid diagram (§8.2, `mermaid:`) sits in a `.mdo-diagram` block. It is not one of the head and foot blocks: a rule on `.mdo-diagram` is a rule that may reach the note's text, so it keeps only the typography and spacing properties of the list above (`margin*`, `padding*`, `background*`, `border*`, `font*`, `color`, `min-height`, …), nothing else. The app's own spacing is 1.4em above and below; the diagram is centred and scaled to the block's content box, so horizontal `padding` narrows the room it is fitted into. The SVG inside is not part of the set-CSS contract: it is drawn as the PDF draws it, and rules aimed at it are unsupported.
+
+**Fonts.** Only the bundled families are available ("mdo Sans", "mdo Serif", "mdo Code", see section 4 and `src/renderer/ui/fonts.ts`); name them through the tokens or `var(--mdo-font-*)`. `@font-face` is dropped.
+
+### 8.2 `<name>.preview.yaml`
+
+```yaml
+preview: 1
+head:                       # replaces the front matter in the preview (header hidden) and in Present
+  - class: sender           # rendered as .mdo-tb-sender
+    parts: ["{profile.name}", "{profile.street}", "{profile.zip} {profile.city}"]
+    sep: " · "
+  - class: address
+    lines: "{x-to}"         # a list value: one line each; a string is split at newlines
+  - class: date
+    text: "{date}"          # ISO or D.M.YYYY, long form by lang
+    today: true             # empty: today
+  - class: subject
+    text: "{x-subject}"
+foot:                       # after the last line of the text
+  - class: closing
+    text: "{x-closing}"
+  - class: signature
+    image: "{profile.signature}"
+    width: "{profile.signature-width|40mm}"
+    when: ["{x-closing}", "{x-sign}"]
+  - class: attachments
+    label: { de: "Anlagen:", en: "Enclosures:" }
+    lines: "{x-attachments}"
+    when: "{x-closing}"
+```
+
+The file is a map with `preview: 1`, the lists `head` and `foot` and the maps `nobreak` and `mermaid` (all optional, see below). Any other top-level key, a missing or different `preview:` or a wrong type anywhere makes the whole file invalid. It is read as YAML 1.2 core, so `no`, `nein` and `yes` are ordinary text.
+
+Keys of an element:
+
+- `class:` (required, `a-z`, `0-9`, `-`): the element becomes `mdo-tb-<class>`.
+- Exactly one of `text:`, `parts:`, `lines:`, `image:`.
+- `text:` a string; `parts:` a list of strings joined with `sep:` (default one space, empty parts are dropped first, so no dangling separators); `lines:` is a string (a YAML list makes the file invalid): if it is exactly one placeholder whose value is a list (e.g. `"{x-to}"`), each list item becomes a line; otherwise the resolved string is split at newlines.
+- `image:` only `"{profile.signature}"` (the one picture the app reads). `width:` sets its width, e.g. `"{profile.signature-width|40mm}"`; a number with `mm`, `pt`, `cm` or `in` (else no width), scaled with the zoom.
+- `label:` a text shown before the content, either a string or a map by language (`de`, `en`, …): the note's `lang` without region, then `de`, then the first entry.
+- `today:` `true` makes an empty or missing `{date}` today's date (as the PDF does); without it an empty date stays empty.
+- `when:` one placeholder or a list; all must hold. A value holds when it is not empty and not `false`, `False` or `FALSE`. Other words (`no`, `nein`, `0`) count as present. A string with several placeholders holds only if all of them hold; a `when` without any placeholder always holds.
+
+**`nobreak:` (optional).** Lists the places where the PDF must not break a line (memo.typ turns the space into a no-break space), so the preview does not break there either:
+
+```yaml
+nobreak:
+  words: ["z. B.", "u. a.", "i. d. R."]   # literal phrases, matched as written
+  units: [mm, kg, "%", "€"]               # a digit, a space and one of these stays together
+```
+
+Both are lists of plain strings, never regular expressions. A `units` entry made of letters must end at a word boundary (`m` does not match "5 Meter"); symbols (`%`, `€`, `$`) need none. At most 200 entries per list and 40 characters per entry; more are cut, longer entries dropped. A missing key means nothing is kept together. A set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's lists. The note's text is not changed; the preview only forbids the line break. Code (inline and blocks), tables and the front matter are left out.
+
+**`mermaid:` (optional).** The arguments your `.typ` passes to mmdr's `mermaid-svg` (and the size rule around it), so the preview draws a diagram with the same plugin and the same values as the PDF:
+
+```yaml
+mermaid:
+  base-theme: modern            # default "modern"; "default" is Mermaid's own theme
+  theme: { primary_color: "#f4f2ee", font_family: SourceSans3VF }   # mmdr theme fields, strings
+  layout: { node_spacing: 25, rank_spacing: 35 }                     # numbers
+  max-height: 12cm              # optional: the largest height a diagram is scaled to (mm, cm, pt, in)
+  font-weight: 500              # optional: written before every font-family in the SVG (1-1000)
+```
+
+Every key is optional. The preview scales a diagram by the same rule as memo.typ, `natural size × min(1, text width / natural width, max-height / natural height)`; take `max-height` from your `.typ`'s size rule (a length in `mm`, `cm`, `pt` or `in`; a relative one makes the whole file invalid). If your `.typ` caps only the width, leave `max-height` out: the preview then caps the width only, like your PDF. Without `theme`/`layout` mmdr uses its base theme alone, without `font-weight` the SVG is left as drawn. `theme` and `layout` take at most 64 entries (names `a-z`, `0-9`, `_`; theme values are strings up to 64 characters, layout values numbers), an unknown key or a wrong type makes the whole file invalid. The `font_family` of the theme is mapped to the bundled families (a name containing `SourceSerif` becomes the serif font, one containing `SourceCode` the code font, anything else the sans font), because the preview cannot load others.
+
+Which blocks are drawn: fenced ` ```mermaid ` blocks on the top level of the note, like tables. A block inside a list or a quote stays code, as does the block that holds the cursor or a selection, every block in the code view, and a diagram that cannot be drawn (a notice under it says so). The note's text never changes. Both Preview and Present draw diagrams. A valid file without `mermaid:` means the set draws no diagrams, every block stays code; a set without `.preview.yaml`, with a broken one, or a note whose `template:` is a `.typ` path gets memo's options. The SVG is not shown as markup: the app rebuilds it from the elements mmdr emits and drops links, scripts, `foreignObject`, images, `use`, `style` elements, `href`, `on*`, `class` and `style` attributes, so a `click` line in a note never becomes a link.
+
+Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value of the profile the note names (section 2, *Profiles*); `{key|default}` uses `default` when the value is empty. An unknown key is empty. Values are source text (`zip: 01067` stays `01067`); a list is joined with `, ` inside a text.
+
+Omission: an element with at least one placeholder whose placeholders are all empty is left out. An element made of literal text only is always shown. All text is inserted as text, never as HTML.
+
+**Where the blocks appear.** The head replaces the front matter in the preview with the header hidden and in Present; the foot sits after the text under the same conditions. Neither appears in the code view.
+
+### 8.3 Profile access
+
+Only the profile keys that `.preview.yaml` names (`{profile.key}`) are read into the preview; other keys of the file never leave the app's main process. The note may override a value with `x-profile-<key>` (section 2). The signature is a bare `.svg` file name next to the profile, at most 256 KiB, not a symbolic link, not dot-prefixed (hidden), whose content starts with `<svg` or `<?xml`; otherwise there is no signature picture. `signature` cannot be overridden by the note.
+
+### 8.4 Fallbacks
+
+| Case | Result |
+|------|--------|
+| no `<name>.css` | built-in memo look |
+| no `<name>.preview.yaml` | memo's title block (toptitle, title, subtitle, date and author) and memo's Mermaid options (diagrams are drawn) |
+| invalid `<name>.preview.yaml` | memo's title block, memo's `nobreak:` lists and memo's Mermaid options, and one notice per set per session |
+| valid `<name>.preview.yaml` without `mermaid:` | no diagrams drawn, every Mermaid block stays code |
+| `template:` is a `.typ` path or an unknown set | built-in memo look, blocks and Mermaid options |
+
+Test a set in the editor by copying it into the templates folder and opening a note with `template: <name>`. The unit tests in `tests/unit/` and the fixture sets `tests/fixtures/sets/` show working and malicious examples. Never rely on `.css` or `.preview.yaml` for PDF output.
+
+### 8.5 Making the preview match the PDF, step by step
+
+The aim: the same font sizes, the same text width and, as far as the browser allows, the same line breaks as the PDF. Every value comes from your `.typ` or from a PDF it produced; nothing is guessed. Work through the list in this order (the later values depend on the earlier ones) and write a comment above each token saying where its value comes from, as `memo.css` and `din5008a.css` do.
+
+You need: a test note that uses every element of your set (paragraphs long enough to wrap, a list with a long item, a table, headings), its PDF, and a way to read positions from the PDF. `pdftotext -bbox note.pdf out.html` (poppler) or `mutool draw -F stext note.pdf` (MuPDF) print each word with its box in pt; baselines are the boxes' bottom edges minus the descent, but differences between two lines of the same font are exact either way.
+
+| # | Token(s) | Where the value comes from | memo | din5008a |
+|---|----------|----------------------------|------|----------|
+| 1 | `--mdo-measure` | paper width minus the left and right page margins of `#set page(margin: …)` | 210 − 35 − 30 = `145mm` | 210 − 25 − 20 = `165mm` |
+| 2 | `--mdo-body-font`, `--mdo-body-size` | `#set text(font:, size:)`; the family as one of `var(--mdo-font-sans\|serif\|code)` (§4), the size in `pt` | sans, `10pt` | serif, `11pt` |
+| 3 | `--mdo-body-weight`, `--mdo-bold-weight` | `#set text(weight:)` (Typst's default is 400); bold is that weight **plus** `strong(delta:)` (Typst's default delta is 300, so an unset delta gives 700) | 380, 380 + 180 = 560 | 400, `show strong: text(weight: 600)` = 600 |
+| 4 | `--mdo-line-height` | measure the baseline-to-baseline distance of two lines of one paragraph in the PDF and divide by the body size, or write it in `pt`. Typst's `par(leading:)` is the gap between the lines (from the cap height of one to the baseline of the next, by default), not a CSS line height: pitch = leading + cap height of the font | 0.85em → 15.1pt pitch ≈ `1.5` | 5.5pt + 7.37pt = `12.87pt` |
+| 5 | `--mdo-align`, `--mdo-word-spacing` | `#set par(justify: true)` → `justify`; `justify: false` → `left`. The word spacing only matters for the cursor paragraph and the fallback (see *Word spacing* in §8.1): memo keeps `-0.045em`, a left-aligned set leaves it at `0` | justify, `-0.045em` | left, — |
+| 5a | `--mdo-hyphenate` | `#set text(hyphenate:)`: `auto` (Typst's default) hyphenates justified text only and is the token's default; write `true` or `false` only when the `.typ` forces it. The language comes from `lang:`, nothing to set | `auto` (memo.typ: `true`, same result as justified) | `auto` (no hyphenation) |
+| 5b | `--mdo-hyphenation-cost`, `--mdo-runt-cost` | `#set par(costs: (hyphenation: …, runt: …))`, in percent; Typst's defaults are 100 % each, and the tokens' defaults are the same, so write them only where the `.typ` differs. Only justified paragraphs use them | runt `200%` (`memo.typ`: `costs: (orphan: 200%, widow: 200%, runt: 200%)`), hyphenation default | defaults |
+| 5c | `--mdo-numeric`, `--mdo-table-numeric` | `#set text(number-type:, number-width:)` (and the same inside `show table: set text(…)`): `old-style` → `oldstyle-nums`, `lining` → `lining-nums`, `number-width: "tabular"` → `tabular-nums`, `"proportional"` → `proportional-nums`; `number-width: auto` (Typst's default) adds no width word, so write `proportional-nums` only when the `.typ` says "proportional" and `tabular-nums` only for "tabular"; write both words when both are set. Not set → `normal` | `oldstyle-nums`; tables `lining-nums tabular-nums` | `normal`, `normal` |
+| 6 | `--mdo-par-gap` | the extra distance a paragraph break adds: (baseline distance across a paragraph break) − (line pitch from row 4), measured in the PDF | `1.1em` | 23.87 − 12.87 = `11pt` |
+| 7 | `--mdo-hN-font`, `--mdo-hN-size`, `--mdo-hN-weight`, `--mdo-h1-rule`, `--mdo-h3-decoration` | your `show heading` rules per level; the weight as in row 3 (a heading inside `strong` adds the delta) | serif 14/12/10pt, 470/470/380 | serif 11pt, 600 |
+| 8 | `--mdo-list-indent` | the distance from the text block's left edge to the item text, in em of the body size: measure the x of an item's first word minus the x of a paragraph's first word in the PDF, divide by the size. In the `.typ` it is `list(indent:)` + the marker's width + `list(body-indent:)` | marker 0.72em + 0.4em = `1.12em` | 8.84pt / 11pt = `0.804em` |
+| 9 | `--mdo-table-font`, `--mdo-table-size`, `--mdo-table-weight`, `--mdo-table-tracking`, `--mdo-table-head-weight` | your `show table: set text(…)`; the head weight is the table weight plus the strong delta when the head cells are `strong` (memo: `show table.cell.where(y: 0): strong`) | sans 9pt, 500, `-0.02em`, 500 + 180 = 680 | code 10pt, 400, `0`, 600 |
+| 10 | `--mdo-code-size` | `show raw.where(block: true): set text(size:)` | `9pt` | `10pt` |
+| 11 | `nobreak:` in `<name>.preview.yaml` | the phrases and units your `.typ` joins with a no-break space (`show "z. B.": [z.~B.]`, a regex for number + unit); copy them as plain strings (§8.2). No such rules: leave the key out | 10 phrases, 19 units | — |
+| 11a | `mermaid:` in `<name>.preview.yaml` | the arguments of your `.typ`'s `mermaid-svg` call and its size rule: `base-theme`, the `theme` dict (mmdr field names), the `layout` dict, the `max-height` of the `box`/`scale` (none if it caps only the width), and a `font-weight` only if the `.typ` writes one into the SVG (§8.2). No Mermaid rule: leave the key out | memo.typ's theme, layout `node_spacing: 25, rank_spacing: 35`, `12cm`, weight 500 | see the set's `din5008a.preview.yaml` |
+| 12 | `head:`, `foot:` in `<name>.preview.yaml`, block classes in `<name>.css` | what the `.typ` prints from the front matter and the profile above and below the body, in the same order; distances measured in the PDF become `margin-*`/`padding-*` on the `.mdo-tb-*` classes | title block | letter head, closing, signature, enclosures |
+
+The optical size needs no row: the app derives `--mdo-*-opsz` from the pt sizes of rows 2 and 7 (§8.1, *Optical size*). Only fonts and sizes in `pt` derive it, so write the sizes in `pt`, not `em` or `mm`.
+
+**Checking the result.** Copy the set into the templates folder, open the test note, hide the header, set the zoom to 100 % and put the PDF next to it. At 100 % the text block has the PDF's width on screen (§8.1, *Print units and zoom*). Compare paragraph by paragraph where each line ends:
+
+- **Every line ends one or two words early or late:** the measure (row 1), the size (row 2) or the weight (row 3) is off. The weight matters: a variable font's letters get wider with its weight.
+- **Only some lines differ, all in justified paragraphs:** check the costs (row 5b) and `--mdo-hyphenate` (row 5a), and that the paragraph is one source line (a hard-wrapped paragraph is set per line, §8.1 *Paragraphs*). The paragraph with the cursor always differs while you edit it.
+- **The PDF hyphenates a word and the preview does not, or the other way round:** `--mdo-hyphenate` (row 5a) or the note's `lang:` differs from the PDF's.
+- **A list item's wrapped lines start left or right of the PDF's:** row 8.
+- **Line spacing or the gaps between paragraphs differ, the breaks do not:** rows 4 and 6; these never change a line break.
+
+What a set can reach: the app now hyphenates and breaks justified paragraphs like Typst, so for a set that declares rows 1 to 5b, expect nearly every line to end where the PDF's does: measured on a long memo dossier, 98 % of the lines (118 of 120) and 96 % of the paragraphs end like the PDF; din5008a (left-aligned) matches every line. Remaining differences are the limits listed under *Paragraphs* in §8.1 (hard-wrapped source lines, no hanging punctuation, the cursor paragraph, code and tables).
 
 ## 9. Minimal working skeleton
 
@@ -420,7 +645,8 @@ Repository tests: `bash pipeline/tests/test-pdf.sh` (PDFs of `pipeline/tests/fix
 
 ## 11. Publishing a set
 
-- One repository per set: `MarkdownOffice-set-<name>` (e.g. `jcmx9/MarkdownOffice-set-memo`), with `<name>.typ`, `<name>.css`, `<name>.header.md`, `LICENSE`, `README.md`, `README.en.md` (content-identical), `CHANGELOG.md` at the root.
+- One repository per set: `MarkdownOffice-set-<name>` (e.g. `jcmx9/MarkdownOffice-set-memo`), with `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md`, `LICENSE`, `README.md`, `README.en.md` (content-identical), `CHANGELOG.md` at the root.
+- The README (both languages) has a section on the editor preview: which values the set declares and where each comes from (the table of §8.5 for your set), and what still differs from the PDF. memo and din5008a are examples.
 - Versions are CalVer `YY.M.MICRO`; tags are `vYY.M.MICRO` (e.g. `v26.10.0`).
 - Users install a set by copying `<name>.typ` into their templates folder.
 - To bundle a set with the app, add it to `sets` in `scripts/pipeline-assets.json`:
@@ -439,7 +665,7 @@ The app will offer sets for one-click installation from a catalog. A set is list
 
 **Security review.** A set must not put users at risk. In particular:
 
-- **No hard-coded links.** No fixed URLs in the `.typ`, `.css` or `.header.md` (no `link("https://…")`, no URLs in text): a link in a client PDF can lead to a dangerous site, and a reader cannot tell. Links come only from the user's own note.
+- **No hard-coded links.** No fixed URLs in the `.typ`, `.css`, `.preview.yaml` or `.header.md` (no `link("https://…")`, no URLs in text, no `url()` in the CSS: the editor drops it anyway): a link in a client PDF can lead to a dangerous site, and a reader cannot tell. Links come only from the user's own note.
 - **Read only what the pipeline hands over:** `read()` only on `sys.inputs.source` and files under `mdo`; no other paths.
 - **No obfuscated content** (encoded payloads, embedded files other than the source attachment).
 
@@ -447,7 +673,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 
 ## 13. Checklist
 
-- [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`.
+- [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`, `<name>.preview.yaml`.
 - [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"`, `mdo + "/vendor/…"` and bundled store packages (`@preview/<name>:<version>` with the exact pinned version, section 4); no `@preview/` in comments.
 - [ ] Every input is read with `sys.inputs.at(key, default: …)`; booleans compared as strings.
 - [ ] Body rendered with `cmarker.render(preprocess(read(source), hard-breaks: …, lang: …), …)`, `smart-punctuation: false`, `math: mitex`.
@@ -457,6 +683,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `pdf.attach` with the bare file name when `attach != ""`.
 - [ ] Only bundled fonts, with the Noto fallbacks; greys via `luma()`.
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
+- [ ] If the set has a `.css` or `.preview.yaml`: print units for sizes, no `url()` or at-rules, `.preview.yaml` starts with `preview: 1` and only uses the documented keys (section 8); a note without them still looks right (memo fallback). Each token's value is derived as in §8.5 and its source is written in a comment; the test note's lines end where the PDF's do, apart from the limits §8.5 names.
 - [ ] Ships `<name>.schema.yaml` for its `x-` keys (section 6, *Schema*).
 - [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.

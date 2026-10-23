@@ -10,8 +10,18 @@ import {
   type Text,
   type TransactionSpec,
 } from '@codemirror/state'
-import { drawSelection, EditorView, type KeyBinding, keymap, lineNumbers } from '@codemirror/view'
+import {
+  drawSelection,
+  EditorView,
+  type KeyBinding,
+  keymap,
+  lineNumbers,
+  type Rect,
+  tooltips,
+} from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
+import { diagrams } from './diagrams'
+import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
 import { mdoHighlight } from './highlight'
@@ -19,11 +29,15 @@ import { mdoMarkdown } from './markdown'
 import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
+import { paragraphsPlugin } from './paragraphs'
 import { previewPlugin } from './preview'
+import { previewSource } from './preview-source'
+import { previewView } from './rendered'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
 import { tableField } from './tables'
+import { typoMask } from './typo-mask'
 
 export const viewCompartment = new Compartment()
 
@@ -75,10 +89,27 @@ export function viewExtensions(view: View): Extension {
     : [
         foldGutter(),
         EditorView.editorAttributes.of({ class: 'mdo-preview' }),
+        previewView.of(true),
+        typoMask,
         previewPlugin,
+        // after previewPlugin: it reads the preview's decorations of the lines it sets
+        paragraphsPlugin,
         tableField,
+        // Mermaid blocks as the PDF draws them; one plugin and cache for every tab.
+        diagrams.extension,
         headerFold,
+        footBlock,
       ]
+}
+
+/**
+ * The space tooltips (snippet autocomplete) may use: the editor's host (#editor), not the
+ * window. #editor has `contain: paint`, so a tooltip placed by the window's bounds would be cut
+ * off under the status line or beside the outline; inside this box CodeMirror flips and
+ * shrinks it so it stays visible.
+ */
+export function tooltipSpace(view: EditorView): Rect {
+  return (view.dom.parentElement ?? view.dom).getBoundingClientRect()
 }
 
 /** What a tab holds: a Markdown note, or a YAML profile opened for editing („Profil anlegen …“). */
@@ -109,7 +140,10 @@ export function createState(
       md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
+      // Every tab keeps its own set description; null (built-in memo) until main answers.
+      previewSource,
       EditorView.lineWrapping,
+      tooltips({ tooltipSpace }),
       viewCompartment.of(viewExtensions(view)),
       modeCompartment.of(modeExtensions(mode)),
       // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.

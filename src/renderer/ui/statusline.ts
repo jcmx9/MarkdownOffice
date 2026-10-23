@@ -9,8 +9,11 @@ export const SAVE_STATE_LABEL: Record<SaveState, string> = {
   held: 'Nicht gespeichert',
 }
 
+import { platformFromUserAgent, revealLabel } from '../../shared/reveal'
 import type { View } from '../../shared/types'
+import { chromeButton } from './chrome-button'
 import { Clock } from './clock'
+import { type SetStatus, setTitle } from './set-status'
 import {
   type Mode,
   ModeSwitches,
@@ -20,20 +23,27 @@ import {
 } from './switches'
 
 export interface StatusActions extends ToggleActions {
-  /** Right click on the file name: the note's context menu (rename, export, close). */
+  /** Right click on the file name: the note's context menu (rename, reveal, export, close). */
   noteMenu(): void
   setMode(mode: Mode): void
   setView(view: View): void
+  /** Click on the set name: „YAML prüfen …“, through the menu command's guards. */
+  validateYaml(): void
 }
 
 const DEFAULT_TOGGLES = { outline: false, hasHeader: false, yamlOn: false }
 
-/** Edit's bottom line: clock, mode and view switches, file name, save state, export progress. */
+/**
+ * Edit's bottom line: clock, mode and view switches, file name, the note's set, save state,
+ * export progress.
+ */
 export class StatusLine {
   private readonly clock: Clock
   private readonly switches: ModeSwitches
   private readonly toggles: StatusToggles
   private readonly name = document.createElement('span')
+  /** The note's `template:`; red when the silent YAML check finds errors. */
+  private readonly set: HTMLButtonElement
   private readonly state = document.createElement('span')
   private readonly exportState = document.createElement('span')
   private busy = false
@@ -46,11 +56,16 @@ export class StatusLine {
     this.state.className = 'state'
     this.state.dataset.testid = 'status-state'
     this.name.dataset.testid = 'status-file'
-    this.name.title = 'Rechtsklick: Umbenennen, PDF exportieren, Tab schließen'
+    // Lists the note menu's entries (src/main/menu.ts noteMenuTemplate), same platform label.
+    const reveal = revealLabel(platformFromUserAgent(navigator.userAgent))
+    this.name.title = `Rechtsklick: Umbenennen, ${reveal}, PDF exportieren, Tab schließen`
     this.name.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       if (this.name.textContent) actions.noteMenu()
     })
+    this.set = chromeButton('status-set', '', '', () => actions.validateYaml())
+    this.set.className = 'set'
+    this.renderSet(null)
     this.exportState.className = 'exporting'
     this.exportState.dataset.testid = 'status-export'
     this.exportState.textContent = 'PDF wird erstellt …'
@@ -60,6 +75,7 @@ export class StatusLine {
       this.switches.el,
       this.toggles.el,
       this.name,
+      this.set,
       this.state,
       this.exportState,
     )
@@ -88,6 +104,14 @@ export class StatusLine {
     this.state.textContent = saveText(state, error)
     // A hold is as prominent as a failed save.
     this.state.classList.toggle('error', state === 'error' || state === 'held')
+  }
+
+  /** The set name and its check result; null hides it (no note, or no `template:`). */
+  renderSet(status: SetStatus | null): void {
+    this.set.hidden = status === null
+    this.set.textContent = status?.name ?? ''
+    this.set.title = status ? setTitle(status) : ''
+    this.set.classList.toggle('error', (status?.errors ?? 0) > 0)
   }
 
   setExporting(on: boolean): void {

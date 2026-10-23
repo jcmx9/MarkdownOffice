@@ -78,6 +78,44 @@ async function defaultDownload(url) {
   return new Uint8Array(await res.arrayBuffer())
 }
 
+/**
+ * Whether a failed download is worth another try: a server error (5xx), rate limiting (429)
+ * or a network error. CI runs failed on single 503 answers from chromium.googlesource.com
+ * (dictionaries); a 404 or any other 4xx stays a hard failure.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isTransient(err) {
+  const message = err instanceof Error ? err.message : String(err)
+  const status = /^HTTP (\d{3})$/.exec(message)
+  if (!status) return true
+  const code = Number(status[1])
+  return code >= 500 || code === 429
+}
+
+/**
+ * Wraps `download` so a transient failure is retried after each delay in turn (backoff);
+ * the last error is rethrown once the delays are used up.
+ * @param {(url: string) => Promise<Uint8Array>} download
+ * @param {number[]} delays milliseconds before each retry
+ * @param {(message: string) => void} log
+ * @returns {(url: string) => Promise<Uint8Array>}
+ */
+function withRetry(download, delays, log) {
+  return async (url) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await download(url)
+      } catch (err) {
+        if (attempt >= delays.length || !isTransient(err)) throw err
+        const cause = err instanceof Error ? err.message : String(err)
+        log(`  erneuter Versuch ${attempt + 1}/${delays.length} (${cause}): ${url}`)
+        await new Promise((done) => setTimeout(done, delays[attempt]))
+      }
+    }
+  }
+}
+
 /** @param {Uint8Array} bytes @returns {string} */
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
@@ -208,6 +246,7 @@ function swapIn(staged, final) {
  *   target: string | string[],
  *   outDir: string,
  *   download?: (url: string) => Promise<Uint8Array>,
+ *   retryDelays?: number[],
  *   log?: (message: string) => void,
  *   env?: Record<string, string | undefined>,
  * }} o
@@ -215,8 +254,12 @@ function swapIn(staged, final) {
  */
 export async function fetchAssets(o) {
   const { manifest, outDir } = o
-  const download = o.download ?? defaultDownload
   const log = o.log ?? ((m) => console.log(m))
+  const download = withRetry(
+    o.download ?? defaultDownload,
+    o.retryDelays ?? [2000, 5000, 15000],
+    log,
+  )
   const env = o.env ?? process.env
   const targets = Array.isArray(o.target) ? o.target : [o.target]
 

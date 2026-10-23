@@ -1,0 +1,13 @@
+# The built-in memo description (MEMO_PREVIEW) written as a set file.
+preview: 1
+head:
+  - class: toptitle
+    text: "{toptitle}"
+  - class: title
+    text: "{title}"
+  - class: subtitle
+    text: "{subtitle}"
+  - class: meta
+    parts: ["{date}", "{author}"]
+    sep: " · "
+    when: "{author}"

@@ -240,15 +240,31 @@ describe('NoteWatcher', () => {
 
   it('re-checks a missing file once before reporting it deleted', async () => {
     const path = join(dir, 'neu-angelegt.md')
+    // The file comes back right after the first check found it missing, i.e. between that
+    // check and the confirming re-check. The read itself recreates it, so this holds under any
+    // load: a fixed sleep (150 ms between rm and write) ran past the re-check on busy Windows
+    // runners, which then rightly reported `deleted` before the recreation.
+    let misses = 0
+    watcher.close()
+    watcher = new NoteWatcher(
+      (c) => events.push(c),
+      100,
+      async (p) => {
+        try {
+          return await readFile(p)
+        } catch (err) {
+          if (++misses === 1) await writeFile(p, 'b')
+          throw err
+        }
+      },
+    )
     await writeFile(path, 'a')
     watcher.setFiles([path])
     await sleep(150)
     await rm(path)
-    // Past the first check (debounce 100 ms) but inside the confirming re-check.
-    await sleep(150)
-    await writeFile(path, 'b')
     await waitFor(() => events.length > 0)
     await sleep(400)
+    expect(misses).toBe(1)
     expect(events).toEqual([expect.objectContaining({ kind: 'changed' })])
   })
 })
@@ -294,19 +310,38 @@ describe('NoteWatcher own content (save base check)', () => {
     expect(watcher.isOwn(path, mine)).toBe(false)
   })
 
-  // A late FSEvents delivery for the initial write can start a read that completes between
-  // writeFile('extern') and acknowledge() on a slow runner (seen on macOS CI). Retry instead of
-  // sleeping longer.
-  it('acknowledge() keeps a state handed over by a refused save from being reported', {
-    retry: 2,
-  }, async () => {
+  // The folder event is fired by hand, after acknowledge(). With the real fs.watch a late
+  // FSEvents delivery for the initial write could start a read that completed between
+  // writeFile('extern') and acknowledge() on a slow runner, which then rightly reported
+  // 'extern' (macOS CI, run 39061004852); a retry only hid that.
+  it('acknowledge() keeps a state handed over by a refused save from being reported', async () => {
+    const folder = { fire: (_event: string, _name: string): void => undefined }
+    let reads = 0
+    watcher.close()
+    watcher = new NoteWatcher(
+      (c) => events.push(c),
+      100,
+      async (p) => {
+        const bytes = await readFile(p)
+        reads++
+        return bytes
+      },
+      {
+        watch: ((_dir: string, listener: (event: string, name: string) => void) => {
+          folder.fire = listener
+          const w = { close: () => undefined, on: () => w }
+          return w
+        }) as unknown as WatcherDeps['watch'],
+      },
+    )
     const path = join(dir, 'ack.md')
     await writeFile(path, 'alt')
     watcher.setFiles([path])
-    await sleep(150)
     await writeFile(path, 'extern')
     watcher.acknowledge(path, hashBytes(Buffer.from('extern')))
-    await sleep(500)
+    folder.fire('change', 'ack.md')
+    // The check reports synchronously once its read is done, before waitFor looks again.
+    await waitFor(() => reads > 0)
     expect(events).toEqual([])
     expect(watcher.isOwn(path, hashBytes(Buffer.from('extern')))).toBe(false)
   })

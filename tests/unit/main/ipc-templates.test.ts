@@ -163,6 +163,28 @@ describe('template IPC', () => {
     await expect(invoke(Ch.validationInputs, path(), template, profile)).rejects.toThrow()
   })
 
+  it('answers preview inputs for an allowed note', async () => {
+    await writeFile(join(sets, 'memo', 'memo.css'), '.mdo-preview{--mdo-body-size:10pt}')
+    const note = join(root, 'p.md')
+    await writeFile(note, '')
+    app.allow([note])
+    const res = (await invoke(Ch.previewInputs, note, 'memo', '')) as {
+      set: string
+      css: unknown[]
+    }
+    expect(res.set).toBe('memo')
+    expect(res.css).toHaveLength(1)
+  })
+
+  it('rejects a preview path main did not allow', async () => {
+    await writeFile(join(root, 'fremd.md'), '')
+    await expect(invoke(Ch.previewInputs, join(root, 'fremd.md'), 'memo', '')).rejects.toThrow()
+  })
+
+  it.each(['../x', 'A B', 'x'.repeat(65)])('rejects preview template %j', async (t) => {
+    await expect(invoke(Ch.previewInputs, null, t, '')).rejects.toThrow()
+  })
+
   it('accepts a .typ path as template', async () => {
     expect(await invoke(Ch.validationInputs, null, '/x/y.typ', '')).toMatchObject({
       set: '',

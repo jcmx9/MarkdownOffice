@@ -119,6 +119,17 @@ jobs:
         if: runner.os != 'Windows'
         run: bash pipeline/tests/test-pdf.sh
 
+      # The preview's typographic characters (src/core/typography.ts) against markdown.typ.
+      - name: Typography parity (core against Typst)
+        if: runner.os != 'Windows'
+        run: bash pipeline/tests/test-typography.sh
+
+      # The preview's Mermaid diagrams (src/core/mermaid.ts running the bundled mmdr wasm)
+      # against Typst running the same plugin with memo's arguments, plus the committed references.
+      - name: Mermaid parity (core against Typst)
+        if: runner.os != 'Windows'
+        run: bash pipeline/tests/test-mermaid.sh
+
       # The reference PDFs were extracted with Homebrew's poppler on macOS; other poppler builds
       # lay text out slightly differently.
       - name: Pipeline equivalence (set memo against the references)
@@ -181,7 +192,11 @@ jobs:
           export LD_LIBRARY_PATH="${app}/usr/lib"
           out="$(xvfb-run -a "${app}/markdown-office" --version)"
           echo "${out}"
-          [ "${out}" = "Markdown Office ${version}" ]
+          # xvfb-run merges the app's stderr into stdout, so Chromium's occasional
+          # "ERROR:dbus/bus.cc ... Failed to connect to the bus" line ends up in ${out} and an
+          # exact comparison failed without a FAIL line. The version line itself must still
+          # match exactly.
+          printf '%s\n' "${out}" | grep -Fxq "Markdown Office ${version}"
           # The CLI runs as Node: no display needed.
           bash scripts/smoke-cli.sh "${app}/markdown-office" "${app}/resources/pipeline/cli.js"
 
@@ -223,11 +238,14 @@ jobs:
           if ($head -ne '%PDF-') { throw "not a PDF: $head" }
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        # Only a failed run needs its traces and screenshots, and only until it is looked at:
+        # uploading every run for 90 days filled the account's Actions storage (2026-10-22).
+        if: failure()
         with:
           name: e2e-${{ matrix.os }}
           path: test-results/
           if-no-files-found: ignore
+          retention-days: 7
 
   # Installs the freshly packaged app with scripts/bootstrap.{sh,ps1} (MDO_ARCHIVE) into an
   # isolated temp profile, checks the installed markdown-office command (PDF from a note in a

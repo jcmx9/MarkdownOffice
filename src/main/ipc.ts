@@ -1,5 +1,6 @@
+import { mkdir, stat } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
-import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
+import { BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { SET_NAME_RE } from '../core/sets'
 import { Ch } from '../shared/ipc'
 import type {
@@ -24,6 +25,8 @@ import {
 } from './files'
 import { setWindowFullScreen } from './fullscreen'
 import { noteMenuTemplate } from './menu'
+import { pluginWasm } from './plugins'
+import { previewInputs } from './preview-inputs'
 import { createProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
 import { CODE_RE } from './spellcheck/languages'
@@ -44,11 +47,30 @@ class SaveConflict extends Error {}
 
 export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(Ch.startup, () => ctx.startup())
+  // Typst's WebAssembly plugins for the preview; the renderer names a key, main owns the path.
+  ipcMain.handle(Ch.pluginWasm, (_e, name: unknown) => pluginWasm(ctx.pipeline.paths.root, name))
   ipcMain.handle(Ch.listSnippets, () => loadUserSnippets(ctx.settings.snippetFolder))
   ipcMain.handle(Ch.noteMenu, (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win) return
-    Menu.buildFromTemplate(noteMenuTemplate((c) => ctx.send(Ch.menu, c))).popup({ window: win })
+    Menu.buildFromTemplate(noteMenuTemplate((c) => ctx.send(Ch.menu, c), process.platform)).popup({
+      window: win,
+    })
+  })
+  // „Im Finder zeigen“: only a note main already allowed (the renderer cannot point the file
+  // manager anywhere else). showItemInFolder reports nothing for a missing file, so main checks
+  // first and returns a message the renderer shows instead of silently doing nothing.
+  ipcMain.handle(Ch.revealPath, async (_e, path: unknown): Promise<string | null> => {
+    try {
+      const p = await ctx.assertAllowed(str(path))
+      if (!(await stat(p)).isFile()) return `Keine Datei: ${p}`
+      shell.showItemInFolder(p)
+      return null
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ENOTDIR') return `Datei nicht gefunden: ${str(path)}`
+      return message(err)
+    }
   })
   // Template sets: the renderer only ever names a set (SET_NAME_RE, short), never a path; main
   // resolves it like the pipeline. The templates folder is computed per call from MDO_TEMPLATES
@@ -56,6 +78,20 @@ export function registerIpc(ctx: AppContext): void {
   const setsDir = () => ctx.pipeline.paths.sets
   const userDir = () => userTemplatesDir(process.env, ctx.documentsDir)
   ipcMain.handle(Ch.listSets, () => listSets(setsDir(), userDir()))
+  // „Vorlagen-Ordner öffnen“ (settings): the same folder the listing and the export use, no
+  // argument from the renderer. It is the app's own documented folder, so main creates it when
+  // missing (a fresh install has none until the first user set) instead of failing.
+  ipcMain.handle(Ch.openTemplatesFolder, async (): Promise<string | null> => {
+    const dir = userDir()
+    try {
+      await mkdir(dir, { recursive: true })
+    } catch (err) {
+      return `Vorlagen-Ordner konnte nicht angelegt werden: ${message(err)}`
+    }
+    // openPath resolves to an error string, empty on success.
+    const error = await shell.openPath(dir)
+    return error ? `Vorlagen-Ordner konnte nicht geöffnet werden: ${error}` : null
+  })
   ipcMain.handle(Ch.readSetHeader, (_e, name: unknown) =>
     setName(name) ? readSetHeader(setsDir(), userDir(), name) : null,
   )
@@ -67,25 +103,35 @@ export function registerIpc(ctx: AppContext): void {
   // names and a lookup, main never reads a path the renderer invents. An absolute or `~`
   // profile value makes main only stat (existence check) a path named in the user's own note,
   // it never reads it.
+  // Shared argument checks of the note-bound inputs handlers: the same rules for „YAML prüfen“
+  // and the preview, so neither can be used to probe what the other refuses.
+  const noteInputArgs = async (path: unknown, template: unknown, profile: unknown) => {
+    const t = str(template)
+    const isTypPath = t.length <= 256 && t.toLowerCase().endsWith('.typ')
+    if (t !== '' && !isTypPath && !setName(t)) {
+      throw new TypeError('Ungültiger Parameter.')
+    }
+    const pr = str(profile)
+    if (pr.length > 256) throw new TypeError('Ungültiger Parameter.')
+    const noteDir = path === null ? null : dirname(await ctx.assertAllowed(str(path)))
+    return { noteDir, template: t, profile: pr }
+  }
   ipcMain.handle(
     Ch.validationInputs,
-    async (_e, path: unknown, template: unknown, profile: unknown) => {
-      const t = str(template)
-      const isTypPath = t.length <= 256 && t.toLowerCase().endsWith('.typ')
-      if (t !== '' && !isTypPath && !setName(t)) {
-        throw new TypeError('Ungültiger Parameter.')
-      }
-      const pr = str(profile)
-      if (pr.length > 256) throw new TypeError('Ungültiger Parameter.')
-      const noteDir = path === null ? null : dirname(await ctx.assertAllowed(str(path)))
-      return validationInputs({
+    async (_e, path: unknown, template: unknown, profile: unknown) =>
+      validationInputs({
         setsDir: setsDir(),
         userDir: userDir(),
-        noteDir,
-        template: t,
-        profile: pr,
-      })
-    },
+        ...(await noteInputArgs(path, template, profile)),
+      }),
+  )
+  // Editor preview inputs (set CSS, preview description, profile, signature); same checks.
+  ipcMain.handle(Ch.previewInputs, async (_e, path: unknown, template: unknown, profile: unknown) =>
+    previewInputs({
+      setsDir: setsDir(),
+      userDir: userDir(),
+      ...(await noteInputArgs(path, template, profile)),
+    }),
   )
   // „Profil anlegen …“: both names are checked here (createProfile checks again); the renderer
   // may only open the new YAML because main allows exactly that one created path.

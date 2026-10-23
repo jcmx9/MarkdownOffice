@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  // as electron.vite.config.ts: the renderer imports the hyphenation tries with `?inline`
+  assetsInclude: ['**/*.bin'],
   test: {
     include: ['tests/unit/**/*.test.ts'],
     environment: 'node',

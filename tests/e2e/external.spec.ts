@@ -246,9 +246,14 @@ test('a save after an outside case-only rename plus edit shows the conflict', as
   )
   const { app, page } = await launch({ dirs, args: [file] })
   await expect(page.locator('.cm-content')).toContainText('alt')
+  // Type first, then rename, write and save at once: the save must reach main inside the
+  // watcher's 200 ms debounce (like the „knapp.md“ test above), because only the refused save
+  // makes the tab follow the new spelling. Typing after the rename took longer than the
+  // debounce on slow macOS runners: the watcher reported the change on the old spelling
+  // („klein.md“ in the banner), or reloaded the still clean tab without any banner.
+  await typeInEditor(page, ' meins')
   await rename(file, renamed)
   await writeFile(renamed, 'von außen')
-  await typeInEditor(page, ' meins')
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
   const banner = page.locator('.banner')
   await expect(banner).toHaveText(/„Klein\.md“ wurde außerhalb von Markdown Office geändert\./)

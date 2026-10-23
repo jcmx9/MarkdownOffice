@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
+import { syntaxTree } from '@codemirror/language'
 import { EditorState, Text } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,15 +8,17 @@ import {
   frontmatterFields,
   frontmatterRange,
 } from '../../../src/renderer/editor/frontmatter'
+import { parsed } from './parsed'
 
 const doc = (s: string) => Text.of(s.split('\n'))
 
 function topNodes(text: string): string[] {
-  const state = EditorState.create({
-    doc: text,
-    extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
-  })
-  ensureSyntaxTree(state, state.doc.length, 5000)
+  const state = parsed(
+    EditorState.create({
+      doc: text,
+      extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+    }),
+  )
   const names: string[] = []
   const c = syntaxTree(state).topNode.firstChild
   for (let n = c; n; n = n.nextSibling) names.push(n.name)
@@ -92,11 +94,12 @@ describe('Frontmatter parser', () => {
   })
   it('agrees with frontmatterRange on the node range', () => {
     const t = '---\ntitle: x\n---\n\n# Body'
-    const state = EditorState.create({
-      doc: t,
-      extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
-    })
-    ensureSyntaxTree(state, state.doc.length, 5000)
+    const state = parsed(
+      EditorState.create({
+        doc: t,
+        extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+      }),
+    )
     const node = syntaxTree(state).topNode.firstChild
     expect({ from: node?.from, to: node?.to }).toEqual(frontmatterRange(doc(t)))
   })
