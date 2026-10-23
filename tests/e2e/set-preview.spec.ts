@@ -312,8 +312,15 @@ test('a set without files and a memo-like set look like the built-in memo', asyn
   ] as const) {
     await tabs(page).filter({ hasText: name }).click()
     await setShown(page, set)
-    await expect.poll(look).toEqual(memo)
+    // A set without files gets the built-in --mdo-word-spacing 0, not memo's -0.045em: its
+    // measured space, and with it the text block, is a little wider (theme.css, set tokens).
+    await expect
+      .poll(async () => (set === 'fx-plain' ? { ...(await look()), line: memo.line } : look()))
+      .toEqual(memo)
   }
+  await tabs(page).filter({ hasText: 'Plain.md' }).click()
+  await setShown(page, 'fx-plain')
+  await expect.poll(async () => ((await look()).line ?? 0) > (memo.line ?? 0)).toBe(true)
   await app.close()
 })
 

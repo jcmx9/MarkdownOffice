@@ -1,12 +1,14 @@
-/* memo-like test set: every token at the memo default, written in print units. */
+/* memo-like test set: every token as the bundled memo set declares it, written in print units
+   (--mdo-word-spacing included: its built-in default is 0, not memo's value). */
 .mdo-preview {
   --mdo-body-font: var(--mdo-font-sans);
   --mdo-body-size: 10pt;
-  --mdo-body-weight: 400;
-  --mdo-bold-weight: 600;
+  --mdo-body-weight: 380;
+  --mdo-bold-weight: 560;
   --mdo-line-height: 1.5;
   --mdo-align: justify;
   --mdo-par-gap: 1.1em;
+  --mdo-word-spacing: -0.045em;
   --mdo-measure: 145mm;
   --mdo-heading-font: var(--mdo-font-serif);
   --mdo-heading-align: left;
@@ -16,9 +18,9 @@
   --mdo-h1-size: 14pt;
   --mdo-h2-size: 12pt;
   --mdo-h3-size: 10pt;
-  --mdo-h1-weight: 560;
-  --mdo-h2-weight: 560;
-  --mdo-h3-weight: 400;
+  --mdo-h1-weight: 470;
+  --mdo-h2-weight: 470;
+  --mdo-h3-weight: 380;
   --mdo-h1-color: var(--mdo-heading);
   --mdo-h2-color: var(--mdo-heading);
   --mdo-h3-color: var(--mdo-heading);
@@ -27,7 +29,9 @@
   --mdo-table-font: var(--mdo-body-font);
   --mdo-table-size: 9pt;
   --mdo-table-weight: 500;
+  --mdo-table-head-weight: 680;
   --mdo-table-tracking: -0.02em;
   --mdo-code-size: 9pt;
+  --mdo-list-indent: 1.12em;
   --mdo-titleblock-align: center;
 }
