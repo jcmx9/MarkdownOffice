@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { SetCssRule } from '../../../src/core/set-css'
-import { SET_ATTR, SetStyles, setScope } from '../../../src/renderer/ui/set-styles'
+import {
+  SET_ATTR,
+  SetStyles,
+  setCssGeneration,
+  setScope,
+} from '../../../src/renderer/ui/set-styles'
 
 const rule = (value: string): SetCssRule => ({
   selectors: ['.mdo-preview'],
@@ -38,6 +43,20 @@ describe('SetStyles', () => {
     expect(host.getAttribute(SET_ATTR)).toBe('fx-brief')
     styles.show(null)
     expect(host.hasAttribute(SET_ATTR)).toBe(false)
+  })
+
+  it('the generation changes with changed rules only', () => {
+    expect(setCssGeneration(document, 'fx-brief')).toBe('')
+    styles.load('fx-brief', [rule('11pt')])
+    const first = setCssGeneration(document, 'fx-brief')
+    expect(first).not.toBe('')
+    // A tab switch reloads the same rules: the preview keeps its set lines.
+    styles.load('fx-brief', [rule('11pt')])
+    expect(setCssGeneration(document, 'fx-brief')).toBe(first)
+    styles.load('fx-brief', [rule('12pt')])
+    expect(setCssGeneration(document, 'fx-brief')).not.toBe(first)
+    styles.load('fx-brief', [])
+    expect(setCssGeneration(document, 'fx-brief')).toBe('')
   })
 
   it('setScope refuses names outside SET_NAME_RE', () => {

@@ -32,6 +32,7 @@ import {
 import { type BreakPoint, breakPoints } from '../../core/paragraph/breaks'
 import type { Trie } from '../../core/paragraph/hyphenate'
 import { type ParagraphInput, type SetLine, setParagraph } from '../../core/paragraph/linebreak'
+import { SET_ATTR, setCssGeneration } from '../ui/set-styles'
 import { frontmatterFields } from './frontmatter'
 import { requestTrie, type TrieLang, trieFor } from './hyphenation-tries'
 import { presentMode } from './mode'
@@ -254,9 +255,13 @@ function readEnv(
 ): Env {
   const settings = settingsOf(view, frontmatterFields(view.state.doc).lang)
   const style = getComputedStyle(view.dom)
+  const set = view.dom.closest(`[${SET_ATTR}]`)?.getAttribute(SET_ATTR) ?? ''
   // Everything a set line's widths depend on besides its own text and decorations.
   const base = [
-    view.dom.closest('[data-mdo-set]')?.getAttribute('data-mdo-set') ?? '',
+    set,
+    // A set's CSS reloaded under the same name (weights, numerals, letter spacing, list indent)
+    // changes widths without changing the name: its generation does.
+    set ? setCssGeneration(view.dom.ownerDocument, set) : '',
     style.getPropertyValue('--mdo-scale').trim(),
     style.getPropertyValue('--mdo-space-advance').trim(),
     view.state.facet(presentMode),
@@ -675,6 +680,12 @@ export function paragraphs(options: ParagraphsOptions = {}) {
   // Shared by every view and tab of this extension: keys carry everything a result depends on,
   // so switching tabs or toggling Present back finds the earlier results. LRU by Map order.
   const cache = new Map<string, SetResult>()
+  /**
+   * Font generation, shared like the cache: a loaded font changes widths without changing any
+   * other key part. Per view it would restart at 0 on a tab switch and either miss the results
+   * set after the fonts loaded or find ones set before (stale widths).
+   */
+  let fontGen = 0
   /** Languages whose hyphenation trie failed to load. */
   const unloadable = new Set<TrieLang>()
 
@@ -684,7 +695,6 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       private env: Env | null = null
       /** Keys that could not be set under the current environment (not retried until it changes). */
       private failed = new Set<string>()
-      private fontGen = 0
       /** The content width before the current environment's, and when it changed. */
       private prevWidth: { width: number; at: number } | null = null
       /** Re-measures when a held width burst is over. */
@@ -701,7 +711,7 @@ export function paragraphs(options: ParagraphsOptions = {}) {
       private readonly request: MeasureRequest<ReadResult | null>
       private readonly onFonts = () => {
         // A loaded font changes widths without changing any key part: a new generation does.
-        this.fontGen++
+        fontGen++
         this.view.requestMeasure(this.request)
       }
 
@@ -805,7 +815,7 @@ export function paragraphs(options: ParagraphsOptions = {}) {
        */
       private read(view: EditorView): ReadResult | null {
         if (this.destroyed) return null
-        let env = readEnv(view, this.fontGen, o.settings)
+        let env = readEnv(view, fontGen, o.settings)
         const cur = this.env
         const prev = this.prevWidth
         const latch = this.latch

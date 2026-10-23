@@ -23,6 +23,7 @@ import {
 import { previewPlugin } from '../../../src/renderer/editor/preview'
 import { previewView } from '../../../src/renderer/editor/rendered'
 import { typoMask } from '../../../src/renderer/editor/typo-mask'
+import { SET_ATTR, SetStyles } from '../../../src/renderer/ui/set-styles'
 import { parsed } from './parsed'
 
 /** Every display character (widget text too) is 10 px wide in the fake layout. */
@@ -572,6 +573,112 @@ describe('paragraphs set like Typst', () => {
     await settle(view)
     expect(calls).toBe(2)
     expect(view.plugin(plugin)?.decorations.size).toBeGreaterThan(0)
+  })
+
+  /** A view of a shared plugin (a tab of the one editor), counting the engine's calls. */
+  function shared(measurer: LineMeasurer) {
+    let calls = 0
+    const plugin = paragraphs({
+      measurer,
+      setParagraph: (p) => {
+        calls++
+        return setParagraph(p)
+      },
+      settings: () => RAGGED,
+      warn: () => {},
+    })
+    const open = (doc: string, parent: HTMLElement = document.body) => {
+      const view = new EditorView({
+        state: parsed(
+          EditorState.create({
+            doc,
+            selection: { anchor: doc.length },
+            extensions: [
+              markdown({ base: markdownLanguage }),
+              previewView.of(true),
+              previewPlugin,
+              plugin,
+            ],
+          }),
+        ),
+        parent,
+      })
+      views.push(view)
+      return view
+    }
+    const decos = (view: EditorView) => {
+      const out: string[] = []
+      view.plugin(plugin)?.decorations.between(0, view.state.doc.length, (from, to, d) => {
+        out.push(`${(d.spec as { par: string }).par}@${from}${to > from ? `-${to}` : ''}`)
+      })
+      return out
+    }
+    return { open, decos, calls: () => calls }
+  }
+
+  it("a set's CSS reloaded under the same name sets the lines again", async () => {
+    document.head.querySelectorAll('style[data-mdo-set-css]').forEach((el) => {
+      el.remove()
+    })
+    const host = document.createElement('div')
+    host.setAttribute(SET_ATTR, 'fx-brief')
+    document.body.append(host)
+    const styles = new SetStyles(document, host)
+    const css = (size: string) => [
+      {
+        selectors: ['.mdo-preview'],
+        declarations: [['--mdo-body-size', size]] as [string, string][],
+      },
+    ]
+    try {
+      styles.load('fx-brief', css('11pt'))
+      const t = shared(fakeMeasurer({ first: 75 }))
+      const view = t.open('aaa bbb ccc ddd\n\nende', host)
+      await settle(view)
+      expect(t.calls()).toBe(1)
+      // The same rules again (a tab switch): the results stay.
+      styles.load('fx-brief', css('11pt'))
+      view.dispatch({ selection: { anchor: view.state.doc.length } })
+      await settle(view)
+      expect(t.calls()).toBe(1)
+      // Changed rules under the same name: the widths may differ, the line is measured again.
+      styles.load('fx-brief', css('12pt'))
+      view.dispatch({ selection: { anchor: view.state.doc.length } })
+      await settle(view)
+      expect(t.calls()).toBe(2)
+    } finally {
+      host.remove()
+      styles.load('fx-brief', [])
+    }
+  })
+
+  it('a tab opened after fonts loaded reuses the results set with them', async () => {
+    const fonts = Object.assign(new EventTarget(), { status: 'loaded' })
+    Object.defineProperty(document, 'fonts', { configurable: true, value: fonts })
+    try {
+      // Before the font: 7.5 chars per line; after it: 4.5 (other widths, other breaks).
+      const geometry = { first: 75 }
+      const t = shared({
+        measure: (view, line) => fakeMeasurer({ first: geometry.first }).measure(view, line),
+      })
+      const doc = 'aaa bbb ccc ddd\n\nende'
+      const a = t.open(doc)
+      await settle(a)
+      expect(breaks(t.decos(a))).toEqual(['break@8'])
+      geometry.first = 45
+      fonts.dispatchEvent(new Event('loadingdone'))
+      await settle(a)
+      expect(breaks(t.decos(a))).toEqual(['break@4', 'break@8', 'break@12'])
+      const calls = t.calls()
+      // Another tab of the same editor: same generation, the result comes from the cache.
+      a.destroy()
+      const b = t.open(doc)
+      await settle(b)
+      expect(t.calls()).toBe(calls)
+      expect(breaks(t.decos(b))).toEqual(['break@4', 'break@8', 'break@12'])
+    } finally {
+      Reflect.deleteProperty(document, 'fonts')
+    }
   })
 
   it('never breaks inside a no-break phrase', async () => {
