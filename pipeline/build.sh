@@ -14,6 +14,14 @@
 #   MDO_SETS_DIR       mitgelieferte Vorlagen-Sets als <name>/<name>.typ
 #                      (Standard: ${MDO_PIPELINE_ROOT}/../sets; App: <resources>/sets)
 #   MDO_VERSION        Version für --version und die PDF-Stichwörter (Standard: dev)
+#   MDO_MANIFEST       Manifest des Wrappers (markdown-office, src/cli/stage.ts): welche lokalen
+#                      Dateien die Notiz ins PDF holen darf (Bilder, Logo, Profil). Ohne: kein Export.
+#
+# Staging-Ordner: Typst liest nur einen frischen Ordner pro Export (--root), der genau die Notiz,
+# die Dateien aus dem Manifest, das Set und die Pipeline-Bausteine (lib/, vendor/cmarker, mitex,
+# mmdr) als Kopien enthält. Warum: Notiztext kann Typst-Code ausführen (raw-typst in eigenen Sets,
+# mitex-Durchreichungen wie \text{\label{#read(…)}}); mit --root / läse er jede lokale Datei ins
+# PDF. Die Pakete (--package-*) und Fonts bleiben außerhalb, Typst liest sie nur über diese Pfade.
 set -euo pipefail
 
 # Aufruf-Verzeichnis: relative Quell-/Ziel-Pfade beziehen sich auf das
@@ -110,6 +118,7 @@ Environment:
                           (Standard: Ordner dieses Skripts)
   MDO_SETS_DIR=ordner     Mitgelieferte Vorlagen-Sets (Standard: ../sets)
   MDO_VERSION=version     Versionsangabe (Standard: dev)
+  MDO_MANIFEST=datei      Export-Manifest; setzt markdown-office (ohne: kein Export)
   TYPST=/pfad             Bestimmtes typst-Binary verwenden (>= 0.15 erforderlich)
 EOF
 }
@@ -167,6 +176,15 @@ if [[ ! -f "${src}" ]]; then
 fi
 base="$(basename "${src%.*}")"
 standard="a-3b"
+
+# Exportiert wird nur mit dem Manifest des Wrappers: nur er weiß (aus dem Markdown-Parser des
+# Editors, nicht aus Typst), welche Dateien die Notiz sichtbar einbindet. Hilfe, Version,
+# Aufruffehler und eine fehlende Quelle sind oben schon beantwortet (dort setzt der Wrapper
+# kein Manifest).
+if [[ -z "${MDO_MANIFEST:-}" || ! -f "${MDO_MANIFEST}" ]]; then
+  echo "Error: kein Export-Manifest (MDO_MANIFEST) – bitte über markdown-office exportieren: markdown-office ${1}" >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Optionalen YAML-Frontmatter (führender ---...---) parsen, CRLF-tolerant.
@@ -394,47 +412,8 @@ user_templates="${MDO_TEMPLATES:-${HOME:-}/Documents/Markdown Office/Vorlagen}"
 # Ein relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers (wie unter Windows).
 case "${user_templates}" in /*) ;; *) user_templates="${orig_pwd}/${user_templates}" ;; esac
 
-# Logo nur mit logo: im Frontmatter (ohne Schlüssel oder leer: kein Logo). Der
-# Wert ist eine Datei .svg/.png/.jpg/.jpeg. Absolut (auch über ~ oder $HOME) ->
-# genau diese Datei; relativ -> zuerst im Ordner der Notiz (bzw. MDO_BASE_DIR),
-# dann im Benutzerordner, dann im Vorlagen-Ordner, dann im Pipeline-Ordner.
-# Nichts gefunden -> ohne Logo, nur ein Hinweis, nie ein Fehler.
-logo=""
-if [[ -n "${fm_logo}" ]]; then
-  ext="$(printf '%s' "${fm_logo##*.}" | tr '[:upper:]' '[:lower:]')"
-  case "${fm_logo}" in
-    http://*|https://*|//*|data:*)
-      echo "Hinweis: Remote-Logo wird nicht geladen (kein Netzzugriff): ${fm_logo}" >&2 ;;
-    *)
-      case "${ext}" in
-        svg|png|jpg|jpeg)
-          note_logo="$(expand_path "${fm_logo}")"
-          case "${note_logo}" in
-            /*) [[ -f "${note_logo}" ]] && logo="${note_logo}" ;;
-            *)
-              for dir in "${base_dir}" "${HOME:-}" "${user_templates}" "${pipeline_root}"; do
-                if [[ -n "${dir}" && -f "${dir}/${note_logo}" ]]; then
-                  logo="${dir}/${note_logo}"
-                  break
-                fi
-              done
-              ;;
-          esac
-          [[ -n "${logo}" ]] ||
-            echo "Hinweis: Logo nicht gefunden: ${fm_logo} – baue ohne Logo." >&2
-          ;;
-        *)
-          echo "Hinweis: Logo muss .svg, .png, .jpg oder .jpeg sein: ${fm_logo} – baue ohne Logo." >&2 ;;
-      esac
-      ;;
-  esac
-fi
-
 font_arg=()
 [[ -d "${pipeline_root}/fonts" ]] && font_arg=(--font-path "${pipeline_root}/fonts" --ignore-system-fonts)
-
-attach=""
-if [[ "${fm_embed}" != "false" ]]; then attach="${src_abs}"; fi
 
 # resolve_template <wert> <basisordner>: gibt den absoluten Pfad der .typ aus.
 # Leer -> memo. Ein Name (a-z, 0-9, _ und -) ist ein Set (<name>.typ oder Ordner
@@ -471,13 +450,38 @@ else
   template_value="${fm_template}"
   template_file="$(resolve_template "${fm_template}" "${base_dir}")" || exit 1
 fi
-# Name des Sets für die Profilsuche in <Vorlagen>/<set>/profiles. Nur ein Set-Name zählt (leer =
-# memo); eine einzelne .typ-Datei hat keinen Set-Namen, dort entfällt dieser Suchort.
-set_name=""
-if [[ -z "${template_value}" ]]; then
-  set_name="memo"
-elif [[ "${template_value}" =~ ^[a-z0-9_-]+$ ]]; then
-  set_name="${template_value}"
+
+# note_template_ok <datei>: eine .typ, die die Notiz selbst nennt (template: ./x.typ, ~, $VAR,
+# absolut), läuft mit der Notiz im Staging-Ordner. Sie muss daher eine echte Datei sein (kein
+# Symlink), auf .typ enden und aufgelöst unter dem Ordner der Notiz (bzw. MDO_BASE_DIR) oder dem
+# Vorlagen-Ordner liegen, ohne Punkt-Ordner darunter. Warum: `template: ./evil.typ` als Link auf
+# ~/.ssh/… oder ein verlinkter Ordner brächte jede lokale Datei ins PDF. Ebenso kein harter Link
+# (Linkzahl > 1): ein zweiter Name derselben Datei kann eine fremde Datei sein. Die Entscheidung
+# trifft der Wrapper (src/cli/stage.ts templateFile); dies prüft dieselbe Regel noch einmal.
+note_template_ok() {
+  local f="$1" dir real root rr rel links
+  [[ -f "${f}" && ! -L "${f}" ]] || return 1
+  # GNU (-c %h) zuerst, BSD (-f %l) als Rückfall (siehe SOURCE_DATE_EPOCH unten).
+  links="$(stat -c %h "${f}" 2>/dev/null || stat -f %l "${f}" 2>/dev/null || echo 0)"
+  [[ "${links}" == 1 ]] || return 1
+  dir="$(cd -P "$(dirname "${f}")" 2>/dev/null && pwd -P)" || return 1
+  real="${dir}/$(basename "${f}")"
+  case "$(printf '%s' "${real##*.}" | tr '[:upper:]' '[:lower:]')" in typ) ;; *) return 1 ;; esac
+  for root in "${src_dir}" "${base_dir}" "${user_templates}"; do
+    rr="$(cd -P "${root}" 2>/dev/null && pwd -P)" || continue
+    case "${real}" in "${rr}"/*) rel="${real#"${rr}"/}" ;; *) continue ;; esac
+    case "/${rel}" in */.*) continue ;; esac
+    return 0
+  done
+  return 1
+}
+# Nur ein über den Set-Namen gefundenes Set ist ein Set-Ordner (ganz geprüft und kopiert); eine
+# .typ-Datei ist immer nur diese eine Datei, auch in der Form ./x/x.typ.
+template_by_name=""
+if [[ -z "${template_value}" || "${template_value}" =~ ^[a-z0-9_-]+$ ]]; then template_by_name=1; fi
+if [[ -z "${template_by_name}" && -z "${cli_template}" ]] && ! note_template_ok "${template_file}"; then
+  echo "Error: Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein: ${fm_template}" >&2
+  exit 1
 fi
 
 # Offline-Paketablage: Typst-Pakete im Cache-Layout (preview/<name>/<version>), damit
@@ -493,13 +497,23 @@ pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path 
 # (auch ungültige Angaben mit Großbuchstaben oder _), wird abgewiesen. Geprüft wird die
 # Vorlage; ist sie ein Set-Ordner <name>/<name>.typ, jede .typ darin (auch Unterordner),
 # weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen .typ nur diese, weil ihre
-# Nachbarn andere Sets sein können. Steht hinter der Vorlagen-Auflösung (endgültige Datei).
+# Nachbarn andere Sets sein können (bindet sie eine Nachbardatei ein, die nach einem fremden
+# Paket greift, stoppt das der Proxy unten). Steht hinter der Vorlagen-Auflösung (endgültige Datei).
 # find -H folgt einem verlinkten Set-Ordner (z. B. ein geklontes Set-Repo, als Symlink im
 # Vorlagen-Ordner); die Vorlage selbst steht immer in der Liste, was find auch liefert.
 # Fail closed: scheitert find oder grep (z. B. unlesbare Datei), wird die Vorlage abgewiesen.
 template_dir="$(dirname "${template_file}")"
 scan_files=("${template_file}")
-if [[ "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
+# Set-Ordner <name>/<name>.typ: geprüft und in den Staging-Ordner kopiert wird der ganze Ordner;
+# bei einer einzelnen .typ nur diese Datei (ihre Nachbarn können andere Sets sein). Entschieden
+# nach dem Suchort, der traf (<Vorlagen>/<name>/<name>.typ oder <Sets>/<name>/<name>.typ), nicht
+# nach dem Ordnernamen: ein Vorlagen-Ordner, der zufällig wie das Set heißt (…/meinset mit
+# meinset.typ), ist kein Set-Ordner und bekommt den Filter einer einzelnen .typ.
+template_is_set=""
+set_name="${template_value:-memo}"
+if [[ -n "${template_by_name}" && ( "${template_file}" == "${user_templates}/${set_name}/${set_name}.typ" ||
+      "${template_file}" == "${sets_dir}/${set_name}/${set_name}.typ" ) ]]; then
+  template_is_set=1
   if ! found="$(find -H "${template_dir}" -type f -name '*.typ')"; then
     echo "Error: Vorlage nicht prüfbar (Set-Ordner nicht lesbar): ${template_dir}" >&2
     exit 1
@@ -525,115 +539,38 @@ while IFS= read -r spec; do
 done < <(printf '%s\n' "${specs}" | sed 's#^@preview/##' | sort -u)
 
 # Kein Netz, nie (2/2): was kein Textscan sieht (z. B. eine per Verkettung gebaute
-# Paketangabe), stoppt ein unerreichbarer Proxy für beide Typst-Aufrufe; ein Download
+# Paketangabe), stoppt ein unerreichbarer Proxy für alle Typst-Aufrufe; ein Download
 # scheitert, bevor etwas in die Ablage geschrieben wird. NO_PROXY leer: keine Ausnahmen.
-no_net=(env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9
-  https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 NO_PROXY= no_proxy=)
-
-# Absender-Profil (profile:). Typst kann nicht prüfen, ob eine Datei existiert; daher sucht
-# das Skript, wie beim Logo, und übergibt den Pfad als Eingabe profile. Das Set liest die
-# YAML-Datei und Dateien daneben (z. B. die Unterschrift). Ein Name (a-z, 0-9, _ und -)
-# sucht profiles/<name>.yaml im Ordner der Notiz (bzw. MDO_BASE_DIR), dann in den Profilen des
-# Sets im Vorlagen-Ordner (<Vorlagen>/<set>/profiles; dort legt „Profil anlegen …“ sie ab, auch
-# für mitgelieferte Sets – ein solcher Ordner ohne <set>.typ verdeckt das Set nicht), dann im
-# gemeinsamen <Vorlagen>/profiles (Rückfall für bestehende Profile), dann im Ordner des Sets
-# (Beispielprofile); der erste Treffer gewinnt. Ein Wert auf .yaml/.yml ist ein Pfad (relativ
-# zur Notiz, ~ und $VAR wie bei Bildern). Nicht gefunden -> Exit 1: ein Brief ohne Absender
-# wäre schlimmer als keiner. src/main/templates.ts listProfiles bietet dieselben Ordner an.
-profile=""
-if [[ -n "${fm_profile}" ]]; then
-  if [[ "${fm_profile}" =~ ^[a-z0-9_-]+$ ]]; then
-    set_dir="$(dirname "${template_file}")"
-    profile_dirs=("${base_dir}/profiles")
-    if [[ -n "${set_name}" ]]; then profile_dirs+=("${user_templates}/${set_name}/profiles"); fi
-    profile_dirs+=("${user_templates}/profiles")
-    # Ein Set-Ordner im Vorlagen-Ordner ist schon Suchort 2; doppelt nennen verwirrt nur.
-    if [[ -z "${set_name}" || "${set_dir}" != "${user_templates}/${set_name}" ]]; then
-      profile_dirs+=("${set_dir}/profiles")
-    fi
-    for dir in "${profile_dirs[@]}"; do
-      if [[ -f "${dir}/${fm_profile}.yaml" ]]; then profile="${dir}/${fm_profile}.yaml"; break; fi
-    done
-    if [[ -z "${profile}" ]]; then
-      searched="$(printf '%s, ' "${profile_dirs[@]}")"
-      echo "Error: Profil nicht gefunden: ${fm_profile} (gesucht in ${searched%, })" >&2
-      exit 1
-    fi
-  else
-    case "$(printf '%s' "${fm_profile}" | tr '[:upper:]' '[:lower:]')" in
-      *.yaml|*.yml)
-        p="$(expand_path "${fm_profile}")"
-        case "${p}" in /*) ;; *) p="${base_dir}/${p}" ;; esac
-        if [[ ! -f "${p}" ]]; then echo "Error: Profil nicht gefunden: ${fm_profile}" >&2; exit 1; fi
-        # Anders als convert.ps1 (Staging auf andere Laufwerke) wird hier nichts kopiert:
-        # --root / macht jeden absoluten Pfad lesbar, auch /absender.yaml. Keine Sperre nötig.
-        profile="$(cd "$(dirname "${p}")" && pwd)/$(basename "${p}")"
-        ;;
-      *)
-        echo "Error: ungültiges Profil: ${fm_profile} (erlaubt: Name aus a-z, 0-9, _ und - oder eine .yaml-Datei)" >&2
-        exit 1
-        ;;
-    esac
-  fi
-fi
-
-# Laufzeit-Eingaben fürs Template. --root / : Typst behandelt absolute Pfade
-# projektwurzel-relativ und sperrt Lesezugriffe außerhalb; für Quelle, Bilder
-# und Logo (die überall liegen können) muss die Wurzel den absoluten Pfad umfassen.
-# title = Rückfall-Metadatentitel (.md-Basisname); doctitle = Frontmatter title:.
-typst_inputs=(
-  --input "filename=$(basename "${out}")"
-  --input "title=${base}"
-  --input "doctitle=${fm_title}"
-  --input "subtitle=${fm_subtitle}"
-  --input "toptitle=${fm_toptitle}"
-  --input "author=${fm_author}"
-  --input "logo=${logo}"
-  --input "logo_height=${fm_logo_height}"
-  --input "profile=${profile}"
-  --input "source=${src_abs}"
-  --input "attach=${attach}"
-  --input "docdir=${base_dir}"
-  --input "date=${fm_date}"
-  --input "toc=${fm_toc}"
-  --input "h1_break=${fm_break}"
-  --input "showname=${fm_showname}"
-  --input "lang=${fm_lang}"
-  --input "header=${fm_header}"
-  --input "watermark=${fm_watermark}"
-  --input "hard_breaks=${fm_breaks}"
-  --input "mdo=${pipeline_root}"
-  --input "version=${mdo_version}"
-)
-
-# Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
-# date: auto -> Typst schriebe sonst den *Build-Zeitpunkt* in CreateDate/ModifyDate.
-# SOURCE_DATE_EPOCH (Quell-mtime) macht das deterministisch = letzte Änderungszeit
-# der Quelle statt "jetzt"; Typst respektiert die Variable für date: auto. Ist ein
-# date: gesetzt, pinnt das Template direkt und ignoriert dies. Ein vom Aufrufer
-# gesetzter Wert gewinnt. stat unterscheidet sich zwischen GNU und BSD, und die
-# Flags kollidieren: GNU 'stat -f' bedeutet *Dateisystem-Status* (liefert für eine
-# gültige Datei einen mehrzeiligen Blob mit Exit 0!), BSD 'stat -f %m' die mtime.
-# Daher GNU (-c %Y) ZUERST versuchen (schlägt auf BSD sauber fehl -> Fallback auf
-# BSD -f %m); Ergebnis defensiv auf reine Ziffern prüfen, sonst 0.
-if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
-  src_epoch="$(stat -c %Y "${src}" 2>/dev/null || stat -f %m "${src}" 2>/dev/null || echo 0)"
-  [[ "${src_epoch}" =~ ^[0-9]+$ ]] || src_epoch=0
-  SOURCE_DATE_EPOCH="${src_epoch}"
-fi
-export SOURCE_DATE_EPOCH
+# Ohne jede TYPST_*-Variable (Wurzel, Paket- und Font-Pfade, Zertifikat von außen), wie die
+# Formelvorschau der App (src/main/math.ts mathEnv).
+no_net=(env)
+while IFS= read -r var; do
+  case "${var}" in TYPST_*) no_net+=(-u "${var}") ;; esac
+done < <(compgen -e)
+no_net+=(HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 ALL_PROXY=http://127.0.0.1:9
+  https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 all_proxy=http://127.0.0.1:9
+  NO_PROXY= no_proxy=)
 
 # ---------------------------------------------------------------------------
-# Bilder prüfen (Probe-Durchlauf). Typst kann weder Umgebungsvariablen lesen noch
-# prüfen, ob eine Datei existiert – ein fehlendes Bild bräche den Build ab. Daher:
-# Template im Probe-Modus (lädt keine Bilder) per `typst eval` nach allen
-# Bildquellen fragen (+ Zahl der Remote-Bilder), hier ~/$VAR/${VAR}/%VAR%
-# ersetzen, relativ zur Notiz auflösen, Existenz prüfen und die Zuordnung als
-# JSON übergeben. Fehlende Bilder erscheinen im PDF als „[Bild fehlt: pfad]".
+# Manifest lesen (JSON, vom Wrapper geschrieben und geprüft). Typst liest es (kein jq nötig),
+# mit dem Ordner des Manifests als Wurzel; heraus kommt eine Zeile je Wert mit einem
+# Kennbuchstaben davor: N die Notiz, für die es geschrieben wurde, I/P Bild (Schreibweise in der Notiz / absoluter Pfad), L Logo,
+# Y Profil-YAML, F Datei neben dem Profil. Werte mit Steuerzeichen (Zeilenumbruch) entfallen;
+# ein solches Bild fehlt dann nur. Logo und Profil kommen NUR von hier: eigene Suchen nach
+# Pfaden aus der Notiz würden wieder beliebige Dateien in den Staging-Ordner holen.
 # ---------------------------------------------------------------------------
-images_json="$(mktemp -t mdo-images.XXXXXX)"
-cleanup() { rm -f "${images_json}"; }
-trap cleanup EXIT
+# real_path <pfad>: Pfad mit allen Symlinks aufgelöst (ohne realpath/readlink -f, die ältere
+# macOS nicht kennen); Exit 1 bei einer Schleife oder einem fehlenden Ordner.
+real_path() {
+  local p="$1" t d n=0
+  while [[ -L "${p}" ]]; do
+    (( n++ < 40 )) || return 1
+    t="$(readlink "${p}")" || return 1
+    case "${t}" in /*) p="${t}" ;; *) p="$(dirname "${p}")/${t}" ;; esac
+  done
+  d="$(cd -P "$(dirname "${p}")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s' "${d}" "$(basename "${p}")"
+}
 
 # JSON-String-Literal aus typst eval in Klartextzeilen zerlegen (\n, \t, \",
 # \\ und \/ werden aufgelöst; \uXXXX kommt in Pfaden praktisch nicht vor).
@@ -656,6 +593,332 @@ json_string_lines() {
   }'
 }
 
+manifest_name="$(basename "${MDO_MANIFEST}")"
+# Der Dateiname steht im Ausdruck selbst (keine Typst-Eingabe: Sets bekommen ihn nie zu sehen);
+# daher nur ein schlichter Name (der Wrapper schreibt manifest.json).
+if [[ ! "${manifest_name}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Error: Export-Manifest mit ungültigem Namen: ${MDO_MANIFEST}" >&2
+  exit 1
+fi
+manifest_expr='{
+  let m = json("/'"${manifest_name}"'")
+  let plain(v) = type(v) == str and v != "" and v.match(regex("[\u{0}-\u{1f}\u{7f}]")) == none
+  let abs(v) = plain(v) and v.starts-with("/")
+  let out = ()
+  let note = m.at("note", default: none)
+  if abs(note) { out.push("N" + note) }
+  let imgs = m.at("images", default: ())
+  for i in if type(imgs) == array { imgs } else { () } {
+    if type(i) == dictionary and plain(i.at("ref", default: none)) and abs(i.at("path", default: none)) {
+      out.push("I" + i.ref)
+      out.push("P" + i.path)
+    }
+  }
+  let logo = m.at("logo", default: none)
+  if abs(logo) { out.push("L" + logo) }
+  let prof = m.at("profile", default: none)
+  if type(prof) == dictionary and abs(prof.at("yaml", default: none)) {
+    out.push("Y" + prof.yaml)
+    let files = prof.at("files", default: ())
+    for f in if type(files) == array { files } else { () } {
+      if abs(f) { out.push("F" + f) }
+    }
+  }
+  out.map(l => l + "\n").sum(default: "")
+}'
+manifest_dir="$(cd "$(dirname "${MDO_MANIFEST}")" && pwd)"
+# stderr nicht in die Ausgabe mischen: jede Zeile dort wäre sonst ein Wert.
+if ! manifest_out="$("${no_net[@]}" "${typst_bin}" eval --root "${manifest_dir}" "${manifest_expr}" 2>/dev/null)"; then
+  echo "Error: Export-Manifest nicht lesbar: ${MDO_MANIFEST}" >&2
+  exit 1
+fi
+m_note=""
+m_refs=()
+m_paths=()
+m_logo=""
+m_profile=""
+m_profile_files=()
+while IFS= read -r line; do
+  case "${line}" in
+    N*) m_note="${line#N}" ;;
+    I*) m_refs+=("${line#I}") ;;
+    P*) m_paths+=("${line#P}") ;;
+    L*) m_logo="${line#L}" ;;
+    Y*) m_profile="${line#Y}" ;;
+    F*) m_profile_files+=("${line#F}") ;;
+  esac
+done < <(printf '%s' "${manifest_out}" | json_string_lines)
+# Das Manifest gilt nur für die Notiz, für die der Wrapper es schrieb (verglichen als echte Pfade,
+# Symlinks aufgelöst). Warum: mit dem Manifest einer anderen Notiz (MDO_MANIFEST von Hand gesetzt
+# oder vertauscht) lägen deren Bilder und Profil im Staging-Ordner, lesbar für diese Notiz. Fail
+# closed: fehlt die Angabe oder ist ein Pfad nicht auflösbar, kein Export.
+src_real="$(real_path "${src_abs}")" || src_real=""
+note_real=""
+if [[ -n "${m_note}" ]]; then note_real="$(real_path "${m_note}")" || note_real=""; fi
+if [[ -z "${src_real}" || "${src_real}" != "${note_real}" ]]; then
+  echo "Error: Export-Manifest gehört zu einer anderen Notiz (${m_note:-ohne Angabe}) – bitte über markdown-office exportieren: markdown-office ${1}" >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Staging-Ordner: frisch und privat (700) im Temp-Ordner, nie neben der Notiz; die Marke
+# .mdo-stage lässt den Wrapper einen Ordner wegräumen, den ein hartes Beenden (SIGKILL)
+# zurückließ. Entfernt bei jedem abfangbaren Ende (Erfolg, Fehler, Signal).
+# Aufbau (Pfade in Typst ab der Wurzel):
+#   /note/<name>.md   die Notiz (Quelle und PDF/A-3-Anhang; der Name bleibt der Anhangsname)
+#   /img/<n>.<endung> die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
+#   /logo/<name>      das Logo
+#   /profile/<name>   das Profil und die Bilder daneben, die es nennt (das Set liest sie dort)
+#   /set/…            das Set: Set-Ordner ohne .git und profiles/; bei einer einzelnen, über den
+#                     Namen gefundenen .typ ihr Ordner (gefiltert, siehe stage_folder); bei einer
+#                     .typ-Datei als Pfad nur diese
+#   /mdo/lib, /mdo/vendor/{cmarker,mitex,mmdr}   Pipeline-Bausteine (sys.inputs.mdo = /mdo)
+#   /images.json      Zuordnung Bildquelle -> Pfad im Staging-Ordner
+# Dateien werden als Inhalt kopiert (ein Symlink auf eine Datei wird aufgelöst, das Manifest hat
+# sein Ziel geprüft). Set und Pipeline-Bausteine sind vertrauenswürdig: ihre Symlinks werden wie
+# bisher verfolgt (cp -RL; ein Set-Repo als Symlink im Vorlagen-Ordner).
+# ---------------------------------------------------------------------------
+tmp_base="${TMPDIR:-/tmp}"
+stage="$(mktemp -d "${tmp_base%/}/mdo-stage-XXXXXX")" || {
+  echo "Error: Staging-Ordner nicht anlegbar in ${tmp_base}" >&2
+  exit 1
+}
+# Die Marke zuletzt: scheitert das Löschen mittendrin, bleibt ein markierter Ordner, den der
+# Wrapper später wegräumt (ohne Marke bliebe er mit Kopien der Notiz, der Bilder und der
+# Unterschrift für immer liegen).
+cleanup() {
+  # Ein weiteres Signal (zweites Strg+C, Beenden der Prozessgruppe) bricht das Aufräumen nicht ab:
+  # ignoriert, auch von find und rm (sie erben es). Sonst endete ein abgebrochenes find mit leerer
+  # Ausgabe, und die Marke fiele, obwohl Kopien liegen bleiben.
+  trap '' INT TERM HUP
+  [[ -d "${stage}" ]] || return 0
+  find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -exec rm -rf {} + 2>/dev/null || true
+  # Die Marke fällt nur, wenn sonst nichts mehr im Ordner liegt: find muss gelingen und nichts
+  # mehr finden (fail closed; ein gescheitertes find lässt die Marke für den Wrapper stehen).
+  local rest
+  if rest="$(find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -print 2>/dev/null)" &&
+    [[ -z "${rest}" ]]; then
+    rm -f "${stage}/.mdo-stage"
+    rmdir "${stage}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+# Nach einem Signal endet das Skript; der EXIT-Trap räumt auf.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+chmod 700 "${stage}"
+: >"${stage}/.mdo-stage"
+mkdir "${stage}/note" "${stage}/img" "${stage}/logo" "${stage}/profile" "${stage}/set" "${stage}/mdo" \
+  "${stage}/mdo/vendor"
+
+# Die Notiz selbst (ihr Dateiname bleibt: Anhangsname im PDF).
+note_name="$(basename "${src_abs}")"
+cp -- "${src_abs}" "${stage}/note/${note_name}"
+staged_note="/note/${note_name}"
+attach=""
+if [[ "${fm_embed}" != "false" ]]; then attach="${staged_note}"; fi
+
+# Set und Pipeline-Bausteine. Ein Set-Ordner ohne .git (ein geklontes Set-Repo braucht seine
+# Historie nicht im PDF-Lauf) und ohne profiles/: ein Set im Vorlagen-Ordner (<Vorlagen>/<set>/)
+# hält dort die Profile aller Absender, und jede Notiz könnte sie lesen. Profile kommen nur über
+# das Manifest nach /profile/. Eine von der Notiz genannte .typ (geprüft, kein Symlink) wird
+# mit cp -P kopiert, nie über einen Link. Scheitert eine Kopie, bricht der Export ab.
+copy_failed() {
+  echo "Error: nicht in den Staging-Ordner kopierbar: $1" >&2
+  exit 1
+}
+# skipped_rel <relativer-pfad>: Exit 0, wenn ein Teil des Pfads mit . beginnt oder profiles heißt,
+# in jeder Schreibweise (Profiles, PROFILES). Warum jede: macOS und Windows unterscheiden Groß- und
+# Kleinschreibung im Dateisystem nicht, die Profilsuche des Wrappers findet Profiles/ als profiles/;
+# ein Profiles/ im Vorlagen-Ordner hält also ebenso die Profile aller Absender.
+skipped_rel() {
+  case "/$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')/" in */.*|*/profiles/*) return 0 ;; esac
+  return 1
+}
+
+# stage_folder <ordner> <ziel>: der Ordner einer einzelnen, über den Set-Namen gefundenen .typ
+# (<Vorlagen>/meinset.typ), damit sie Nachbardateien einbinden kann (Entscheidung des Besitzers,
+# 2026-10-24). Der Ordner ist meist der Vorlagen-Ordner selbst; daher bleiben draußen: jeder
+# Ordner namens profiles (in jeder Tiefe und Schreibweise, siehe skipped_rel; dort liegen die Profile
+# aller Absender), jeder Eintrag, dessen Name mit . beginnt, und jeder Symlink, dessen Ziel den
+# Ordner verlässt. Ein Symlink auf
+# eine Datei im Ordner wird als Inhalt kopiert, einer auf einen Ordner nie verfolgt.
+stage_folder() {
+  local src="$1" dest="$2" rsrc e rel r
+  rsrc="$(cd -P "${src}" && pwd -P)" || return 1
+  while IFS= read -r -d '' e; do
+    rel="${e#./}"
+    if [[ -L "${src}/${rel}" ]]; then
+      r="$(real_path "${src}/${rel}")" || continue
+      case "${r}" in "${rsrc}"/*) ;; *) continue ;; esac
+      if skipped_rel "${r#"${rsrc}"/}"; then continue; fi
+      [[ -f "${r}" ]] || continue
+      cp -- "${r}" "${dest}/${rel}" || return 1
+    elif [[ -d "${src}/${rel}" ]]; then
+      mkdir -p "${dest}/${rel}" || return 1
+    elif [[ -f "${src}/${rel}" ]]; then
+      cp -P -- "${src}/${rel}" "${dest}/${rel}" || return 1
+    fi
+  done < <(cd "${src}" && find . -mindepth 1 \( -name '.*' -o \( -type d -iname profiles \) \) -prune -o -print0)
+}
+
+# Je Ziel ein cp-Aufruf (ein Export soll kaum langsamer werden als ohne Staging-Ordner).
+if [[ -n "${template_is_set}" ]]; then
+  set_entries=()
+  shopt -s dotglob nullglob
+  for entry in "${template_dir}"/*; do
+    # Jede Schreibweise (.GIT, Profiles; siehe skipped_rel).
+    case "$(printf '%s' "${entry##*/}" | tr '[:upper:]' '[:lower:]')" in
+      .git|profiles) ;;
+      *) set_entries+=("${entry}") ;;
+    esac
+  done
+  shopt -u dotglob nullglob
+  cp -RL -- "${set_entries[@]}" "${stage}/set/" || copy_failed "${template_dir}"
+elif [[ -n "${template_by_name}" ]]; then
+  stage_folder "${template_dir}" "${stage}/set" || copy_failed "${template_dir}"
+  # Die Vorlage selbst immer als Inhalt: sie ist die Datei des Nutzers, auch als Symlink aus dem
+  # Vorlagen-Ordner heraus (z. B. auf ein eigenes Repo), den stage_folder überspringt.
+  cp -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
+elif [[ -z "${cli_template}" ]]; then
+  cp -P -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
+else
+  cp -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
+fi
+staged_template="${stage}/set/$(basename "${template_file}")"
+cp -RL -- "${pipeline_root}/lib" "${stage}/mdo/" || copy_failed "${pipeline_root}/lib"
+vendor_parts=()
+for part in cmarker mitex mmdr; do
+  if [[ -d "${pipeline_root}/vendor/${part}" ]]; then vendor_parts+=("${pipeline_root}/vendor/${part}"); fi
+done
+if [[ "${#vendor_parts[@]}" -gt 0 ]]; then
+  cp -RL -- "${vendor_parts[@]}" "${stage}/mdo/vendor/" || copy_failed "${pipeline_root}/vendor"
+fi
+
+# Bilder aus dem Manifest: /img/<n><.endung> (kurz: unter Windows bleibt der Pfad so unter
+# MAX_PATH; die Endung wie in der Quelle, Typst erkennt daran das Format). Verschwindet eine
+# Datei seit dem Manifest, fehlt nur dieses Bild (Platzhalter im PDF), wie ein nicht gefundenes.
+staged_refs=()
+staged_paths=()
+n=0
+while (( n < ${#m_refs[@]} && n < ${#m_paths[@]} )); do
+  img_name="${m_paths[n]##*/}"
+  img_ext=""
+  case "${img_name}" in ?*.*) img_ext=".${img_name##*.}" ;; esac
+  dest="/img/$((n + 1))${img_ext}"
+  if cp -- "${m_paths[n]}" "${stage}${dest}" 2>/dev/null; then
+    staged_refs+=("${m_refs[n]}")
+    staged_paths+=("${dest}")
+  fi
+  n=$((n + 1))
+done
+
+# Logo (logo: im Frontmatter; gesucht hat der Wrapper: Ordner der Notiz bzw. MDO_BASE_DIR,
+# Benutzerordner, Vorlagen-Ordner, Pipeline-Ordner). Ohne Logo nur ein Hinweis, nie ein Fehler.
+logo=""
+if [[ -n "${m_logo}" ]] && cp -- "${m_logo}" "${stage}/logo/${m_logo##*/}" 2>/dev/null; then
+  logo="/logo/${m_logo##*/}"
+fi
+if [[ -n "${fm_logo}" && -z "${logo}" ]]; then
+  case "${fm_logo}" in
+    http://*|https://*|//*|data:*)
+      echo "Hinweis: Remote-Logo wird nicht geladen (kein Netzzugriff): ${fm_logo}" >&2 ;;
+    *)
+      case "$(printf '%s' "${fm_logo##*.}" | tr '[:upper:]' '[:lower:]')" in
+        svg|png|jpg|jpeg) echo "Hinweis: Logo nicht gefunden: ${fm_logo} – baue ohne Logo." >&2 ;;
+        *) echo "Hinweis: Logo muss .svg, .png, .jpg oder .jpeg sein: ${fm_logo} – baue ohne Logo." >&2 ;;
+      esac
+      ;;
+  esac
+fi
+
+# Absender-Profil (profile:): gesucht und geprüft hat der Wrapper (profiles/ neben der Notiz,
+# <Vorlagen>/<set>/profiles, <Vorlagen>/profiles, Ordner des Sets; ein Pfad nur unter Notiz-
+# oder Vorlagen-Ordner) und bei einem Fehler schon abgebrochen. Das Set liest die YAML-Datei und
+# Dateien daneben (z. B. die Unterschrift): beide liegen in /profile/. Fehlt das Profil trotz
+# profile: im Frontmatter, Exit 1: ein Brief ohne Absender wäre schlimmer als keiner.
+profile=""
+if [[ -n "${m_profile}" ]]; then
+  cp -- "${m_profile}" "${stage}/profile/${m_profile##*/}" || copy_failed "${m_profile}"
+  profile="/profile/${m_profile##*/}"
+  for f in ${m_profile_files[@]+"${m_profile_files[@]}"}; do
+    # Nur schlichte Namen neben der YAML-Datei: nie ".", ".." oder ihr eigener Name.
+    case "${f##*/}" in
+      ""|.|..|"${m_profile##*/}")
+        echo "Error: ungültige Datei neben dem Profil: ${f}" >&2
+        exit 1 ;;
+    esac
+    cp -- "${f}" "${stage}/profile/${f##*/}" || copy_failed "${f}"
+  done
+elif [[ -n "${fm_profile}" ]]; then
+  echo "Error: Profil nicht gefunden: ${fm_profile}" >&2
+  exit 1
+fi
+
+# Laufzeit-Eingaben fürs Template. --root <Staging-Ordner>: Typst behandelt absolute Pfade
+# wurzelrelativ und sperrt Lesezugriffe außerhalb; alle Pfade zeigen daher in den
+# Staging-Ordner (/note/…, /logo/…, /profile/…, mdo=/mdo).
+# title = Rückfall-Metadatentitel (.md-Basisname); doctitle = Frontmatter title:.
+typst_inputs=(
+  --input "filename=$(basename "${out}")"
+  --input "title=${base}"
+  --input "doctitle=${fm_title}"
+  --input "subtitle=${fm_subtitle}"
+  --input "toptitle=${fm_toptitle}"
+  --input "author=${fm_author}"
+  --input "logo=${logo}"
+  --input "logo_height=${fm_logo_height}"
+  --input "profile=${profile}"
+  --input "source=${staged_note}"
+  --input "attach=${attach}"
+  --input "docdir=/note"
+  --input "date=${fm_date}"
+  --input "toc=${fm_toc}"
+  --input "h1_break=${fm_break}"
+  --input "showname=${fm_showname}"
+  --input "lang=${fm_lang}"
+  --input "header=${fm_header}"
+  --input "watermark=${fm_watermark}"
+  --input "hard_breaks=${fm_breaks}"
+  --input "mdo=/mdo"
+  --input "version=${mdo_version}"
+)
+# Seitenumbruch als Element mdo-pagebreak nur für Sets, die das Element kennen (raw-typst aus); alle
+# anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks). Ein Set-Ordner:
+# jede seiner Dateien im Staging-Ordner (die html:-Zuordnung kann in einer Hilfsdatei stehen).
+# Eine einzelne .typ: nur sie – ihr mitkopierter Ordner enthält oft andere Sets (din5008a/), die
+# das Element kennen, und dann verschwänden die Seitenumbrüche dieser Vorlage still.
+pagebreak_scan=("${staged_template}")
+if [[ -n "${template_is_set}" ]]; then pagebreak_scan=("${stage}/set"); fi
+if grep -rqs -- 'mdo-pagebreak' "${pagebreak_scan[@]}"; then typst_inputs+=(--input "pagebreak=html"); fi
+
+# Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
+# date: auto -> Typst schriebe sonst den *Build-Zeitpunkt* in CreateDate/ModifyDate.
+# SOURCE_DATE_EPOCH (Quell-mtime) macht das deterministisch = letzte Änderungszeit
+# der Quelle statt "jetzt"; Typst respektiert die Variable für date: auto. Ist ein
+# date: gesetzt, pinnt das Template direkt und ignoriert dies. Ein vom Aufrufer
+# gesetzter Wert gewinnt. stat unterscheidet sich zwischen GNU und BSD, und die
+# Flags kollidieren: GNU 'stat -f' bedeutet *Dateisystem-Status* (liefert für eine
+# gültige Datei einen mehrzeiligen Blob mit Exit 0!), BSD 'stat -f %m' die mtime.
+# Daher GNU (-c %Y) ZUERST versuchen (schlägt auf BSD sauber fehl -> Fallback auf
+# BSD -f %m); Ergebnis defensiv auf reine Ziffern prüfen, sonst 0.
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  src_epoch="$(stat -c %Y "${src}" 2>/dev/null || stat -f %m "${src}" 2>/dev/null || echo 0)"
+  [[ "${src_epoch}" =~ ^[0-9]+$ ]] || src_epoch=0
+  SOURCE_DATE_EPOCH="${src_epoch}"
+fi
+export SOURCE_DATE_EPOCH
+
+# ---------------------------------------------------------------------------
+# Bilder (Probe-Durchlauf). Typst kann nicht prüfen, ob eine Datei existiert – ein
+# fehlendes Bild bräche den Build ab. Daher fragt `typst eval` das Template im
+# Probe-Modus (lädt keine Bilder) nach allen Bildquellen (+ Zahl der Remote-Bilder).
+# Die Probe läuft auf Notiztext und kann beliebige Quellen nennen; sie entscheidet daher
+# NICHT, was ins PDF kommt: die Zuordnung (JSON) bildet jede Bildquelle des Manifests auf
+# ihre Kopie im Staging-Ordner ab, jede andere Quelle der Probe auf "" (fehlt). Fehlende
+# Bilder erscheinen im PDF als „[Bild fehlt: pfad]".
+# ---------------------------------------------------------------------------
 json_escape() {
   local v="$1"
   v="${v//\\/\\\\}"
@@ -664,36 +927,62 @@ json_escape() {
   printf '"%s"' "${v}"
 }
 
+# is_staged <quelle>: Exit 0, wenn die Bildquelle im Staging-Ordner liegt (bash 3.2 kennt keine
+# assoziativen Arrays, daher linear).
+is_staged() {
+  local i=0
+  while (( i < ${#staged_refs[@]} )); do
+    if [[ "${staged_refs[i]}" == "$1" ]]; then return 0; fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
 probe_expr='str(query(<mdo-remote-skip>).len()) + "\n" + query(<mdo-image>).map(m => m.value + "\n").dedup().sum(default: "")'
-probe="$("${no_net[@]}" "${typst_bin}" eval --in "${template_file}" "${probe_expr}" \
-  "${font_arg[@]}" "${pkg_arg[@]}" --root / "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
+probe="$("${no_net[@]}" "${typst_bin}" eval --in "${staged_template}" "${probe_expr}" \
+  "${font_arg[@]}" "${pkg_arg[@]}" --root "${stage}" "${typst_inputs[@]}" --input probe=true 2>/dev/null || true)"
 stripped=0
 image_entries=""
+i=0
+while (( i < ${#staged_refs[@]} )); do
+  image_entries="${image_entries:+${image_entries},}$(json_escape "${staged_refs[i]}"): $(json_escape "${staged_paths[i]}")"
+  i=$((i + 1))
+done
 first=1
 while IFS= read -r raw; do
   if (( first )); then stripped="${raw:-0}"; first=0; continue; fi
   [[ -n "${raw}" ]] || continue
-  img="$(expand_path "${raw}")"
-  case "${img}" in /*) ;; *) img="${base_dir}/${img}" ;; esac
-  if [[ -f "${img}" ]]; then
-    resolved="$(json_escape "${img}")"
-  else
+  if ! is_staged "${raw}"; then
     echo "Warnung: Bild nicht gefunden: ${raw}" >&2
-    resolved='""'
+    image_entries="${image_entries:+${image_entries},}$(json_escape "${raw}"): \"\""
   fi
-  image_entries="${image_entries:+${image_entries},}$(json_escape "${raw}"): ${resolved}"
 done < <(printf '%s' "${probe}" | json_string_lines)
 [[ "${stripped}" =~ ^[0-9]+$ ]] || stripped=0
-printf '{%s}\n' "${image_entries}" > "${images_json}"
-typst_inputs+=(--input "images=${images_json}")
+printf '{%s}\n' "${image_entries}" > "${stage}/images.json"
+typst_inputs+=(--input "images=/images.json")
 
-# Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle).
-"${no_net[@]}" "${typst_bin}" compile "${template_file}" "${out}" \
+# Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle). Die Meldungen
+# von Typst gehen unverändert auf stderr. Ein Hinweis folgt nur, wenn eine als Pfad genannte .typ
+# (allein kopiert) eine Nachbardatei einbindet, die im Originalordner liegt – nie für die Vorlage
+# selbst und nie für absichtlich ausgelassene Einträge (profiles/, Punkt-Einträge).
+compile_rc=0
+"${no_net[@]}" "${typst_bin}" compile "${staged_template}" "${out}" \
   "${font_arg[@]}" \
   "${pkg_arg[@]}" \
-  --root / \
+  --root "${stage}" \
   --pdf-standard "${standard}" \
-  "${typst_inputs[@]}"
+  "${typst_inputs[@]}" 2>"${stage}/typst.err" || compile_rc=$?
+cat "${stage}/typst.err" >&2
+if (( compile_rc != 0 )); then
+  if [[ -z "${template_by_name}" ]]; then
+    missing="$(sed -n 's|.*file not found (searched at .*/mdo-stage-[^/]*/set/\(.*\))$|\1|p' "${stage}/typst.err" | head -n 1)"
+    if [[ -n "${missing}" ]] && ! skipped_rel "${missing}" &&
+      [[ "${missing}" != "$(basename "${template_file}")" && -e "${template_dir}/${missing}" ]]; then
+      echo "Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>/<name>.typ." >&2
+    fi
+  fi
+  exit "${compile_rc}"
+fi
 
 echo "✓ ${out} erzeugt (PDF/A-3b)"
 # Remote-Bilder zählt der Probe-Durchlauf oben (<mdo-remote-skip>); die Zeile

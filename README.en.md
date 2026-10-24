@@ -302,6 +302,18 @@ CommonMark works as usual: `*italic*`, `**bold**`, `` `code` ``, links, lists, q
 - **Images:** `![Caption](image.png){width=50%}`; a missing image never stops the export, remote images are skipped offline.
 - **Formulas** in LaTeX syntax (`$…$`, `$$…$$`), **code** with syntax highlighting, **definition lists** and **Mermaid diagrams** (drawn offline).
 
+## What goes into a PDF
+
+An export reads only a fresh staging folder with what the note names; it cannot reach other files on your disk, whatever the note text says. Code in the note (in formulas, for instance) can read everything in the staging folder and put it into the PDF, also invisibly as an attachment.
+
+- **The note** itself (also as the PDF/A-3 attachment).
+- **Images** the note includes: `![…](…)`, reference images (`![…][ref]`) and `<img src="…">`, wherever the file lies. Only SVG, PNG, JPEG, GIF and WebP, decided by the file's content, not its extension; an SVG that references anything outside itself is left out. Images in code blocks, comments and formulas do not count. Every image file named this way goes into the staging folder; note code can attach it to the PDF even where it is not shown.
+- **What the front matter names:** the `logo:` file, and the `profile:` YAML with the image files next to it that the profile names (e.g. the signature).
+- **Profile as a path** (`profile: ./kanzlei.yaml`): allowed in the note's folder (subfolders included) or the templates folder, not below a hidden folder (name starting with a dot). For a note kept directly in the home folder, this allows any path under the home folder outside hidden folders.
+- **Template:** a set folder `<name>/<name>.typ` comes along whole, except `.git` and `profiles` at its top level. A single `.typ` chosen by name brings its folder (usually the templates folder), except `profiles` folders, hidden entries and links that lead out of it. A template named as a path in the note (`template: ./mine.typ`) is used as that single file only; it must be a regular file (no link) in the note's folder or the templates folder. A template with several files belongs in a folder `<name>/<name>.typ`.
+- `<!--raw-typst …-->` in a note is not executed.
+- Network paths from the note are refused without being looked up: on Windows UNC and device paths, on macOS and Linux `/net/…` and `/Network/…` (unless the note itself lives there).
+
 ## Template sets
 
 A template set defines how a document looks. It consists of up to four files sharing one name:

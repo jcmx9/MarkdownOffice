@@ -8,6 +8,14 @@
 // copy of cli.js), MDO_SETS_DIR to <root>/../sets and MDO_VERSION to `dev` (the app passes its
 // version). build.sh / convert.ps1 are taken from next to the real file (symlinks resolved).
 //
+// Before the pipeline runs, the export sweeps staging folders older than an hour that a killed
+// export left in the temp folder, and writes per note a manifest of the local files the note may
+// pull into its PDF (src/cli/stage.ts), passed as MDO_MANIFEST and removed when the script ends.
+// convert.ps1 runs once per note for that (several notes on one command line). A missing profile
+// fails here, with the script's message. On Windows without MDO_TEMPLATES the wrapper asks
+// PowerShell once for the Documents folder and passes the templates folder to convert.ps1, so
+// both use the same one (stage.ts windowsTemplates).
+//
 // `--app [args]` as the first argument starts the editor instead: this process's own binary (the
 // app) with the remaining arguments, without ELECTRON_RUN_AS_NODE. The installed shims therefore
 // always run cli.js and need no argument handling of their own (cmd's `shift` does not change
@@ -23,10 +31,30 @@
 //
 // Source: src/cli/ (TypeScript), bundled by vite.cli.config.mts into one CommonJS file cli.js,
 // which keeps this comment as its banner.
-import { spawn } from 'node:child_process'
+import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { appLaunch, type Env, invocation, pipelineSpawnOptions, realOrSelf } from './launch'
+import {
+  appLaunch,
+  type Env,
+  type ExportRun,
+  exportRuns,
+  type Invocation,
+  invocation,
+  pipelineSpawnOptions,
+  powershellPath,
+  realOrSelf,
+} from './launch'
+import {
+  ManifestError,
+  manifestOptions,
+  type Runner,
+  removeManifest,
+  sweepStaleStages,
+  windowsTemplates,
+  writeManifest,
+} from './stage'
 import { runValidate } from './validate'
 
 /** Opens the launch log for writing (folder created), or returns 'ignore' when it cannot. */
@@ -91,6 +119,63 @@ export function main(argv: string[] = process.argv, env: Env = process.env): voi
     )
     return
   }
+  runExport(argv, env).catch((e: Error) => {
+    process.stderr.write(`markdown-office: ${e.message}\n`)
+    process.exit(1)
+  })
+}
+
+/** Writes the note's manifest; null when there is no note file (the script reports that). */
+async function manifestFor(run: ExportRun, inv: Invocation): Promise<string | null> {
+  if (!run.note) return null
+  const cwd = process.cwd()
+  const note = path.resolve(cwd, run.note)
+  try {
+    if (!fs.statSync(note).isFile()) return null
+  } catch {
+    return null
+  }
+  return writeManifest(note, manifestOptions(process.platform, inv.env, cwd, run.template), (h) =>
+    process.stderr.write(`${h}\n`),
+  )
+}
+
+/** Runs the pipeline script once; resolves with its exit code (1 for a signal). */
+function runScript(inv: Invocation, args: string[], manifest: string | null): Promise<number> {
+  const env = { ...inv.env }
+  if (manifest) env.MDO_MANIFEST = manifest
+  else delete env.MDO_MANIFEST
+  const child = spawn(inv.file, [...inv.args, ...args], pipelineSpawnOptions(env))
+  current = child
+  return new Promise((resolve) => {
+    child.on('error', (err) => {
+      process.stderr.write(
+        `markdown-office: ${inv.file} konnte nicht gestartet werden: ${err.message}\n`,
+      )
+      resolve(1)
+    })
+    child.on('close', (code) => resolve(code ?? 1))
+  })
+}
+
+let current: ChildProcess | null = null
+
+/** execFile as a promise: no shell, hidden window, stdout on success. */
+const runFile: Runner = (file, args, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    execFile(file, args, { timeout: timeoutMs, windowsHide: true }, (err, stdout) =>
+      err ? reject(err) : resolve(String(stdout)),
+    )
+  })
+// A signal before a script runs (while a manifest is written) ends the export instead.
+let stopped = false
+
+/**
+ * The export: sweep staging folders a killed export left behind, then per note write its
+ * manifest (the files it may pull into the PDF, src/cli/stage.ts), run build.sh / convert.ps1
+ * with MDO_MANIFEST, and remove the manifest once the script has ended, also on failure.
+ */
+async function runExport(argv: string[], env: Env): Promise<void> {
   // __filename is the bundled cli.js itself (the CommonJS wrapper provides it); Node already
   // resolves it, realpath keeps that explicit. build.sh / convert.ps1 sit next to the real file.
   const self = fs.realpathSync(__filename)
@@ -98,30 +183,54 @@ export function main(argv: string[] = process.argv, env: Env = process.env): voi
   const invokedDir = argv[1] ? path.dirname(path.resolve(argv[1])) : path.dirname(self)
   const inv = invocation({
     platform: process.platform,
-    args: argv.slice(2),
+    args: [],
     env,
     scriptDir: path.dirname(self),
     invokedDir,
     execDir: path.dirname(realOrSelf(process.execPath)),
   })
-  const child = spawn(inv.file, inv.args, pipelineSpawnOptions(inv.env))
   // Keep the wrapper alive until the pipeline has ended, and let the pipeline see the signal.
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     process.on(signal, () => {
+      stopped = true
       try {
-        child.kill(signal)
+        current?.kill(signal)
       } catch {
         // The pipeline has already ended.
       }
     })
   }
-  child.on('error', (err) => {
-    process.stderr.write(
-      `markdown-office: ${inv.file} konnte nicht gestartet werden: ${err.message}\n`,
-    )
-    process.exit(1)
-  })
-  child.on('close', (code) => process.exit(code ?? 1))
+  await sweepStaleStages(os.tmpdir(), Date.now())
+  const runs = exportRuns(process.platform, argv.slice(2))
+  // Windows: wrapper and convert.ps1 must agree on the templates folder (see windowsTemplates);
+  // asked only when a note is exported (help/version stay instant).
+  if (process.platform === 'win32' && runs.some((r) => r.note)) {
+    inv.env = await windowsTemplates(inv.env, powershellPath(inv.env, fs.existsSync), runFile)
+  }
+  let code = 0
+  for (const run of runs) {
+    let manifest: string | null
+    try {
+      manifest = await manifestFor(run, inv)
+    } catch (e) {
+      // The scripts' own wording for the failures that moved here (profile not found …).
+      const label = process.platform === 'win32' ? 'Fehler' : 'Error'
+      const msg =
+        e instanceof ManifestError
+          ? `${label}: ${e.message}`
+          : `markdown-office: ${(e as Error).message}`
+      process.stderr.write(`${msg}\n`)
+      code = 1
+      break
+    }
+    try {
+      code = stopped ? 1 : await runScript(inv, run.args, manifest)
+    } finally {
+      if (manifest) await removeManifest(manifest)
+    }
+    if (code !== 0) break
+  }
+  process.exit(code)
 }
 
 // Run only as the entry (the bundled cli.js), not when imported.

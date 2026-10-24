@@ -302,6 +302,18 @@ CommonMark funktioniert wie gewohnt: `*kursiv*`, `**fett**`, `` `Code` ``, Links
 - **Bilder:** `![Unterschrift](bild.png){width=50%}`; ein fehlendes Bild bricht den Export nie ab, Remote-Bilder entfallen offline.
 - **Formeln** in LaTeX-Syntax (`$…$`, `$$…$$`), **Code** mit Syntax-Hervorhebung, **Definitionslisten** und **Mermaid-Diagramme** (offline gezeichnet).
 
+## Was ins PDF kommt
+
+Ein Export liest nur einen frischen Staging-Ordner mit dem, was die Notiz nennt; andere Dateien deiner Festplatte erreicht er nicht, egal was im Notiztext steht. Alles im Staging-Ordner kann Code in der Notiz (etwa in Formeln) lesen und ins PDF bringen, auch unsichtbar als Anhang.
+
+- **Die Notiz** selbst (auch als PDF/A-3-Anhang).
+- **Bilder**, die die Notiz einbindet: `![…](…)`, Referenz-Bilder (`![…][ref]`) und `<img src="…">`, egal wo die Datei liegt. Nur SVG, PNG, JPEG, GIF und WebP, bestimmt am Inhalt der Datei, nicht an der Endung; ein SVG, das etwas außerhalb seiner selbst referenziert, bleibt draußen. Bilder in Codeblöcken, Kommentaren und Formeln zählen nicht. Jede so genannte Bilddatei kommt in den Staging-Ordner; Code in der Notiz kann sie ins PDF hängen, auch wo sie nicht zu sehen ist.
+- **Was der Kopf (Front Matter) nennt:** die Datei von `logo:` sowie die YAML-Datei von `profile:` mit den Bilddateien daneben, die das Profil nennt (z. B. die Unterschrift).
+- **Profil als Pfad** (`profile: ./kanzlei.yaml`): erlaubt im Ordner der Notiz (auch in Unterordnern) oder im Vorlagen-Ordner, nicht unter einem versteckten Ordner (Name beginnt mit einem Punkt). Liegt eine Notiz direkt im Benutzerordner, ist damit jeder Pfad unter dem Benutzerordner erlaubt, außer in versteckten Ordnern.
+- **Vorlage:** Ein Set-Ordner `<name>/<name>.typ` kommt ganz mit, außer `.git` und `profiles` auf oberster Ebene. Eine einzelne `.typ`, die per Name gewählt wird, bringt ihren Ordner mit (meist den Vorlagen-Ordner), außer `profiles`-Ordnern, versteckten Einträgen und Verweisen, die nach außen führen. Eine Vorlage, die die Notiz als Pfad nennt (`template: ./eigen.typ`), gilt nur als diese einzelne Datei; sie muss eine normale Datei (kein Verweis) im Ordner der Notiz oder im Vorlagen-Ordner sein. Eine Vorlage aus mehreren Dateien gehört in einen Ordner `<name>/<name>.typ`.
+- `<!--raw-typst …-->` in einer Notiz wird nicht ausgeführt.
+- Netzwerkpfade aus der Notiz werden abgelehnt, ohne dass nachgesehen wird: unter Windows UNC- und Gerätepfade, unter macOS und Linux `/net/…` und `/Network/…` (außer die Notiz liegt selbst dort).
+
 ## Vorlagen-Sets
 
 Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu vier Dateien mit gemeinsamem Namen:

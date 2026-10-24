@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   appLaunch,
   appVersion,
+  exportRuns,
   invocation,
   pipelineSpawnOptions,
   powershellPath,
@@ -172,5 +173,70 @@ describe('stripAppLibraryPath', () => {
   it('matches an entry that resolves to the app folder through a symlink', () => {
     const real = (p: string) => p.replace('/home/link', '/data/home')
     expect(stripAppLibraryPath('/home/link/mdo/usr/lib:/a', '/data/home/mdo', real)).toBe('/a')
+  })
+})
+
+describe('exportRuns', () => {
+  it('build.sh: one run with the arguments unchanged, the first path as the note', () => {
+    expect(exportRuns('darwin', ['--no-source', 'a.md', 'out.pdf'])).toEqual([
+      { args: ['--no-source', 'a.md', 'out.pdf'], note: 'a.md', template: '' },
+    ])
+    expect(exportRuns('linux', ['--template', 'din5008a', '--', '-n.md'])).toEqual([
+      { args: ['--template', 'din5008a', '--', '-n.md'], note: '-n.md', template: 'din5008a' },
+    ])
+    expect(exportRuns('linux', ['--template=x', '--template=y', 'n.md'])[0]?.template).toBe('y')
+  })
+
+  it.each([
+    [['--help', 'a.md']],
+    [['a.md', '-V']],
+    [[]],
+    [['--bogus', 'a.md']],
+    [['--template']],
+    [['--template=', 'a.md']],
+  ])('no note for help, version, no source or a usage error: %j', (args) => {
+    expect(exportRuns('darwin', args)).toEqual([{ args, note: null, template: '' }])
+  })
+
+  it('convert.ps1: one run per note, each with the options and `--`', () => {
+    expect(exportRuns('win32', ['-Template', 'memo', 'a.md', 'b.md'])).toEqual([
+      { args: ['-Template', 'memo', '--', 'a.md'], note: 'a.md', template: 'memo' },
+      { args: ['-Template', 'memo', '--', 'b.md'], note: 'b.md', template: 'memo' },
+    ])
+  })
+
+  it('convert.ps1: one note (with an explicit .pdf) keeps the arguments unchanged', () => {
+    expect(exportRuns('win32', ['a.md', 'out.PDF'])).toEqual([
+      { args: ['a.md', 'out.PDF'], note: 'a.md', template: '' },
+    ])
+    expect(exportRuns('win32', ['a.md'])).toEqual([{ args: ['a.md'], note: 'a.md', template: '' }])
+  })
+
+  it('convert.ps1: options after the notes still go before `--` in every run', () => {
+    expect(exportRuns('win32', ['a.md', 'b.md', '--no-source', '--template=din5008a'])).toEqual([
+      {
+        args: ['--no-source', '--template=din5008a', '--', 'a.md'],
+        note: 'a.md',
+        template: 'din5008a',
+      },
+      {
+        args: ['--no-source', '--template=din5008a', '--', 'b.md'],
+        note: 'b.md',
+        template: 'din5008a',
+      },
+    ])
+  })
+
+  it('convert.ps1: after `--` a second path on .pdf is still the output', () => {
+    expect(exportRuns('win32', ['--', '-a.md', 'out.pdf'])).toEqual([
+      { args: ['--', '-a.md', 'out.pdf'], note: '-a.md', template: '' },
+    ])
+  })
+
+  it('convert.ps1: PowerShell spellings of help and version give no note', () => {
+    for (const flag of ['-Help', '-?', '-Version', '-version'])
+      expect(exportRuns('win32', [flag, 'a.md'])[0]?.note).toBeNull()
+    // Case-sensitive like the script's switch: -HELP is an unknown option (exit 2 there).
+    expect(exportRuns('win32', ['-HELP', 'a.md'])[0]?.note).toBeNull()
   })
 })
