@@ -2,6 +2,7 @@
 // like build.sh resolves them today, and the sweep of staging folders a killed export left behind.
 import {
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -318,6 +319,29 @@ describe.runIf(posix)('buildManifest profile', () => {
     await expect(
       buildManifest(at('notes/n.md'), opts({ template: at('elsewhere/e.typ') })),
     ).resolves.toBeDefined()
+  })
+
+  it('refuses a note-named .typ that is a hard link (link count > 1)', async () => {
+    tree({ 'geheim/credentials': 'token\n', 'notes/ok.typ': '// ok\n' })
+    linkSync(at('geheim/credentials'), at('notes/hard.typ'))
+    note('template: ./hard.typ')
+    await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow(
+      'Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein: ./hard.typ',
+    )
+    note('template: ./ok.typ')
+    await expect(buildManifest(at('notes/n.md'), opts())).resolves.toBeDefined()
+  })
+
+  it('finds a profile in a set folder that is a symlink to the user clone', async () => {
+    tree({
+      'clone/din5008a/din5008a.typ': '// set\n',
+      'clone/din5008a/profiles/beispiel.yaml': 'name: Beispiel\n',
+    })
+    mkdirSync(at('user'), { recursive: true })
+    symlinkSync(at('clone/din5008a'), at('user/din5008a'))
+    note('template: din5008a\nprofile: beispiel')
+    const r = await buildManifest(at('notes/n.md'), opts())
+    expect(r.manifest.profile?.yaml).toBe(at('user/din5008a/profiles/beispiel.yaml'))
   })
 
   it('names only image files that exist next to the profile and are real images', async () => {

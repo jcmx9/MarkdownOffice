@@ -455,11 +455,15 @@ fi
 # absolut), läuft mit der Notiz im Staging-Ordner. Sie muss daher eine echte Datei sein (kein
 # Symlink), auf .typ enden und aufgelöst unter dem Ordner der Notiz (bzw. MDO_BASE_DIR) oder dem
 # Vorlagen-Ordner liegen, ohne Punkt-Ordner darunter. Warum: `template: ./evil.typ` als Link auf
-# ~/.ssh/… oder ein verlinkter Ordner brächte jede lokale Datei ins PDF. Die Entscheidung trifft
-# der Wrapper (src/cli/stage.ts templateFile); dies prüft dieselbe Regel noch einmal.
+# ~/.ssh/… oder ein verlinkter Ordner brächte jede lokale Datei ins PDF. Ebenso kein harter Link
+# (Linkzahl > 1): ein zweiter Name derselben Datei kann eine fremde Datei sein. Die Entscheidung
+# trifft der Wrapper (src/cli/stage.ts templateFile); dies prüft dieselbe Regel noch einmal.
 note_template_ok() {
-  local f="$1" dir real root rr rel
+  local f="$1" dir real root rr rel links
   [[ -f "${f}" && ! -L "${f}" ]] || return 1
+  # GNU (-c %h) zuerst, BSD (-f %l) als Rückfall (siehe SOURCE_DATE_EPOCH unten).
+  links="$(stat -c %h "${f}" 2>/dev/null || stat -f %l "${f}" 2>/dev/null || echo 0)"
+  [[ "${links}" == 1 ]] || return 1
   dir="$(cd -P "$(dirname "${f}")" 2>/dev/null && pwd -P)" || return 1
   real="${dir}/$(basename "${f}")"
   case "$(printf '%s' "${real##*.}" | tr '[:upper:]' '[:lower:]')" in typ) ;; *) return 1 ;; esac
@@ -722,6 +726,9 @@ if [[ -n "${template_is_set}" ]]; then
   cp -RL -- "${set_entries[@]}" "${stage}/set/" || copy_failed "${template_dir}"
 elif [[ -n "${template_by_name}" ]]; then
   stage_folder "${template_dir}" "${stage}/set" || copy_failed "${template_dir}"
+  # Die Vorlage selbst immer als Inhalt: sie ist die Datei des Nutzers, auch als Symlink aus dem
+  # Vorlagen-Ordner heraus (z. B. auf ein eigenes Repo), den stage_folder überspringt.
+  cp -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
 elif [[ -z "${cli_template}" ]]; then
   cp -P -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
 else
@@ -822,9 +829,13 @@ typst_inputs=(
   --input "version=${mdo_version}"
 )
 # Seitenumbruch als Element mdo-pagebreak nur für Sets, die das Element kennen (raw-typst aus); alle
-# anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks). Gesucht wird in
-# jeder Datei des Sets im Staging-Ordner (ein Set kann die html:-Zuordnung in eine Hilfsdatei legen).
-if grep -rqs -- 'mdo-pagebreak' "${stage}/set"; then typst_inputs+=(--input "pagebreak=html"); fi
+# anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks). Ein Set-Ordner:
+# jede seiner Dateien im Staging-Ordner (die html:-Zuordnung kann in einer Hilfsdatei stehen).
+# Eine einzelne .typ: nur sie – ihr mitkopierter Ordner enthält oft andere Sets (din5008a/), die
+# das Element kennen, und dann verschwänden die Seitenumbrüche dieser Vorlage still.
+pagebreak_scan=("${staged_template}")
+if [[ -n "${template_is_set}" ]]; then pagebreak_scan=("${stage}/set"); fi
+if grep -rqs -- 'mdo-pagebreak' "${pagebreak_scan[@]}"; then typst_inputs+=(--input "pagebreak=html"); fi
 
 # Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
 # date: auto -> Typst schriebe sonst den *Build-Zeitpunkt* in CreateDate/ModifyDate.
@@ -895,8 +906,9 @@ printf '{%s}\n' "${image_entries}" > "${stage}/images.json"
 typst_inputs+=(--input "images=/images.json")
 
 # Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle). Die Meldungen
-# von Typst gehen unverändert auf stderr; fehlt eine Datei im Set-Ordner (eine einzelne .typ, die
-# Nachbardateien einbindet, wird allein kopiert), folgt ein Hinweis.
+# von Typst gehen unverändert auf stderr. Ein Hinweis folgt nur, wenn eine als Pfad genannte .typ
+# (allein kopiert) eine Nachbardatei einbindet, die im Originalordner liegt – nie für die Vorlage
+# selbst und nie für absichtlich ausgelassene Einträge (profiles/, Punkt-Einträge).
 compile_rc=0
 "${no_net[@]}" "${typst_bin}" compile "${staged_template}" "${out}" \
   "${font_arg[@]}" \
@@ -906,8 +918,16 @@ compile_rc=0
   "${typst_inputs[@]}" 2>"${stage}/typst.err" || compile_rc=$?
 cat "${stage}/typst.err" >&2
 if (( compile_rc != 0 )); then
-  if grep -q 'file not found.*/set/' "${stage}/typst.err"; then
-    echo "Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>/<name>.typ." >&2
+  if [[ -z "${template_by_name}" ]]; then
+    missing="$(sed -n 's|.*file not found (searched at .*/mdo-stage-[^/]*/set/\(.*\))$|\1|p' "${stage}/typst.err" | head -n 1)"
+    case "/${missing}/" in
+      //|*/.*|*/profiles/*) ;;
+      *)
+        if [[ "${missing}" != "$(basename "${template_file}")" && -e "${template_dir}/${missing}" ]]; then
+          echo "Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>/<name>.typ." >&2
+        fi
+        ;;
+    esac
   fi
   exit "${compile_rc}"
 fi

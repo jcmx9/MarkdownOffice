@@ -267,7 +267,7 @@ const uncPath = (c: Ctx, p: string) => remoteWinPath(p, c.win)
  * resolve_template / Resolve-Template, reduced to the file it finds (null: the script fails).
  * `fromNote`: the value comes from the note's `template:` (not the user's --template). Such a
  * .typ path is staged and run with the note, so it must be a plain file (not a symlink) ending
- * in .typ whose real path lies under the note's folder (or MDO_BASE_DIR) or the templates folder,
+ * in .typ (link count 1) whose real path lies under the note's folder (or MDO_BASE_DIR) or the templates folder,
  * with no dot segment below either; else ManifestError. Why: `template: ./evil.typ` linked to
  * ~/.ssh/… or `template: ~/.config/x/x.typ` would put any local file into the staging root and
  * into the PDF. build.sh / convert.ps1 re-check the same rule and stage only that one file.
@@ -304,7 +304,9 @@ async function templateFile(
 /** The rule for a note-named .typ path (see templateFile). */
 async function noteTemplateAllowed(c: Ctx, p: string): Promise<boolean> {
   try {
-    if ((await fs.lstat(p)).isSymbolicLink()) return false
+    // No symlink, and no hard link either: a second name of the same file can be a foreign file.
+    const st = await fs.lstat(p)
+    if (st.isSymbolicLink() || st.nlink > 1) return false
   } catch {
     return false
   }
@@ -547,20 +549,27 @@ async function findProfileYaml(
   if (NAME_RE.test(value)) {
     const setName = tplValue === '' ? 'memo' : NAME_RE.test(tplValue) ? tplValue : ''
     const setDir = c.P.dirname(tpl)
-    // Each place with the root its hit must stay under (symlinks resolved, see insideProfileRoots):
-    // the note's folder without dot segments, the templates folder, the set's folder.
-    const places: [string, string, boolean][] = [[c.P.join(c.baseDir, 'profiles'), c.baseDir, true]]
+    // Each place with the roots its hit must stay under (symlinks resolved, see
+    // insideProfileRoots): the note's folder without dot segments, the templates folder, the
+    // set's folder. <templates>/<set>/profiles also accepts the set folder itself: an installed
+    // set is often a symlink to the user's clone (<templates>/din5008a -> ~/GitHub/…), whose real
+    // path is outside the templates folder.
+    const places: [string, string[], boolean][] = [
+      [c.P.join(c.baseDir, 'profiles'), [c.baseDir], true],
+    ]
     const userSet = setName && c.templatesDir ? c.P.join(c.templatesDir, setName) : ''
-    if (userSet) places.push([c.P.join(userSet, 'profiles'), c.templatesDir, false])
-    if (c.templatesDir) places.push([c.P.join(c.templatesDir, 'profiles'), c.templatesDir, false])
+    if (userSet) places.push([c.P.join(userSet, 'profiles'), [c.templatesDir, userSet], false])
+    if (c.templatesDir) places.push([c.P.join(c.templatesDir, 'profiles'), [c.templatesDir], false])
     // A set folder inside the templates folder is already place 2; naming it twice only confuses.
-    if (!userSet || setDir !== userSet) places.push([c.P.join(setDir, 'profiles'), setDir, false])
+    if (!userSet || setDir !== userSet) places.push([c.P.join(setDir, 'profiles'), [setDir], false])
     const dirs = places.map(([d]) => d)
-    for (const [dir, root, noDot] of places) {
+    for (const [dir, roots, noDot] of places) {
       const p = c.P.join(dir, `${value}.yaml`)
       if (!(await isFile(p))) continue
       // The first hit wins, as in the scripts; one that leads elsewhere is refused, not skipped.
-      if (!(await realUnder(c, p, root, noDot))) throw outsideRoots(value)
+      let inside = false
+      for (const root of roots) inside ||= await realUnder(c, p, root, noDot)
+      if (!inside) throw outsideRoots(value)
       return p
     }
     throw new ManifestError(`Profil nicht gefunden: ${value} (gesucht in ${dirs.join(', ')})`)

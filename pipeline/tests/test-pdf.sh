@@ -962,8 +962,9 @@ test_sandbox() {
   printf '#read("canary.txt")\n' >"${geheim}/evil/evil.typ"
   cp "${geheim}/canary.txt" "${geheim}/evil/"
   ln -s "${geheim}/evil" "${sb}/notiz/evil"
+  ln "${geheim}/canary.txt" "${sb}/notiz/hart.typ"
   local tval refused='Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein'
-  for tval in ./evil.typ ./evil/evil.typ; do
+  for tval in ./evil.typ ./evil/evil.typ ./hart.typ; do
     printf -- '---\ntemplate: %s\n---\n\nText.\n' "${tval}" >"${sb}/notiz/tpl.md"
     code=0
     (cd "${sb}/notiz" && "${mdo[@]}" tpl.md "${out_dir}/sb-tpl.pdf" >/dev/null 2>"${out_dir}/sb-tpl.err") || code=$?
@@ -1002,7 +1003,26 @@ test_sandbox() {
   for mf in profiles/other.yaml x/profiles/y.yaml .hidden.txt aussen.txt; do
     MDO_TEMPLATES="${mv}" hostile meinset-fremd "\$\\text{\\label{#read(\"/set/${mf}\")}}\$" "${not_found}" \
       --template meinset
+    # Absichtlich ausgelassen: kein Hinweis auf Set-Ordner.
+    if grep -q "Set-Ordner" "${out_dir}/sb-meinset-fremd.err"; then die "sandbox meinset ${mf}: falscher Hinweis"; fi
   done
+  # Ein anderes Set im selben Ordner kennt mdo-pagebreak: meinset bekommt trotzdem die
+  # raw-typst-Form, der Seitenumbruch bleibt.
+  mkdir -p "${mv}/din5008a"
+  printf '// html: (mdo-pagebreak: …)\n' >"${mv}/din5008a/din5008a.typ"
+  printf '# Eins\n\n<!-- pagebreak -->\n\n# Zwei\n' >"${sb}/notiz/mumbruch.md"
+  (cd "${sb}/notiz" && MDO_TEMPLATES="${mv}" "${mdo[@]}" --template meinset mumbruch.md \
+    "${out_dir}/sb-mumbruch.pdf" >/dev/null 2>"${out_dir}/sb-mumbruch.err") ||
+    die "sandbox meinset umbruch: Export fehlgeschlagen: $(cat "${out_dir}/sb-mumbruch.err")"
+  pdfinfo "${out_dir}/sb-mumbruch.pdf" | quiet_grep '^Pages: *2$' ||
+    die "sandbox meinset umbruch: Seitenumbruch verschwunden (Nachbar-Set kennt mdo-pagebreak)"
+  # Die Vorlage selbst als Symlink aus dem Vorlagen-Ordner heraus (eigenes Repo): wird kopiert.
+  mkdir -p "${out_dir}/sb-repo"
+  sed 's/#h/MEINSET2-MARKE/' "${mv}/meinset.typ" >"${out_dir}/sb-repo/meinset2.typ"
+  cp "${mv}/helper.typ" "${out_dir}/sb-repo/"
+  ln -s "${out_dir}/sb-repo/meinset2.typ" "${mv}/meinset2.typ"
+  MDO_TEMPLATES="${mv}" hostile meinset2 'Text.' "" --template meinset2
+  expect "sandbox meinset2" "${text}" "MEINSET2-MARKE"
   ok "sandbox: einzelne .typ über den Namen: Nachbardateien ja, profiles/, Punkt-Einträge, Links nach außen nein"
 
   # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.
@@ -1091,6 +1111,17 @@ test_sandbox() {
       expect_fail fremd "${code}" "${out_dir}/sb-fremd.pdf" "${not_found}"
     done
     ok "sandbox din5008a: Profile im Set-Ordner (<Vorlagen>/din5008a/profiles) bleiben draußen"
+
+    # Das Set als Symlink im Vorlagen-Ordner (eigener Klon): sein Beispielprofil wird gefunden.
+    local vlink="${out_dir}/sb-vorlagen-link"
+    mkdir -p "${vlink}"
+    ln -s "${vset}/din5008a" "${vlink}/din5008a"
+    printf -- '---\ntemplate: din5008a\nprofile: kanzlei\nx-to:\n  - Empfänger\n---\n\nText.\n' >"${user}/link.md"
+    (cd "${user}" && MDO_TEMPLATES="${vlink}" "${mdo[@]}" link.md "${out_dir}/sb-link.pdf" \
+      >/dev/null 2>"${out_dir}/sb-link.err") ||
+      die "sandbox din5008a verlinkt: Export fehlgeschlagen: $(cat "${out_dir}/sb-link.err")"
+    expect "sandbox din5008a verlinkt" "$(pdf_text "${out_dir}/sb-link.pdf")" "Thomas Kirchner"
+    ok "sandbox din5008a: Profil im verlinkten Set-Ordner"
   fi
 
   # Kein Staging-Ordner bleibt zurück, weder nach Erfolg noch nach gescheitertem Export.
