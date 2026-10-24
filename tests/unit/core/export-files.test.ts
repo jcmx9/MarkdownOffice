@@ -98,8 +98,75 @@ describe('visibleImages', () => {
     ],
     ['a tag after `<!-->` in an HTML block', '<div>\n<!--> <img src="x.png">\n</div>'],
     ['undefined reference', '![r][nope] ![nope2]'],
+    // An HTML block opened by <script>, <pre>, <style> or <textarea> at a line start is raw HTML
+    // in cmarker (pulldown-cmark): Markdown inside is text. It interrupts a paragraph, and it ends
+    // only on a line holding the same end tag, spelled exactly in lower case.
+    ['Markdown in a <textarea> block', '<textarea>![t](x.png)</textarea>'],
+    ['Markdown in a <textarea> block with attributes', '<TEXTAREA rows=2>![t](x.png)</TEXTAREA>'],
+    ['a <textarea> block interrupting a paragraph', 'para\n<textarea>![t](x.png)</textarea>'],
+    ['a <textarea> block in a list item', '- a\n<textarea>![t](x.png)</textarea>'],
+    ['an unclosed <textarea> block (runs to the end)', '<textarea>\n\n![t](x.png)'],
+    ['a <script> block past another end tag', '<script>\nx\n</style>\n\n![t](x.png)'],
+    ['a <script> block past an upper-case end tag', '<script>\nx\n</SCRIPT>\n\n![t](x.png)'],
+    ['a <textarea> block past `</textarea >`', '<textarea>\nx\n</textarea >\n\n![t](x.png)'],
   ])('ignores %s', (_label, md) => {
     expect(visibleImages(md).filter((s) => s !== 'out.png')).toEqual([])
+  })
+
+  it('ends a raw HTML block like cmarker and finds the images after it', () => {
+    const md = [
+      '<textarea>',
+      'x',
+      '</textarea>',
+      '![](after.png)',
+      '',
+      '<textarea x="</textarea>">',
+      '![](same-line.png)',
+      '',
+      '<SCRIPT>',
+      'x',
+      '</script>',
+      '',
+      '![](upper-start.png)',
+      '',
+      '> <textarea>',
+      'x',
+      '',
+      '![](quote-end.png)',
+    ].join('\n')
+    expect(visibleImages(md)).toEqual([
+      'after.png',
+      'same-line.png',
+      'upper-start.png',
+      'quote-end.png',
+    ])
+  })
+
+  it('finds tags inside raw-text elements mid-line: cmarker parses them (no RCDATA)', () => {
+    const md = [
+      'x <textarea>![t](ta-md.png)</textarea> <textarea><img src="ta.png"></textarea>',
+      'x <title><img src="title.png"></title> <xmp><img src="xmp.png"></xmp>',
+      'x <iframe><img src="iframe.png"></iframe> <noembed><img src="noembed.png"></noembed>',
+      'x <noframes><img src="noframes.png"></noframes> <plaintext><img src="plain.png"></plaintext>',
+      'x <script><img src="script.png"></script> <style><img src="style.png"></style>',
+      '',
+      '<textarea>',
+      '<img src="ta-block.png">',
+      '</textarea>',
+    ].join('\n')
+    expect(visibleImages(md)).toEqual([
+      'ta-md.png',
+      'ta.png',
+      'title.png',
+      'xmp.png',
+      'iframe.png',
+      'noembed.png',
+      'noframes.png',
+      'plain.png',
+      'script.png',
+      'style.png',
+      'ta-block.png',
+    ])
   })
 
   it('resolves reference-style images, first definition wins, labels case-insensitive', () => {

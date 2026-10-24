@@ -1,4 +1,5 @@
 import type { SyntaxNode, Tree } from '@lezer/common'
+import type { BlockContext, Line, MarkdownConfig } from '@lezer/markdown'
 import { CORE_SCHEMA, load } from 'js-yaml'
 import { markdownBodyParser, markdownParser } from './markdown-syntax'
 
@@ -216,6 +217,52 @@ function swallowFrom(tree: Tree, text: string, block: SyntaxNode): number {
   return Number.POSITIVE_INFINITY
 }
 
+const RAW_BLOCK_START = /^<(script|pre|style|textarea)(?=[\s>]|$)/i
+const TEXTAREA_START = /^<textarea(?=[\s>]|$)/i
+const LT = 60
+
+/**
+ * The raw HTML block (CommonMark type 1) as cmarker's pulldown-cmark reads it, where lezer differs:
+ * it also opens on `<textarea` (and then interrupts a paragraph, like `<script>` already does in
+ * lezer), and it ends only on a line holding the same tag's end tag spelled exactly in lower case
+ * (`</script>`; not `</SCRIPT>`, not `</style>`). Checked against the PDF. Why: Markdown inside
+ * such a block is text in the PDF, and an image after its end is shown; parsed like lezer, the
+ * manifest listed images the PDF never shows and missed ones it does. Export only: the editor
+ * keeps lezer's reading (its parser is compared with core's markdownParser, which stays as is).
+ */
+const PdfRawHtmlBlock: MarkdownConfig = {
+  parseBlock: [
+    {
+      name: 'PdfRawHtmlBlock',
+      before: 'HTMLBlock',
+      parse(cx: BlockContext, line: Line): boolean {
+        const m = line.next === LT ? RAW_BLOCK_START.exec(line.text.slice(line.pos)) : null
+        if (!m) return false
+        const end = `</${(m[1] as string).toLowerCase()}>`
+        const from = cx.lineStart + line.pos
+        // As lezer's own HTML block: the block also ends with its container (quote, list item).
+        // Line.depth is lezer's internal container count, used the same way by its own block
+        // parsers (not in the typings); the quote and list tests catch a change of it.
+        const inner = line as Line & { depth: number }
+        let trailing = true
+        while (!line.text.includes(end) && cx.nextLine()) {
+          if (inner.depth < cx.depth) {
+            trailing = false
+            break
+          }
+        }
+        if (trailing) cx.nextLine()
+        cx.addElement(cx.elt('HTMLBlock', from, cx.prevLineEnd()))
+        return true
+      },
+      endLeaf: (_cx: BlockContext, line: Line): boolean =>
+        line.next === LT && TEXTAREA_START.test(line.text.slice(line.pos)),
+    },
+  ],
+}
+const exportParser = markdownParser.configure(PdfRawHtmlBlock)
+const exportBodyParser = markdownBodyParser.configure(PdfRawHtmlBlock)
+
 // lib/markdown.typ's image-attrs: `![alt](src){width=…}` becomes `<img src="src">` with the
 // destination taken raw (no backslash unescaping, `"` as %22) before cmarker sees it, so the PDF
 // asks for that spelling. Its regex is split to stay linear on any note: the part up to `)` is
@@ -241,7 +288,7 @@ function hasClosedFrontmatter(lines: string[]): boolean {
  */
 export function visibleImages(markdown: string): string[] {
   const text = markdown.replace(/\r\n?/g, '\n')
-  const tree = (hasClosedFrontmatter(text.split('\n')) ? markdownParser : markdownBodyParser).parse(
+  const tree = (hasClosedFrontmatter(text.split('\n')) ? exportParser : exportBodyParser).parse(
     text,
   )
   const slice = (n: SyntaxNode | null) => (n ? text.slice(n.from, n.to) : '')
