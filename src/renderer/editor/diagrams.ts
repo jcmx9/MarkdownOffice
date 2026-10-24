@@ -28,7 +28,7 @@ import {
 import { type MermaidOptions, renderMermaid } from '../../core/mermaid'
 import { MEMO_PREVIEW } from '../../core/preview-spec'
 import { loadTypstPlugin, type TypstPlugin, TypstPluginError } from '../../core/typst-plugin'
-import { sanitizeDiagramSvg } from './diagram-svg'
+import { reprefix, sanitizeDiagramSvg } from './diagram-svg'
 import { previewSource } from './preview-source'
 import { previewView, selectionTouches } from './rendered'
 
@@ -163,25 +163,6 @@ function blockText(
  */
 let prefixes = 0
 const nextPrefix = (): string => `mdo-dg${++prefixes}`
-
-/**
- * Moves a clone of a sanitised drawing to a fresh id prefix. The clone only holds the forms
- * the sanitiser wrote: `id="<prefix>-…"` and `url(#<prefix>-…)` (in fill, stroke, marker-*).
- */
-function reprefix(svg: SVGSVGElement, from: string, to: string): SVGSVGElement {
-  const id = `${from}-`
-  const ref = `url(#${from}-`
-  for (const el of [svg, ...Array.from(svg.querySelectorAll('*'))]) {
-    for (const attr of Array.from(el.attributes)) {
-      if (attr.name === 'id' && attr.value.startsWith(id)) {
-        el.setAttribute('id', `${to}-${attr.value.slice(id.length)}`)
-      } else if (attr.value.startsWith(ref)) {
-        el.setAttribute(attr.name, `url(#${to}-${attr.value.slice(ref.length)}`)
-      }
-    }
-  }
-  return svg
-}
 
 /** Per widget DOM: disconnects its observers. */
 const fitters = new WeakMap<HTMLElement, () => void>()

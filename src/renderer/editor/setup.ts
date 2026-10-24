@@ -26,6 +26,7 @@ import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
 import { mdoHighlight } from './highlight'
 import { mdoMarkdown } from './markdown'
+import { math } from './math'
 import { mermaid } from './mermaid'
 import { modeCompartment, modeExtensions } from './mode'
 import { pageBreakKeymap } from './pagebreak'
@@ -97,6 +98,8 @@ export function viewExtensions(view: View): Extension {
         tableField,
         // Mermaid blocks as the PDF draws them; one plugin and cache for every tab.
         diagrams.extension,
+        // Formulas as the PDF sets them (bundled Typst + mitex); one service and cache per window.
+        math.extension,
         headerFold,
         footBlock,
       ]

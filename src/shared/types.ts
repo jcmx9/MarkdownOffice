@@ -1,5 +1,8 @@
+import type { MathItem, MathResult } from '../core/math'
 import type { SetCssRule } from '../core/set-css'
 import type { ValidationInputs } from '../core/validation-context'
+
+export type { MathItem, MathResult }
 
 /** Line-ending style of a note. 'mixed' keeps every byte as found. */
 export type Eol = '\n' | '\r\n' | 'mixed'
@@ -217,6 +220,11 @@ export interface MdoApi {
   choosePath(kind: ChooseKind, current: string): Promise<string | null>
   /** Bytes of a pipeline WebAssembly plugin (same file the PDF uses); main owns the path. */
   pluginWasm(name: 'mmdr' | 'mitex'): Promise<Uint8Array>
+  /**
+   * Formulas set by the bundled Typst + mitex, one result per item in order (sizes in em).
+   * Main rejects a batch that is not exactly `{ tex, display }` entries within the limits.
+   */
+  renderMath(items: MathItem[]): Promise<MathResult[]>
 }
 
 /** A template set as the "new from template" picker lists it (discovered on disk, never hard-coded). */

@@ -1,9 +1,22 @@
 import { copyFile, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { expect } from '@playwright/test'
+import { type ElectronApplication, expect, type Page } from '@playwright/test'
 import { clickMenu, launch, makeDirs, shot, test, waitForFile } from './helpers'
 
 const FIXTURE = join(__dirname, '..', 'fixtures', 'preview.md')
+
+/** Leaves Present the way present.spec does: toggled off, then out of the real fullscreen. */
+async function leavePresent(app: ElectronApplication, page: Page): Promise<void> {
+  if ((await page.locator('body.mdo-mode-present').count()) > 0) {
+    await clickMenu(app, 'toggle-present')
+  }
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  if (process.platform !== 'linux') {
+    const full = () =>
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false)
+    await expect.poll(full, { timeout: 10_000 }).toBe(false)
+  }
+}
 
 async function openFixture(extra: { env?: Record<string, string> } = {}) {
   const dirs = await makeDirs()
@@ -458,5 +471,56 @@ test('table columns are as wide as Typst makes them in the memo PDF', async () =
   }
   expect(m.lines[0]?.[1] as number).toBeGreaterThan(1)
   await shot(page, 'table-columns')
+  await app.close()
+})
+
+test('formulas as the PDF sets them in Preview and Present, source in Code view', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Formeln.md')
+  const source = 'Inline $x^2$ und\n\n$$\n\\sum_{k=1}^n k\n$$\n\nFehler $\\ce{H2O}$\n'
+  await writeFile(note, source)
+  const { app, page } = await launch({ dirs, args: [note] })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  // Set by the bundled Typst + mitex (one batch, ~0.3 s): the inline and the display formula.
+  const svgs = page.locator('.mdo-math-inline svg, .mdo-math svg')
+  await expect(svgs).toHaveCount(2, { timeout: 15_000 })
+  await expect(page.locator('.mdo-math svg')).toBeVisible()
+  // mitex knows no \ce: the source stays, flagged with the reason.
+  const flagged = page.locator('.mdo-math-error')
+  await expect(flagged).toHaveText('$\\ce{H2O}$')
+  await expect(flagged).toHaveAttribute('title', /^Formel wird im PDF nicht gebaut: /)
+  await shot(page, 'math-preview')
+
+  // The cursor in a formula shows its source; the other formulas stay set.
+  await page.locator('.mdo-math-inline svg').click()
+  await expect(page.locator('.cm-line', { hasText: 'Inline' })).toContainText('$x^2$')
+  await expect(page.locator('.mdo-math-inline')).toHaveCount(0)
+  await expect(page.locator('.mdo-math svg')).toHaveCount(1)
+  // Back out of it: set again (from the service's cache, no new render needed).
+  await page.locator('.mdo-math-error').click()
+  await expect(page.locator('.mdo-math-inline svg')).toHaveCount(1)
+
+  // Present uses the same widgets. Always left again: a failed assertion must not leave a
+  // fullscreen Space behind (the next launch hangs on it).
+  await clickMenu(app, 'toggle-present')
+  let passed = false
+  try {
+    await expect(
+      page.locator('.cm-editor.mdo-present').locator('.mdo-math-inline svg, .mdo-math svg'),
+    ).toHaveCount(2)
+    passed = true
+  } finally {
+    // After a failure, leaving must not hide the assertion's own error.
+    if (passed) await leavePresent(app, page)
+    else await leavePresent(app, page).catch(() => {})
+  }
+
+  // Code view: only the source, no formula set.
+  await clickMenu(app, 'toggle-view')
+  await page.locator('.cm-editor.mdo-code').waitFor()
+  await expect(page.locator('.mdo-math-inline, .mdo-math, .mdo-math-error')).toHaveCount(0)
+  await expect(page.locator('.cm-line', { hasText: '\\sum_{k=1}^n k' })).toBeVisible()
+  await page.waitForTimeout(1500)
+  expect((await readFile(note)).toString()).toBe(source)
   await app.close()
 })

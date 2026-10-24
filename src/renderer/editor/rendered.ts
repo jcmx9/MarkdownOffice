@@ -1,4 +1,5 @@
 import { type EditorState, Facet, type Line } from '@codemirror/state'
+import type { DecorationSet } from '@codemirror/view'
 
 /**
  * True while the editor shows the Preview (Present always does): viewExtensions adds it with the
@@ -25,3 +26,10 @@ export function lineIsRendered(state: EditorState, line: Line): boolean {
 export function selectionTouches(state: EditorState, from: number, to: number): boolean {
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from)
 }
+
+/**
+ * Decorations of state fields that change how wide a rendered line's text is (a formula's source
+ * replaced by its SVG, or shown muted while it waits). The paragraph setter keys a line's breaks
+ * on them as on the preview's own decorations, so a formula settling sets its line again.
+ */
+export const layoutDecorations = Facet.define<DecorationSet>()

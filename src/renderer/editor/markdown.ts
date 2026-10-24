@@ -4,6 +4,7 @@ import { foldService, LanguageSupport, syntaxTree } from '@codemirror/language'
 import type { Extension } from '@codemirror/state'
 import type { SyntaxNode } from '@lezer/common'
 import { Frontmatter } from './frontmatter'
+import { MathSyntax } from './math-syntax'
 
 /** Blocks that are in the file but never shown: HTML comments (page breaks too) and link definitions. */
 const INVISIBLE = new Set(['CommentBlock', 'LinkReference'])
@@ -39,7 +40,7 @@ export const sectionFold = foldService.of((state, start, end) => {
 })
 
 /**
- * Markdown with our front matter and section folds. lang-markdown's support is
+ * Markdown with our front matter, formulas and section folds. lang-markdown's support is
  * [html tag support, header fold service, …rest]; its header fold service is replaced by
  * `sectionFold` (sections.test.ts fails if that order changes).
  */
@@ -47,7 +48,8 @@ export function mdoMarkdown(codeLanguages?: readonly LanguageDescription[]): Lan
   const md = markdown({
     base: markdownLanguage,
     codeLanguages: codeLanguages as LanguageDescription[] | undefined,
-    extensions: [Frontmatter],
+    // Formulas by the PDF's rules: also keeps emphasis and typography out of them.
+    extensions: [Frontmatter, MathSyntax],
   })
   const [htmlSupport, , ...rest] = md.support as Extension[]
   return new LanguageSupport(md.language, [htmlSupport ?? [], sectionFold, ...rest])

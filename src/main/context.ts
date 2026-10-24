@@ -15,6 +15,7 @@ import type {
 import { addRecent, replaceRecent } from './cli'
 import { canonicalPath, canonicalPaths, sameFile } from './files'
 import { FullScreenOwner, leaveFullScreenBeforeClose } from './fullscreen'
+import { MathRenderer } from './math'
 import { buildMenuTemplate, PresentKeyGuard } from './menu'
 import { type PipelinePaths, pipelinePaths, runPipeline, typstVersion } from './pipeline'
 import { prepareSpellcheck, SpellcheckController } from './spellcheck/controller'
@@ -69,6 +70,8 @@ export class AppContext {
   spellcheck: SpellcheckController | null = null
   /** `typst --version` of the bundled binary, asked once; a failed answer is asked again. */
   private typst: Promise<string | null> | null = null
+  /** Preview formulas through the bundled Typst; one per app, its runs end with the window. */
+  readonly math: MathRenderer
 
   constructor(
     private readonly userData: string,
@@ -80,6 +83,7 @@ export class AppContext {
     },
   ) {
     this.settings = defaultSettings(documentsDir)
+    this.math = new MathRenderer(pipeline.paths.root)
   }
 
   async load(): Promise<void> {
@@ -166,6 +170,8 @@ export class AppContext {
     })
     win.on('closed', () => {
       this.fullScreen.dispose()
+      // Nobody is left to show the formulas: end a running Typst (also on quit) and drop the queue.
+      this.math.dispose()
       this.window = null
       this.rendererReady = false
     })

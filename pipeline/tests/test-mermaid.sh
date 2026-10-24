@@ -47,7 +47,8 @@ for f in "${test_dir}"/fixtures/mermaid/*.mmd; do
 done
 names_csv="$(IFS=,; printf '%s' "${names[*]}")"
 
-# Root / like build.sh: mermaid.typ imports mmdr by absolute path from the pipeline root.
+# Root /: mermaid.typ imports mmdr by absolute path from the pipeline root (only the export
+# itself runs in a staging root).
 "${typst}" eval 'query(<out>).first().value' --in "${test_dir}/mermaid.typ" --root / \
   --input "mdo=${MDO_PIPELINE_ROOT}" --input "names=${names_csv}" >"${out_dir}/typst.json"
 # Node runs the core files by type stripping, as in test-typography.sh (floor Node 22.12).

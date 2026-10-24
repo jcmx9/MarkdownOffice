@@ -12,6 +12,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -104,6 +105,7 @@ describe('cli.js', () => {
         'e=unset; [ -n "$ELECTRON_RUN_AS_NODE" ] && e=$ELECTRON_RUN_AS_NODE',
         'l="$(printenv LD_LIBRARY_PATH || echo unset)"',
         'printf "%s\\n" "$MDO_PIPELINE_ROOT" "$MDO_SETS_DIR" "$MDO_VERSION" "$PATH" "$e" "$l" > "$FAKE_RECORD.env"',
+        'if [ -n "$MDO_MANIFEST" ]; then cp "$MDO_MANIFEST" "$FAKE_RECORD.manifest"; printf "%s" "$MDO_MANIFEST" > "$FAKE_RECORD.manifestpath"; fi',
         'if [ -n "$FAKE_SIGNAL" ]; then kill -TERM $$; fi',
         'exit "$FAKE_EXIT"',
         '',
@@ -244,6 +246,80 @@ describe('cli.js', () => {
 
   it.skipIf(win)('exits with 1 when the pipeline dies from a signal', () => {
     expect(run(['x.md'], { FAKE_SIGNAL: '1' }).status).toBe(1)
+  })
+
+  // The export manifest (src/cli/stage.ts): written per note into the temp folder (TMPDIR here),
+  // passed as MDO_MANIFEST and removed once the script has ended, whatever its exit code.
+  it.skipIf(win)('passes a manifest of the note and removes it afterwards, also on failure', () => {
+    const tmp = path.join(dir, 'tmp')
+    mkdirSync(tmp)
+    const notes = path.join(dir, 'notes')
+    mkdirSync(notes)
+    writeFileSync(path.join(notes, 'a.png'), Buffer.from('89504e470d0a1a0a00', 'hex'))
+    writeFileSync(path.join(notes, 'n.md'), '![](a.png) ![](secret.txt)\n')
+    writeFileSync(path.join(notes, 'secret.txt'), 'x')
+    for (const exit of ['0', '3']) {
+      const r = spawnSync(process.execPath, [path.join(layout, 'cli.js'), 'n.md'], {
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          FAKE_RECORD: record,
+          FAKE_EXIT: exit,
+          FAKE_SIGNAL: '',
+          TMPDIR: tmp,
+        },
+        cwd: notes,
+        encoding: 'utf8',
+      })
+      expect(r.status).toBe(Number(exit))
+      expect(JSON.parse(readFileSync(`${record}.manifest`, 'utf8'))).toEqual({
+        note: path.join(notes, 'n.md'),
+        images: [{ ref: 'a.png', path: path.join(notes, 'a.png') }],
+        logo: null,
+        profile: null,
+      })
+      expect(path.dirname(readFileSync(`${record}.manifestpath`, 'utf8'))).toMatch(/mdo-stage-/)
+      expect(readdirSync(tmp)).toEqual([])
+    }
+  })
+
+  it.skipIf(win)('writes the hints for rejected files to stderr, not stdout', () => {
+    const tmp = path.join(dir, 'tmp')
+    mkdirSync(tmp)
+    writeFileSync(path.join(dir, 'fake.png'), 'not a png')
+    writeFileSync(path.join(dir, 'n.md'), '![](fake.png)\n')
+    const r = run([path.join(dir, 'n.md')], { TMPDIR: tmp })
+    expect(r.status).toBe(0)
+    expect(r.stderr).toContain('Hinweis: kein gültiges Bild, kommt nicht ins PDF: fake.png')
+    expect(r.stdout).not.toContain('Hinweis')
+  })
+
+  it.skipIf(win)('fails like the script when the profile is missing, without running it', () => {
+    const tmp = path.join(dir, 'tmp')
+    mkdirSync(tmp)
+    mkdirSync(path.join(dir, 'sets', 'memo'), { recursive: true })
+    writeFileSync(path.join(dir, 'sets', 'memo', 'memo.typ'), '')
+    writeFileSync(path.join(dir, 'n.md'), '---\nprofile: nope\n---\n')
+    const r = run([path.join(dir, 'n.md')], {
+      TMPDIR: tmp,
+      MDO_SETS_DIR: path.join(dir, 'sets'),
+      MDO_TEMPLATES: path.join(dir, 'user'),
+    })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('Error: Profil nicht gefunden: nope (gesucht in ')
+    expect(existsSync(`${record}.args`)).toBe(false)
+    expect(readdirSync(tmp)).toEqual([])
+  })
+
+  it.skipIf(win)('sweeps staging folders older than an hour before exporting', () => {
+    const tmp = path.join(dir, 'tmp')
+    const old = path.join(tmp, 'mdo-stage-old')
+    mkdirSync(old, { recursive: true })
+    writeFileSync(path.join(old, '.mdo-stage'), '')
+    const t = Date.now() / 1000 - 7200
+    utimesSync(path.join(old, '.mdo-stage'), t, t)
+    expect(run(['x.md'], { TMPDIR: tmp }).status).toBe(0)
+    expect(existsSync(old)).toBe(false)
   })
 
   it.runIf(win)('runs convert.ps1 and passes code, arguments and variables (Windows)', () => {
