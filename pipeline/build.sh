@@ -444,9 +444,40 @@ resolve_template() {
   return 1
 }
 if [[ -n "${cli_template}" ]]; then
+  template_value="${cli_template}"
   template_file="$(resolve_template "${cli_template}" "${orig_pwd}")" || exit 1
 else
+  template_value="${fm_template}"
   template_file="$(resolve_template "${fm_template}" "${base_dir}")" || exit 1
+fi
+
+# note_template_ok <datei>: eine .typ, die die Notiz selbst nennt (template: ./x.typ, ~, $VAR,
+# absolut), läuft mit der Notiz im Staging-Ordner. Sie muss daher eine echte Datei sein (kein
+# Symlink), auf .typ enden und aufgelöst unter dem Ordner der Notiz (bzw. MDO_BASE_DIR) oder dem
+# Vorlagen-Ordner liegen, ohne Punkt-Ordner darunter. Warum: `template: ./evil.typ` als Link auf
+# ~/.ssh/… oder ein verlinkter Ordner brächte jede lokale Datei ins PDF. Die Entscheidung trifft
+# der Wrapper (src/cli/stage.ts templateFile); dies prüft dieselbe Regel noch einmal.
+note_template_ok() {
+  local f="$1" dir real root rr rel
+  [[ -f "${f}" && ! -L "${f}" ]] || return 1
+  dir="$(cd -P "$(dirname "${f}")" 2>/dev/null && pwd -P)" || return 1
+  real="${dir}/$(basename "${f}")"
+  case "$(printf '%s' "${real##*.}" | tr '[:upper:]' '[:lower:]')" in typ) ;; *) return 1 ;; esac
+  for root in "${src_dir}" "${base_dir}" "${user_templates}"; do
+    rr="$(cd -P "${root}" 2>/dev/null && pwd -P)" || continue
+    case "${real}" in "${rr}"/*) rel="${real#"${rr}"/}" ;; *) continue ;; esac
+    case "/${rel}" in */.*) continue ;; esac
+    return 0
+  done
+  return 1
+}
+# Nur ein über den Set-Namen gefundenes Set ist ein Set-Ordner (ganz geprüft und kopiert); eine
+# .typ-Datei ist immer nur diese eine Datei, auch in der Form ./x/x.typ.
+template_by_name=""
+if [[ -z "${template_value}" || "${template_value}" =~ ^[a-z0-9_-]+$ ]]; then template_by_name=1; fi
+if [[ -z "${template_by_name}" && -z "${cli_template}" ]] && ! note_template_ok "${template_file}"; then
+  echo "Error: Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein: ${fm_template}" >&2
+  exit 1
 fi
 
 # Offline-Paketablage: Typst-Pakete im Cache-Layout (preview/<name>/<version>), damit
@@ -462,7 +493,8 @@ pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path 
 # (auch ungültige Angaben mit Großbuchstaben oder _), wird abgewiesen. Geprüft wird die
 # Vorlage; ist sie ein Set-Ordner <name>/<name>.typ, jede .typ darin (auch Unterordner),
 # weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen .typ nur diese, weil ihre
-# Nachbarn andere Sets sein können. Steht hinter der Vorlagen-Auflösung (endgültige Datei).
+# Nachbarn andere Sets sein können (bindet sie eine Nachbardatei ein, die nach einem fremden
+# Paket greift, stoppt das der Proxy unten). Steht hinter der Vorlagen-Auflösung (endgültige Datei).
 # find -H folgt einem verlinkten Set-Ordner (z. B. ein geklontes Set-Repo, als Symlink im
 # Vorlagen-Ordner); die Vorlage selbst steht immer in der Liste, was find auch liefert.
 # Fail closed: scheitert find oder grep (z. B. unlesbare Datei), wird die Vorlage abgewiesen.
@@ -471,7 +503,7 @@ scan_files=("${template_file}")
 # Set-Ordner <name>/<name>.typ: geprüft und in den Staging-Ordner kopiert wird der ganze Ordner;
 # bei einer einzelnen .typ nur diese Datei (ihre Nachbarn können andere Sets sein).
 template_is_set=""
-if [[ "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
+if [[ -n "${template_by_name}" && "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
   template_is_set=1
   if ! found="$(find -H "${template_dir}" -type f -name '*.typ')"; then
     echo "Error: Vorlage nicht prüfbar (Set-Ordner nicht lesbar): ${template_dir}" >&2
@@ -600,7 +632,9 @@ done < <(printf '%s' "${manifest_out}" | json_string_lines)
 #   /img/<n>-<name>   die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
 #   /logo/<name>      das Logo
 #   /profile/<name>   das Profil und die Bilder daneben, die es nennt (das Set liest sie dort)
-#   /set/…            das Set (Ordner ohne .git, oder die einzelne .typ)
+#   /set/…            das Set: Set-Ordner ohne .git und profiles/; bei einer einzelnen, über den
+#                     Namen gefundenen .typ ihr Ordner (gefiltert, siehe stage_folder); bei einer
+#                     .typ-Datei als Pfad nur diese
 #   /mdo/lib, /mdo/vendor/{cmarker,mitex,mmdr}   Pipeline-Bausteine (sys.inputs.mdo = /mdo)
 #   /images.json      Zuordnung Bildquelle -> Pfad im Staging-Ordner
 # Dateien werden als Inhalt kopiert (ein Symlink auf eine Datei wird aufgelöst, das Manifest hat
@@ -631,22 +665,68 @@ attach=""
 if [[ "${fm_embed}" != "false" ]]; then attach="${staged_note}"; fi
 
 # Set und Pipeline-Bausteine. Ein Set-Ordner ohne .git (ein geklontes Set-Repo braucht seine
-# Historie nicht im PDF-Lauf). Scheitert eine Kopie, bricht der Export ab.
+# Historie nicht im PDF-Lauf) und ohne profiles/: ein Set im Vorlagen-Ordner (<Vorlagen>/<set>/)
+# hält dort die Profile aller Absender, und jede Notiz könnte sie lesen. Profile kommen nur über
+# das Manifest nach /profile/. Eine von der Notiz genannte .typ (geprüft, kein Symlink) wird
+# mit cp -P kopiert, nie über einen Link. Scheitert eine Kopie, bricht der Export ab.
 copy_failed() {
   echo "Error: nicht in den Staging-Ordner kopierbar: $1" >&2
   exit 1
 }
+# real_path <pfad>: Pfad mit allen Symlinks aufgelöst (ohne realpath/readlink -f, die ältere
+# macOS nicht kennen); Exit 1 bei einer Schleife oder einem fehlenden Ordner.
+real_path() {
+  local p="$1" t d n=0
+  while [[ -L "${p}" ]]; do
+    (( n++ < 40 )) || return 1
+    t="$(readlink "${p}")" || return 1
+    case "${t}" in /*) p="${t}" ;; *) p="$(dirname "${p}")/${t}" ;; esac
+  done
+  d="$(cd -P "$(dirname "${p}")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s' "${d}" "$(basename "${p}")"
+}
+
+# stage_folder <ordner> <ziel>: der Ordner einer einzelnen, über den Set-Namen gefundenen .typ
+# (<Vorlagen>/meinset.typ), damit sie Nachbardateien einbinden kann (Entscheidung des Besitzers,
+# 2026-10-24). Der Ordner ist meist der Vorlagen-Ordner selbst; daher bleiben draußen: jeder
+# Ordner namens profiles (in jeder Tiefe; dort liegen die Profile aller Absender), jeder Eintrag,
+# dessen Name mit . beginnt, und jeder Symlink, dessen Ziel den Ordner verlässt. Ein Symlink auf
+# eine Datei im Ordner wird als Inhalt kopiert, einer auf einen Ordner nie verfolgt.
+stage_folder() {
+  local src="$1" dest="$2" rsrc e rel r
+  rsrc="$(cd -P "${src}" && pwd -P)" || return 1
+  while IFS= read -r -d '' e; do
+    rel="${e#./}"
+    if [[ -L "${src}/${rel}" ]]; then
+      r="$(real_path "${src}/${rel}")" || continue
+      case "${r}" in "${rsrc}"/*) ;; *) continue ;; esac
+      case "/${r#"${rsrc}"/}/" in */.*|*/profiles/*) continue ;; esac
+      [[ -f "${r}" ]] || continue
+      cp -- "${r}" "${dest}/${rel}" || return 1
+    elif [[ -d "${src}/${rel}" ]]; then
+      mkdir -p "${dest}/${rel}" || return 1
+    elif [[ -f "${src}/${rel}" ]]; then
+      cp -P -- "${src}/${rel}" "${dest}/${rel}" || return 1
+    fi
+  done < <(cd "${src}" && find . -mindepth 1 \( -name '.*' -o \( -type d -name profiles \) \) -prune -o -print0)
+}
+
 # Je Ziel ein cp-Aufruf (ein Export soll kaum langsamer werden als ohne Staging-Ordner).
-set_entries=("${template_file}")
 if [[ -n "${template_is_set}" ]]; then
   set_entries=()
   shopt -s dotglob nullglob
   for entry in "${template_dir}"/*; do
-    if [[ "${entry##*/}" != ".git" ]]; then set_entries+=("${entry}"); fi
+    case "${entry##*/}" in .git|profiles) ;; *) set_entries+=("${entry}") ;; esac
   done
   shopt -u dotglob nullglob
+  cp -RL -- "${set_entries[@]}" "${stage}/set/" || copy_failed "${template_dir}"
+elif [[ -n "${template_by_name}" ]]; then
+  stage_folder "${template_dir}" "${stage}/set" || copy_failed "${template_dir}"
+elif [[ -z "${cli_template}" ]]; then
+  cp -P -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
+else
+  cp -- "${template_file}" "${stage}/set/" || copy_failed "${template_file}"
 fi
-cp -RL -- "${set_entries[@]}" "${stage}/set/" || copy_failed "${template_dir}"
 staged_template="${stage}/set/$(basename "${template_file}")"
 cp -RL -- "${pipeline_root}/lib" "${stage}/mdo/" || copy_failed "${pipeline_root}/lib"
 vendor_parts=()
@@ -700,6 +780,12 @@ if [[ -n "${m_profile}" ]]; then
   cp -- "${m_profile}" "${stage}/profile/${m_profile##*/}" || copy_failed "${m_profile}"
   profile="/profile/${m_profile##*/}"
   for f in ${m_profile_files[@]+"${m_profile_files[@]}"}; do
+    # Nur schlichte Namen neben der YAML-Datei: nie ".", ".." oder ihr eigener Name.
+    case "${f##*/}" in
+      ""|.|..|"${m_profile##*/}")
+        echo "Error: ungültige Datei neben dem Profil: ${f}" >&2
+        exit 1 ;;
+    esac
     cp -- "${f}" "${stage}/profile/${f##*/}" || copy_failed "${f}"
   done
 elif [[ -n "${fm_profile}" ]]; then
@@ -736,8 +822,9 @@ typst_inputs=(
   --input "version=${mdo_version}"
 )
 # Seitenumbruch als Element mdo-pagebreak nur für Sets, die das Element kennen (raw-typst aus); alle
-# anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks).
-if grep -q 'mdo-pagebreak' -- "${template_file}"; then typst_inputs+=(--input "pagebreak=html"); fi
+# anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks). Gesucht wird in
+# jeder Datei des Sets im Staging-Ordner (ein Set kann die html:-Zuordnung in eine Hilfsdatei legen).
+if grep -rqs -- 'mdo-pagebreak' "${stage}/set"; then typst_inputs+=(--input "pagebreak=html"); fi
 
 # Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
 # date: auto -> Typst schriebe sonst den *Build-Zeitpunkt* in CreateDate/ModifyDate.
@@ -807,13 +894,23 @@ done < <(printf '%s' "${probe}" | json_string_lines)
 printf '{%s}\n' "${image_entries}" > "${stage}/images.json"
 typst_inputs+=(--input "images=/images.json")
 
-# Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle).
+# Markdown -> PDF/A-3b (Template ruft cmarker auf der vorverarbeiteten Quelle). Die Meldungen
+# von Typst gehen unverändert auf stderr; fehlt eine Datei im Set-Ordner (eine einzelne .typ, die
+# Nachbardateien einbindet, wird allein kopiert), folgt ein Hinweis.
+compile_rc=0
 "${no_net[@]}" "${typst_bin}" compile "${staged_template}" "${out}" \
   "${font_arg[@]}" \
   "${pkg_arg[@]}" \
   --root "${stage}" \
   --pdf-standard "${standard}" \
-  "${typst_inputs[@]}"
+  "${typst_inputs[@]}" 2>"${stage}/typst.err" || compile_rc=$?
+cat "${stage}/typst.err" >&2
+if (( compile_rc != 0 )); then
+  if grep -q 'file not found.*/set/' "${stage}/typst.err"; then
+    echo "Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>/<name>.typ." >&2
+  fi
+  exit "${compile_rc}"
+fi
 
 echo "✓ ${out} erzeugt (PDF/A-3b)"
 # Remote-Bilder zählt der Probe-Durchlauf oben (<mdo-remote-skip>); die Zeile

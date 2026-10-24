@@ -903,19 +903,30 @@ test_sandbox() {
   image_count() {
     if command -v pdfimages >/dev/null 2>&1; then pdfimages -list "$1" | tail -n +3 | wc -l | tr -d ' '; fi
   }
-  # hostile <name> <zeile> [optionen…]: Notiz mit der Zeile exportieren; scheitert der Export,
-  # darf kein PDF entstehen, sonst darf das PDF keinen Kanarienvogel enthalten.
+  # Typst-Fehler eines Zugriffs außerhalb des Staging-Ordners (der Pfad zählt ab dessen Wurzel).
+  local not_found='error: file not found'
+  # expect_fail <name> <code> <pdf> <fehler-regex>: der Export scheiterte genau mit diesem Fehler
+  # (nicht irgendeinem) und hinterließ kein PDF.
+  expect_fail() {
+    [[ "$2" -ne 0 ]] || die "sandbox $1: Export gelang, erwartet: $4"
+    [[ ! -e "$3" ]] || die "sandbox $1: gescheiterter Export hinterlässt ein PDF"
+    grep -qE -- "$4" "${out_dir}/sb-$1.err" || die "sandbox $1: unerwarteter Fehler: $(cat "${out_dir}/sb-$1.err")"
+  }
+  # hostile <name> <zeile> <fehler-regex> [optionen…]: Notiz mit der Zeile exportieren. Mit
+  # Fehler-Regex muss der Export genau damit scheitern; mit "" muss er gelingen, und das PDF
+  # darf keinen Kanarienvogel enthalten.
   hostile() {
-    local name="$1" line="$2"
-    shift 2
+    local name="$1" line="$2" want="$3"
+    shift 3
     pdf="${out_dir}/sb-${name}.pdf"
     printf '# Feind\n\n%s\n\nENDE.\n' "${line}" >"${sb}/notiz/${name}.md"
     code=0
     (cd "${sb}/notiz" && "${mdo[@]}" "$@" "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/sb-${name}.err") || code=$?
-    if [[ "${code}" -ne 0 ]]; then
-      [[ ! -e "${pdf}" ]] || die "sandbox ${name}: gescheiterter Export hinterlässt ein PDF"
+    if [[ -n "${want}" ]]; then
+      expect_fail "${name}" "${code}" "${pdf}" "${want}"
       return 0
     fi
+    [[ "${code}" -eq 0 ]] || die "sandbox ${name}: Export fehlgeschlagen: $(cat "${out_dir}/sb-${name}.err")"
     text="$(pdf_text "${pdf}")"
     reject "sandbox ${name}" "${text}" "CANARY-GEHEIM"
     [[ "$(image_count "${pdf}")" != [1-9]* ]] || die "sandbox ${name}: fremdes Bild im PDF"
@@ -927,21 +938,72 @@ test_sandbox() {
   local forge_meta forge_use
   forge_meta='$\text{\label{#metadata("canary.png")<mdo-image>}}$'
   forge_use='$\text{\label{#(sys.inputs.at("images", default: none),).filter(f => f != none).map(f => image(json(f).at("canary.png"))).join()}}$'
-  hostile raw "<!--raw-typst #read(\"${geheim}/canary.txt\") -->"
+  # Einstellung des Sets: memo hat raw-typst aus, der Kommentar bleibt ein Kommentar (Export gelingt).
+  hostile memo-raw-aus "<!--raw-typst #read(\"${geheim}/canary.txt\") -->" ""
   # Ein eigenes Set mit raw-typst an (probe): die Notiz läuft als Typst-Code, sieht aber nur
   # den Staging-Ordner.
   MDO_TEMPLATES="${fixtures}/templates" hostile raw-probe "<!--raw-typst #read(\"${geheim}/canary.txt\") -->" \
-    --template probe
+    "${not_found}" --template probe
   MDO_TEMPLATES="${fixtures}/templates" hostile raw-probe-bild \
-    "<!--raw-typst #image(\"${geheim}/canary.png\") -->" --template probe
-  hostile label "\$\\text{\\label{#read(\"${geheim}/canary.txt\")}}\$"
-  hostile graphics "\$\\includegraphics{${geheim}/canary.png}\$"
-  hostile forged "${forge_meta} ${forge_use}"
+    "<!--raw-typst #image(\"${geheim}/canary.png\") -->" "${not_found}" --template probe
+  hostile label "\$\\text{\\label{#read(\"${geheim}/canary.txt\")}}\$" "${not_found}"
+  hostile graphics "\$\\includegraphics{${geheim}/canary.png}\$" "${not_found}"
+  # Die gefälschte Quelle steht in der Zuordnung als "" (fehlt): image("") scheitert.
+  hostile forged "${forge_meta} ${forge_use}" 'error: (file not found|failed to load file)'
   # Ein Link auf eine Nicht-Bilddatei kommt nicht in den Staging-Ordner: Platzhalter statt Abbruch.
-  hostile textlink '![](../../geheim/canary.txt)'
-  [[ "${code}" -eq 0 ]] || die "sandbox textlink: Export fehlgeschlagen: $(cat "${out_dir}/sb-textlink.err")"
+  hostile textlink '![](../../geheim/canary.txt)' ""
   expect "sandbox textlink" "${text}" "[Bild fehlt: ../../geheim/canary.txt]"
   ok "sandbox: raw-typst, mitex (\\label, \\includegraphics), Nicht-Bild-Link, gefälschte Probe lesen nichts"
+
+  # Eine von der Notiz genannte Vorlage: nur eine echte .typ-Datei unter Notiz- oder
+  # Vorlagen-Ordner, und nur diese eine Datei kommt in den Staging-Ordner.
+  ln -s "${geheim}/canary.txt" "${sb}/notiz/evil.typ"
+  mkdir -p "${geheim}/evil" "${sb}/notiz/eigen/daten"
+  printf '#read("canary.txt")\n' >"${geheim}/evil/evil.typ"
+  cp "${geheim}/canary.txt" "${geheim}/evil/"
+  ln -s "${geheim}/evil" "${sb}/notiz/evil"
+  local tval refused='Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein'
+  for tval in ./evil.typ ./evil/evil.typ; do
+    printf -- '---\ntemplate: %s\n---\n\nText.\n' "${tval}" >"${sb}/notiz/tpl.md"
+    code=0
+    (cd "${sb}/notiz" && "${mdo[@]}" tpl.md "${out_dir}/sb-tpl.pdf" >/dev/null 2>"${out_dir}/sb-tpl.err") || code=$?
+    expect_fail tpl "${code}" "${out_dir}/sb-tpl.pdf" "${refused}: ${tval}"
+  done
+  # Ordnerform ./eigen/eigen.typ im Notizordner mit einem verlinkten Unterordner: nur die .typ
+  # kommt mit (kein Set-Ordner), der Link nie; dazu der Hinweis auf Set-Ordner.
+  cp "${geheim}/canary.txt" "${geheim}/daten-canary.txt"
+  rm -rf "${sb}/notiz/eigen/daten"
+  ln -s "${geheim}" "${sb}/notiz/eigen/daten"
+  printf '#read("daten/canary.txt")\n' >"${sb}/notiz/eigen/eigen.typ"
+  printf -- '---\ntemplate: ./eigen/eigen.typ\n---\n\nText.\n' >"${sb}/notiz/tpl.md"
+  code=0
+  (cd "${sb}/notiz" && "${mdo[@]}" tpl.md "${out_dir}/sb-tpl.pdf" >/dev/null 2>"${out_dir}/sb-tpl.err") || code=$?
+  expect_fail tpl "${code}" "${out_dir}/sb-tpl.pdf" "${not_found}"
+  grep -q "Set-Ordner <name>/<name>.typ" "${out_dir}/sb-tpl.err" || die "sandbox tpl: Hinweis auf Set-Ordner fehlt"
+  ok "sandbox: Vorlage aus der Notiz nur als echte .typ-Datei, allein kopiert (Symlink, verlinkter Ordner)"
+
+  # Eine einzelne .typ im Vorlagen-Ordner, über den Namen gewählt (meinset): ihr Ordner kommt mit,
+  # damit sie Nachbardateien einbinden kann, aber ohne profiles/ (jede Tiefe), ohne Punkt-Einträge
+  # und ohne Symlinks, die den Ordner verlassen.
+  local mv="${out_dir}/sb-meinset"
+  mkdir -p "${mv}/profiles" "${mv}/x/profiles"
+  printf '#import "helper.typ": h\n#import sys.inputs.mdo + "/lib/markdown.typ": preprocess\n#import sys.inputs.mdo + "/vendor/cmarker/lib.typ" as cmarker\n#import sys.inputs.mdo + "/vendor/mitex/lib.typ": mitex\n#set text(font: ("SourceSans3VF",))\n#let a = sys.inputs.at("attach", default: "")\n#if a != "" { pdf.attach("/" + a.split("/").last(), read(a, encoding: none), relationship: "source", mime-type: "text/markdown", description: "Markdown source") }\n#h\n\n#cmarker.render(preprocess(read(sys.inputs.source)), math: mitex)\n' \
+    >"${mv}/meinset.typ"
+  printf '#let h = [MEINSET-HELPER]\n' >"${mv}/helper.typ"
+  printf 'INNEN-MARKE\n' >"${mv}/innen.txt"
+  ln -s innen.txt "${mv}/innen-link.txt"
+  printf 'OTHER-MARKE\n' >"${mv}/profiles/other.yaml"
+  printf 'Y-MARKE\n' >"${mv}/x/profiles/y.yaml"
+  printf 'DOT-MARKE\n' >"${mv}/.hidden.txt"
+  ln -s "${geheim}/canary.txt" "${mv}/aussen.txt"
+  MDO_TEMPLATES="${mv}" hostile meinset '$\text{\label{#read("/set/innen-link.txt")}}$' "" --template meinset
+  expect "sandbox meinset" "${text}" "MEINSET-HELPER" "INNEN-MARKE"
+  local mf
+  for mf in profiles/other.yaml x/profiles/y.yaml .hidden.txt aussen.txt; do
+    MDO_TEMPLATES="${mv}" hostile meinset-fremd "\$\\text{\\label{#read(\"/set/${mf}\")}}\$" "${not_found}" \
+      --template meinset
+  done
+  ok "sandbox: einzelne .typ über den Namen: Nachbardateien ja, profiles/, Punkt-Einträge, Links nach außen nein"
 
   # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.
   cp "${fixtures}/bilder/screenshot.png" "${sb}/bilder/aussen.png"
@@ -1005,11 +1067,30 @@ test_sandbox() {
     local f
     for f in other.yaml other-sig.svg; do
       din_note fremd "\$\\text{\\label{#read(\"/profile/${f}\")}}\$"
-      if [[ "${code}" -eq 0 ]]; then
-        reject "sandbox din5008a ${f}" "$(pdf_text "${out_dir}/sb-fremd.pdf")" "OTHER-MARKE" "OTHER-SIG"
-      fi
+      expect_fail fremd "${code}" "${out_dir}/sb-fremd.pdf" "${not_found}"
     done
     ok "sandbox din5008a: nur das eigene Profil und seine Unterschrift aus profiles/"
+
+    # Das Set als Ordner im Vorlagen-Ordner (<Vorlagen>/din5008a/profiles hält die Profile aller
+    # Absender): profiles/ des Sets kommt nicht in den Staging-Ordner, nur das eigene Profil.
+    local vset="${out_dir}/sb-vorlagen-set" dsrc="${MDO_SETS_DIR}/din5008a"
+    if [[ -e "${vorl}/din5008a" ]]; then dsrc="${vorl}/din5008a"; fi
+    mkdir -p "${vset}/din5008a"
+    cp -RL "${dsrc}/." "${vset}/din5008a/"
+    rm -rf "${vset}/din5008a/.git"
+    mkdir -p "${vset}/din5008a/profiles"
+    cp "${user}/profiles/kanzlei.yaml" "${user}/profiles/kanzlei-sig.svg" "${user}/profiles/other.yaml" \
+      "${user}/profiles/other-sig.svg" "${vset}/din5008a/profiles/"
+    rm -rf "${user}/profiles"
+    vorl="${vset}"
+    din_note eigen '$\text{\label{#read("/profile/kanzlei.yaml")}}$'
+    [[ "${code}" -eq 0 ]] || die "sandbox din5008a im Set-Ordner: Export fehlgeschlagen: $(cat "${out_dir}/sb-eigen.err")"
+    expect "sandbox din5008a im Set-Ordner" "$(pdf_text "${out_dir}/sb-eigen.pdf")" "KANZLEI-MARKE"
+    for f in /set/profiles/other.yaml /set/profiles/kanzlei.yaml /profile/other.yaml; do
+      din_note fremd "\$\\text{\\label{#read(\"${f}\")}}\$"
+      expect_fail fremd "${code}" "${out_dir}/sb-fremd.pdf" "${not_found}"
+    done
+    ok "sandbox din5008a: Profile im Set-Ordner (<Vorlagen>/din5008a/profiles) bleiben draußen"
   fi
 
   # Kein Staging-Ordner bleibt zurück, weder nach Erfolg noch nach gescheitertem Export.

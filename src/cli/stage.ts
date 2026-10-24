@@ -263,8 +263,21 @@ const against = (c: Ctx, dir: string, p: string) => c.P.resolve(rooted(c, p) ? p
 export const remoteWinPath = (p: string, win: boolean) => win && /^[\\/]{2}/.test(p)
 const uncPath = (c: Ctx, p: string) => remoteWinPath(p, c.win)
 
-/** resolve_template / Resolve-Template, reduced to the file it finds (null: the script fails). */
-async function templateFile(c: Ctx, value: string, base: string): Promise<string | null> {
+/**
+ * resolve_template / Resolve-Template, reduced to the file it finds (null: the script fails).
+ * `fromNote`: the value comes from the note's `template:` (not the user's --template). Such a
+ * .typ path is staged and run with the note, so it must be a plain file (not a symlink) ending
+ * in .typ whose real path lies under the note's folder (or MDO_BASE_DIR) or the templates folder,
+ * with no dot segment below either; else ManifestError. Why: `template: ./evil.typ` linked to
+ * ~/.ssh/… or `template: ~/.config/x/x.typ` would put any local file into the staging root and
+ * into the PDF. build.sh / convert.ps1 re-check the same rule and stage only that one file.
+ */
+async function templateFile(
+  c: Ctx,
+  value: string,
+  base: string,
+  fromNote: boolean,
+): Promise<string | null> {
   const v = value || 'memo'
   if (NAME_RE.test(v)) {
     const user = c.templatesDir
@@ -279,7 +292,28 @@ async function templateFile(c: Ctx, value: string, base: string): Promise<string
   const e = expandNotePath(v, c.env, c.win)
   if (uncPath(c, e)) return null
   const p = against(c, base, e)
-  return (await isFile(p)) ? p : null
+  if (!(await isFile(p))) return null
+  if (fromNote && !(await noteTemplateAllowed(c, p))) {
+    throw new ManifestError(
+      `Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein: ${value}`,
+    )
+  }
+  return p
+}
+
+/** The rule for a note-named .typ path (see templateFile). */
+async function noteTemplateAllowed(c: Ctx, p: string): Promise<boolean> {
+  try {
+    if ((await fs.lstat(p)).isSymbolicLink()) return false
+  } catch {
+    return false
+  }
+  const real = await realOrNull(p)
+  if (real === null || !real.toLowerCase().endsWith('.typ')) return false
+  for (const root of [c.noteDir, c.baseDir, c.templatesDir]) {
+    if (await realUnder(c, p, root, true)) return true
+  }
+  return false
 }
 
 /** The logo the header names, as the scripts search it; null with a hint when not usable. */
@@ -432,7 +466,7 @@ export async function buildManifest(
 
   // The CLI's --template wins; its relative .typ resolves from the caller's folder.
   const tplValue = opts.template || fm.template
-  const tpl = await templateFile(c, tplValue, opts.template ? cwd : baseDir)
+  const tpl = await templateFile(c, tplValue, opts.template ? cwd : baseDir, !opts.template)
   let profile: Manifest['profile'] = null
   const yaml = tpl === null ? null : await findProfileYaml(c, fm.profile, tplValue, tpl)
   if (yaml !== null) {

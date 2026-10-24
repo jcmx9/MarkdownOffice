@@ -283,6 +283,43 @@ describe.runIf(posix)('buildManifest profile', () => {
     }
   })
 
+  it('accepts a note-named .typ only as a plain file under the note or templates folder', async () => {
+    tree({
+      'notes/eigen.typ': '// ok\n',
+      'notes/sub/sub.typ': '// ok\n',
+      'user/x.typ': '// ok\n',
+      'geheim/credentials': 'token\n',
+      'geheim/evil/evil.typ': '// set elsewhere\n',
+      'notes/.hidden/h.typ': '// dot\n',
+      'elsewhere/e.typ': '// outside\n',
+    })
+    symlinkSync(at('geheim/credentials'), at('notes/evil.typ'))
+    symlinkSync(at('notes/eigen.typ'), at('notes/inner.typ'))
+    symlinkSync(at('geheim/evil'), at('notes/evil'))
+    for (const v of ['./eigen.typ', 'sub/sub.typ', at('user/x.typ')]) {
+      note(`template: ${v}`)
+      await expect(buildManifest(at('notes/n.md'), opts())).resolves.toBeDefined()
+    }
+    // A symlinked file (even to an allowed one), a symlinked folder, a dot folder, outside.
+    for (const v of [
+      './evil.typ',
+      'inner.typ',
+      './evil/evil.typ',
+      '.hidden/h.typ',
+      at('elsewhere/e.typ'),
+    ]) {
+      note(`template: ${v}`)
+      await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow(
+        `Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein: ${v}`,
+      )
+    }
+    // The user's own --template is not note text: not restricted.
+    note('')
+    await expect(
+      buildManifest(at('notes/n.md'), opts({ template: at('elsewhere/e.typ') })),
+    ).resolves.toBeDefined()
+  })
+
   it('names only image files that exist next to the profile and are real images', async () => {
     tree({
       'sets/memo/memo.typ': '',
