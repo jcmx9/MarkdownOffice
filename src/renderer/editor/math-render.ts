@@ -25,7 +25,10 @@ export const MATH_UNSHOWABLE = 'Formel nicht darstellbar'
 /** Redraws the formulas (dispatched by the editor glue when entries change). */
 export const mathRefresh = StateEffect.define<null>()
 
-/** Cached results; well above MATH_MAX_ITEMS, and each is a few kB of DOM. */
+/**
+ * Cached results; well above MATH_MAX_ITEMS, and each is a few kB of DOM. Formulas in use (see
+ * `inUse`) are never evicted, so a note with more distinct formulas grows the cache past this.
+ */
 const CACHE_SIZE = 1000
 
 /** Collects a typing burst into one batch: one Typst run costs ~0.3 s, mostly process start. */
@@ -97,6 +100,16 @@ export function createMathService(options: MathServiceOptions = {}): MathService
   const queue = new Map<string, MathItem>()
   const listeners = new Set<() => void>()
   const diagnosed = new Set<string>()
+  /**
+   * Keys asked for in the current round and the one before. A round is one synchronous burst of
+   * get()/request() calls, i.e. one editor build, which asks for every shown formula. Evicting
+   * one of these would make the next build ask for it again, its render evict another, and so on
+   * for ever (a note with more distinct formulas than CACHE_SIZE); the previous round covers
+   * the results that arrive between two builds.
+   */
+  let round = new Set<string>()
+  let lastRound = new Set<string>()
+  let roundOpen = false
   let timer: ReturnType<typeof setTimeout> | null = null
   let failureWarned = false
 
@@ -115,11 +128,31 @@ export function createMathService(options: MathServiceOptions = {}): MathService
     for (const cb of Array.from(listeners)) cb()
   }
 
+  function touch(key: string): void {
+    if (!roundOpen) {
+      roundOpen = true
+      queueMicrotask(() => {
+        lastRound = round
+        round = new Set()
+        roundOpen = false
+      })
+    }
+    round.add(key)
+  }
+
   function store(key: string, entry: Settled): void {
     pending.delete(key)
     cache.delete(key)
     cache.set(key, entry)
-    if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value as string)
+  }
+
+  /** LRU eviction down to CACHE_SIZE, skipping the formulas in use. */
+  function trim(): void {
+    if (cache.size <= CACHE_SIZE) return
+    for (const key of cache.keys()) {
+      if (cache.size <= CACHE_SIZE) break
+      if (!round.has(key) && !lastRound.has(key)) cache.delete(key)
+    }
   }
 
   function getMitex(): Promise<TypstPlugin | null> {
@@ -184,6 +217,7 @@ export function createMathService(options: MathServiceOptions = {}): MathService
     items.forEach((item, i) => {
       store(keyOf(item), toEntry(results[i]))
     })
+    trim()
     notify()
   }
 
@@ -208,7 +242,10 @@ export function createMathService(options: MathServiceOptions = {}): MathService
         flagged = true
       }
     }
-    if (flagged) notify()
+    if (flagged) {
+      trim()
+      notify()
+    }
     const batches: Promise<void>[] = []
     for (let i = 0; i < send.length; i += MATH_MAX_ITEMS) {
       batches.push(renderBatch(send.slice(i, i + MATH_MAX_ITEMS)))
@@ -219,6 +256,7 @@ export function createMathService(options: MathServiceOptions = {}): MathService
   return {
     get(item) {
       const key = keyOf(item)
+      touch(key)
       const hit = cache.get(key)
       if (!hit) return { state: 'pending' }
       // LRU by Map order.
@@ -229,6 +267,7 @@ export function createMathService(options: MathServiceOptions = {}): MathService
     request(items) {
       for (const item of items) {
         const key = keyOf(item)
+        touch(key)
         if (cache.has(key) || pending.has(key)) continue
         pending.add(key)
         // Fresh plain objects: exactly what main's validation accepts.

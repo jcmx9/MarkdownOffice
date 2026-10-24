@@ -268,3 +268,74 @@ describe('createMathService', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 })
+
+describe('createMathService (many formulas)', () => {
+  /**
+   * The editor glue in small: a build asks get() for every formula, request()s the pending ones,
+   * and a service update schedules the next build in a microtask (as math.ts's view plugin).
+   */
+  async function runEditor(count: number) {
+    const rendered: string[] = []
+    const render = vi.fn(async (items: MathItem[]) => {
+      for (const item of items) rendered.push(item.tex)
+      return items.map(okResult)
+    })
+    const service = createMathService({ loadMitex: async () => mitex(), render })
+    const items = Array.from({ length: count }, (_, i) => I(`x_{${i}}`))
+    const seenOk = new Set<string>()
+    let flipped = 0
+    let builds = 0
+    const build = () => {
+      builds++
+      const want: MathItem[] = []
+      for (const item of items) {
+        const e = service.get(item)
+        if (e.state === 'pending') {
+          if (seenOk.has(item.tex)) flipped++
+          want.push(item)
+        } else seenOk.add(item.tex)
+      }
+      if (want.length) service.request(want)
+    }
+    let queued = false
+    service.onUpdate(() => {
+      if (queued) return
+      queued = true
+      queueMicrotask(() => {
+        queued = false
+        build()
+      })
+    })
+    build()
+    for (let k = 0; k < 10; k++) await settle()
+    return { service, items, rendered, render, flipped, builds }
+  }
+
+  it.each([1001, 2500])(
+    'settles %i formulas, each rendered once, none evicted while shown',
+    async (count) => {
+      const run = await runEditor(count)
+      expect(run.rendered).toHaveLength(count)
+      expect(new Set(run.rendered).size).toBe(count)
+      expect(run.render.mock.calls.length).toBe(Math.ceil(count / 500))
+      expect(run.flipped).toBe(0)
+      expect(run.items.every((item) => run.service.get(item).state === 'ok')).toBe(true)
+      // Settled: no build keeps asking (one per batch result at most, plus the first).
+      expect(run.builds).toBeLessThanOrEqual(Math.ceil(count / 500) + 1)
+    },
+  )
+
+  it('still evicts formulas no longer in use once the cache is full', async () => {
+    const run = await runEditor(1000)
+    const other = I('y')
+    run.service.request([other])
+    // Two rounds without the old formulas: they are no longer in use.
+    await Promise.resolve()
+    run.service.get(other)
+    await Promise.resolve()
+    await settle()
+    expect(run.service.get(other).state).toBe('ok')
+    // The oldest of the 1000 went to make room.
+    expect(run.service.get(I('x_{0}')).state).toBe('pending')
+  })
+})
