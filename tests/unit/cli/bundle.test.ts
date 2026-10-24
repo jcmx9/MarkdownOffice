@@ -283,6 +283,17 @@ describe('cli.js', () => {
     }
   })
 
+  it.skipIf(win)('writes the hints for rejected files to stderr, not stdout', () => {
+    const tmp = path.join(dir, 'tmp')
+    mkdirSync(tmp)
+    writeFileSync(path.join(dir, 'fake.png'), 'not a png')
+    writeFileSync(path.join(dir, 'n.md'), '![](fake.png)\n')
+    const r = run([path.join(dir, 'n.md')], { TMPDIR: tmp })
+    expect(r.status).toBe(0)
+    expect(r.stderr).toContain('Hinweis: kein gültiges Bild, kommt nicht ins PDF: fake.png')
+    expect(r.stdout).not.toContain('Hinweis')
+  })
+
   it.skipIf(win)('fails like the script when the profile is missing, without running it', () => {
     const tmp = path.join(dir, 'tmp')
     mkdirSync(tmp)

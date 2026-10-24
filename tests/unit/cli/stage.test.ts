@@ -23,8 +23,10 @@ import {
   ManifestError,
   type ManifestOptions,
   manifestOptions,
+  remoteWinPath,
   removeManifest,
   sweepStaleStages,
+  windowsTemplates,
   writeManifest,
   yamlStr,
 } from '../../../src/cli/stage'
@@ -204,6 +206,30 @@ describe.runIf(posix)('buildManifest profile', () => {
     expect(await yaml()).toBe(at('user/profiles/p.yaml'))
     rmSync(at('user/profiles/p.yaml'))
     expect(await yaml()).toBe(at('sets/memo/profiles/p.yaml'))
+  })
+
+  it('refuses a profile found by name that is a symlink leading out of its folder', async () => {
+    tree({
+      'sets/memo/memo.typ': '',
+      'home/.config/gh/hosts.yml': 'token: secret\n',
+      'user/p2.yaml': 'n: ok\n',
+    })
+    mkdirSync(at('notes/profiles'), { recursive: true })
+    symlinkSync(at('home/.config/gh/hosts.yml'), at('notes/profiles/p.yaml'))
+    note('profile: p')
+    await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow(
+      'Profil muss im Ordner der Notiz oder im Vorlagen-Ordner liegen: p',
+    )
+    // In the templates folder: a link within it is fine, one leading out is not.
+    rmSync(at('notes/profiles/p.yaml'))
+    mkdirSync(at('user/profiles'), { recursive: true })
+    symlinkSync(at('user/p2.yaml'), at('user/profiles/p.yaml'))
+    expect((await buildManifest(at('notes/n.md'), opts())).manifest.profile?.yaml).toBe(
+      at('user/profiles/p.yaml'),
+    )
+    rmSync(at('user/profiles/p.yaml'))
+    symlinkSync(at('home/.config/gh/hosts.yml'), at('user/profiles/p.yaml'))
+    await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow('Profil muss im Ordner')
   })
 
   it('--template wins over the header for the set folder', async () => {
@@ -438,10 +464,61 @@ describe('manifestOptions', () => {
     ).toBe('/cwd/tpl')
   })
 
-  it('Windows: MDO_TEMPLATES or USERPROFILE\\Documents\\…', () => {
+  it('Windows: MDO_TEMPLATES (set by windowsTemplates), else no templates folder', () => {
     const env = { USERPROFILE: 'C:\\Users\\u', MDO_SETS_DIR: 'C:\\s', MDO_PIPELINE_ROOT: 'C:\\p' }
-    const o = manifestOptions('win32', env, 'C:\\cwd', '')
-    expect(o.templatesDir).toBe('C:\\Users\\u\\Documents\\Markdown Office\\Vorlagen')
+    expect(manifestOptions('win32', env, 'C:\\cwd', '').templatesDir).toBe('')
+    const o = manifestOptions('win32', { ...env, MDO_TEMPLATES: 'D:\\T' }, 'C:\\cwd', '')
+    expect(o.templatesDir).toBe('D:\\T')
     expect(o.win).toBe(true)
+  })
+})
+
+describe('windowsTemplates', () => {
+  const env = { USERPROFILE: 'C:\\Users\\u' }
+  const answer = (out: string) => async () => out
+
+  it('asks PowerShell for MyDocuments and passes <docs>\\Markdown Office\\Vorlagen', async () => {
+    let seen: string[] = []
+    const r = await windowsTemplates(env, 'ps.exe', async (file, args, timeout) => {
+      seen = [file, ...args]
+      expect(timeout).toBeLessThanOrEqual(5000)
+      return 'D:\\OneDrive\\Dokumente\r\n'
+    })
+    expect(seen).toEqual([
+      'ps.exe',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "[Environment]::GetFolderPath('MyDocuments')",
+    ])
+    expect(r.MDO_TEMPLATES).toBe('D:\\OneDrive\\Dokumente\\Markdown Office\\Vorlagen')
+  })
+
+  it('falls back to %USERPROFILE%\\Documents when PowerShell fails', async () => {
+    const r = await windowsTemplates(env, 'ps.exe', async () => {
+      throw new Error('timeout')
+    })
+    expect(r.MDO_TEMPLATES).toBe('C:\\Users\\u\\Documents\\Markdown Office\\Vorlagen')
+  })
+
+  it('no Documents folder: no templates for both; an existing MDO_TEMPLATES is kept', async () => {
+    expect((await windowsTemplates(env, 'ps.exe', answer('\r\n'))).MDO_TEMPLATES).toBeUndefined()
+    const set = { ...env, MDO_TEMPLATES: 'X' }
+    expect(await windowsTemplates(set, 'ps.exe', answer('D:\\no'))).toBe(set)
+  })
+})
+
+describe('remoteWinPath', () => {
+  it('flags UNC and device paths on Windows only', () => {
+    for (const p of [
+      '\\\\srv\\s\\a.png',
+      '//srv/s/a.png',
+      '\\\\?\\C:\\a.png',
+      '\\\\.\\pipe\\x',
+      '\\/srv',
+    ])
+      expect(remoteWinPath(p, true)).toBe(true)
+    for (const p of ['C:\\a.png', '\\a.png', 'a.png']) expect(remoteWinPath(p, true)).toBe(false)
+    expect(remoteWinPath('//srv/a.png', false)).toBe(false)
   })
 })

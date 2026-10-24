@@ -255,22 +255,30 @@ interface Ctx {
 const rooted = (c: Ctx, p: string) => (c.win ? /^([A-Za-z]:|[\\/])/.test(p) : p.startsWith('/'))
 /** A note path against a folder: rooted paths stay ([IO.Path]::Combine semantics). */
 const against = (c: Ctx, dir: string, p: string) => c.P.resolve(rooted(c, p) ? p : c.P.join(dir, p))
+/**
+ * Windows: a UNC or device path (`\\server\x`, `//server/x`, `\\?\…`, `\\.\…`) from note
+ * text. Refused before any file system call: merely looking one up makes Windows contact the
+ * server over SMB, which can leak the user's NTLM hash to whoever the note names.
+ */
+export const remoteWinPath = (p: string, win: boolean) => win && /^[\\/]{2}/.test(p)
+const uncPath = (c: Ctx, p: string) => remoteWinPath(p, c.win)
 
 /** resolve_template / Resolve-Template, reduced to the file it finds (null: the script fails). */
 async function templateFile(c: Ctx, value: string, base: string): Promise<string | null> {
   const v = value || 'memo'
   if (NAME_RE.test(v)) {
-    for (const p of [
-      c.P.join(c.templatesDir, `${v}.typ`),
-      c.P.join(c.templatesDir, v, `${v}.typ`),
-      c.P.join(c.setsDir, v, `${v}.typ`),
-    ]) {
+    const user = c.templatesDir
+      ? [c.P.join(c.templatesDir, `${v}.typ`), c.P.join(c.templatesDir, v, `${v}.typ`)]
+      : []
+    for (const p of [...user, c.P.join(c.setsDir, v, `${v}.typ`)]) {
       if (await isFile(p)) return p
     }
     return null
   }
   if (!v.toLowerCase().endsWith('.typ')) return null
-  const p = against(c, base, expandNotePath(v, c.env, c.win))
+  const e = expandNotePath(v, c.env, c.win)
+  if (uncPath(c, e)) return null
+  const p = against(c, base, e)
   return (await isFile(p)) ? p : null
 }
 
@@ -280,6 +288,8 @@ async function findLogo(c: Ctx, value: string, hints: string[]): Promise<string 
   // Remote and non-image values: the scripts print their own hint and build without a logo.
   if (/^(https?:)?\/\/|^data:/i.test(value) || !/\.(svg|png|jpe?g)$/i.test(value)) return null
   const p = expandNotePath(value, c.env, c.win)
+  // Treated as not found (the script's hint follows).
+  if (uncPath(c, p)) return null
   let found: string | null = null
   if (rooted(c, p)) {
     if (await isFile(p)) found = c.P.resolve(p)
@@ -301,10 +311,10 @@ async function findLogo(c: Ctx, value: string, hints: string[]): Promise<string 
 
 /**
  * The options for writeManifest from the wrapper's environment (after invocation() filled in
- * MDO_PIPELINE_ROOT and MDO_SETS_DIR). The templates folder as the scripts derive it:
- * MDO_TEMPLATES (relative to the caller's folder), else build.sh's `$HOME/Documents/Markdown
- * Office/Vorlagen`; convert.ps1 asks Windows for the Documents folder, which Node cannot, so
- * `%USERPROFILE%\Documents` stands in (the app always passes MDO_TEMPLATES).
+ * MDO_PIPELINE_ROOT and MDO_SETS_DIR, and windowsTemplates() MDO_TEMPLATES on Windows). The
+ * templates folder as the scripts derive it: MDO_TEMPLATES (relative to the caller's folder),
+ * else build.sh's `$HOME/Documents/Markdown Office/Vorlagen`. On Windows without MDO_TEMPLATES
+ * (no Documents folder, see windowsTemplates) there is none, as in convert.ps1.
  */
 export function manifestOptions(
   platform: string,
@@ -315,12 +325,10 @@ export function manifestOptions(
   const win = platform === 'win32'
   const P = win ? path.win32 : path.posix
   // build.sh writes `${HOME:-}/Documents/…`: an empty HOME gives /Documents/…, not a relative path.
-  const fallback = win
-    ? P.join(envLookup(env, 'USERPROFILE', true), 'Documents', 'Markdown Office', 'Vorlagen')
-    : `${env.HOME ?? ''}/Documents/Markdown Office/Vorlagen`
+  const fallback = win ? '' : `${env.HOME ?? ''}/Documents/Markdown Office/Vorlagen`
   const templates = env.MDO_TEMPLATES || fallback
   return {
-    templatesDir: P.resolve(cwd, templates),
+    templatesDir: templates ? P.resolve(cwd, templates) : '',
     setsDir: P.resolve(cwd, env.MDO_SETS_DIR ?? ''),
     pipelineRoot: P.resolve(cwd, env.MDO_PIPELINE_ROOT ?? ''),
     baseDir: env.MDO_BASE_DIR || undefined,
@@ -329,6 +337,42 @@ export function manifestOptions(
     env,
     win,
   }
+}
+
+/** Runs a program without a shell and resolves with its stdout (rejects on failure). */
+export type Runner = (file: string, args: string[], timeoutMs: number) => Promise<string>
+
+/**
+ * Windows: the environment with MDO_TEMPLATES set to the folder convert.ps1 would use, so the
+ * wrapper and the script agree. convert.ps1 takes `[Environment]::GetFolderPath('MyDocuments')`,
+ * which OneDrive can redirect and Node cannot ask for; so the wrapper asks PowerShell once
+ * (no profile, short timeout). On failure `%USERPROFILE%\Documents` stands in (then passed to
+ * the script too). An empty answer (no Documents folder, service accounts) means no user
+ * templates for both: MDO_TEMPLATES stays unset and convert.ps1 gets '' itself. An existing
+ * MDO_TEMPLATES is kept.
+ */
+export async function windowsTemplates(env: Env, powershell: string, run: Runner): Promise<Env> {
+  if (env.MDO_TEMPLATES) return env
+  let docs: string
+  try {
+    docs = (
+      await run(
+        powershell,
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          "[Environment]::GetFolderPath('MyDocuments')",
+        ],
+        5000,
+      )
+    ).trim()
+  } catch {
+    const home = envLookup(env, 'USERPROFILE', true)
+    docs = home ? path.win32.join(home, 'Documents') : ''
+  }
+  if (!docs) return env
+  return { ...env, MDO_TEMPLATES: path.win32.join(docs, 'Markdown Office', 'Vorlagen') }
 }
 
 /**
@@ -357,7 +401,8 @@ export async function buildManifest(
     env,
     cwd,
     baseDir,
-    templatesDir: P.resolve(cwd, opts.templatesDir),
+    // '' = no user templates folder (Windows without a Documents folder, as convert.ps1).
+    templatesDir: opts.templatesDir ? P.resolve(cwd, opts.templatesDir) : '',
     setsDir: P.resolve(cwd, opts.setsDir),
     pipelineRoot: opts.pipelineRoot ? P.resolve(cwd, opts.pipelineRoot) : '',
   }
@@ -369,7 +414,10 @@ export async function buildManifest(
   for (const ref of visibleImages(text.replace(/^\uFEFF/, ''))) {
     // Remote sources: the sets skip them (and count them for the hint), nothing to stage.
     if (/^(https?:)?\/\/|^data:/i.test(ref)) continue
-    const p = against(c, baseDir, expandNotePath(ref, env, win))
+    const e = expandNotePath(ref, env, win)
+    // A UNC/device path counts as missing (see uncPath).
+    if (uncPath(c, e)) continue
+    const p = against(c, baseDir, e)
     // Missing: the script warns „Bild nicht gefunden“ for a probe source without an entry.
     if (!(await isFile(p))) continue
     if (await isSafeImage(p)) images.push({ ref, path: p })
@@ -390,7 +438,9 @@ export async function buildManifest(
     const yamlText = new TextDecoder('utf-8').decode(await fs.readFile(yaml))
     for (const name of profileImageNames(yamlText)) {
       // Bare names only, joined literally: never `~`, $VAR or a drive prefix (`C:x.png`), and
-      // nothing that lands outside the profile's own folder.
+      // nothing that lands outside the profile's own folder. The content is what isSafeImage
+      // checked; the file may be a symlink to elsewhere, so the scripts copy its content and
+      // must not assume where it lives.
       if (win && name.includes(':')) continue
       const p = P.join(dir, name)
       if (P.dirname(p) !== dir || P.basename(p) !== name) continue
@@ -410,25 +460,37 @@ async function realOrNull(p: string): Promise<string | null> {
 }
 
 /**
- * Why: a path-valued `profile:` comes from note text, and the YAML lands in the staging root,
- * where note Typst code (mitex passthroughs) can read it — `profile: ~/.config/gh/hosts.yml`
- * would stage a token file. So the file (symlinks resolved) must lie under the note's folder
- * (or MDO_BASE_DIR, which relative values resolve against) or the templates folder, with no
- * dot segment (`.config`, `.ssh`, …) below that root. Bare names keep their fixed lookup.
+ * True if `p` (symlinks resolved) lies below `root` (resolved), optionally with no dot segment
+ * (`.config`, `.ssh`, …) between them.
+ */
+async function realUnder(c: Ctx, p: string, root: string, noDot: boolean): Promise<boolean> {
+  if (!root) return false
+  const real = await realOrNull(p)
+  const r = await realOrNull(root)
+  if (real === null || r === null) return false
+  const rel = c.P.relative(r, real)
+  if (rel === '' || rel === '..' || rel.startsWith(`..${c.P.sep}`) || c.P.isAbsolute(rel)) {
+    return false
+  }
+  return !(noDot && rel.split(/[\\/]/).some((seg) => seg.startsWith('.')))
+}
+
+/**
+ * Why: `profile:` comes from note text, and the YAML lands in the staging root, where note Typst
+ * code (mitex passthroughs) can read it — `profile: ~/.config/gh/hosts.yml`, or a symlink
+ * `profiles/p.yaml -> ~/.config/gh/hosts.yml` in a cloned note folder, would stage a token file.
+ * A path value must lie (symlinks resolved) under the note's folder (or MDO_BASE_DIR, which
+ * relative values resolve against) or the templates folder, with no dot segment below either.
  */
 async function insideProfileRoots(c: Ctx, p: string): Promise<boolean> {
-  const real = await realOrNull(p)
-  if (real === null) return false
   for (const root of [c.noteDir, c.baseDir, c.templatesDir]) {
-    const r = await realOrNull(root)
-    if (r === null) continue
-    const rel = c.P.relative(r, real)
-    if (rel === '' || rel.startsWith('..') || c.P.isAbsolute(rel)) continue
-    if (rel.split(/[\\/]/).some((seg) => seg.startsWith('.'))) continue
-    return true
+    if (await realUnder(c, p, root, true)) return true
   }
   return false
 }
+
+const outsideRoots = (value: string) =>
+  new ManifestError(`Profil muss im Ordner der Notiz oder im Vorlagen-Ordner liegen: ${value}`)
 
 /**
  * The profile lookup of the scripts: a name -> profiles/<name>.yaml in the note's folder (or
@@ -448,26 +510,30 @@ async function findProfileYaml(
   if (NAME_RE.test(value)) {
     const setName = tplValue === '' ? 'memo' : NAME_RE.test(tplValue) ? tplValue : ''
     const setDir = c.P.dirname(tpl)
-    const dirs = [c.P.join(c.baseDir, 'profiles')]
-    const userSet = setName ? c.P.join(c.templatesDir, setName) : ''
-    if (userSet) dirs.push(c.P.join(userSet, 'profiles'))
-    dirs.push(c.P.join(c.templatesDir, 'profiles'))
+    // Each place with the root its hit must stay under (symlinks resolved, see insideProfileRoots):
+    // the note's folder without dot segments, the templates folder, the set's folder.
+    const places: [string, string, boolean][] = [[c.P.join(c.baseDir, 'profiles'), c.baseDir, true]]
+    const userSet = setName && c.templatesDir ? c.P.join(c.templatesDir, setName) : ''
+    if (userSet) places.push([c.P.join(userSet, 'profiles'), c.templatesDir, false])
+    if (c.templatesDir) places.push([c.P.join(c.templatesDir, 'profiles'), c.templatesDir, false])
     // A set folder inside the templates folder is already place 2; naming it twice only confuses.
-    if (!userSet || setDir !== userSet) dirs.push(c.P.join(setDir, 'profiles'))
-    for (const dir of dirs) {
+    if (!userSet || setDir !== userSet) places.push([c.P.join(setDir, 'profiles'), setDir, false])
+    const dirs = places.map(([d]) => d)
+    for (const [dir, root, noDot] of places) {
       const p = c.P.join(dir, `${value}.yaml`)
-      if (await isFile(p)) return p
+      if (!(await isFile(p))) continue
+      // The first hit wins, as in the scripts; one that leads elsewhere is refused, not skipped.
+      if (!(await realUnder(c, p, root, noDot))) throw outsideRoots(value)
+      return p
     }
     throw new ManifestError(`Profil nicht gefunden: ${value} (gesucht in ${dirs.join(', ')})`)
   }
   if (/\.ya?ml$/i.test(value)) {
-    const p = against(c, c.baseDir, expandNotePath(value, c.env, c.win))
+    const e = expandNotePath(value, c.env, c.win)
+    if (uncPath(c, e)) throw outsideRoots(value)
+    const p = against(c, c.baseDir, e)
     if (!(await isFile(p))) throw new ManifestError(`Profil nicht gefunden: ${value}`)
-    if (!(await insideProfileRoots(c, p))) {
-      throw new ManifestError(
-        `Profil muss im Ordner der Notiz oder im Vorlagen-Ordner liegen: ${value}`,
-      )
-    }
+    if (!(await insideProfileRoots(c, p))) throw outsideRoots(value)
     return p
   }
   throw new ManifestError(

@@ -212,6 +212,27 @@ describe('exportRuns', () => {
     expect(exportRuns('win32', ['a.md'])).toEqual([{ args: ['a.md'], note: 'a.md', template: '' }])
   })
 
+  it('convert.ps1: options after the notes still go before `--` in every run', () => {
+    expect(exportRuns('win32', ['a.md', 'b.md', '--no-source', '--template=din5008a'])).toEqual([
+      {
+        args: ['--no-source', '--template=din5008a', '--', 'a.md'],
+        note: 'a.md',
+        template: 'din5008a',
+      },
+      {
+        args: ['--no-source', '--template=din5008a', '--', 'b.md'],
+        note: 'b.md',
+        template: 'din5008a',
+      },
+    ])
+  })
+
+  it('convert.ps1: after `--` a second path on .pdf is still the output', () => {
+    expect(exportRuns('win32', ['--', '-a.md', 'out.pdf'])).toEqual([
+      { args: ['--', '-a.md', 'out.pdf'], note: '-a.md', template: '' },
+    ])
+  })
+
   it('convert.ps1: PowerShell spellings of help and version give no note', () => {
     for (const flag of ['-Help', '-?', '-Version', '-version'])
       expect(exportRuns('win32', [flag, 'a.md'])[0]?.note).toBeNull()

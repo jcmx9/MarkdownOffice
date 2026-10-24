@@ -12,7 +12,9 @@
 // export left in the temp folder, and writes per note a manifest of the local files the note may
 // pull into its PDF (src/cli/stage.ts), passed as MDO_MANIFEST and removed when the script ends.
 // convert.ps1 runs once per note for that (several notes on one command line). A missing profile
-// fails here, with the script's message.
+// fails here, with the script's message. On Windows without MDO_TEMPLATES the wrapper asks
+// PowerShell once for the Documents folder and passes the templates folder to convert.ps1, so
+// both use the same one (stage.ts windowsTemplates).
 //
 // `--app [args]` as the first argument starts the editor instead: this process's own binary (the
 // app) with the remaining arguments, without ELECTRON_RUN_AS_NODE. The installed shims therefore
@@ -29,7 +31,7 @@
 //
 // Source: src/cli/ (TypeScript), bundled by vite.cli.config.mts into one CommonJS file cli.js,
 // which keeps this comment as its banner.
-import { type ChildProcess, spawn } from 'node:child_process'
+import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -41,13 +43,16 @@ import {
   type Invocation,
   invocation,
   pipelineSpawnOptions,
+  powershellPath,
   realOrSelf,
 } from './launch'
 import {
   ManifestError,
   manifestOptions,
+  type Runner,
   removeManifest,
   sweepStaleStages,
+  windowsTemplates,
   writeManifest,
 } from './stage'
 import { runValidate } from './validate'
@@ -154,6 +159,14 @@ function runScript(inv: Invocation, args: string[], manifest: string | null): Pr
 }
 
 let current: ChildProcess | null = null
+
+/** execFile as a promise: no shell, hidden window, stdout on success. */
+const runFile: Runner = (file, args, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    execFile(file, args, { timeout: timeoutMs, windowsHide: true }, (err, stdout) =>
+      err ? reject(err) : resolve(String(stdout)),
+    )
+  })
 // A signal before a script runs (while a manifest is written) ends the export instead.
 let stopped = false
 
@@ -188,8 +201,14 @@ async function runExport(argv: string[], env: Env): Promise<void> {
     })
   }
   await sweepStaleStages(os.tmpdir(), Date.now())
+  const runs = exportRuns(process.platform, argv.slice(2))
+  // Windows: wrapper and convert.ps1 must agree on the templates folder (see windowsTemplates);
+  // asked only when a note is exported (help/version stay instant).
+  if (process.platform === 'win32' && runs.some((r) => r.note)) {
+    inv.env = await windowsTemplates(inv.env, powershellPath(inv.env, fs.existsSync), runFile)
+  }
   let code = 0
-  for (const run of exportRuns(process.platform, argv.slice(2))) {
+  for (const run of runs) {
     let manifest: string | null
     try {
       manifest = await manifestFor(run, inv)
