@@ -1,6 +1,12 @@
 import { markdownLanguage } from '@codemirror/lang-markdown'
 import type { SyntaxNode } from '@lezer/common'
+import type { MarkdownParser } from '@lezer/markdown'
 import { isRealLink } from './link-refs'
+import { MathSyntax } from './math-syntax'
+
+// The editor's own inline rules for a cell parsed on its own, formulas included: `$a*b*c$` in a
+// cell is a formula as in the PDF, never emphasis.
+const cellParser = (markdownLanguage.parser as MarkdownParser).configure([MathSyntax])
 
 const ELEMENTS: Record<string, [tag: string, cls: string]> = {
   StrongEmphasis: ['strong', 'mdo-strong'],
@@ -52,7 +58,7 @@ export function renderInline(
   labels: ReadonlySet<string> = new Set(),
 ): void {
   const doc = parent.ownerDocument
-  const tree = markdownLanguage.parser.parse(text)
+  const tree = cellParser.parse(text)
   const slice = (from: number, to: number) => text.slice(from, to)
   // `literal`: node is a `Link` that is no real link, so its brackets and label stay text.
   const walk = (

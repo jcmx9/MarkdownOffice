@@ -553,8 +553,16 @@ function keepHiddenMarksAttached(state: EditorState, out: Range<Decoration>[]): 
 }
 
 // Where a set's no-break phrases do not apply: code is shown verbatim, tables have their own
-// layout, the front matter is the head block's source.
-const NOBREAK_SKIP = new Set(['InlineCode', 'FencedCode', 'CodeBlock', 'Table', 'Frontmatter'])
+// layout, the front matter is the head block's source, a formula is TeX set by Typst.
+const NOBREAK_SKIP = new Set([
+  'InlineCode',
+  'FencedCode',
+  'CodeBlock',
+  'Table',
+  'Frontmatter',
+  'InlineMath',
+  'BlockMath',
+])
 
 function inSkipped(tree: Tree, pos: number, side: -1 | 1, skip = NOBREAK_SKIP): boolean {
   for (let n: SyntaxNode | null = tree.resolveInner(pos, side); n; n = n.parent) {
@@ -625,7 +633,8 @@ function typoDeco(text: string): Decoration {
 }
 
 // The syntax tree's say on top of markdown.typ's own skip rules: code is verbatim, a table has
-// its own widget, the front matter is the header's source, HTML is passed through untouched.
+// its own widget, the front matter is the header's source, HTML is passed through untouched,
+// a formula (via NOBREAK_SKIP) is TeX: no `–` or quotes are drawn over its source.
 const TYPO_SKIP = new Set([
   ...NOBREAK_SKIP,
   'HTMLBlock',
