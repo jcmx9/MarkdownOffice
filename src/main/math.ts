@@ -70,9 +70,14 @@ const GAP = String.raw`(?:\s|%[^\n]*(?:\n|$))*`
  * `\label` whose argument is not a plain label name: in text mode mitex writes it raw as
  * `<…>`, where `]`, `$` or `>` leave the label and land in Typst markup or code (also inside a
  * `\textcolor{…}` or a figure caption, which are code arguments). Also a `\label` without a
- * braced argument (`\newcommand{\x}{\label}` would alias it).
+ * braced argument (`\newcommand{\x}{\label}` would alias it). Letters and digits of any script
+ * are plain (`\label{eq:Ü}`): none of them can leave the label; punctuation stays limited to
+ * `_ : . -` and space.
  */
-const UNSAFE_LABEL = new RegExp(String.raw`\\label(?![A-Za-z])(?!${GAP}\{[\w:. -]*\})`)
+const UNSAFE_LABEL = new RegExp(
+  String.raw`\\label(?![A-Za-z])(?!${GAP}\{[\p{L}\p{N}_:. -]*\})`,
+  'u',
+)
 /**
  * A colour command whose optional model is not plain letters: mitex 0.2.7 emits the model raw
  * as a code argument (`\color[{x], panic(1), [y}]{red}` runs `panic`). A command without its
@@ -124,7 +129,11 @@ type Compiled = { ok: true; pages: string[] } | { ok: false; error: string; form
 /** Resident size of process `pid` in bytes, or null when it cannot be read (exited). */
 export type RssProbe = (pid: number) => Promise<number | null>
 
-/** `ps -o rss= -p <pid>` (KiB on macOS and Linux), run without a shell. */
+/**
+ * `ps -o rss= -p <pid>` (KiB on macOS and Linux), run without a shell. Where `ps` is missing
+ * (a minimal Linux), every probe answers null: the watchdog is then a no-op and the timeout
+ * alone bounds the run.
+ */
 export const psRss: RssProbe = (pid) =>
   new Promise((resolve) => {
     execFile('ps', ['-o', 'rss=', '-p', String(pid)], { windowsHide: true }, (err, stdout) => {
@@ -139,7 +148,9 @@ const fail = (items: readonly unknown[], error: string): MathResult[] =>
 /**
  * Typst's first `error:` line without the prefix (the message, not the source excerpt), with
  * the run's temp dir (`dirs`: as given and as resolved, /var vs /private/var on macOS) cut from
- * paths: the tooltip shows `formulas.json`, not a random folder of the user's temp dir.
+ * paths: the tooltip shows `formulas.json`, not a random folder of the user's temp dir. A mitex
+ * error arrives wrapped by Typst's plugin call (`plugin errored with: error: unknown command:
+ * \ce`); only mitex's own message is kept, as the tooltip's reason.
  */
 export function firstError(
   stderr: string,
@@ -152,7 +163,7 @@ export function firstError(
     .filter(Boolean)
   const line = lines.find((l) => l.startsWith('error:')) ?? lines.at(-1)
   if (!line) return `Typst endete mit Code ${code}.`
-  let message = line.replace(/^error:\s*/, '')
+  let message = line.replace(/^error:\s*/, '').replace(/^plugin errored with:\s*(?:error:\s*)?/, '')
   // Longest first: the resolved path may contain the given one as a suffix.
   for (const dir of [...dirs].sort((a, b) => b.length - a.length)) {
     if (!dir) continue
@@ -161,7 +172,10 @@ export function firstError(
   return message
 }
 
-/** A Typst failure located in a formula: an excerpt from main.typ or mitex, or the marker. */
+/**
+ * A Typst failure located in a formula: an excerpt from main.typ or mitex (a mitex error such as
+ * `unknown command: \ce` points into mitex/mitex.typ), or the marker.
+ */
 const inFormula = (stderr: string): boolean =>
   stderr.includes(MATH_REFUSED) || /┌─\s*(?:main\.typ|mitex[\\/])/.test(stderr)
 

@@ -1,18 +1,19 @@
 /**
- * Formulas for Preview and Present as the PDF sets them: each formula first goes through the
- * bundled mitex (`convert_math`, the same wasm the set's Typst runs), so one the PDF cannot build
- * is flagged with mitex's message and never reaches Typst; the rest go to main in batches
- * (`mdo.renderMath`, one Typst run per batch, src/main/math.ts) and come back as SVG that the
- * sanitiser rebuilds (diagram-svg.ts).
+ * Formulas for Preview and Present as the PDF sets them: every formula goes to main in batches
+ * (`mdo.renderMath`, one Typst run per batch with the bundled mitex, src/main/math.ts) and comes
+ * back as SVG that the sanitiser rebuilds (diagram-svg.ts), or as the error the PDF would hit
+ * (mitex's or Typst's message). There is no pre-check here on purpose: mitex's conversion is
+ * unbounded (nested `\newcommand` expand exponentially, seconds and gigabytes from a few hundred
+ * characters), and on the renderer's thread that would freeze the window; main runs it in a
+ * sandboxed Typst under a timeout and a memory watchdog.
  *
  * One service per window, shared by every tab, with no editor in it: the editor glue asks
  * `get()` for an entry, `request()`s the pending ones it shows and redraws on `onUpdate`
  * (dispatching {@link mathRefresh}). Results are cached by (kind, formula), so typing elsewhere
- * never sets a formula again. mitex is loaded on the first batch and kept.
+ * never sets a formula again.
  */
 import { StateEffect } from '@codemirror/state'
 import { MATH_MAX_ITEMS, MATH_MAX_TEX, type MathItem, type MathResult } from '../../core/math'
-import { loadTypstPlugin, type TypstPlugin, TypstPluginError } from '../../core/typst-plugin'
 import { sanitizeMathSvg } from './diagram-svg'
 
 /** Message of every formula of a batch main could not answer (IPC or process failure). */
@@ -52,8 +53,6 @@ export type MathEntry =
 type Settled = Exclude<MathEntry, { state: 'pending' }>
 
 export interface MathServiceOptions {
-  /** Instantiates mitex (default: the pipeline's wasm over IPC). */
-  loadMitex?: () => Promise<TypstPlugin>
   /** Sets a batch with Typst (default: `mdo.renderMath`). */
   render?: (items: MathItem[]) => Promise<MathResult[]>
   debounceMs?: number
@@ -76,23 +75,14 @@ const keyOf = (item: MathItem): string => `${item.display ? 'D' : 'I'}:${item.te
 let prefixes = 0
 const nextPrefix = (): string => `mdo-mx${++prefixes}`
 
-const encoder = new TextEncoder()
-/** mitex's spec argument; empty = its built-in LaTeX spec, as vendor/mitex/mitex.typ passes. */
-const NO_SPEC = new Uint8Array()
-
-/** mitex prefixes its messages with "error: "; the tooltip shows the message alone. */
-const mitexMessage = (message: string): string => message.replace(/^error:\s*/, '')
-
 export function createMathService(options: MathServiceOptions = {}): MathService {
-  const loadMitex =
-    options.loadMitex ?? (async () => loadTypstPlugin(await window.mdo.pluginWasm('mitex')))
   const render = options.render ?? ((items: MathItem[]) => window.mdo.renderMath(items))
   const debounceMs = options.debounceMs ?? DEBOUNCE_MS
   const warn = options.warn ?? ((message: string) => console.warn(message))
 
   const cache = new Map<string, Settled>()
   /**
-   * Keys requested and not settled yet: queued, in the pre-check or in flight. A formula's result
+   * Keys requested and not settled yet: queued or in flight. A formula's result
    * depends on its key alone, so a pending key is never sent again (no duplicate Typst runs while
    * the first render of a newly shown formula takes its ~0.3 s).
    */
@@ -112,10 +102,6 @@ export function createMathService(options: MathServiceOptions = {}): MathService
   let roundOpen = false
   let timer: ReturnType<typeof setTimeout> | null = null
   let failureWarned = false
-
-  /** The mitex load in progress or done (shared by overlapping batches); null: load anew. */
-  let mitexLoading: Promise<TypstPlugin | null> | null = null
-  let mitexFailed = false
 
   /** Developer diagnostics (console, once each); the injected `warn` is for MATH_FAILED only. */
   function diagnose(reason: string, detail: unknown): void {
@@ -152,36 +138,6 @@ export function createMathService(options: MathServiceOptions = {}): MathService
     for (const key of cache.keys()) {
       if (cache.size <= CACHE_SIZE) break
       if (!round.has(key) && !lastRound.has(key)) cache.delete(key)
-    }
-  }
-
-  function getMitex(): Promise<TypstPlugin | null> {
-    if (mitexFailed) return Promise.resolve(null)
-    mitexLoading ??= loadMitex().catch((e: unknown) => {
-      // No retry: the file is missing or broken for this whole session. Typst still sets the
-      // formula (with the same mitex), so an error then comes from main instead.
-      mitexFailed = true
-      diagnose('Formelprüfung nicht verfügbar', e)
-      return null
-    })
-    return mitexLoading
-  }
-
-  /** mitex's verdict: its error message, or null when it converts (or cannot be asked). */
-  async function precheck(tex: string): Promise<string | null> {
-    const loading = getMitex()
-    const mitex = await loading
-    if (!mitex) return null
-    try {
-      mitex.call('convert_math', encoder.encode(tex), NO_SPEC)
-      return null
-    } catch (e) {
-      if (e instanceof TypstPluginError) return mitexMessage(e.message)
-      // A trap may leave the instance's memory broken: the next formula loads a fresh one
-      // (unless another batch already started that reload).
-      if (mitexLoading === loading) mitexLoading = null
-      diagnose('Formelprüfung abgestürzt', e)
-      return null
     }
   }
 
@@ -223,7 +179,7 @@ export function createMathService(options: MathServiceOptions = {}): MathService
 
   async function flush(): Promise<void> {
     timer = null
-    // The keys stay in `pending` through the awaits below, so a request meanwhile skips them.
+    // The keys stay in `pending` until their batch settles, so a request meanwhile skips them.
     const items = Array.from(queue.values())
     queue.clear()
     const send: MathItem[] = []
@@ -234,13 +190,7 @@ export function createMathService(options: MathServiceOptions = {}): MathService
         flagged = true
         continue
       }
-      const error = await precheck(item.tex)
-      if (error === null) {
-        send.push(item)
-      } else {
-        store(keyOf(item), { state: 'error', message: error })
-        flagged = true
-      }
+      send.push(item)
     }
     if (flagged) {
       trim()
@@ -287,5 +237,5 @@ export function createMathService(options: MathServiceOptions = {}): MathService
   }
 }
 
-/** The window's formulas: one mitex instance and one cache for every tab. */
+/** The window's formulas: one cache for every tab. */
 export const mathService = createMathService()

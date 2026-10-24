@@ -403,6 +403,7 @@ A display formula (a paragraph that is exactly one `$$…$$`, cursor elsewhere) 
 - An inline formula never breaks across lines in the preview; Typst may break a long one at a relation or operator.
 - A `$$…$$` written inside a line of text (`text $$x$$ text`) is shown in display style within that line; Typst starts a new paragraph before and after it.
 - `\color{black}` follows the text colour in the preview (the app draws black glyphs in the context colour, so formulas stay readable in the dark theme); the PDF prints black.
+- Macros with parameters (`\newcommand{\f}[1]{…#1…}`, `\def\f#1{…}`) are refused in the preview (their `#1` is an unescaped `#`) and flagged; the PDF builds them. Macros without parameters render.
 - A bare URL directly before a formula (`http://example.com$a$`): the editor reads the `$…$` as part of the link, the PDF as a formula. Put a space or `<…>` around the URL.
 
 **Fonts.** Only the bundled families are available ("mdo Sans", "mdo Serif", "mdo Code", see section 4 and `src/renderer/ui/fonts.ts`); name them through the tokens or `var(--mdo-font-*)`. `@font-face` is dropped.

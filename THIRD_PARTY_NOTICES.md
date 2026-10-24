@@ -193,9 +193,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 `vendor/mitex/mitex.wasm` (the Typst package mitex 0.2.7 by Myriad-Dreamin, OrangeX4, Enter-tainer
 and Shichien, https://github.com/mitex-rs/mitex) converts LaTeX formulas to Typst math. The PDF
 pipeline has always shipped it (the set's Typst runs it for every `$…$` and `$$…$$`); the app's
-editor preview now runs the very same file in the UI as well, to check each formula before it is
-set (`src/renderer/editor/math-render.ts`, loaded by the main process through `src/main/plugins.ts`).
-The formulas themselves are set by the bundled Typst with the package, as in the PDF.
+editor preview runs the very same file through the bundled Typst in the main process
+(`src/main/math.ts`) to set the preview's formulas, as in the PDF.
 
 Copyright the mitex contributors. Licensed under the Apache License, Version 2.0,
 http://www.apache.org/licenses/LICENSE-2.0. The package ships no NOTICE file; its full licence text

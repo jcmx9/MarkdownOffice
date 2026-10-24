@@ -115,6 +115,52 @@ describe.skipIf(skip)('MathRenderer (real Typst)', () => {
     expect(ok(res[2]).svg).toMatch(/^<svg/)
   })
 
+  it.each([
+    ['in the middle', ['x', '\\ce{H2O}', 'y'], 1],
+    ['first', ['\\ce{H2O}', 'x', 'y'], 0],
+  ])(
+    'reports a mitex error %s with its message alone, neighbours render',
+    async (_n, texs, bad) => {
+      // mitex runs only here now (no renderer pre-check): Typst says `plugin errored with: error:
+      // unknown command: \ce` with an excerpt in mitex/, a formula error that halving isolates.
+      const r = new MathRenderer(ROOT)
+      const res = await r.render(texs.map((tex) => ({ tex, display: false })))
+      res.forEach((x, i) => {
+        if (i === bad) expect(x).toEqual({ ok: false, error: 'unknown command: \\ce' })
+        else expect(ok(x).svg).toMatch(/^<svg/)
+      })
+    },
+  )
+
+  it('bounds a macro-expansion bomb (memory watchdog or timeout) and stays responsive', async () => {
+    // 4^9 copies of `xx` from ~350 characters: unbounded, ~1.2 GB and 2+ s in Typst + mitex.
+    // Lower limits keep the test quick; without `ps` the timeout ends the run instead.
+    const names = 'abcdefghij'.split('')
+    const bomb =
+      '\\newcommand{\\a}{xx}' +
+      names
+        .slice(1)
+        .map((n, i) => `\\newcommand{\\${n}}{${`\\${names[i]}`.repeat(4)}}`)
+        .join('') +
+      '\\j'
+    const r = new MathRenderer(ROOT, {
+      maxRssBytes: 256 * 1024 ** 2,
+      timeoutMs: 1500,
+      deadlineMs: 5000,
+    })
+    const start = Date.now()
+    const [res, after] = await r.render([
+      { tex: bomb, display: true },
+      { tex: 'x', display: false },
+    ])
+    expect(res?.ok).toBe(false)
+    expect(['Formel braucht zu viel Speicher', 'Zeitüberschreitung']).toContain(
+      res?.ok === false ? res.error : '',
+    )
+    expect(ok(after).svg).toMatch(/^<svg/)
+    expect(Date.now() - start).toBeLessThan(15_000)
+  }, 30_000)
+
   it('sets an escaped \\# as math text; a bare # is refused before compiling', async () => {
     // What this proves: the escape renders and a bare `#` never reaches Typst. It proves nothing
     // about the sandbox: several mitex commands do pass text into Typst code; the known ones are
@@ -137,6 +183,8 @@ describe.skipIf(skip)('MathRenderer (real Typst)', () => {
     ['a colour by name', '\\textcolor{red}{x}', false],
     ['a colour with a model', '\\color[rgb]{1,0,0} x', true],
     ['$ inside \\text', '\\text{a $x$ b}', false],
+    ['a label with a non-ASCII letter', 'x \\label{eq:Ü}', true],
+    ['a non-ASCII label in text mode', '\\text{\\label{äöü} a}', false],
   ])('still renders %s', async (_name, tex, display) => {
     const r = new MathRenderer(ROOT)
     const [res] = await r.render([{ tex, display }])
@@ -305,6 +353,14 @@ describe('MathRenderer (process handling)', () => {
     '\\textcolor[$hspace(p a n i c \\( 1 \\))$]{red}{z}',
     '\\textcolor%\n[{a]}]{red}{x}',
     '\\newcommand{\\x}{\\textcolor}\\x[{a]}]{red}{x}',
+    // Unicode letters are allowed in a label, the punctuation that leaves it still is not.
+    'x \\label{Ü]}',
+    'x \\label{ä$b}',
+    'x \\label{ä>b}',
+    'x \\label{ä<b}',
+    'x \\label{a,b}',
+    'x \\label{a(b)}',
+    'x \\label{a"b}',
   ])('refuses raw Typst code without compiling it: %s', async (tex) => {
     const spawnImpl = vi.fn() as unknown as typeof spawn
     const r = new MathRenderer(await fakeRoot(), { spawnImpl })
@@ -659,5 +715,9 @@ describe('MathRenderer (limits and messages)', () => {
       'failed to load x.typ and ',
     )
     expect(firstError('', 3)).toBe('Typst endete mit Code 3.')
+    // A mitex error comes wrapped by Typst's plugin call; the tooltip shows mitex's message.
+    expect(firstError('error: plugin errored with: error: unknown command: \\ce\n', 1)).toBe(
+      'unknown command: \\ce',
+    )
   })
 })
