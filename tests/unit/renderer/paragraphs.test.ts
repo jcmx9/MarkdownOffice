@@ -738,12 +738,30 @@ describe('inline formulas in set paragraphs', () => {
   it('never breaks inside a formula; a break before it falls at its start', async () => {
     // 'aaa bbb' fills the 75 px line (the fake layout gives the object char one advance).
     const doc = 'aaa bbb $x$ ccc\n\nende'
-    const m = makeMath(doc)
+    const inputs: ParagraphInput[] = []
+    const m = make(doc, {
+      lang: mdoMarkdown(),
+      extensions: [createMath({ service: stubService({ 'I:x': FORMULA }) }).extension],
+      extra: {
+        setParagraph: (p) => {
+          inputs.push(p)
+          return setParagraph(p)
+        },
+      },
+    })
     await settle(m.view)
-    const at = breaks(m.decos()).map((s) => Number(s.split('@')[1]))
+    const input = inputs.at(-1)
+    const obj = input?.text.indexOf(OBJ) ?? -1
+    expect(obj).toBeGreaterThan(0)
+    // The engine's break opportunities (display index where the next line starts): before the
+    // object char (after the space), never right after it (glued to the formula's end), and
+    // the formula is one char, so nothing in its source can be one.
+    const at = input?.breaks.map((b) => b.index) ?? []
+    expect(at).toContain(obj)
+    expect(at).not.toContain(obj + 1)
+    // The break taken lands at the formula's start in the doc.
     const from = doc.indexOf('$x$')
-    expect(at).toContain(from)
-    expect(at.some((p) => p > from && p < from + 3)).toBe(false)
+    expect(breaks(m.decos()).map((s) => Number(s.split('@')[1]))).toContain(from)
   })
 
   it('a formula settling (pending -> shown) sets its line again', async () => {

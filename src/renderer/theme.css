@@ -655,9 +655,10 @@
    PDF and with par(spacing: 2em): the gap follows par.spacing). Here the blank lines around the
    $$ block already carry that gap (--mdo-par-gap), as between paragraphs; what the widget lacks
    against a text line is the line box around the glyphs: half the leading above and below,
-   (line pitch - cap height) / 2, e.g. (15.08pt - 6.58pt) / 2 = 0.425em at memo's 10pt. The pitch
-   is the set's line height (1lh: --mdo-line-height may be unitless or a length, din5008a writes
-   12.87pt), so the gap follows each set; the cap height 0.658em is the body font's ratio. Side
+   (line pitch - cap height) / 2, e.g. (15pt - 6.58pt) / 2 = 0.421em at memo's 10pt (1lh with
+   --mdo-line-height 1.5; the PDF's pitch of 15.08pt would give 0.425em). The pitch is the set's
+   line height (1lh: --mdo-line-height may be unitless or a length, din5008a writes 12.87pt), so
+   the gap follows each set; the cap height 0.658em is the body font's ratio. Side
    insets as a .cm-line; a formula wider than the text scrolls instead of shrinking (Typst
    overflows). */
 .mdo-preview .mdo-math {

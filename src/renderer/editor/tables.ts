@@ -219,8 +219,12 @@ class TableWidget extends WidgetType {
     for (let i = 0; i < this.model.head.length; i++) colgroup.append(document.createElement('col'))
     table.append(colgroup)
     // Cell formulas as the inline widget draws them (math.ts), at the cell's text size.
-    const formula = (item: MathItem, source: string) =>
-      formulaElement(this.service.get(item), item, source)
+    const pending: MathItem[] = []
+    const formula = (item: MathItem, source: string) => {
+      const entry = this.service.get(item)
+      if (entry.state === 'pending') pending.push(item)
+      return formulaElement(entry, item, source)
+    }
     const thead = table.createTHead().insertRow()
     for (const cell of this.model.head) {
       const th = document.createElement('th')
@@ -239,6 +243,10 @@ class TableWidget extends WidgetType {
       })
     })
     wrap.append(table)
+    // A formula settled when the field was built may be evicted by the time the widget draws
+    // (or the widget was kept as equal to one built while it was pending): it would stay pending
+    // for ever without a request here. The service skips the ones it has or is setting.
+    if (pending.length > 0) this.service.request(pending)
     wrap.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return
       e.preventDefault()

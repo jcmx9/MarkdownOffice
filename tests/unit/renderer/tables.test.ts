@@ -281,6 +281,29 @@ describe('formulas in table cells', () => {
     })
   })
 
+  it('a cell formula drawn pending that its build never asked for is requested then', () => {
+    // Settled when the field was built (so not requested), gone by the time the widget draws
+    // (evicted): without a request in toDOM it would stay pending for ever.
+    const service = stubService({ 'I:x': okEntry() })
+    const field = createTableField({ service })
+    const state = parsed(
+      EditorState.create({
+        doc: DOC,
+        selection: { anchor: DOC.length },
+        extensions: [mdoMarkdown(), previewView.of(true), field],
+      }),
+    )
+    expect(service.requests).toEqual([])
+    let widget: WidgetType | undefined
+    state.field(field).between(0, state.doc.length, (_f, _t, d) => {
+      widget = d.spec.widget as WidgetType
+    })
+    service.entries.delete('I:x')
+    const dom = widget?.toDOM({} as EditorView)
+    expect(dom?.querySelector('.mdo-math-pending')?.textContent).toBe('$x$')
+    expect(service.requests.flat()).toEqual(['I:x'])
+  })
+
   it('a table being edited shows its source and asks for nothing', () => {
     const service = stubService()
     const field = createTableField({ service })

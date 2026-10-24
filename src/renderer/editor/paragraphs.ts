@@ -347,7 +347,9 @@ function setLine(
       tries,
     }).filter((b: BreakPoint) => {
       const i = b.index + start
-      // Inside a widget's text (or between two widgets, which cannot be told apart).
+      // Inside a widget's text (or between two widgets, which cannot be told apart). This also
+      // drops a break between a formula and a typography widget right next to it (`$a$—$b$`:
+      // the dash is widget text too), which Typst may take; rare, a known difference.
       if (docPos[i] === -1 && docPos[i - 1] === -1) return false
       // Typst sees U+00A0 inside a no-break phrase (memo.typ's show rules): no break there.
       const d = before(i)
