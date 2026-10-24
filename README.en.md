@@ -302,6 +302,18 @@ CommonMark works as usual: `*italic*`, `**bold**`, `` `code` ``, links, lists, q
 - **Images:** `![Caption](image.png){width=50%}`; a missing image never stops the export, remote images are skipped offline.
 - **Formulas** in LaTeX syntax (`$…$`, `$$…$$`), **code** with syntax highlighting, **definition lists** and **Mermaid diagrams** (drawn offline).
 
+## What goes into a PDF
+
+An export reads only a fresh staging folder that holds exactly what the note names; nothing else on your disk can end up in the PDF, whatever the note text says.
+
+- **The note** itself (also as the PDF/A-3 attachment).
+- **Images** the note visibly includes (`![…](…)`): only SVG, PNG, JPEG, GIF and WebP, decided by the file's content, not its extension. An SVG that references anything outside itself is left out. Images in code blocks or comments do not count.
+- **What the front matter names:** the `logo:` file, and the `profile:` YAML with the image files next to it that the profile names (e.g. the signature).
+- **Profile as a path** (`profile: ./kanzlei.yaml`): the file must lie in the note's folder or the templates folder, not below a hidden folder (name starting with a dot).
+- **Template:** a template chosen by name may use the files in its own folder, except `profiles` folders, hidden entries and links that lead out of it. A template named as a path in the note (`template: ./mine.typ`) is used as that single file only; it must be a regular file (no link) in the note's folder or the templates folder. A template with several files belongs in a folder `<name>/<name>.typ`.
+- `<!--raw-typst …-->` in a note is not executed.
+- Windows: network (UNC) and device paths are refused.
+
 ## Template sets
 
 A template set defines how a document looks. It consists of up to four files sharing one name:
