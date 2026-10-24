@@ -8,11 +8,17 @@
   (--no-source, --hard-breaks, --), temporaere Kopie mit MDO_BASE_DIR, Notizen auf
   einem anderen Laufwerk als die Pipeline (auch wie der Editor: Arbeitsordner =
   Notizordner, TEMP auf dem anderen Laufwerk), UTF-8-Ausgabe sowie die Exit-Codes.
+  Dazu der Staging-Ordner (spiegelt test_sandbox in test-pdf.sh): eine Notiz liest nur
+  sich selbst und die Dateien, die sie sichtbar einbindet.
 
-  Layout: getestet wird pipeline\convert.ps1 mit MDO_PIPELINE_ROOT und
-  MDO_SETS_DIR. Ohne MDO_PIPELINE_ROOT gilt das Entwicklungs-Layout
-  build\pipeline-dev\ (entspricht dem gepackten Layout der App). Vorher
-  ausfuehren: npm run assets, dann bash pipeline/tests/dev-layout.sh.
+  Aufruf wie markdown-office: node cli.js (schreibt das Manifest MDO_MANIFEST und ruft
+  convert.ps1 daneben); ohne Manifest exportiert convert.ps1 nicht. Einige Faelle rufen
+  convert.ps1 direkt mit einem selbst geschriebenen Manifest auf, um die Pruefungen des
+  Skripts selbst zu sehen (der Wrapper lehnt vieles schon vorher ab).
+
+  Layout: getestet werden cli.js und convert.ps1 in MDO_PIPELINE_ROOT mit MDO_SETS_DIR.
+  Ohne MDO_PIPELINE_ROOT gilt das Entwicklungs-Layout build\pipeline-dev\ (entspricht dem
+  gepackten Layout der App). Vorher ausfuehren: npm run assets (baut auch cli.js).
   Arbeitsdateien liegen unter build\tmp\ im Repo (bzw. im %TEMP%), eigene
   Vorlagen nur aus MDO_TEMPLATES dort, nie aus "Dokumente".
 
@@ -33,7 +39,24 @@ if (-not (Test-Path -LiteralPath (Join-Path $Root 'lib') -PathType Container)) {
   Write-Host "FEHLER: Pipeline-Layout fehlt: $Root (npm run assets; bash pipeline/tests/dev-layout.sh)" -ForegroundColor Red
   exit 1
 }
-# Arbeitsordner im Repo, auf dem Laufwerk des Pipeline-Ordners (Typst liest nur dort).
+# Aufruf wie markdown-office: node cli.js. cli.js ruft das convert.ps1 neben sich auf; unter Git
+# Bash ist es eine Kopie (dev-layout.sh), die dem getesteten Skript entsprechen muss.
+$Cli = Join-Path $Root 'cli.js'
+$Node = (Get-Command node -ErrorAction SilentlyContinue).Source
+if (-not (Test-Path -LiteralPath $Cli -PathType Leaf) -or -not $Node) {
+  Write-Host "FEHLER: $Cli oder node fehlt (npm run assets)" -ForegroundColor Red
+  exit 1
+}
+$layoutConvert = Join-Path $Root 'convert.ps1'
+if ([IO.File]::ReadAllText($layoutConvert) -ne [IO.File]::ReadAllText($Convert)) {
+  Write-Host "FEHLER: $layoutConvert ist veraltet (bash pipeline/tests/dev-layout.sh)" -ForegroundColor Red
+  exit 1
+}
+# Staging-Ordner, die schon vor dem Test im Temp-Ordner lagen (fremde Laeufe); am Ende darf kein
+# neuer dazugekommen sein.
+$StagesBefore = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'mdo-stage-*' -Force -ErrorAction SilentlyContinue |
+  ForEach-Object { $_.FullName })
+# Arbeitsordner im Repo.
 $Work     = Join-Path $Repo 'build\tmp\mdo win test'
 $failed   = 0
 # Leerer Vorlagen-Ordner (mit Leerzeichen) im Temp-Ordner: ein echter Ordner
@@ -47,11 +70,47 @@ function Fail([string]$msg) { Write-Host "FEHLER: $msg" -ForegroundColor Red; $s
 function Skip([string]$msg) { Write-Host "skip $msg" }
 function Ok([string]$msg)   { Write-Host "ok   $msg" }
 
-# convert.ps1 so aufrufen wie andere Programme (powershell -File), Ausgabe einsammeln.
+# Exportieren wie markdown-office (node cli.js -> Manifest -> powershell -File convert.ps1),
+# Ausgabe einsammeln. stderr-Zeilen als Text ("$_"), nicht als formatierte Fehlerdatensaetze.
 function Invoke-Convert {
   param([string[]]$ArgList)
-  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $Convert @ArgList 2>&1 | Out-String
+  $out = & $Node $Cli @ArgList 2>&1 | ForEach-Object { "$_" } | Out-String
   return @{ Code = $LASTEXITCODE; Text = $out }
+}
+
+# Ein Manifest wie vom Wrapper, aber selbst geschrieben: nur die Notiz, keine Bilder, kein Logo,
+# kein Profil. Damit laeuft convert.ps1 direkt und zeigt seine eigenen Pruefungen.
+function New-TestManifest([string]$NotePath) {
+  $file = Join-Path $Work ('manifest-' + [Guid]::NewGuid().ToString('N') + '.json')
+  $json = @{ note = $NotePath; images = @(); logo = $null; profile = $null } | ConvertTo-Json
+  [IO.File]::WriteAllText($file, $json, (New-Object Text.UTF8Encoding $false))
+  return $file
+}
+
+# convert.ps1 direkt (powershell -File) mit einem Manifest aufrufen.
+function Invoke-ConvertDirect {
+  param([string[]]$ArgList, [string]$Manifest)
+  $saved = $env:MDO_MANIFEST
+  if ($Manifest) { $env:MDO_MANIFEST = $Manifest } else { Remove-Item Env:\MDO_MANIFEST -ErrorAction SilentlyContinue }
+  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $Convert @ArgList 2>&1 | ForEach-Object { "$_" } | Out-String
+  $code = $LASTEXITCODE
+  if ($saved) { $env:MDO_MANIFEST = $saved } else { Remove-Item Env:\MDO_MANIFEST -ErrorAction SilentlyContinue }
+  return @{ Code = $code; Text = $out }
+}
+
+# Rohe Bytes des PDFs als Text (Objekt-Woerterbuecher und XMP stehen unkomprimiert darin).
+function Get-PdfRaw([string]$pdf) {
+  if (-not (Test-Path -LiteralPath $pdf -PathType Leaf)) { return '' }
+  return [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pdf))
+}
+
+# Seitenzahl aus dem Seitenbaum (/Type/Pages ... /Count n); -1, wenn nicht lesbar.
+function Get-PdfPages([string]$pdf) {
+  $raw = Get-PdfRaw $pdf
+  $m = [regex]::Match($raw, '/Type\s*/Pages\b[^>]*?/Count\s+(\d+)')
+  if (-not $m.Success) { $m = [regex]::Match($raw, '/Count\s+(\d+)[^>]*?/Type\s*/Pages\b') }
+  if ($m.Success) { return [int]$m.Groups[1].Value }
+  return -1
 }
 
 function Test-PdfA([string]$pdf) {
@@ -125,7 +184,7 @@ function New-DriveNote([string]$Dir) {
   return $n
 }
 
-# Bereitstellungsordner, die nach einem Build noch in $Dirs liegen.
+# Staging-Ordner, die nach einem Build noch in $Dirs liegen.
 function Get-StageLeftovers([string[]]$Dirs) {
   return @(foreach ($d in $Dirs) {
     if ($d) { Get-ChildItem -LiteralPath $d -Directory -Filter 'mdo-stage-*' -Force -ErrorAction SilentlyContinue }
@@ -133,9 +192,8 @@ function Get-StageLeftovers([string[]]$Dirs) {
 }
 
 # 3b) Notiz auf einem ANDEREN Laufwerk als der Pipeline-Ordner, Aufruf aus dem
-#     Laufwerks-Wurzelverzeichnis der Pipeline (dort ist ein Bereitstellungsordner
-#     moeglich). Ausgabe ebenfalls auf dem anderen Laufwerk. Bereitstellungsordner
-#     muss danach weg.
+#     Laufwerks-Wurzelverzeichnis der Pipeline. Ausgabe ebenfalls auf dem anderen
+#     Laufwerk. Der Staging-Ordner (im Temp-Ordner) muss danach weg.
 if ($OtherTemp) {
   $otherRoot = [IO.Path]::GetPathRoot($OtherTemp)
   $drvTmp  = Join-Path $OtherTemp ('mdo andere platte ' + [Guid]::NewGuid().ToString('N'))
@@ -149,13 +207,12 @@ if ($OtherTemp) {
   if ($r.Code -ne 0) { Fail "anderes Laufwerk: Exit $($r.Code)`n$($r.Text)" }
   elseif (-not (Test-PdfA $drvPdf)) { Fail "anderes Laufwerk: PDF fehlt am Zielpfad`n$($r.Text)" }
   elseif ($r.Text -match 'nicht gefunden') { Fail "anderes Laufwerk: Bild/Logo nicht gefunden`n$($r.Text)" }
-  elseif ($leftover.Count -gt 0) { Fail "anderes Laufwerk: Bereitstellungsordner nicht entfernt" }
+  elseif ($leftover.Count -gt 0) { Fail "anderes Laufwerk: Staging-Ordner nicht entfernt" }
   else { Ok "Notiz auf anderem Laufwerk ($otherRoot) als die Pipeline ($([IO.Path]::GetPathRoot($Root)))" }
 
   # 3b2) Wie der Editor: Arbeitsordner = Notizordner, und TEMP, TMP und LOCALAPPDATA
-  #      liegen ebenfalls auf dem anderen Laufwerk. Auf dem Laufwerk der Pipeline
-  #      ist damit kein Bereitstellungsordner moeglich: --root wechselt auf das
-  #      Laufwerk der Notiz, lib\ und vendor\ werden mit bereitgestellt.
+  #      liegen ebenfalls auf dem anderen Laufwerk. Der Staging-Ordner liegt dann dort,
+  #      mit Kopien von lib\ und vendor\ (Fonts und Pakete bleiben in der Pipeline).
   $edDir = Join-Path $drvTmp 'Editor Notizen'
   $edTemp = Join-Path $drvTmp 'Temp Ordner'
   $edLocal = Join-Path $drvTmp 'Local AppData'
@@ -172,7 +229,7 @@ if ($OtherTemp) {
   if ($r.Code -ne 0) { Fail "Editor-Fall (anderes Laufwerk, Arbeitsordner = Notizordner): Exit $($r.Code)`n$($r.Text)" }
   elseif (-not (Test-PdfA $edPdf)) { Fail "Editor-Fall: PDF fehlt neben der Notiz`n$($r.Text)" }
   elseif ($r.Text -match 'nicht gefunden') { Fail "Editor-Fall: Bild/Logo nicht gefunden`n$($r.Text)" }
-  elseif ($leftover.Count -gt 0) { Fail 'Editor-Fall: Bereitstellungsordner nicht entfernt' }
+  elseif ($leftover.Count -gt 0) { Fail 'Editor-Fall: Staging-Ordner nicht entfernt' }
   else { Ok "Editor-Fall: Notiz, TEMP und Arbeitsordner auf $otherRoot, Pipeline auf $([IO.Path]::GetPathRoot($Root))" }
   Remove-Item -LiteralPath $drvTmp -Recurse -Force -ErrorAction SilentlyContinue
 } else {
@@ -337,25 +394,31 @@ $storeAfter = (Get-ChildItem -LiteralPath $storeDir -Recurse -Force | ForEach-Ob
 if ($r.Code -eq 0 -or (Test-Path -LiteralPath $concatPdf)) { Fail "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)`n$($r.Text)" }
 elseif ($storeAfter -ne $storeBefore) { Fail 'verkettete Paketangabe: Paketablage veraendert' }
 else { Ok 'verkettete Paketangabe: kein Download, Ablage unveraendert' }
-# Der gesperrte Proxy gilt nur um die Typst-Aufrufe: convert.ps1 IM SELBEN PROZESS (&) aufrufen
-# (einmal erfolgreich, einmal mit Fehler) und pruefen, dass die Proxy-Variablen danach wieder
-# die vorherigen Werte haben (kein Erben durch den PDF-Betrachter oder den Aufrufer).
-$proxyVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY')
+# Der gesperrte Proxy und das Entfernen der TYPST_*-Variablen gelten nur um die Typst-Aufrufe:
+# convert.ps1 IM SELBEN PROZESS (&, mit selbst geschriebenem Manifest) aufrufen (einmal
+# erfolgreich, einmal mit Fehler) und pruefen, dass die Variablen danach wieder die vorherigen
+# Werte haben (kein Erben durch den PDF-Betrachter oder den Aufrufer). Eine TYPST_FONT_PATHS von
+# aussen darf den Build nicht stoeren (sie wird fuer Typst entfernt).
+$proxyVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'NO_PROXY', 'TYPST_FONT_PATHS', 'MDO_MANIFEST')
 $proxySaved = @{}
 foreach ($v in $proxyVars) { $proxySaved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
 [Environment]::SetEnvironmentVariable('HTTPS_PROXY', 'http://sentinel.invalid:1', 'Process')
 [Environment]::SetEnvironmentVariable('HTTP_PROXY', $null, 'Process')
+[Environment]::SetEnvironmentVariable('ALL_PROXY', 'http://sentinel.invalid:2', 'Process')
 [Environment]::SetEnvironmentVariable('NO_PROXY', 'sentinel.invalid', 'Process')
+[Environment]::SetEnvironmentVariable('TYPST_FONT_PATHS', 'X:\mdo-sentinel', 'Process')
+[Environment]::SetEnvironmentVariable('MDO_MANIFEST', (New-TestManifest $setNote), 'Process')
 $inProcPdf = Join-Path $outDir 'inproc.pdf'
-$null = & $Convert $setNote $inProcPdf *>&1
+$inProcOut = & $Convert $setNote $inProcPdf *>&1 | Out-String
 $okRun = ($LASTEXITCODE -eq 0) -and (Test-PdfA $inProcPdf)
 $null = & $Convert '--template' 'netconcat' $setNote (Join-Path $outDir 'inproc-net.pdf') *>&1
-$after = @($env:HTTPS_PROXY, $env:HTTP_PROXY, $env:NO_PROXY)
+$after = @($env:HTTPS_PROXY, $env:HTTP_PROXY, $env:ALL_PROXY, $env:NO_PROXY, $env:TYPST_FONT_PATHS)
 foreach ($v in $proxyVars) { [Environment]::SetEnvironmentVariable($v, $proxySaved[$v], 'Process') }
-if (-not $okRun) { Fail 'Proxy-Wiederherstellung: Build im selben Prozess fehlgeschlagen' }
-elseif ($after[0] -ne 'http://sentinel.invalid:1' -or $after[1] -or $after[2] -ne 'sentinel.invalid') {
-  Fail "Proxy-Variablen nach dem Build veraendert: HTTPS_PROXY=$($after[0]) HTTP_PROXY=$($after[1]) NO_PROXY=$($after[2])"
-} else { Ok 'Proxy-Variablen nach dem Build unveraendert (auch nach einem Fehler)' }
+if (-not $okRun) { Fail "Proxy-Wiederherstellung: Build im selben Prozess fehlgeschlagen`n$inProcOut" }
+elseif ($after[0] -ne 'http://sentinel.invalid:1' -or $after[1] -or $after[2] -ne 'http://sentinel.invalid:2' -or
+  $after[3] -ne 'sentinel.invalid' -or $after[4] -ne 'X:\mdo-sentinel') {
+  Fail "Variablen nach dem Build veraendert: HTTPS_PROXY=$($after[0]) HTTP_PROXY=$($after[1]) ALL_PROXY=$($after[2]) NO_PROXY=$($after[3]) TYPST_FONT_PATHS=$($after[4])"
+} else { Ok 'Proxy- und TYPST_*-Variablen nach dem Build unveraendert (auch nach einem Fehler)' }
 
 $r = Invoke-Convert @('--template=memo', $setNote, (Join-Path $outDir 'cli.pdf'))
 if ($r.Code -ne 0) { Fail "--template=memo: Exit $($r.Code)`n$($r.Text)" }
@@ -426,7 +489,7 @@ $r = Invoke-Convert @((Join-Path $profNote 'falsch.md'), $p5)
 if (-not $r.Text.Contains($setProf)) { Fail "profile: Meldung nennt Vorlagen\<set>\profiles nicht`n$($r.Text)" }
 else { Ok 'profile: Meldung nennt Vorlagen\<set>\profiles' }
 if ($OtherTemp) {
-  # Notiz und Profil auf einem anderen Laufwerk: der Profil-Ordner wird komplett bereitgestellt.
+  # Notiz und Profil auf einem anderen Laufwerk: Profil und Unterschrift kommen in den Staging-Ordner.
   $pdrv = Join-Path $OtherTemp ('mdo profil platte ' + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Force -Path (Join-Path $pdrv 'profiles') | Out-Null
   Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\testprofil.yaml'), (Join-Path $Fixtures 'profiles\sig.svg') -Destination (Join-Path $pdrv 'profiles')
@@ -436,12 +499,335 @@ if ($OtherTemp) {
   $r = Invoke-Convert @($pdrvNote, $pdrvPdf)
   if ($r.Code -ne 0) { Fail "profile: anderes Laufwerk: Exit $($r.Code)`n$($r.Text)" }
   elseif (-not (Test-PdfA $pdrvPdf)) { Fail 'profile: anderes Laufwerk: PDF fehlt' }
-  else { Ok 'profile: Profil auf anderem Laufwerk (Unterschrift aus dem bereitgestellten Ordner)' }
+  else { Ok 'profile: Profil auf anderem Laufwerk (Unterschrift aus dem Staging-Ordner)' }
   Remove-Item -LiteralPath $pdrv -Recurse -Force -ErrorAction SilentlyContinue
 } else {
   Skip 'profile: anderes Laufwerk (kein Temp-Ordner auf einem anderen Laufwerk als das Repo)'
 }
 $env:MDO_TEMPLATES = $EmptyTemplates
+
+# ---------------------------------------------------------------------------
+# Staging-Ordner (spiegelt test_sandbox in test-pdf.sh): eine Notiz liest nur sich selbst und die
+# Dateien, die sie sichtbar einbindet. Typst sieht als Wurzel nur den Staging-Ordner; ein Pfad wie
+# /a/.../canary.txt (Laufwerk weg, wie die alte Pipeline mit --root <Laufwerk> ihn las) zeigt
+# daher ins Leere. Den Text eines PDFs kann dieser Test nicht lesen (komprimiert, Glyphen):
+# Lesbarkeit pruefen Notizen mit #assert(read(...).contains(...)), Marker der Vorlagen stehen im
+# Titel (XMP, unkomprimiert).
+# ---------------------------------------------------------------------------
+$utf8 = New-Object Text.UTF8Encoding $false
+# Eigener Ordner ohne Leerzeichen: die Kanarienvoegel-Pfade stehen in mitex-Befehlen der Notizen
+# (\includegraphics{...}), wo ein Leerzeichen den Pfad teilen koennte. Entfernt ohne Remove-Item
+# -Recurse, das in Windows PowerShell 5.1 Junctions folgt (die Links zeigen nur hier hinein).
+$sbRoot = Join-Path $Repo 'build\tmp\mdo-sandbox'
+if (Test-Path -LiteralPath $sbRoot) { [IO.Directory]::Delete($sbRoot, $true) }
+$sb = Join-Path $sbRoot 'sandbox'
+$sbNote = Join-Path $sb 'notiz'
+$geheim = Join-Path $sbRoot 'geheim'
+New-Item -ItemType Directory -Force -Path $sbNote, (Join-Path $sb 'bilder'), $geheim | Out-Null
+[IO.File]::WriteAllText((Join-Path $geheim 'canary.txt'), "CANARY-GEHEIM`n", $utf8)
+Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $geheim 'canary.png')
+# Liegt neben der Notiz, ist aber nicht verlinkt: nur gefaelschte Probe-Metadaten nennen es.
+Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $sbNote 'canary.png')
+# Wurzelrelative Typst-Form der Kanarienvoegel (so las die alte Pipeline jede Datei des Laufwerks).
+function ConvertTo-RootRel([string]$P) { return ($P -replace '\\', '/') -replace '^[A-Za-z]:', '' }
+$canaryTxt = ConvertTo-RootRel (Join-Path $geheim 'canary.txt')
+$canaryPng = ConvertTo-RootRel (Join-Path $geheim 'canary.png')
+$notFound = 'error: file not found'
+
+# Links anlegen: Symlinks brauchen unter Windows ein Recht (Admin oder Entwicklermodus; der
+# CI-Runner hat es), Junctions und harte Links nicht. $false, wenn es nicht geht.
+function New-TestLink([string]$Type, [string]$Path, [string]$Target) {
+  try {
+    New-Item -ItemType $Type -Path $Path -Value $Target -ErrorAction Stop | Out-Null
+    return $true
+  } catch {
+    Skip "$Type $Path nicht anlegbar: $($_.Exception.Message)"
+    return $false
+  }
+}
+
+# Notiz mit der Zeile exportieren (ueber cli.js). Mit $Want muss der Export genau damit scheitern
+# und darf kein PDF hinterlassen; mit '' muss er gelingen, und das PDF darf weder den
+# Kanarienvogel noch ein Bild enthalten. Gibt das Ergebnis zurueck (Code, Text, Pdf).
+function Invoke-Hostile {
+  param([string]$Name, [string]$Line, [string]$Want, [string[]]$Opts = @(), [string]$Templates = '')
+  $pdf = Join-Path $outDir "sb-$Name.pdf"
+  if (Test-Path -LiteralPath $pdf) { Remove-Item -LiteralPath $pdf -Force }
+  [IO.File]::WriteAllText((Join-Path $sbNote "$Name.md"), "# Feind`n`n$Line`n`nENDE.`n", $utf8)
+  $savedTpl = $env:MDO_TEMPLATES
+  if ($Templates) { $env:MDO_TEMPLATES = $Templates }
+  Push-Location $sbNote
+  $r = Invoke-Convert (@($Opts) + @("$Name.md", $pdf))
+  Pop-Location
+  $env:MDO_TEMPLATES = $savedTpl
+  $r.Pdf = $pdf
+  $r.Ok = $true
+  if ($Want) {
+    if ($r.Code -eq 0) { Fail "sandbox ${Name}: Export gelang, erwartet: $Want`n$($r.Text)"; $r.Ok = $false }
+    elseif (Test-Path -LiteralPath $pdf) { Fail "sandbox ${Name}: gescheiterter Export hinterlaesst ein PDF"; $r.Ok = $false }
+    elseif ($r.Text -notmatch $Want) { Fail "sandbox ${Name}: unerwarteter Fehler:`n$($r.Text)"; $r.Ok = $false }
+    return $r
+  }
+  $raw = Get-PdfRaw $pdf
+  if ($r.Code -ne 0) { Fail "sandbox ${Name}: Export fehlgeschlagen: Exit $($r.Code)`n$($r.Text)"; $r.Ok = $false }
+  elseif (-not (Test-PdfA $pdf)) { Fail "sandbox ${Name}: PDF fehlt`n$($r.Text)"; $r.Ok = $false }
+  elseif ($raw.Contains('CANARY-GEHEIM')) { Fail "sandbox ${Name}: Kanarienvogel im PDF"; $r.Ok = $false }
+  elseif ($raw -match '/Subtype\s*/Image') { Fail "sandbox ${Name}: fremdes Bild im PDF"; $r.Ok = $false }
+  return $r
+}
+
+$forgeMeta = '$\text{\label{#metadata("canary.png")<mdo-image>}}$'
+$forgeUse = '$\text{\label{#(sys.inputs.at("images", default: none),).filter(f => f != none).map(f => image(json(f).at("canary.png"))).join()}}$'
+$fixtureTemplates = Join-Path $Fixtures 'templates'
+$sbOk = $true
+# Einstellung des Sets: memo hat raw-typst aus, der Kommentar bleibt ein Kommentar (Export gelingt).
+$sbOk = (Invoke-Hostile 'memo-raw-aus' ('<!--raw-typst #read("' + $canaryTxt + '") -->') '').Ok -and $sbOk
+# Ein eigenes Set mit raw-typst an (probe): die Notiz laeuft als Typst-Code, sieht aber nur den
+# Staging-Ordner.
+$sbOk = (Invoke-Hostile 'raw-probe' ('<!--raw-typst #read("' + $canaryTxt + '") -->') $notFound @('--template', 'probe') $fixtureTemplates).Ok -and $sbOk
+$sbOk = (Invoke-Hostile 'raw-probe-bild' ('<!--raw-typst #image("' + $canaryPng + '") -->') $notFound @('--template', 'probe') $fixtureTemplates).Ok -and $sbOk
+$sbOk = (Invoke-Hostile 'label' ('$\text{\label{#read("' + $canaryTxt + '")}}$') $notFound).Ok -and $sbOk
+$sbOk = (Invoke-Hostile 'graphics' ('$\includegraphics{' + $canaryPng + '}$') $notFound).Ok -and $sbOk
+# Die gefaelschte Quelle steht in der Zuordnung als "" (fehlt): image("") scheitert.
+$sbOk = (Invoke-Hostile 'forged' "$forgeMeta $forgeUse" 'error: (file not found|failed to load file)').Ok -and $sbOk
+# Ein Link auf eine Nicht-Bilddatei kommt nicht in den Staging-Ordner: Platzhalter statt Abbruch.
+$r = Invoke-Hostile 'textlink' '![](../../geheim/canary.txt)' ''
+if ($r.Ok -and $r.Text -notmatch 'Bild nicht gefunden: \.\./\.\./geheim/canary\.txt') {
+  Fail "sandbox textlink: keine Warnung 'Bild nicht gefunden'`n$($r.Text)"; $r.Ok = $false
+}
+$sbOk = $r.Ok -and $sbOk
+if ($sbOk) { Ok 'sandbox: raw-typst, mitex (\label, \includegraphics), Nicht-Bild-Link, gefaelschte Probe lesen nichts' }
+
+# Eine von der Notiz genannte Vorlage: nur eine echte .typ-Datei unter Notiz- oder Vorlagen-
+# Ordner, und nur diese eine Datei kommt in den Staging-Ordner. Geprueft ueber cli.js (der Wrapper
+# lehnt ab) und direkt mit Manifest (convert.ps1 lehnt selbst ab).
+$refused = 'Vorlage muss eine \.typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein'
+New-Item -ItemType Directory -Force -Path (Join-Path $geheim 'evil') | Out-Null
+[IO.File]::WriteAllText((Join-Path $geheim 'evil\evil.typ'), "#read(`"canary.txt`")`n", $utf8)
+Copy-Item -LiteralPath (Join-Path $geheim 'canary.txt') -Destination (Join-Path $geheim 'evil')
+$tplVals = @()
+if (New-TestLink 'SymbolicLink' (Join-Path $sbNote 'evil.typ') (Join-Path $geheim 'canary.txt')) { $tplVals += './evil.typ' }
+if (New-TestLink 'Junction' (Join-Path $sbNote 'evil') (Join-Path $geheim 'evil')) { $tplVals += './evil/evil.typ' }
+if (New-TestLink 'HardLink' (Join-Path $sbNote 'hart.typ') (Join-Path $geheim 'canary.txt')) { $tplVals += './hart.typ' }
+$tplNote = Join-Path $sbNote 'tpl.md'
+$tplPdf = Join-Path $outDir 'sb-tpl.pdf'
+$tplOk = $true
+foreach ($tval in $tplVals) {
+  [IO.File]::WriteAllText($tplNote, "---`ntemplate: $tval`n---`n`nText.`n", $utf8)
+  $want = $refused + ': ' + [regex]::Escape($tval)
+  Push-Location $sbNote
+  $viaCli = Invoke-Convert @('tpl.md', $tplPdf)
+  $direct = Invoke-ConvertDirect @('tpl.md', $tplPdf) (New-TestManifest $tplNote)
+  Pop-Location
+  foreach ($pair in @(@('cli.js', $viaCli), @('convert.ps1 direkt', $direct))) {
+    $rr = $pair[1]
+    if ($rr.Code -eq 0 -or (Test-Path -LiteralPath $tplPdf) -or $rr.Text -notmatch $want) {
+      Fail "sandbox tpl $tval ($($pair[0])): nicht abgelehnt: Exit $($rr.Code)`n$($rr.Text)"; $tplOk = $false
+      if (Test-Path -LiteralPath $tplPdf) { Remove-Item -LiteralPath $tplPdf -Force }
+    }
+  }
+}
+# Gegenprobe direkt: eine echte .typ neben der Notiz besteht die Pruefung des Skripts.
+Copy-Item -LiteralPath (Join-Path $Fixtures 'templates\probe.typ') -Destination (Join-Path $sbNote 'echt.typ')
+[IO.File]::WriteAllText($tplNote, "---`ntemplate: ./echt.typ`n---`n`nText.`n", $utf8)
+Push-Location $sbNote
+$direct = Invoke-ConvertDirect @('tpl.md', $tplPdf) (New-TestManifest $tplNote)
+Pop-Location
+if ($direct.Code -ne 0 -or -not (Test-PdfMarker $tplPdf 'SET-PROBE')) {
+  Fail "sandbox tpl ./echt.typ (convert.ps1 direkt): Exit $($direct.Code)`n$($direct.Text)"; $tplOk = $false
+}
+if (Test-Path -LiteralPath $tplPdf) { Remove-Item -LiteralPath $tplPdf -Force }
+# Ordnerform .\eigen\eigen.typ im Notizordner mit einem verlinkten Unterordner (Junction): nur
+# die .typ kommt mit (kein Set-Ordner), der Link nie; dazu der Hinweis auf Set-Ordner.
+New-Item -ItemType Directory -Force -Path (Join-Path $sbNote 'eigen') | Out-Null
+[IO.File]::WriteAllText((Join-Path $sbNote 'eigen\eigen.typ'), "#read(`"daten/canary.txt`")`n", $utf8)
+if (New-TestLink 'Junction' (Join-Path $sbNote 'eigen\daten') $geheim) {
+  [IO.File]::WriteAllText($tplNote, "---`ntemplate: ./eigen/eigen.typ`n---`n`nText.`n", $utf8)
+  Push-Location $sbNote
+  $rr = Invoke-Convert @('tpl.md', $tplPdf)
+  Pop-Location
+  if ($rr.Code -eq 0 -or (Test-Path -LiteralPath $tplPdf) -or $rr.Text -notmatch $notFound) {
+    Fail "sandbox tpl ./eigen/eigen.typ: erwartet $notFound`n$($rr.Text)"; $tplOk = $false
+  } elseif ($rr.Text -notmatch 'Set-Ordner <name>\\<name>\.typ') {
+    Fail "sandbox tpl ./eigen/eigen.typ: Hinweis auf Set-Ordner fehlt`n$($rr.Text)"; $tplOk = $false
+  }
+}
+if ($tplOk) { Ok "sandbox: Vorlage aus der Notiz nur als echte .typ-Datei, allein kopiert ($($tplVals -join ', '), Junction-Unterordner)" }
+
+# Eine einzelne .typ im Vorlagen-Ordner, ueber den Namen gewaehlt (meinset): ihr Ordner kommt
+# mit, damit sie Nachbardateien einbinden kann, aber ohne profiles\ (jede Tiefe), ohne
+# Punkt-Eintraege, ohne Symlinks, die den Ordner verlassen, und ohne Ordner-Links (Junction).
+$mv = Join-Path $sbRoot 'sb-meinset'
+New-Item -ItemType Directory -Force -Path (Join-Path $mv 'profiles'), (Join-Path $mv 'x\profiles') | Out-Null
+$meinsetTyp = @'
+#import "helper.typ": h
+#import sys.inputs.mdo + "/lib/markdown.typ": preprocess
+#import sys.inputs.mdo + "/vendor/cmarker/lib.typ" as cmarker
+#import sys.inputs.mdo + "/vendor/mitex/lib.typ": mitex
+#set document(title: h)
+#set text(font: ("SourceSans3VF",))
+#let a = sys.inputs.at("attach", default: "")
+#if a != "" { pdf.attach("/" + a.split("/").last(), read(a, encoding: none), relationship: "source", mime-type: "text/markdown", description: "Markdown source") }
+#h
+
+#cmarker.render(preprocess(read(sys.inputs.source)), math: mitex)
+'@
+[IO.File]::WriteAllText((Join-Path $mv 'meinset.typ'), $meinsetTyp, $utf8)
+[IO.File]::WriteAllText((Join-Path $mv 'helper.typ'), "#let h = `"MEINSET-HELPER`"`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $mv 'innen.txt'), "INNEN-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $mv 'profiles\other.yaml'), "OTHER-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $mv 'x\profiles\y.yaml'), "Y-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $mv '.hidden.txt'), "DOT-MARKE`n", $utf8)
+$innen = 'innen.txt'
+if (New-TestLink 'SymbolicLink' (Join-Path $mv 'innen-link.txt') (Join-Path $mv 'innen.txt')) { $innen = 'innen-link.txt' }
+$fremd = @('profiles/other.yaml', 'x/profiles/y.yaml', '.hidden.txt')
+if (New-TestLink 'SymbolicLink' (Join-Path $mv 'aussen.txt') (Join-Path $geheim 'canary.txt')) { $fremd += 'aussen.txt' }
+if (New-TestLink 'Junction' (Join-Path $mv 'ausordner') $geheim) { $fremd += 'ausordner/canary.txt' }
+$mvOk = $true
+$r = Invoke-Hostile 'meinset' ('$\text{\label{#assert(read("/set/' + $innen + '").contains("INNEN-MARKE"))}}$') '' @('--template', 'meinset') $mv
+if (-not $r.Ok) { $mvOk = $false }
+elseif (-not (Test-PdfMarker $r.Pdf 'MEINSET-HELPER')) { Fail 'sandbox meinset: Nachbardatei helper.typ nicht eingebunden'; $mvOk = $false }
+foreach ($mf in $fremd) {
+  $r = Invoke-Hostile 'meinset-fremd' ('$\text{\label{#read("/set/' + $mf + '")}}$') $notFound @('--template', 'meinset') $mv
+  if (-not $r.Ok) { $mvOk = $false; continue }
+  # Absichtlich ausgelassen: kein Hinweis auf Set-Ordner.
+  if ($r.Text -match 'Set-Ordner') { Fail "sandbox meinset ${mf}: falscher Hinweis`n$($r.Text)"; $mvOk = $false }
+}
+# Ein anderes Set im selben Ordner kennt mdo-pagebreak: meinset bekommt trotzdem die
+# raw-typst-Form, der Seitenumbruch bleibt.
+New-Item -ItemType Directory -Force -Path (Join-Path $mv 'din5008a') | Out-Null
+[IO.File]::WriteAllText((Join-Path $mv 'din5008a\din5008a.typ'), "// html: (mdo-pagebreak: ...)`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $sbNote 'mumbruch.md'), "# Eins`n`n<!-- pagebreak -->`n`n# Zwei`n", $utf8)
+$savedTpl = $env:MDO_TEMPLATES
+$env:MDO_TEMPLATES = $mv
+Push-Location $sbNote
+$rr = Invoke-Convert @('--template', 'meinset', 'mumbruch.md', (Join-Path $outDir 'sb-mumbruch.pdf'))
+Pop-Location
+$env:MDO_TEMPLATES = $savedTpl
+$pages = Get-PdfPages (Join-Path $outDir 'sb-mumbruch.pdf')
+if ($rr.Code -ne 0) { Fail "sandbox meinset umbruch: Exit $($rr.Code)`n$($rr.Text)"; $mvOk = $false }
+elseif ($pages -ne 2) { Fail "sandbox meinset umbruch: $pages Seite(n) statt 2 (Nachbar-Set kennt mdo-pagebreak)"; $mvOk = $false }
+# Die Vorlage selbst als Symlink aus dem Vorlagen-Ordner heraus (eigenes Repo): wird kopiert.
+$repo2 = Join-Path $sbRoot 'sb-repo'
+New-Item -ItemType Directory -Force -Path $repo2 | Out-Null
+[IO.File]::WriteAllText((Join-Path $repo2 'meinset2.typ'), ($meinsetTyp -replace '#set document\(title: h\)', '#set document(title: "MEINSET2-MARKE")'), $utf8)
+Copy-Item -LiteralPath (Join-Path $mv 'helper.typ') -Destination $repo2
+if (New-TestLink 'SymbolicLink' (Join-Path $mv 'meinset2.typ') (Join-Path $repo2 'meinset2.typ')) {
+  $r = Invoke-Hostile 'meinset2' 'Text.' '' @('--template', 'meinset2') $mv
+  if (-not $r.Ok) { $mvOk = $false }
+  elseif (-not (Test-PdfMarker $r.Pdf 'MEINSET2-MARKE')) { Fail 'sandbox meinset2: verlinkte Vorlage nicht kopiert'; $mvOk = $false }
+}
+if ($mvOk) { Ok "sandbox: einzelne .typ ueber den Namen: Nachbardateien ja; $($fremd -join ', ') nein" }
+
+# Legitim: ein sichtbar verlinktes Bild ausserhalb des Notizordners kommt ins PDF.
+Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $sb 'bilder\aussen.png')
+[IO.File]::WriteAllText((Join-Path $sbNote 'aussen.md'), "# Aussen`n`n![](../bilder/aussen.png)`n`nENDE.`n", $utf8)
+Push-Location $sbNote
+$rr = Invoke-Convert @('aussen.md', (Join-Path $outDir 'sb-aussen.pdf'))
+Pop-Location
+if ($rr.Code -ne 0) { Fail "sandbox aussen: Exit $($rr.Code)`n$($rr.Text)" }
+elseif ($rr.Text -match 'nicht gefunden') { Fail "sandbox aussen: Bild nicht gefunden`n$($rr.Text)" }
+elseif ((Get-PdfRaw (Join-Path $outDir 'sb-aussen.pdf')) -notmatch '/Subtype\s*/Image') { Fail 'sandbox aussen: Bild fehlt im PDF' }
+else { Ok 'sandbox: Bild ausserhalb des Notizordners, sichtbar verlinkt, erscheint' }
+
+# Seitenumbruch alter Form: ein Set ohne mdo-pagebreak (probe, raw-typst an) bricht weiter um.
+[IO.File]::WriteAllText((Join-Path $sbNote 'umbruch.md'), "# Eins`n`n\newpage`n`n# Zwei`n", $utf8)
+$env:MDO_TEMPLATES = $fixtureTemplates
+Push-Location $sbNote
+$rr = Invoke-Convert @('--template', 'probe', 'umbruch.md', (Join-Path $outDir 'sb-umbruch.pdf'))
+Pop-Location
+$env:MDO_TEMPLATES = $EmptyTemplates
+$pages = Get-PdfPages (Join-Path $outDir 'sb-umbruch.pdf')
+if ($rr.Code -ne 0) { Fail "sandbox umbruch: Exit $($rr.Code)`n$($rr.Text)" }
+elseif ($pages -ne 2) { Fail "sandbox umbruch: $pages Seite(n) statt 2 (Set ohne mdo-pagebreak)" }
+else { Ok 'sandbox: Seitenumbruch fuer ein Set ohne mdo-pagebreak (raw-typst-Form)' }
+
+# convert.ps1 allein (ohne Manifest des Wrappers) exportiert nicht.
+Push-Location $sbNote
+$rr = Invoke-ConvertDirect @('aussen.md', (Join-Path $outDir 'sb-direkt.pdf')) ''
+Pop-Location
+if ($rr.Code -ne 1) { Fail "convert.ps1 ohne Manifest: Exit $($rr.Code)`n$($rr.Text)" }
+elseif ($rr.Text -notmatch 'markdown-office') { Fail "convert.ps1 ohne Manifest: unklare Meldung`n$($rr.Text)" }
+elseif (Test-Path -LiteralPath (Join-Path $outDir 'sb-direkt.pdf')) { Fail 'convert.ps1 ohne Manifest erzeugt ein PDF' }
+else { Ok 'convert.ps1 ohne MDO_MANIFEST: Exit 1 mit Hinweis auf markdown-office' }
+
+# din5008a: Profil in einem gemeinsamen profiles\-Ordner neben einem anderen Profil. Nur das
+# eigene Profil und die Unterschrift, die es nennt, liegen im Staging-Ordner (/profile/...).
+$dinSet = Join-Path $env:MDO_SETS_DIR 'din5008a'
+if (Test-Path -LiteralPath (Join-Path $dinSet 'din5008a.typ') -PathType Leaf) {
+  $user = Join-Path $sb 'user'
+  New-Item -ItemType Directory -Force -Path (Join-Path $user 'profiles') | Out-Null
+  $kanzlei = "# KANZLEI-MARKE`n" + [IO.File]::ReadAllText((Join-Path $Fixtures 'profiles\din-ohne-qr.yaml')).TrimEnd() + "`nsignature: kanzlei-sig.svg`n"
+  [IO.File]::WriteAllText((Join-Path $user 'profiles\kanzlei.yaml'), $kanzlei, $utf8)
+  Copy-Item -LiteralPath (Join-Path $Fixtures 'profiles\din-unterschrift.svg') -Destination (Join-Path $user 'profiles\kanzlei-sig.svg')
+  [IO.File]::WriteAllText((Join-Path $user 'profiles\other.yaml'), "# OTHER-MARKE`nname: Other`nsignature: other-sig.svg`n", $utf8)
+  [IO.File]::WriteAllText((Join-Path $user 'profiles\other-sig.svg'), "<svg xmlns=`"http://www.w3.org/2000/svg`" viewBox=`"0 0 10 10`"><text>OTHER-SIG</text></svg>`n", $utf8)
+  # Brief mit der Zeile exportieren; $Templates ist der Vorlagen-Ordner.
+  function Invoke-DinNote([string]$Name, [string]$Line, [string]$Templates) {
+    $pdf = Join-Path $outDir "sb-$Name.pdf"
+    if (Test-Path -LiteralPath $pdf) { Remove-Item -LiteralPath $pdf -Force }
+    [IO.File]::WriteAllText((Join-Path $user "$Name.md"), "---`ntemplate: din5008a`nprofile: kanzlei`nx-to:`n  - Empfaenger`n---`n`nText $Line`n", $utf8)
+    $savedTpl = $env:MDO_TEMPLATES
+    $env:MDO_TEMPLATES = $Templates
+    Push-Location $user
+    $res = Invoke-Convert @("$Name.md", $pdf)
+    Pop-Location
+    $env:MDO_TEMPLATES = $savedTpl
+    $res.Pdf = $pdf
+    return $res
+  }
+  $ownRead = '$\text{\label{#assert(read("/profile/kanzlei.yaml").contains("KANZLEI-MARKE"))}}$'
+  $dinOk = $true
+  # Gegenprobe: das eigene Profil liegt unter /profile/ und ist lesbar.
+  $rr = Invoke-DinNote 'eigen' $ownRead $EmptyTemplates
+  if ($rr.Code -ne 0 -or -not (Test-PdfA $rr.Pdf)) { Fail "sandbox din5008a eigen: Exit $($rr.Code)`n$($rr.Text)"; $dinOk = $false }
+  foreach ($f in @('/profile/other.yaml', '/profile/other-sig.svg')) {
+    $rr = Invoke-DinNote 'fremd' ('$\text{\label{#read("' + $f + '")}}$') $EmptyTemplates
+    if ($rr.Code -eq 0 -or (Test-Path -LiteralPath $rr.Pdf) -or $rr.Text -notmatch $notFound) {
+      Fail "sandbox din5008a fremd ${f}: lesbar oder falscher Fehler`n$($rr.Text)"; $dinOk = $false
+    }
+  }
+  if ($dinOk) { Ok 'sandbox din5008a: nur das eigene Profil und seine Unterschrift aus profiles\' }
+
+  # Das Set als Ordner im Vorlagen-Ordner (Vorlagen\din5008a\profiles haelt die Profile aller
+  # Absender): profiles\ des Sets kommt nicht in den Staging-Ordner, nur das eigene Profil.
+  $vset = Join-Path $sbRoot 'sb-vorlagen-set'
+  New-Item -ItemType Directory -Force -Path $vset | Out-Null
+  Copy-Item -LiteralPath $dinSet -Destination (Join-Path $vset 'din5008a') -Recurse -Force
+  $vgit = Join-Path $vset 'din5008a\.git'
+  if (Test-Path -LiteralPath $vgit) { Remove-Item -LiteralPath $vgit -Recurse -Force }
+  New-Item -ItemType Directory -Force -Path (Join-Path $vset 'din5008a\profiles') | Out-Null
+  Copy-Item -LiteralPath (Join-Path $user 'profiles\kanzlei.yaml'), (Join-Path $user 'profiles\kanzlei-sig.svg'),
+    (Join-Path $user 'profiles\other.yaml'), (Join-Path $user 'profiles\other-sig.svg') -Destination (Join-Path $vset 'din5008a\profiles')
+  Remove-Item -LiteralPath (Join-Path $user 'profiles') -Recurse -Force
+  $dinOk = $true
+  $rr = Invoke-DinNote 'eigen' $ownRead $vset
+  if ($rr.Code -ne 0 -or -not (Test-PdfA $rr.Pdf)) { Fail "sandbox din5008a im Set-Ordner: Exit $($rr.Code)`n$($rr.Text)"; $dinOk = $false }
+  foreach ($f in @('/set/profiles/other.yaml', '/set/profiles/kanzlei.yaml', '/profile/other.yaml')) {
+    $rr = Invoke-DinNote 'fremd' ('$\text{\label{#read("' + $f + '")}}$') $vset
+    if ($rr.Code -eq 0 -or (Test-Path -LiteralPath $rr.Pdf) -or $rr.Text -notmatch $notFound) {
+      Fail "sandbox din5008a im Set-Ordner, fremd ${f}: lesbar oder falscher Fehler`n$($rr.Text)"; $dinOk = $false
+    }
+  }
+  if ($dinOk) { Ok 'sandbox din5008a: Profile im Set-Ordner (Vorlagen\din5008a\profiles) bleiben draussen' }
+
+  # Das Set als Junction im Vorlagen-Ordner (eigener Klon): sein Profil wird gefunden.
+  $vlink = Join-Path $sbRoot 'sb-vorlagen-link'
+  New-Item -ItemType Directory -Force -Path $vlink | Out-Null
+  if (New-TestLink 'Junction' (Join-Path $vlink 'din5008a') (Join-Path $vset 'din5008a')) {
+    $rr = Invoke-DinNote 'link' 'Text.' $vlink
+    if ($rr.Code -ne 0 -or -not (Test-PdfA $rr.Pdf)) { Fail "sandbox din5008a verlinkt: Exit $($rr.Code)`n$($rr.Text)" }
+    else { Ok 'sandbox din5008a: Profil im verlinkten Set-Ordner (Junction)' }
+  }
+} else {
+  Skip "sandbox din5008a (kein Set din5008a in $env:MDO_SETS_DIR)"
+}
+
+# Kein Staging-Ordner bleibt zurueck, weder nach Erfolg noch nach gescheitertem Export.
+$stagesLeft = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'mdo-stage-*' -Force -ErrorAction SilentlyContinue |
+  Where-Object { $StagesBefore -notcontains $_.FullName })
+if ($stagesLeft.Count -gt 0) { Fail "Staging-Ordner zurueckgeblieben: $(($stagesLeft | ForEach-Object { $_.FullName }) -join ', ')" }
+else { Ok 'sandbox: keine mdo-stage-* nach Erfolg und Fehlschlag' }
 
 Set-Location $Repo
 Remove-Item -LiteralPath $EmptyTemplates -Recurse -Force -ErrorAction SilentlyContinue

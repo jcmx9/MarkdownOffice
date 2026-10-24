@@ -16,6 +16,18 @@
     MDO_SETS_DIR       mitgelieferte Vorlagen-Sets als <name>\<name>.typ
                        (Standard: <MDO_PIPELINE_ROOT>\..\sets; App: <resources>\sets)
     MDO_VERSION        Version fuer --version und die PDF-Stichwoerter (Standard: dev)
+    MDO_MANIFEST       Manifest des Wrappers (markdown-office, src/cli/stage.ts): welche
+                       lokalen Dateien die Notiz ins PDF holen darf (Bilder, Logo, Profil).
+                       Ohne: kein Export.
+
+  Staging-Ordner (spiegelt build.sh): Typst liest nur einen frischen Ordner pro Export
+  (--root), der genau die Notiz, die Dateien aus dem Manifest, das Set und die
+  Pipeline-Bausteine (lib\, vendor\cmarker, mitex, mmdr) als Kopien enthaelt. Warum:
+  Notiztext kann Typst-Code ausfuehren (raw-typst in eigenen Sets, mitex-Durchreichungen
+  wie \text{\label{#read(...)}}); mit dem Laufwerk als --root laese er jede lokale Datei
+  ins PDF. Die Pakete (--package-*) und Fonts bleiben ausserhalb, Typst liest sie nur ueber
+  diese Pfade. Nebenbei entfaellt die Bereitstellung fuer Dateien auf anderen Laufwerken:
+  alles liegt im Staging-Ordner.
 
   Hinweis: Diese Datei muss reines ASCII bleiben (kein BOM) - Windows
   PowerShell 5.1 liest sie sonst in CP1252 falsch.
@@ -58,10 +70,6 @@ elseif (Test-Path -LiteralPath (Join-Path $PipelineRoot 'bin\typst.exe') -PathTy
 # GetFolderPath liefert '' (statt Fehler), wenn der Ordner fehlt (Dienstkonten).
 $docsDir = [Environment]::GetFolderPath('MyDocuments')
 $UserTemplates = ''  # unten gesetzt, nach ConvertTo-FullPath
-# Typst-Root im Normalfall: das Laufwerks-Wurzelverzeichnis des Pipeline-Ordners.
-# Damit sind lib/, vendor/ und die Sets direkt lesbar; Dateien auf anderen
-# Laufwerken werden bereitgestellt (siehe Initialize-Stage).
-$Root        = [IO.Path]::GetPathRoot($PipelineRoot)
 
 # ---------------------------------------------------------------------------
 # CLI-Flags: -Version / -Help (PowerShell-nativ) sowie zusaetzlich die POSIX-
@@ -114,6 +122,7 @@ Environment:
                             (Standard: Ordner dieses Skripts)
   MDO_SETS_DIR=ordner       Mitgelieferte Vorlagen-Sets (Standard: ..\sets)
   MDO_VERSION=version       Versionsangabe (Standard: dev)
+  MDO_MANIFEST=datei        Export-Manifest; setzt markdown-office (ohne: kein Export)
   TYPST=pfad                Bestimmtes typst-Binary verwenden (>= 0.15 erforderlich)
 "@
 }
@@ -208,24 +217,6 @@ function ConvertTo-YamlBool {
   return $null
 }
 
-# Einen Windows-Pfad in einen Typst-tauglichen Pfad wandeln. Typst loest die
-# --input-Pfade (read/image/pdf.attach/docdir) INTERN ueber sein virtuelles
-# Dateisystem RELATIV zu --root auf. Zwei Regeln gelten dort:
-#   1. keine Backslashes            -> '\' zu '/'
-#   2. kein Laufwerksbuchstabe      -> fuehrendes 'C:' entfernen, sodass der
-#      ("path contains invalid          Pfad wurzel-relativ mit '/' beginnt
-#       component `C:`")                 ('C:\Users\x' -> '/Users/x')
-# Das spiegelt build.sh (macOS/Linux: --root / + '/'-absolute Pfade). --root ist
-# ein Laufwerks-Wurzelverzeichnis ($script:TypstRoot), daher werden nur Pfade auf
-# diesem Laufwerk gewandelt; alles andere ist vorher bereitgestellt (siehe
-# Initialize-Stage). Reine CLI-fs-Argumente (Template, Ausgabe, --root,
-# --font-path) sind NICHT betroffen.
-function ConvertTo-TypstPath {
-  param([string]$Path)
-  if (-not $Path) { return '' }
-  return ($Path -replace '\\', '/') -replace '^[A-Za-z]:', ''
-}
-
 # Einen YAML-String-Skalar saeubern (spiegelt yaml_str in build.sh): in
 # Anfuehrungszeichen gilt der Inhalt bis zum schliessenden Zeichen, sonst wird
 # ein Inline-Kommentar (' # ...') abgeschnitten. Eine Inline-Liste [a, "b"]
@@ -290,97 +281,26 @@ function ConvertTo-IsoDate {
   return ''
 }
 
-# Typst liest nur unterhalb EINES --root, und ein --root umfasst unter Windows
-# nie mehr als ein Laufwerk. Normalfall: --root = Laufwerk des Pipeline-Ordners
-# (lib\, vendor\ und die Sets liegen dort). Eine Notiz, ein Bild, ein Logo oder
-# eine Vorlage auf einem anderen Laufwerk (Notiz auf D:, Markdown Office unter
-# C:\Users\...\AppData) wird fuer den Build in einen temporaeren Ordner auf dem
-# Laufwerk von --root kopiert ("Bereitstellung"); dort liegt auch die
-# Bild-Zuordnung (JSON, von Typst gelesen). Der Ordner wird danach entfernt.
-#
-# Initialize-Stage legt den Bereitstellungsordner zu Beginn jedes Builds an
-# (die Bild-Zuordnung braucht ihn immer) und legt damit --root fest:
-#   1. Ein beschreibbarer Ordner auf dem Laufwerk des Pipeline-Ordners: zuerst
-#      %TEMP%, dann %LOCALAPPDATA%, dann das Arbeitsverzeichnis, dann die Ordner
-#      von Quelle und Ausgabe. --root bleibt dieses Laufwerk.
-#   2. Gibt es dort keinen (App z. B. auf D:, %TEMP%, Notiz und Ausgabe auf C:),
-#      wechselt --root auf das Laufwerk des ersten beschreibbaren Ordners derselben
-#      Liste. Die Teile der Pipeline, die Typst selbst liest (lib\ und vendor\,
-#      wenige MB), werden dann mit bereitgestellt und sys.inputs.mdo zeigt dorthin;
-#      Vorlage und Pipeline-Logo folgen wie jede Datei auf einem fremden Laufwerk.
-#      Die Schriften bleiben, wo sie sind (--font-path ist ein normaler Pfad und
-#      liegt nicht unter --root).
-# Nie im Pipeline-Ordner selbst (in der App ggf. schreibgeschuetzt) und nie
-# neben der Installation: ein fester Ordner dort ist weder sicher vorhanden
-# noch sicher beschreibbar.
-$script:StageDir = ''
-$script:StageCount = 0
-$script:TypstRoot = $Root
-$script:TypstMdo = $PipelineRoot
-
-# Liegt $P im Pipeline-Ordner (oder ist es dieser)?
-function Test-InPipeline {
-  param([string]$P)
-  $full = [IO.Path]::GetFullPath($P).TrimEnd('\', '/')
-  return ($full.Equals($PipelineRoot, [StringComparison]::OrdinalIgnoreCase) -or
-    $full.StartsWith($PipelineRoot + '\', [StringComparison]::OrdinalIgnoreCase))
-}
-
-# Einen leeren Bereitstellungsordner in $Dir anlegen; '' wenn das nicht geht.
-function New-StageIn {
-  param([string]$Dir)
-  $d = Join-Path $Dir ('mdo-stage-' + [Guid]::NewGuid().ToString('N'))
-  try {
-    New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop | Out-Null
-    return $d
-  } catch { return '' }
-}
-
-function Initialize-Stage {
-  param([string]$Src, [string]$OutPdf)
-  $script:StageDir = ''; $script:StageCount = 0
-  $script:TypstRoot = $Root; $script:TypstMdo = $PipelineRoot
-  $cands = @(@([IO.Path]::GetTempPath(), $env:LOCALAPPDATA, (Get-Location).Path,
-      (Split-Path -Parent $Src), (Split-Path -Parent $OutPdf)) |
-    Where-Object { $_ -and -not (Test-InPipeline $_) })
-  # 1. Auf dem Laufwerk des Pipeline-Ordners: nichts muss umziehen.
-  foreach ($c in $cands) {
-    if ([IO.Path]::GetPathRoot($c) -ne $Root) { continue }
-    $d = New-StageIn $c
-    if ($d) { $script:StageDir = $d; return }
-  }
-  # 2. Sonst: --root auf ein anderes Laufwerk, lib\ und vendor\ mit bereitstellen.
-  foreach ($c in $cands) {
-    if ([IO.Path]::GetPathRoot($c) -eq $Root) { continue }
-    $d = New-StageIn $c
-    if (-not $d) { continue }
-    $script:StageDir = $d
-    $mdo = Join-Path $d 'pipeline'
-    New-Item -ItemType Directory -Force -Path $mdo | Out-Null
-    foreach ($part in @('lib', 'vendor')) {
-      Copy-Item -LiteralPath (Join-Path $PipelineRoot $part) -Destination (Join-Path $mdo $part) -Recurse -Force
-    }
-    $script:TypstRoot = [IO.Path]::GetPathRoot($d)
-    $script:TypstMdo = $mdo
-    return
-  }
-  throw ("Kein beschreibbarer Ordner fuer die Bereitstellung gefunden (gesucht in: " +
-    ($cands -join ', ') + ')')
-}
-
 # Kein Netz, nie (2/2, spiegelt build.sh): was der Textscan der Vorlage nicht sieht (z. B.
 # eine per Verkettung gebaute Paketangabe), stoppt ein unerreichbarer Proxy fuer die
 # Typst-Aufrufe; ein Download scheitert, bevor etwas in die Ablage geschrieben wird.
-# NO_PROXY leer: keine Ausnahmen. Enable-NoNetwork setzt die Variablen NUR um einen
-# Typst-Aufruf herum und gibt die alten Werte zurueck; Restore-Network stellt sie in einem
-# finally wieder her, damit weder der PDF-Betrachter (Start-Process) noch ein Aufrufer im
-# selben Prozess sie erbt. (Unter Windows sind HTTPS_PROXY und https_proxy dieselbe
-# Variable; das Speichern in fester Reihenfolge und Wiederherstellen in umgekehrter
-# Reihenfolge stellt den urspruenglichen Wert her.)
-$script:NoNetVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'NO_PROXY', 'no_proxy')
+# NO_PROXY leer: keine Ausnahmen. Ohne jede TYPST_*-Variable (Wurzel, Paket- und Font-Pfade,
+# Zertifikat von aussen), wie die Formelvorschau der App (src/main/math.ts mathEnv).
+# Enable-NoNetwork setzt die Variablen NUR um einen Typst-Aufruf herum und gibt die alten Werte
+# zurueck; Restore-Network stellt sie in einem finally wieder her, damit weder der
+# PDF-Betrachter (Start-Process) noch ein Aufrufer im selben Prozess sie erbt. (Unter Windows
+# sind HTTPS_PROXY und https_proxy dieselbe Variable; das Speichern in fester Reihenfolge und
+# Wiederherstellen in umgekehrter Reihenfolge stellt den urspruenglichen Wert her.)
+$script:NoNetVars = @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'https_proxy', 'http_proxy', 'all_proxy',
+  'NO_PROXY', 'no_proxy')
 function Enable-NoNetwork {
   $saved = [ordered]@{}
-  foreach ($v in $script:NoNetVars) { $saved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+  $typstVars = @([Environment]::GetEnvironmentVariables('Process').Keys |
+    ForEach-Object { [string]$_ } | Where-Object { $_ -match '^TYPST_' })
+  foreach ($v in @($script:NoNetVars + $typstVars)) {
+    if (-not $saved.Contains($v)) { $saved[$v] = [Environment]::GetEnvironmentVariable($v, 'Process') }
+  }
+  foreach ($v in $typstVars) { [Environment]::SetEnvironmentVariable($v, $null, 'Process') }
   foreach ($v in $script:NoNetVars) {
     $val = if ($v -like '*no_proxy') { $null } else { 'http://127.0.0.1:9' }
     [Environment]::SetEnvironmentVariable($v, $val, 'Process')
@@ -395,46 +315,289 @@ function Restore-Network {
   foreach ($v in $names) { [Environment]::SetEnvironmentVariable($v, $Saved[$v], 'Process') }
 }
 
-function Get-TypstReadable {
-  param([string]$Path, [string]$Name = '')
-  if (-not $Path) { return $Path }
-  if ([IO.Path]::GetPathRoot($Path) -eq $script:TypstRoot) { return $Path }
-  if (-not $Name) {
-    $script:StageCount++
-    $Name = ('datei-' + $script:StageCount + [IO.Path]::GetExtension($Path))
-  }
-  $target = Join-Path $script:StageDir $Name
-  Copy-Item -LiteralPath $Path -Destination $target -Force
-  return $target
+# Ein Symlink oder eine Junction (auch ein Laufwerk im Ordner)? Andere Reparse-Punkte, etwa
+# OneDrive-Platzhalter in einem umgeleiteten Dokumente-Ordner, sind keine Links: ihr Inhalt
+# liegt an dieser Stelle.
+function Test-LinkItem {
+  param($Item)
+  return [bool](($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+    ($Item.LinkType -in @('SymbolicLink', 'Junction')))
 }
 
-# Ordner fuer Typst lesbar machen (spiegelt Get-TypstReadable fuer einen Ordner): liegt er
-# auf einem anderen Laufwerk als die Typst-Wurzel, werden NUR seine Dateien auf oberster
-# Ebene (keine Unterordner) in den Stage-Ordner kopiert. Das Profil braucht das, weil das Set
-# Dateien daneben liest (die Unterschrift, direkt neben dem Profil). Ein Laufwerks-
-# Wurzelverzeichnis wird abgelehnt, damit nie ein ganzes Laufwerk kopiert wird.
-function Get-TypstReadableDir {
+# Pfad mit allen Symlinks und Junctions aufgeloest (spiegelt real_path in build.sh; Windows
+# PowerShell 5.1 und .NET Framework haben dafuer keine Funktion): Teil fuer Teil ab der Wurzel,
+# ein Link wird durch sein Ziel ersetzt (ein relatives ab seinem Ordner). $null bei einem
+# fehlenden Teil, einem Link ohne Ziel oder mehr als 40 Links (Schleife).
+function Resolve-RealPath {
+  param([string]$P)
+  try { $p = [IO.Path]::GetFullPath($P) } catch { return $null }
+  for ($hops = 0; $hops -le 40; $hops++) {
+    $root = [IO.Path]::GetPathRoot($p)
+    if (-not $root) { return $null }
+    $parts = @($p.Substring($root.Length).Split([char[]]@('\', '/'), [StringSplitOptions]::RemoveEmptyEntries))
+    $cur = $root
+    $relinked = $false
+    for ($k = 0; $k -lt $parts.Count; $k++) {
+      $next = [IO.Path]::Combine($cur, $parts[$k])
+      $item = Get-Item -LiteralPath $next -Force -ErrorAction SilentlyContinue
+      if (-not $item) { return $null }
+      if (Test-LinkItem $item) {
+        $target = [string](@($item.Target) | Where-Object { $_ } | Select-Object -First 1)
+        if (-not $target) { return $null }
+        if ($target.StartsWith('\??\')) { $target = $target.Substring(4) }
+        if (-not [IO.Path]::IsPathRooted($target)) { $target = [IO.Path]::Combine($cur, $target) }
+        $p = $target
+        for ($j = $k + 1; $j -lt $parts.Count; $j++) { $p = [IO.Path]::Combine($p, $parts[$j]) }
+        try { $p = [IO.Path]::GetFullPath($p) } catch { return $null }
+        $relinked = $true
+        break
+      }
+      $cur = $next
+    }
+    if (-not $relinked) { return $cur }
+  }
+  return $null
+}
+
+# Der Teil von $Real unterhalb von $Root (beide aufgeloest), sonst $null. Gross- und
+# Kleinschreibung zaehlen unter Windows nicht.
+function Get-RelativeUnder {
+  param([string]$Real, [string]$Root)
+  $r = $Root.TrimEnd('\', '/') + '\'
+  if (-not $Real.StartsWith($r, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+  $rel = $Real.Substring($r.Length)
+  if (-not $rel) { return $null }
+  return $rel
+}
+
+# Beginnt ein Teil des relativen Pfads mit '.' (.ssh, .config, .git ...)?
+function Test-DotSegment {
+  param([string]$Rel)
+  return [bool](@($Rel.Split([char[]]@('\', '/')) | Where-Object { $_.StartsWith('.') }).Count)
+}
+
+# Heisst ein Teil des relativen Pfads profiles (dort liegen die Profile aller Absender)?
+function Test-ProfilesSegment {
+  param([string]$Rel)
+  return [bool](@($Rel.Split([char[]]@('\', '/')) | Where-Object { $_ -eq 'profiles' }).Count)
+}
+
+# Zahl der Namen (harten Links) einer Datei; 0, wenn sie sich nicht ermitteln laesst (dann gilt
+# die Datei als abgewiesen, wie build.sh mit stat). .NET Framework kennt die Zahl nicht, daher
+# GetFileInformationByHandle; der Typ wird erst hier uebersetzt (nur fuer eine von der Notiz
+# genannte Vorlage, kein Aufwand bei jedem Export).
+function Get-LinkCount {
+  param([string]$File)
+  try {
+    if (-not ('MdoNative.LinkCount' -as [type])) {
+      Add-Type -Namespace MdoNative -Name LinkCount -MemberDefinition @'
+[StructLayout(LayoutKind.Sequential)]
+public struct Info {
+  public uint FileAttributes;
+  public uint CreationLow, CreationHigh, AccessLow, AccessHigh, WriteLow, WriteHigh;
+  public uint VolumeSerialNumber, FileSizeHigh, FileSizeLow, NumberOfLinks, FileIndexHigh, FileIndexLow;
+}
+[DllImport("kernel32.dll", SetLastError = true)]
+public static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out Info info);
+'@
+    }
+    $fs = [IO.File]::Open($File, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+    try {
+      $info = New-Object 'MdoNative.LinkCount+Info'
+      if (-not [MdoNative.LinkCount]::GetFileInformationByHandle($fs.SafeFileHandle, [ref]$info)) { return 0 }
+      return [int]$info.NumberOfLinks
+    } finally { $fs.Dispose() }
+  } catch { return 0 }
+}
+
+# Eine .typ, die die Notiz selbst nennt (template: ./x.typ, ~, %VAR%, absolut), laeuft mit der
+# Notiz im Staging-Ordner (spiegelt note_template_ok in build.sh). Sie muss daher eine echte
+# Datei sein (kein Symlink, kein harter Link: ein zweiter Name derselben Datei kann eine fremde
+# Datei sein), auf .typ enden und aufgeloest unter einem der Ordner $Roots liegen (Ordner der
+# Notiz, MDO_BASE_DIR, Vorlagen-Ordner), ohne Punkt-Ordner darunter. Warum: `template:
+# ./evil.typ` als Link auf eine Datei unter .ssh oder ein verlinkter Ordner braechte jede lokale
+# Datei ins PDF. Die Entscheidung trifft der Wrapper (src/cli/stage.ts templateFile); dies prueft
+# dieselbe Regel noch einmal.
+function Test-NoteTemplate {
+  param([string]$File, [string[]]$Roots)
+  $item = Get-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue
+  if (-not $item -or $item.PSIsContainer) { return $false }
+  if ((Test-LinkItem $item) -or $item.LinkType) { return $false }
+  if ((Get-LinkCount $item.FullName) -ne 1) { return $false }
+  $dir = Resolve-RealPath (Split-Path -Parent $item.FullName)
+  if (-not $dir) { return $false }
+  $real = [IO.Path]::Combine($dir, $item.Name)
+  if ([IO.Path]::GetExtension($real) -ne '.typ') { return $false }
+  foreach ($root in $Roots) {
+    if (-not $root) { continue }
+    $rr = Resolve-RealPath $root
+    if (-not $rr) { continue }
+    $rel = Get-RelativeUnder $real $rr
+    if ($null -eq $rel -or (Test-DotSegment $rel)) { continue }
+    return $true
+  }
+  return $false
+}
+
+# Der Ordner einer einzelnen, ueber den Set-Namen gefundenen .typ (Vorlagen\meinset.typ), damit
+# sie Nachbardateien einbinden kann (spiegelt stage_folder in build.sh; Entscheidung des
+# Besitzers, 2026-10-24). Der Ordner ist meist der Vorlagen-Ordner selbst; daher bleiben draussen:
+# jeder Ordner namens profiles (in jeder Tiefe; dort liegen die Profile aller Absender), jeder
+# Eintrag, dessen Name mit . beginnt, und jeder Symlink, dessen Ziel den Ordner $RealRoot
+# verlaesst. Ein Symlink auf eine Datei im Ordner wird als Inhalt kopiert; ein Ordner-Link oder
+# eine Junction wird nie verfolgt (er umginge die Ausnahmen).
+function Copy-StageFolder {
+  param([string]$Src, [string]$Dest, [string]$RealRoot)
+  foreach ($e in @(Get-ChildItem -LiteralPath $Src -Force -ErrorAction Stop)) {
+    if ($e.Name.StartsWith('.')) { continue }
+    $to = Join-Path $Dest $e.Name
+    if (Test-LinkItem $e) {
+      if ($e.PSIsContainer) { continue }
+      $r = Resolve-RealPath $e.FullName
+      if (-not $r) { continue }
+      $rel = Get-RelativeUnder $r $RealRoot
+      if ($null -eq $rel -or (Test-DotSegment $rel) -or (Test-ProfilesSegment $rel)) { continue }
+      if (-not (Test-Path -LiteralPath $r -PathType Leaf)) { continue }
+      [IO.File]::Copy($r, $to, $true)
+    } elseif ($e.PSIsContainer) {
+      if ($e.Name -eq 'profiles') { continue }
+      [void][IO.Directory]::CreateDirectory($to)
+      Copy-StageFolder $e.FullName $to $RealRoot
+    } else {
+      [IO.File]::Copy($e.FullName, $to, $true)
+    }
+  }
+}
+
+# Ein vertrauenswuerdiger Ordner (Set-Ordner, lib\, vendor\...) in den Staging-Ordner; Links darin
+# werden wie bisher verfolgt (ein Set-Repo als Link im Vorlagen-Ordner). $Dest darf noch nicht
+# bestehen (Copy-Item legt ihn dann als Kopie von $Src an, statt $Src hineinzulegen).
+function Copy-Trusted {
+  param([string]$Src, [string]$Dest)
+  Copy-Item -LiteralPath $Src -Destination $Dest -Recurse -Force -ErrorAction Stop
+}
+
+# Frischer, privater Staging-Ordner im Temp-Ordner des Benutzers (nie neben der Notiz, nie im
+# Pipeline-Ordner): mdo-stage-<guid> mit der Marke .mdo-stage, die den Wrapper einen Ordner
+# wegraeumen laesst, den ein hartes Beenden zurueckliess. Zugriff nur fuer den angemeldeten
+# Benutzer (wie chmod 700 in build.sh; ohne vererbte Rechte); geht das nicht, bleibt es beim
+# Temp-Ordner des Benutzers, der ohnehin nur ihm gehoert.
+function New-StageDir {
+  $base = [IO.Path]::GetTempPath()
+  for ($try = 0; $try -lt 5; $try++) {
+    $d = Join-Path $base ('mdo-stage-' + [Guid]::NewGuid().ToString('N'))
+    if (Test-Path -LiteralPath $d) { continue }
+    try {
+      $sec = New-Object Security.AccessControl.DirectorySecurity
+      $sec.SetAccessRuleProtection($true, $false)
+      $me = [Security.Principal.WindowsIdentity]::GetCurrent().User
+      $sec.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($me, 'FullControl',
+            'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+      [void][IO.Directory]::CreateDirectory($d, $sec)
+    } catch {
+      [void][IO.Directory]::CreateDirectory($d)
+    }
+    [IO.File]::WriteAllText((Join-Path $d '.mdo-stage'), '')
+    return $d
+  }
+  throw "Staging-Ordner nicht anlegbar in $base"
+}
+
+# Staging-Ordner entfernen, ohne je einem Link zu folgen (Windows PowerShell 5.1 Remove-Item
+# -Recurse loescht durch eine Junction hindurch auch das Ziel). Schreibgeschuetzte Kopien werden
+# vorher freigegeben. Scheitert es, bleibt der Ordner mit seiner Marke fuer den Wrapper.
+function Remove-StageTree {
+  param([IO.DirectoryInfo]$Dir)
+  foreach ($e in $Dir.GetFileSystemInfos()) {
+    if ($e.Attributes -band [IO.FileAttributes]::ReadOnly) {
+      $e.Attributes = $e.Attributes -band -bnot [IO.FileAttributes]::ReadOnly
+    }
+    if (($e.Attributes -band [IO.FileAttributes]::Directory) -and
+        -not ($e.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+      Remove-StageTree ([IO.DirectoryInfo]$e)
+    } else {
+      # Eine Datei oder ein Link (nur der Link selbst wird entfernt, nie sein Ziel).
+      $e.Delete()
+    }
+  }
+  $Dir.Delete()
+}
+function Remove-StageDir {
   param([string]$Dir)
-  if (-not $Dir) { return $Dir }
-  if ([IO.Path]::GetPathRoot($Dir) -eq $script:TypstRoot) { return $Dir }
-  if ($Dir.TrimEnd('\', '/') -eq [IO.Path]::GetPathRoot($Dir).TrimEnd('\', '/')) {
-    throw "Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen: $Dir"
+  if (-not $Dir) { return }
+  try {
+    $info = New-Object IO.DirectoryInfo $Dir
+    if ($info.Exists) { Remove-StageTree $info }
+  } catch {
+    Write-Verbose "Staging-Ordner nicht entfernt: $Dir"
   }
-  $script:StageCount++
-  $target = Join-Path $script:StageDir ('ordner-' + $script:StageCount)
-  New-Item -ItemType Directory -Force -Path $target | Out-Null
-  Get-ChildItem -LiteralPath $Dir -File -Force | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+}
+
+# Manifest lesen (JSON, vom Wrapper geschrieben und geprueft; spiegelt build.sh). Werte mit
+# Steuerzeichen entfallen (ein solches Bild fehlt dann nur), ebenso Pfade, die nicht absolut
+# sind. Logo und Profil kommen NUR von hier: eigene Suchen nach Pfaden aus der Notiz wuerden
+# wieder beliebige Dateien in den Staging-Ordner holen. Strict Mode: fehlende Felder ueber
+# Get-JsonValue lesen, nie als Eigenschaft.
+function Get-JsonValue {
+  param($Obj, [string]$Name)
+  if ($Obj -isnot [Management.Automation.PSCustomObject]) { return $null }
+  $prop = $Obj.PSObject.Properties[$Name]
+  if ($prop) { return $prop.Value }
+  return $null
+}
+function Test-PlainValue {
+  param($V)
+  return [bool](($V -is [string]) -and $V.Length -gt 0 -and $V -notmatch '[\x00-\x1f\x7f]')
+}
+function Test-AbsValue {
+  param($V)
+  return [bool]((Test-PlainValue $V) -and $V -match '^([A-Za-z]:[\\/]|[\\/]{2})')
+}
+function Read-ExportManifest {
+  param([string]$File)
+  try {
+    $m = [IO.File]::ReadAllText($File, (New-Object Text.UTF8Encoding $false)) | ConvertFrom-Json
+  } catch { throw "Export-Manifest nicht lesbar: $File" }
+  $r = @{ Refs = @(); Paths = @(); Logo = ''; Profile = ''; ProfileFiles = @() }
+  foreach ($i in @(Get-JsonValue $m 'images')) {
+    $ref = Get-JsonValue $i 'ref'
+    $path = Get-JsonValue $i 'path'
+    if ((Test-PlainValue $ref) -and (Test-AbsValue $path)) {
+      $r.Refs += [string]$ref
+      $r.Paths += [string]$path
+    }
   }
-  return $target
+  $logo = Get-JsonValue $m 'logo'
+  if (Test-AbsValue $logo) { $r.Logo = [string]$logo }
+  $prof = Get-JsonValue $m 'profile'
+  $yaml = Get-JsonValue $prof 'yaml'
+  if (Test-AbsValue $yaml) {
+    $r.Profile = [string]$yaml
+    foreach ($f in @(Get-JsonValue $prof 'files')) {
+      if (Test-AbsValue $f) { $r.ProfileFiles += [string]$f }
+    }
+  }
+  return $r
+}
+
+# Ein JSON-String-Literal (fuer images.json; wie json_escape in build.sh, dazu Steuerzeichen als
+# \uXXXX). Von Hand statt ConvertTo-Json: das Ergebnis haengt so nicht von der Version ab.
+function ConvertTo-JsonString {
+  param([string]$S)
+  $v = $S.Replace('\', '\\').Replace('"', '\"')
+  $v = [regex]::Replace($v, '[\x00-\x1f]', { param($c) '\u{0:x4}' -f [int][char]$c.Value })
+  return '"' + $v + '"'
 }
 
 # Vorlage aufloesen (spiegelt resolve_template in build.sh): leer -> memo;
 # ein Name (a-z, 0-9, _ und -) ist ein Set (Benutzerordner <name>.typ oder
 # <name>\<name>.typ vor den mitgelieferten Sets <MDO_SETS_DIR>\<name>\<name>.typ); ein Wert auf .typ eine
-# einzelne Datei relativ zu $Base.
+# einzelne Datei relativ zu $Base. -FromNote (der Wert steht in der Notiz): ein UNC- oder
+# Geraetepfad (\\server\x, //server/x) gilt als nicht gefunden, ohne ihn anzufassen - schon das
+# Nachsehen liesse Windows per SMB den Server kontaktieren und dabei den NTLM-Hash des Nutzers
+# preisgeben (wie remoteWinPath im Wrapper, src/cli/stage.ts).
 function Resolve-Template {
-  param([string]$Value, [string]$Base)
+  param([string]$Value, [string]$Base, [switch]$FromNote)
   if (-not $Value) { $Value = 'memo' }
   if ($Value -cmatch '^[a-z0-9_-]+$') {
     # Benutzerordner zuerst: <name>.typ, dann ein Set-Ordner <name>\<name>.typ (geklontes
@@ -453,6 +616,7 @@ function Resolve-Template {
   }
   if ($Value -match '\.typ$') {
     $p = Expand-NotePath $Value
+    if ($FromNote -and $p -match '^[\\/]{2}') { throw "Vorlage nicht gefunden: $Value" }
     if (-not [IO.Path]::IsPathRooted($p)) { $p = [IO.Path]::Combine($Base, $p) }
     $p = [IO.Path]::GetFullPath($p)
     if (Test-Path -LiteralPath $p -PathType Leaf) { return $p }
@@ -470,6 +634,12 @@ function Convert-One {
   }
   if ([IO.Path]::GetExtension($Src) -notin @('.md', '.markdown')) {
     throw "Keine Markdown-Datei: $Src"
+  }
+  # Exportiert wird nur mit dem Manifest des Wrappers (spiegelt build.sh): nur er weiss, welche
+  # Dateien die Notiz sichtbar einbindet. Hilfe, Version, Aufruffehler und eine fehlende Quelle
+  # sind oben schon beantwortet (dort setzt der Wrapper kein Manifest).
+  if (-not $env:MDO_MANIFEST -or -not (Test-Path -LiteralPath $env:MDO_MANIFEST -PathType Leaf)) {
+    throw "kein Export-Manifest (MDO_MANIFEST) - bitte ueber markdown-office exportieren: markdown-office $Src"
   }
 
   $srcDir = Split-Path -Parent $Src
@@ -543,53 +713,22 @@ function Convert-One {
   }
   $outName = Split-Path -Leaf $outPdf
 
-  # Logo nur mit logo: im Frontmatter (ohne Schluessel oder leer: kein Logo).
-  # Der Wert ist eine Datei .svg/.png/.jpg/.jpeg. Absolut (auch ueber ~,
-  # %USERPROFILE% oder $HOME) -> genau diese Datei; relativ -> zuerst im Ordner
-  # der Notiz (bzw. MDO_BASE_DIR), dann im Benutzerordner, dann im Vorlagen-Ordner
-  # (MDO_TEMPLATES bzw. Dokumente\Markdown Office\Vorlagen), dann im Pipeline-Ordner.
-  # Nichts gefunden -> ohne Logo, nur ein Hinweis, nie ein Fehler.
-  $logoArg = ''
-  if ($fmLogo) {
-    if ($fmLogo -match '^(https?:)?//|^data:') {
-      Write-Host "Hinweis: Remote-Logo wird nicht geladen (kein Netzzugriff): $fmLogo" -ForegroundColor Yellow
-    } elseif ($fmLogo -notmatch '\.(svg|png|jpe?g)$') {
-      Write-Host "Hinweis: Logo muss .svg, .png, .jpg oder .jpeg sein: $fmLogo - baue ohne Logo." -ForegroundColor Yellow
-    } else {
-      $noteLogo = Expand-NotePath $fmLogo
-      if ([IO.Path]::IsPathRooted($noteLogo)) {
-        if (Test-Path -LiteralPath $noteLogo -PathType Leaf) { $logoArg = $noteLogo }
-      } else {
-        foreach ($dir in @($baseDir, (Get-EnvFallback 'USERPROFILE'), $UserTemplates, $PipelineRoot)) {
-          if (-not $dir) { continue }
-          $cand = [IO.Path]::Combine($dir, $noteLogo)
-          if (Test-Path -LiteralPath $cand -PathType Leaf) { $logoArg = $cand; break }
-        }
-      }
-      if (-not $logoArg) {
-        Write-Host "Hinweis: Logo nicht gefunden: $fmLogo - baue ohne Logo." -ForegroundColor Yellow
-      }
-    }
+  # Vorlage aufloesen. Nur ein ueber den Set-Namen gefundenes Set ist ein Set-Ordner (ganz
+  # geprueft und kopiert); eine .typ-Datei ist immer nur diese eine Datei, auch in der Form
+  # .\x\x.typ (spiegelt build.sh).
+  $templateValue = if ($CliTemplate) { $CliTemplate } else { $fmTemplate }
+  $templateSrc = if ($CliTemplate) { Resolve-Template $CliTemplate (Get-Location).Path } else { Resolve-Template $fmTemplate $baseDir -FromNote }
+  $byName = (-not $templateValue) -or ($templateValue -cmatch '^[a-z0-9_-]+$')
+  if (-not $byName -and -not $CliTemplate -and -not (Test-NoteTemplate $templateSrc @($srcDir, $baseDir, $UserTemplates))) {
+    throw "Vorlage muss eine .typ-Datei im Ordner der Notiz oder im Vorlagen-Ordner sein: $fmTemplate"
   }
-
-  # Laufzeit-Eingaben fuers Template. title = Rueckfall-Metadatentitel
-  # (Basisname); doctitle = Frontmatter title:. --root deckt das Laufwerk ab,
-  # damit absolute Pfade (Quelle, Anhang, Bilder) lesbar sind.
-  # Pfad-Inputs, die Typst INTERN aufloest (read/image/pdf.attach + docdir),
-  # in wurzel-relative Typst-Pfade wandeln (Backslashes -> '/', Laufwerk weg);
-  # siehe ConvertTo-TypstPath. Die CLI-fs-Argumente bleiben unveraendert.
-  # Quelle und Logo fuer Typst erreichbar machen (anderes Laufwerk als --root ->
-  # Kopie im Bereitstellungsordner). Die Kopie der Quelle traegt ihren Dateinamen:
-  # so bleibt der Anhang im PDF unter dem Originalnamen und mit dem Originalinhalt.
-  Initialize-Stage $Src $outPdf
-  # Vorlage aufloesen; eine Vorlage auf einem anderen Laufwerk wird bereitgestellt.
-  $templateSrc = if ($CliTemplate) { Resolve-Template $CliTemplate (Get-Location).Path } else { Resolve-Template $fmTemplate $baseDir }
-  $templateFile = Get-TypstReadable $templateSrc ([IO.Path]::GetFileName($templateSrc))
+  $tplDir = Split-Path -Parent $templateSrc
+  $tplLeaf = Split-Path -Leaf $templateSrc
+  $isSet = $byName -and ((Split-Path -Leaf $tplDir) -eq [IO.Path]::GetFileNameWithoutExtension($templateSrc))
   # Offline-Paketablage (spiegelt build.sh): @preview-Pakete aus vendor\packages im
   # Cache-Layout preview\<name>\<version>, nie aus dem Netz; --package-path auf einen Ordner,
-  # der nicht mitgeliefert wird (keine @local-Pakete des Rechners). Die Pfade muessen nicht
-  # unter --root liegen (Pakete haben eine eigene Wurzel), daher der Original-Pipeline-Ordner
-  # auch dann, wenn lib\ und vendor\ auf ein anderes Laufwerk bereitgestellt wurden.
+  # der nicht mitgeliefert wird (keine @local-Pakete des Rechners). Die Pfade liegen nicht unter
+  # --root (Pakete haben eine eigene Wurzel).
   $pkgArgs = @('--package-cache-path', (Join-Path $PipelineRoot 'vendor\packages'),
                '--package-path', (Join-Path $PipelineRoot 'vendor\local-packages'))
   # Kein Netz, nie (1/2, spiegelt build.sh): jeder @preview-Import, der nicht in der Ablage
@@ -599,9 +738,9 @@ function Convert-One {
   # <name>\<version> ist (auch ungueltige Angaben mit Grossbuchstaben oder _), wird
   # abgewiesen. Geprueft wird die Vorlage; ist sie ein Set-Ordner <name>\<name>.typ, jede .typ
   # darin (auch Unterordner), weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen
-  # .typ nur diese, weil ihre Nachbarn andere Sets sein koennen.
-  $tplDir = Split-Path -Parent $templateSrc
-  $scan = if ((Split-Path -Leaf $tplDir) -eq [IO.Path]::GetFileNameWithoutExtension($templateSrc)) {
+  # .typ nur diese, weil ihre Nachbarn andere Sets sein koennen (bindet sie eine Nachbardatei
+  # ein, die nach einem fremden Paket greift, stoppt das der Proxy).
+  $scan = if ($isSet) {
     @(Get-ChildItem -LiteralPath $tplDir -Recurse -File -Force -Filter '*.typ' | ForEach-Object { $_.FullName })
   } else { @($templateSrc) }
   foreach ($f in $scan) {
@@ -615,151 +754,272 @@ function Convert-One {
       if (-not $ok) { throw "Paket nicht mitgeliefert: @preview/$spec (Vorlage $templateSrc)" }
     }
   }
-  # Kein Netz, nie (2/2): beide Typst-Aufrufe unten laufen hinter einem unerreichbaren
-  # Proxy (siehe Enable-NoNetwork).
-  # Absender-Profil (profile:), spiegelt build.sh: Name -> profiles\<name>.yaml im Ordner
-  # der Notiz (bzw. MDO_BASE_DIR), in Vorlagen\<set>\profiles (Profile des Sets, auch fuer
-  # mitgelieferte Sets; nur bei einem Set-Namen, nicht bei einer .typ-Datei), im gemeinsamen
-  # Vorlagen\profiles (Rueckfall), im Ordner des Sets (Beispielprofile); erster Treffer
-  # gewinnt. Sonst ein Pfad auf .yaml/.yml. Nicht gefunden -> Exit 1 (kein Brief ohne Absender).
-  $templateValue = if ($CliTemplate) { $CliTemplate } else { $fmTemplate }
-  $setName = if (-not $templateValue) { 'memo' } elseif ($templateValue -cmatch '^[a-z0-9_-]+$') { $templateValue } else { '' }
-  $profileArg = ''
-  if ($fmProfile) {
-    if ($fmProfile -cmatch '^[a-z0-9_-]+$') {
-      $setDir = Split-Path -Parent $templateSrc
-      $dirs = @((Join-Path $baseDir 'profiles'))
-      $userSetProfiles = ''
-      if ($UserTemplates -and $setName) {
-        $userSetProfiles = Join-Path (Join-Path $UserTemplates $setName) 'profiles'
-        $dirs += $userSetProfiles
-      }
-      if ($UserTemplates) { $dirs += (Join-Path $UserTemplates 'profiles') }
-      # Ein Set-Ordner im Vorlagen-Ordner ist schon als Vorlagen\<set>\profiles dabei.
-      $setProfiles = Join-Path $setDir 'profiles'
-      if ($setProfiles -ne $userSetProfiles) { $dirs += $setProfiles }
-      foreach ($d in $dirs) {
-        $cand = Join-Path $d "$fmProfile.yaml"
-        if (Test-Path -LiteralPath $cand -PathType Leaf) { $profileArg = $cand; break }
-      }
-      if (-not $profileArg) { throw "Profil nicht gefunden: $fmProfile (gesucht in $($dirs -join ', '))" }
-    } elseif ($fmProfile -match '\.ya?ml$') {
-      $pp = Expand-NotePath $fmProfile
-      if (-not [IO.Path]::IsPathRooted($pp)) { $pp = [IO.Path]::Combine($baseDir, $pp) }
-      $pp = [IO.Path]::GetFullPath($pp)
-      if (-not (Test-Path -LiteralPath $pp -PathType Leaf)) { throw "Profil nicht gefunden: $fmProfile" }
-      $profileArg = $pp
+
+  # Exportiert wird nur mit dem Manifest des Wrappers: nur er weiss (aus dem Markdown-Parser des
+  # Editors, nicht aus Typst), welche Dateien die Notiz sichtbar einbindet.
+  $manifest = Read-ExportManifest $env:MDO_MANIFEST
+
+  # Staging-Ordner (siehe Kopfkommentar und New-StageDir). Aufbau (Pfade in Typst ab der Wurzel):
+  #   /note/<name>.md   die Notiz (Quelle und PDF/A-3-Anhang; der Name bleibt der Anhangsname)
+  #   /img/<n>-<name>   die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
+  #   /logo/<name>      das Logo
+  #   /profile/<name>   das Profil und die Bilder daneben, die es nennt (das Set liest sie dort)
+  #   /set/...          das Set: Set-Ordner ohne .git und profiles\; bei einer einzelnen, ueber
+  #                     den Namen gefundenen .typ ihr Ordner (gefiltert, siehe Copy-StageFolder);
+  #                     bei einer .typ-Datei als Pfad nur diese
+  #   /mdo/lib, /mdo/vendor/{cmarker,mitex,mmdr}   Pipeline-Bausteine (sys.inputs.mdo = /mdo)
+  #   /images.json      Zuordnung Bildquelle -> Pfad im Staging-Ordner
+  # Dateien werden als Inhalt kopiert (ein Symlink auf eine Datei wird aufgeloest, das Manifest
+  # hat sein Ziel geprueft). Entfernt im finally, bei Erfolg wie bei jedem Fehler.
+  $stage = New-StageDir
+  try {
+    foreach ($sub in @('note', 'img', 'logo', 'profile', 'set', 'mdo', 'mdo\vendor')) {
+      [void][IO.Directory]::CreateDirectory((Join-Path $stage $sub))
+    }
+    # Scheitert eine Kopie von Notiz, Set, Bausteinen oder Profil, bricht der Export ab.
+    $copyOrFail = {
+      param([string]$From, [string]$To)
+      try { [IO.File]::Copy($From, $To, $true) } catch { throw "nicht in den Staging-Ordner kopierbar: $From" }
+    }
+
+    # Die Notiz selbst (ihr Dateiname bleibt: Anhangsname im PDF).
+    $noteName = [IO.Path]::GetFileName($Src)
+    & $copyOrFail $Src (Join-Path $stage "note\$noteName")
+    $stagedNote = "/note/$noteName"
+    $attach = if ($fmEmbed -ne 'false') { $stagedNote } else { '' }
+
+    # Das Set. Ein Set-Ordner ohne .git (ein geklontes Set-Repo braucht seine Historie nicht im
+    # PDF-Lauf) und ohne profiles\: ein Set im Vorlagen-Ordner (Vorlagen\<set>\) haelt dort die
+    # Profile aller Absender, und jede Notiz koennte sie lesen. Profile kommen nur ueber das
+    # Manifest nach /profile/.
+    $stageSet = Join-Path $stage 'set'
+    if ($isSet) {
+      try {
+        foreach ($e in @(Get-ChildItem -LiteralPath $tplDir -Force -ErrorAction Stop)) {
+          if ($e.Name -in @('.git', 'profiles')) { continue }
+          Copy-Trusted $e.FullName (Join-Path $stageSet $e.Name)
+        }
+      } catch { throw "nicht in den Staging-Ordner kopierbar: $tplDir ($($_.Exception.Message))" }
+    } elseif ($byName) {
+      $realTplDir = Resolve-RealPath $tplDir
+      if (-not $realTplDir) { throw "nicht in den Staging-Ordner kopierbar: $tplDir" }
+      try { Copy-StageFolder $tplDir $stageSet $realTplDir } catch { throw "nicht in den Staging-Ordner kopierbar: $tplDir ($($_.Exception.Message))" }
+      # Die Vorlage selbst immer als Inhalt: sie ist die Datei des Nutzers, auch als Symlink aus
+      # dem Vorlagen-Ordner heraus (z. B. auf ein eigenes Repo), den Copy-StageFolder auslaesst.
+      & $copyOrFail $templateSrc (Join-Path $stageSet $tplLeaf)
     } else {
-      throw "ungueltiges Profil: $fmProfile (erlaubt: Name aus a-z, 0-9, _ und - oder eine .yaml-Datei)"
+      # Eine von der Notiz genannte .typ ist oben geprueft (kein Link); --template ist die
+      # Datei des Nutzers.
+      & $copyOrFail $templateSrc (Join-Path $stageSet $tplLeaf)
     }
-  }
-  $typstProfile = ''
-  if ($profileArg) {
-    $readableDir = Get-TypstReadableDir (Split-Path -Parent $profileArg)
-    $typstProfile = Join-Path $readableDir (Split-Path -Leaf $profileArg)
-  }
-  $profileFwd = ConvertTo-TypstPath $typstProfile
-  $typstSrc     = Get-TypstReadable $Src ([IO.Path]::GetFileName($Src))
-  $typstLogo    = Get-TypstReadable $logoArg
-  $typstBase    = if ([IO.Path]::GetPathRoot($baseDir) -eq $script:TypstRoot) { $baseDir } else { Split-Path -Parent $typstSrc }
-  $srcFwd       = ConvertTo-TypstPath $typstSrc
-  $srcDirTypst  = ConvertTo-TypstPath $typstBase
-  $logoFwd      = ConvertTo-TypstPath $typstLogo
-  $attachFwd    = if ($fmEmbed -ne 'false') { $srcFwd } else { '' }
-  $inputs = @(
-    '--input', "filename=$outName",
-    '--input', "title=$base",
-    '--input', "doctitle=$fmTitle",
-    '--input', "subtitle=$fmSubtitle",
-    '--input', "toptitle=$fmToptitle",
-    '--input', "author=$fmAuthor",
-    '--input', "logo=$logoFwd",
-    '--input', "logo_height=$fmLogoHeight",
-    '--input', "profile=$profileFwd",
-    '--input', "source=$srcFwd",
-    '--input', "attach=$attachFwd",
-    '--input', "docdir=$srcDirTypst",
-    '--input', "date=$fmDate",
-    '--input', "toc=$fmToc",
-    '--input', "h1_break=$fmBreak",
-    '--input', "showname=$fmShowname",
-    '--input', "lang=$fmLang",
-    '--input', "header=$fmHeader",
-    '--input', "watermark=$fmWatermark",
-    '--input', "hard_breaks=$fmBreaks",
-    '--input', ('mdo=' + (ConvertTo-TypstPath $script:TypstMdo)),
-    '--input', "version=$MdoVersion"
-  )
-  # Seitenumbruch als Element mdo-pagebreak nur fuer Sets, die es kennen (raw-typst aus); alle
-  # anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks, wie build.sh).
-  if (Select-String -LiteralPath $templateSrc -Pattern 'mdo-pagebreak' -SimpleMatch -Quiet) {
-    $inputs += @('--input', 'pagebreak=html')
-  }
+    $stagedTemplate = Join-Path $stageSet $tplLeaf
 
-  # Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
-  # date: auto -> Typst schriebe sonst den Build-Zeitpunkt in CreateDate/ModifyDate.
-  # SOURCE_DATE_EPOCH (Quell-mtime) macht das deterministisch = letzte Aenderungszeit
-  # der Quelle statt "jetzt"; Typst respektiert die Variable fuer date: auto. Ist ein
-  # date: gesetzt, pinnt das Template direkt. Ein vom Aufrufer gesetzter Wert gewinnt.
-  if (-not $env:SOURCE_DATE_EPOCH) {
-    $mtimeUtc = (Get-Item -LiteralPath $Src).LastWriteTimeUtc
-    $env:SOURCE_DATE_EPOCH = [string]([DateTimeOffset]$mtimeUtc).ToUnixTimeSeconds()
-  }
+    # Pipeline-Bausteine: lib\ und die Teile von vendor\, die Typst selbst liest (Pakete und
+    # Fonts bleiben ausserhalb).
+    try {
+      Copy-Trusted (Join-Path $PipelineRoot 'lib') (Join-Path $stage 'mdo\lib')
+      foreach ($part in @('cmarker', 'mitex', 'mmdr')) {
+        $from = Join-Path $PipelineRoot "vendor\$part"
+        if (Test-Path -LiteralPath $from -PathType Container) { Copy-Trusted $from (Join-Path $stage "mdo\vendor\$part") }
+      }
+    } catch { throw "nicht in den Staging-Ordner kopierbar: $PipelineRoot\lib, vendor ($($_.Exception.Message))" }
 
-  # Bilder pruefen (Probe-Durchlauf, spiegelt build.sh): Typst kann weder
-  # Umgebungsvariablen lesen noch pruefen, ob eine Datei existiert. Das Template
-  # meldet im Probe-Modus alle Bildquellen (+ Zahl der Remote-Bilder); hier
-  # ~/$VAR/${VAR}/%VAR% ersetzen, relativ zur Notiz aufloesen und pruefen. Ein
-  # fehlendes Bild erscheint im PDF als "[Bild fehlt: pfad]". Ein Bild auf einem
-  # anderen Laufwerk als --root wird bereitgestellt (siehe Get-TypstReadable).
-  # Der Ausdruck enthaelt bewusst KEINE doppelten Anfuehrungszeichen:
-  # Windows PowerShell 5.1 reicht sie an externe Programme nicht korrekt weiter.
-  $probeExpr = '(str(query(<mdo-remote-skip>).len()),) + query(<mdo-image>).map(m => m.value).dedup()'
-  $noNet = Enable-NoNetwork
-  try {
-    $probeJson = & $TypstExe eval --in $templateFile $probeExpr `
-      --font-path $FontDir --ignore-system-fonts @pkgArgs --root $script:TypstRoot @inputs --input probe=true 2>$null
-  }
-  finally { Restore-Network $noNet }
-  $probe = @()
-  try { $probe = @((($probeJson -join "`n") | ConvertFrom-Json) | ForEach-Object { $_ }) } catch { $probe = @() }
-  $stripped = 0
-  $imageMap = @{}
-  if ($probe.Count -gt 0) {
-    [void][int]::TryParse([string]$probe[0], [ref]$stripped)
-    foreach ($raw in ($probe | Select-Object -Skip 1)) {
-      $img = Expand-NotePath ([string]$raw)
-      if (-not [IO.Path]::IsPathRooted($img)) { $img = Join-Path $baseDir $img }
-      $img = [IO.Path]::GetFullPath($img)
-      if (Test-Path -LiteralPath $img -PathType Leaf) {
-        # Bild auf einem anderen Laufwerk: fuer Typst bereitstellen
-        $imageMap[[string]$raw] = ConvertTo-TypstPath (Get-TypstReadable $img)
-      } else {
-        Write-Warning "Bild nicht gefunden: $raw"
-        $imageMap[[string]$raw] = ''
+    # Bilder aus dem Manifest: /img/<n>-<name>. Verschwindet eine Datei seit dem Manifest, fehlt
+    # nur dieses Bild (Platzhalter im PDF), wie ein nicht gefundenes. Die Zuordnung ist exakt
+    # (gross/klein wie in der Notiz), wie json().at() in Typst.
+    $imageMap = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
+    for ($n = 0; $n -lt $manifest.Refs.Count -and $n -lt $manifest.Paths.Count; $n++) {
+      $dest = '/img/' + ($n + 1) + '-' + [IO.Path]::GetFileName($manifest.Paths[$n])
+      try {
+        [IO.File]::Copy($manifest.Paths[$n], (Join-Path $stage ($dest.Substring(1) -replace '/', '\')), $true)
+        $imageMap[$manifest.Refs[$n]] = $dest
+      } catch {
+        Write-Verbose "Bild nicht kopierbar: $($manifest.Paths[$n])"
       }
     }
-  }
-  # Die Zuordnung liest Typst selbst (json()), also im Bereitstellungsordner auf
-  # dem Laufwerk von --root ablegen (siehe Initialize-Stage), nie im Pipeline-Ordner.
-  $imagesJson = Join-Path $script:StageDir 'images.json'
-  [IO.File]::WriteAllText($imagesJson, ($imageMap | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
-  $inputs += @('--input', ('images=' + (ConvertTo-TypstPath $imagesJson)))
 
-  $noNet = $null
-  try {
-    $noNet = Enable-NoNetwork
-    & $TypstExe compile $templateFile $outPdf `
-      --font-path $FontDir --ignore-system-fonts `
-      @pkgArgs `
-      --root $script:TypstRoot `
-      --pdf-standard a-3b `
-      @inputs
-    if ($LASTEXITCODE) { throw "typst-Fehler ($LASTEXITCODE)" }
+    # Logo (logo: im Frontmatter; gesucht hat der Wrapper: Ordner der Notiz bzw. MDO_BASE_DIR,
+    # Benutzerordner, Vorlagen-Ordner, Pipeline-Ordner). Ohne Logo nur ein Hinweis, nie ein Fehler.
+    $logoIn = ''
+    if ($manifest.Logo) {
+      $logoName = [IO.Path]::GetFileName($manifest.Logo)
+      try {
+        [IO.File]::Copy($manifest.Logo, (Join-Path $stage "logo\$logoName"), $true)
+        $logoIn = "/logo/$logoName"
+      } catch { $logoIn = '' }
+    }
+    if ($fmLogo -and -not $logoIn) {
+      if ($fmLogo -match '^(https?:)?//|^data:') {
+        Write-Host "Hinweis: Remote-Logo wird nicht geladen (kein Netzzugriff): $fmLogo" -ForegroundColor Yellow
+      } elseif ($fmLogo -notmatch '\.(svg|png|jpe?g)$') {
+        Write-Host "Hinweis: Logo muss .svg, .png, .jpg oder .jpeg sein: $fmLogo - baue ohne Logo." -ForegroundColor Yellow
+      } else {
+        Write-Host "Hinweis: Logo nicht gefunden: $fmLogo - baue ohne Logo." -ForegroundColor Yellow
+      }
+    }
+
+    # Absender-Profil (profile:): gesucht und geprueft hat der Wrapper (profiles\ neben der
+    # Notiz, Vorlagen\<set>\profiles, Vorlagen\profiles, Ordner des Sets; ein Pfad nur unter
+    # Notiz- oder Vorlagen-Ordner) und bei einem Fehler schon abgebrochen. Das Set liest die
+    # YAML-Datei und Dateien daneben (z. B. die Unterschrift): beide liegen in /profile/. Fehlt
+    # das Profil trotz profile: im Frontmatter, Exit 1: ein Brief ohne Absender waere schlimmer
+    # als keiner.
+    $profileIn = ''
+    if ($manifest.Profile) {
+      $yamlName = [IO.Path]::GetFileName($manifest.Profile)
+      & $copyOrFail $manifest.Profile (Join-Path $stage "profile\$yamlName")
+      $profileIn = "/profile/$yamlName"
+      foreach ($f in $manifest.ProfileFiles) {
+        # Nur schlichte Namen neben der YAML-Datei: nie ".", ".." oder ihr eigener Name.
+        $fName = [IO.Path]::GetFileName($f)
+        if (-not $fName -or $fName -in @('.', '..', $yamlName)) { throw "ungueltige Datei neben dem Profil: $f" }
+        & $copyOrFail $f (Join-Path $stage "profile\$fName")
+      }
+    } elseif ($fmProfile) {
+      throw "Profil nicht gefunden: $fmProfile"
+    }
+
+    # Laufzeit-Eingaben fuers Template. --root <Staging-Ordner>: Typst behandelt absolute Pfade
+    # wurzelrelativ (mit '/') und sperrt Lesezugriffe ausserhalb; alle Pfade zeigen daher in den
+    # Staging-Ordner. title = Rueckfall-Metadatentitel (Basisname); doctitle = Frontmatter title:.
+    $inputs = @(
+      '--input', "filename=$outName",
+      '--input', "title=$base",
+      '--input', "doctitle=$fmTitle",
+      '--input', "subtitle=$fmSubtitle",
+      '--input', "toptitle=$fmToptitle",
+      '--input', "author=$fmAuthor",
+      '--input', "logo=$logoIn",
+      '--input', "logo_height=$fmLogoHeight",
+      '--input', "profile=$profileIn",
+      '--input', "source=$stagedNote",
+      '--input', "attach=$attach",
+      '--input', 'docdir=/note',
+      '--input', "date=$fmDate",
+      '--input', "toc=$fmToc",
+      '--input', "h1_break=$fmBreak",
+      '--input', "showname=$fmShowname",
+      '--input', "lang=$fmLang",
+      '--input', "header=$fmHeader",
+      '--input', "watermark=$fmWatermark",
+      '--input', "hard_breaks=$fmBreaks",
+      '--input', 'mdo=/mdo',
+      '--input', "version=$MdoVersion"
+    )
+    # Seitenumbruch als Element mdo-pagebreak nur fuer Sets, die das Element kennen (raw-typst
+    # aus); alle anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks).
+    # Ein Set-Ordner: jede seiner Dateien im Staging-Ordner (die html:-Zuordnung kann in einer
+    # Hilfsdatei stehen). Eine einzelne .typ: nur sie - ihr mitkopierter Ordner enthaelt oft
+    # andere Sets (din5008a\), die das Element kennen, und dann verschwaenden die Seitenumbrueche
+    # dieser Vorlage still.
+    $breakScan = if ($isSet) {
+      @(Get-ChildItem -LiteralPath $stageSet -Recurse -File -Force | ForEach-Object { $_.FullName })
+    } else { @($stagedTemplate) }
+    if ($breakScan.Count -gt 0 -and (Select-String -LiteralPath $breakScan -Pattern 'mdo-pagebreak' -SimpleMatch -Quiet)) {
+      $inputs += @('--input', 'pagebreak=html')
+    }
+
+    # Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
+    # date: auto -> Typst schriebe sonst den Build-Zeitpunkt in CreateDate/ModifyDate.
+    # SOURCE_DATE_EPOCH (Quell-mtime) macht das deterministisch = letzte Aenderungszeit
+    # der Quelle statt "jetzt"; Typst respektiert die Variable fuer date: auto. Ist ein
+    # date: gesetzt, pinnt das Template direkt. Ein vom Aufrufer gesetzter Wert gewinnt.
+    if (-not $env:SOURCE_DATE_EPOCH) {
+      $mtimeUtc = (Get-Item -LiteralPath $Src).LastWriteTimeUtc
+      $env:SOURCE_DATE_EPOCH = [string]([DateTimeOffset]$mtimeUtc).ToUnixTimeSeconds()
+    }
+
+    # Bilder (Probe-Durchlauf, spiegelt build.sh). Typst kann nicht pruefen, ob eine Datei
+    # existiert - ein fehlendes Bild braeche den Build ab. Daher fragt `typst eval` das Template
+    # im Probe-Modus (laedt keine Bilder) nach allen Bildquellen (+ Zahl der Remote-Bilder). Die
+    # Probe laeuft auf Notiztext und kann beliebige Quellen nennen; sie entscheidet daher NICHT,
+    # was ins PDF kommt: die Zuordnung bildet jede Bildquelle des Manifests auf ihre Kopie im
+    # Staging-Ordner ab, jede andere Quelle der Probe auf '' (fehlt, "[Bild fehlt: pfad]").
+    # Der Ausdruck enthaelt bewusst KEINE doppelten Anfuehrungszeichen: Windows PowerShell 5.1
+    # reicht sie an externe Programme nicht korrekt weiter. Meldungen der Probe (z. B. ein
+    # Fehler im Notiztext, den gleich das Kompilieren meldet) werden verworfen; ErrorAction
+    # Continue, weil umgeleitetes stderr eines Programms in Windows PowerShell 5.1 sonst unter
+    # 'Stop' den Export abbraeche.
+    $probeExpr = '(str(query(<mdo-remote-skip>).len()),) + query(<mdo-image>).map(m => m.value).dedup()'
+    $noNet = $null
+    $savedEap = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $noNet = Enable-NoNetwork
+      $probeJson = & $TypstExe eval --in $stagedTemplate $probeExpr `
+        --font-path $FontDir --ignore-system-fonts @pkgArgs --root $stage @inputs --input probe=true 2>$null
+    }
+    finally {
+      Restore-Network $noNet
+      $ErrorActionPreference = $savedEap
+    }
+    $probe = @()
+    try { $probe = @((($probeJson -join "`n") | ConvertFrom-Json) | ForEach-Object { $_ }) } catch { $probe = @() }
+    $stripped = 0
+    if ($probe.Count -gt 0) {
+      [void][int]::TryParse([string]$probe[0], [ref]$stripped)
+      foreach ($raw in @($probe | Select-Object -Skip 1)) {
+        $ref = [string]$raw
+        if (-not $ref -or $imageMap.ContainsKey($ref)) { continue }
+        Write-Warning "Bild nicht gefunden: $ref"
+        $imageMap[$ref] = ''
+      }
+    }
+    $entries = @(foreach ($k in $imageMap.Keys) { (ConvertTo-JsonString $k) + ':' + (ConvertTo-JsonString $imageMap[$k]) })
+    [IO.File]::WriteAllText((Join-Path $stage 'images.json'), ('{' + ($entries -join ',') + '}'),
+      (New-Object Text.UTF8Encoding $false))
+    $inputs += @('--input', 'images=/images.json')
+
+    # Markdown -> PDF/A-3b. Die Meldungen von Typst gehen unveraendert auf stderr (zeilenweise
+    # weitergereicht, um sie fuer den Hinweis unten zu lesen). Ein Hinweis folgt nur, wenn eine
+    # als Pfad genannte .typ (allein kopiert) eine Nachbardatei einbindet, die im Originalordner
+    # liegt - nie fuer die Vorlage selbst und nie fuer absichtlich ausgelassene Eintraege
+    # (profiles\, Punkt-Eintraege).
+    $typstErr = New-Object 'System.Collections.Generic.List[string]'
+    $compileRc = 0
+    $noNet = $null
+    try {
+      $ErrorActionPreference = 'Continue'
+      $noNet = Enable-NoNetwork
+      & $TypstExe compile $stagedTemplate $outPdf `
+        --font-path $FontDir --ignore-system-fonts `
+        @pkgArgs `
+        --root $stage `
+        --pdf-standard a-3b `
+        @inputs 2>&1 | ForEach-Object {
+          if ($_ -is [Management.Automation.ErrorRecord]) {
+            $line = $_.ToString()
+            $typstErr.Add($line)
+            [Console]::Error.WriteLine($line)
+          } else {
+            [Console]::Out.WriteLine([string]$_)
+          }
+        }
+      $compileRc = $LASTEXITCODE
+    }
+    finally {
+      Restore-Network $noNet
+      $ErrorActionPreference = $savedEap
+    }
+    if ($compileRc) {
+      if (-not $byName) {
+        $missing = ''
+        foreach ($line in $typstErr) {
+          if ($line -match 'file not found \(searched at .*[\\/]mdo-stage-[^\\/]*[\\/]set[\\/](.+)\)\s*$') { $missing = $Matches[1]; break }
+        }
+        $inOriginal = $false
+        if ($missing -and $missing -ne $tplLeaf -and -not (Test-DotSegment $missing) -and -not (Test-ProfilesSegment $missing)) {
+          try { $inOriginal = Test-Path -LiteralPath (Join-Path $tplDir $missing) } catch { $inOriginal = $false }
+        }
+        if ($inOriginal) {
+          [Console]::Error.WriteLine('Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>\<name>.typ.')
+        }
+      }
+      throw "typst-Fehler ($compileRc)"
+    }
   }
   finally {
-    Restore-Network $noNet
-    if ($script:StageDir) { Remove-Item -LiteralPath $script:StageDir -Recurse -Force -ErrorAction SilentlyContinue }
+    Remove-StageDir $stage
   }
 
   Write-Host "OK  $outPdf" -ForegroundColor Green
@@ -779,8 +1039,7 @@ try {
 }
 catch {
   # Fehler auf stderr (aufrufende Programme zeigen ihn an), dann sofort Exit 1.
+  # Der Staging-Ordner ist hier schon entfernt (finally in Convert-One).
   [Console]::Error.WriteLine("Fehler: $($_.Exception.Message)")
-  # Bereitstellung auch bei einem Abbruch vor dem Kompilieren entfernen
-  if ($script:StageDir) { Remove-Item -LiteralPath $script:StageDir -Recurse -Force -ErrorAction SilentlyContinue }
   exit 1
 }
