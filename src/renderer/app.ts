@@ -20,6 +20,7 @@ import type {
   Mode,
   NoteFile,
   PreviewInputs,
+  SetInfo,
   Settings,
   View,
 } from '../shared/types'
@@ -655,28 +656,27 @@ export class App {
   }
 
   /**
-   * Datei → „Profil anlegen …“: for the shown note's `template:` set, main copies the set's
-   * example profile to `Vorlagen/<set>/profiles/<name>.yaml`; then the note gets
-   * `profile: <name>` (one undo step) and the new YAML opens as a tab for editing. Refused with a
-   * toast when the note names no set, a `.typ` path instead of a set, or main refuses (unknown
-   * set, no example profile, name taken: nothing is ever overwritten).
+   * Datei → „Profil anlegen …“: asks for a set that knows profiles (preselected: the shown
+   * note's `template:` set, else the default), then a name; main copies the set's example
+   * profile to `Vorlagen/<set>/profiles/<name>.yaml` and the new YAML opens as a tab for
+   * editing. Works without an open note (owner, 2026-10-24: offer the sets found instead of
+   * expecting a note with a header). The shown note gets `profile: <name>` (one undo step) only
+   * when it names the same set; any other note stays untouched. Main refuses with a toast
+   * (no example profile, name taken: nothing is ever overwritten).
    */
   private async createProfile(): Promise<void> {
-    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
-    if (!tab || this.pickerOpen || this.settingsOpen) return
-    if (!isMarkdownTab(tab)) {
-      this.notices.toast(MARKDOWN_ONLY)
-      return
-    }
-    const set = frontmatterFields(this.editor.state.doc).template ?? ''
-    if (set === '') {
-      this.notices.toast('Die Notiz nennt kein Vorlagen-Set (template:).')
-      return
-    }
-    if (!SET_NAME_RE.test(set)) {
-      this.notices.toast(`Profile gibt es nur für Vorlagen-Sets, nicht für „${set}“.`)
-      return
-    }
+    if (this.pickerOpen || this.settingsOpen) return
+    const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
+    const tab = shown && isMarkdownTab(shown) ? shown : undefined
+    const noteSet = tab ? (frontmatterFields(this.editor.state.doc).template ?? '') : ''
+    const choice = await this.chooseTemplate('Profil anlegen', 'Weiter', () => !this.closing, {
+      filter: (s) => s.hasProfile,
+      selected: SET_NAME_RE.test(noteSet) ? noteSet : DEFAULT_SET,
+      withProfiles: false,
+      empty: 'Kein Vorlagen-Set mit Profilen gefunden.',
+    })
+    if (!choice || this.closing) return
+    const set = choice.name
     const name = await askText(
       'Profil anlegen',
       `Name des neuen ${set}-Profils (a–z, 0–9, - _)`,
@@ -693,8 +693,9 @@ export class App {
       this.notices.toast(res.error)
       return
     }
-    // The note may no longer be shown (tab switched while main copied): change its stored state.
-    const live = this.store.get(tab.id)
+    // Only a note of the same set gets the profile. It may no longer be shown (tab switched while
+    // main copied): change its stored state then.
+    const live = tab && noteSet === set ? this.store.get(tab.id) : undefined
     if (live && !this.closing) {
       const shown = live.id === this.shownId
       const spec = setNoteProfile(shown ? this.editor.state : live.state, name)
@@ -737,6 +738,13 @@ export class App {
     title: string,
     confirm: string,
     still: () => boolean,
+    opts: {
+      /** Which sets to offer (default all). */
+      filter?: (set: SetInfo) => boolean
+      selected?: string
+      withProfiles?: boolean
+      empty?: string
+    } = {},
   ): Promise<TemplateChoice | null> {
     if (this.pickerOpen || this.settingsOpen || document.querySelector('dialog[open]')) return null
     this.pickerOpen = true
@@ -746,8 +754,10 @@ export class App {
       return await pickTemplate({
         title,
         confirm,
-        sets: pickerSets(sets),
-        selected: DEFAULT_SET,
+        sets: pickerSets(opts.filter ? sets.filter(opts.filter) : sets),
+        selected: opts.selected ?? DEFAULT_SET,
+        withProfiles: opts.withProfiles,
+        empty: opts.empty,
         header: (name) => this.mdo.readSetHeader(name),
         profiles: (name) => this.mdo.listProfiles(name),
       })

@@ -14,6 +14,13 @@ export interface TemplatePickerDeps {
   header(name: string): Promise<string | null>
   /** Profile names main found for the set. */
   profiles(name: string): Promise<string[]>
+  /**
+   * false: no profile choice („Profil anlegen …“ asks for a set to make a new profile for, so
+   * the existing ones are not offered). Default true.
+   */
+  withProfiles?: boolean
+  /** Text shown when `sets` is empty; default NO_SETS. */
+  empty?: string
 }
 
 /** The user's choice; profile is null when the set offers none (the header keeps its value). */
@@ -103,7 +110,9 @@ export function pickTemplate(deps: TemplatePickerDeps): Promise<TemplateChoice |
     let ok: HTMLButtonElement | null = null
     form.append(el('h2', { textContent: deps.title }))
     if (deps.sets.length === 0) {
-      form.append(el('p', { className: 'tpl-note', textContent: NO_SETS }, 'tpl-empty'))
+      form.append(
+        el('p', { className: 'tpl-note', textContent: deps.empty ?? NO_SETS }, 'tpl-empty'),
+      )
     } else {
       ok = el('button', { type: 'submit', textContent: deps.confirm }, 'tpl-ok')
       actions.append(ok)
@@ -124,8 +133,9 @@ export function pickTemplate(deps: TemplatePickerDeps): Promise<TemplateChoice |
       select.replaceChildren()
       select.hidden = true
       profileHint.hidden = true
-      profileRow.hidden = !set?.hasProfile
-      if (!set?.hasProfile) return
+      const offer = set?.hasProfile === true && deps.withProfiles !== false
+      profileRow.hidden = !offer
+      if (!set || !offer) return
       let names: string[] = []
       let current: string | null = null
       try {
@@ -157,7 +167,10 @@ export function pickTemplate(deps: TemplatePickerDeps): Promise<TemplateChoice |
       const set = selectedSet()
       if (!ok || !set) return
       // A profile only counts when the choice is shown (lookup done, profiles found).
-      const profile = set.hasProfile && !select.hidden && select.value ? select.value : null
+      const profile =
+        set.hasProfile && deps.withProfiles !== false && !select.hidden && select.value
+          ? select.value
+          : null
       finish({ name: set.name, profile })
     }
 

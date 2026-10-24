@@ -8,6 +8,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Present: the info line has the „Gliederung“ toggle (Mod+Shift+O) like Edit's status line; lifted while the outline is shown
 
+### Changed
+- Editor: „Datei → Profil anlegen …“ asks for the set first (the sets found that have profiles, the shown note's set preselected) and works without an open note; only a shown note of the same set gets `profile: <name>`
+
 ### Fixed
 - Editor: the foot of a set (din5008a: closing, signature, signer) starts one paragraph gap below the text, as in the PDF, also when the note does not end with a line break; blank lines at the end of the note no longer change that gap. Documented in TEMPLATES.md §8
 

@@ -177,4 +177,19 @@ describe('template picker', () => {
     $('tpl-ok').click()
     expect(await result).toEqual({ name: 'din5008a', profile: null })
   })
+
+  it('without the profile choice (Profil anlegen) hides it and returns no profile', async () => {
+    const d = deps({ title: 'Profil anlegen', confirm: 'Weiter', withProfiles: false })
+    const result = pickTemplate(d)
+    await flush()
+    expect($('tpl-profile-row').hidden).toBe(true)
+    expect(d.profiles).not.toHaveBeenCalled()
+    $('tpl-ok').click()
+    expect(await result).toEqual({ name: 'din5008a', profile: null })
+  })
+
+  it('shows the caller’s text when there is no set to offer', async () => {
+    void pickTemplate(deps({ sets: [], empty: 'Kein Vorlagen-Set mit Profilen gefunden.' }))
+    expect($('tpl-empty').textContent).toBe('Kein Vorlagen-Set mit Profilen gefunden.')
+  })
 })
