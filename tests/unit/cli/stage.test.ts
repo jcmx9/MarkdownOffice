@@ -14,10 +14,12 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import fsp from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  automountPath,
   buildManifest,
   expandNotePath,
   frontmatterRefs,
@@ -586,5 +588,75 @@ describe('remoteWinPath', () => {
       expect(remoteWinPath(p, true)).toBe(true)
     for (const p of ['C:\\a.png', '\\a.png', 'a.png']) expect(remoteWinPath(p, true)).toBe(false)
     expect(remoteWinPath('//srv/a.png', false)).toBe(false)
+  })
+})
+
+describe('automountPath', () => {
+  it('flags /net and /Network paths on macOS/Linux, any letter case, never on Windows', () => {
+    for (const p of [
+      '/net',
+      '/net/h/a.png',
+      '/NET/h/a.png',
+      '/Network/Servers/h/a.png',
+      '/network',
+    ])
+      expect(automountPath(p, [], false)).toBe(true)
+    for (const p of ['/netx/a.png', '/home/net/a.png', '/Networks/a.png', 'net/a.png'])
+      expect(automountPath(p, [], false)).toBe(false)
+    expect(automountPath('/net/h/a.png', [], true)).toBe(false)
+  })
+
+  it('allows the mount the note itself lives on (same host), no other', () => {
+    expect(automountPath('/net/h/x/a.png', ['/net/H/notes'], false)).toBe(false)
+    expect(automountPath('/net/other/a.png', ['/net/h/notes'], false)).toBe(true)
+    expect(automountPath('/Network/Servers/a.png', ['/net/h'], false)).toBe(true)
+  })
+})
+
+describe.runIf(posix)('buildManifest never looks up an automount path from the note', () => {
+  const up = '../'.repeat(30)
+  let touched: string[] = []
+  beforeEach(() => {
+    touched = []
+    for (const name of ['stat', 'lstat', 'realpath', 'open', 'readFile', 'access'] as const) {
+      const real = fsp[name] as (...a: unknown[]) => Promise<unknown>
+      vi.spyOn(fsp, name).mockImplementation(((p: unknown, ...rest: unknown[]) => {
+        touched.push(String(p))
+        return real.call(fsp, p, ...rest)
+      }) as never)
+    }
+  })
+  afterEach(() => vi.restoreAllMocks())
+  const remote = () => touched.filter((p) => /^\/(net|network)(\/|$)/i.test(path.resolve(p)))
+  const note = (header: string, body = 'Text.') =>
+    tree({ 'notes/n.md': `---\n${header}\n---\n${body}\n`, 'sets/memo/memo.typ': '' })
+
+  it('images and logo: left out without a lookup', async () => {
+    note(
+      `logo: /net/mdo-test.invalid/logo.png`,
+      `![](/net/mdo-test.invalid/a.png) ![](/NET/mdo-test.invalid/b.png) ![](${up}net/mdo-test.invalid/c.png) ![](/Network/Servers/x/d.png)`,
+    )
+    const r = await buildManifest(at('notes/n.md'), opts())
+    expect(r.manifest.images).toEqual([])
+    expect(r.manifest.logo).toBeNull()
+    note(`logo: ${up}Network/Servers/x/l.png`)
+    expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBeNull()
+    expect(remote()).toEqual([])
+  })
+
+  it('profile and template paths: refused without a lookup', async () => {
+    note('profile: /net/mdo-test.invalid/p.yaml')
+    await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow(
+      'Profil muss im Ordner der Notiz oder im Vorlagen-Ordner liegen: /net/mdo-test.invalid/p.yaml',
+    )
+    note(`template: ${up}net/mdo-test.invalid/t.typ`)
+    await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow(
+      `Vorlage nicht gefunden: ${up}net/mdo-test.invalid/t.typ`,
+    )
+    note('profile: p')
+    await expect(
+      buildManifest(at('notes/n.md'), opts({ template: '/Network/Servers/x/t.typ' })),
+    ).rejects.toThrow('Vorlage nicht gefunden: /Network/Servers/x/t.typ')
+    expect(remote()).toEqual([])
   })
 })

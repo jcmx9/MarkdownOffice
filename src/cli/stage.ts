@@ -263,6 +263,28 @@ const against = (c: Ctx, dir: string, p: string) => c.P.resolve(rooted(c, p) ? p
 export const remoteWinPath = (p: string, win: boolean) => win && /^[\\/]{2}/.test(p)
 const uncPath = (c: Ctx, p: string) => remoteWinPath(p, c.win)
 
+/** `/net/<host>` or `/Network/<name>` (lower case) for a path on such a mount, else null. */
+function automountRoot(p: string): string | null {
+  const m = /^\/(net|network)(?:\/([^/]+))?(?:\/|$)/i.exec(p)
+  return m ? `/${(m[1] as string).toLowerCase()}/${(m[2] ?? '').toLowerCase()}` : null
+}
+
+/**
+ * macOS/Linux: an absolute, normalized path under an automount point, `/net/<host>/…` (macOS's
+ * -hosts map, often autofs on Linux too) or `/Network/…`, any letter case (macOS finds /NET as
+ * /net). Refused before any file system call, like a UNC path on Windows: merely looking one up
+ * makes the system contact the host the note names (NFS/SMB), telling it the note was opened and
+ * hanging the export on an unreachable host. Except the mount one of `homes` (the note's folder,
+ * MDO_BASE_DIR) lives on: that host is the user's already.
+ */
+export function automountPath(p: string, homes: string[], win: boolean): boolean {
+  if (win) return false
+  const root = automountRoot(p)
+  return root !== null && !homes.some((h) => automountRoot(h) === root)
+}
+/** `p` must be resolved (c.P.resolve / against): `..` segments could reach /net otherwise. */
+const automount = (c: Ctx, p: string) => automountPath(p, [c.noteDir, c.baseDir], c.win)
+
 /**
  * resolve_template / Resolve-Template, reduced to the file it finds (null: the script fails).
  * `fromNote`: the value comes from the note's `template:` (not the user's --template). Such a
@@ -292,6 +314,8 @@ async function templateFile(
   const e = expandNotePath(v, c.env, c.win)
   if (uncPath(c, e)) return null
   const p = against(c, base, e)
+  // The script would look it up itself (resolve_template), so the export stops here.
+  if (automount(c, p)) throw new ManifestError(`Vorlage nicht gefunden: ${value}`)
   if (!(await isFile(p))) return null
   if (fromNote && !(await noteTemplateAllowed(c, p))) {
     throw new ManifestError(
@@ -328,12 +352,14 @@ async function findLogo(c: Ctx, value: string, hints: string[]): Promise<string 
   if (uncPath(c, p)) return null
   let found: string | null = null
   if (rooted(c, p)) {
-    if (await isFile(p)) found = c.P.resolve(p)
+    // Treated as not found, like a UNC path (see automountPath).
+    if (!automount(c, c.P.resolve(p)) && (await isFile(p))) found = c.P.resolve(p)
   } else {
     // build.sh takes $HOME as is; convert.ps1 USERPROFILE with the HOME fallback.
     const home = c.win ? envLookup(c.env, 'USERPROFILE', true) : (c.env.HOME ?? '')
     for (const dir of [c.baseDir, home, c.templatesDir, c.pipelineRoot]) {
-      if (dir && (await isFile(c.P.join(dir, p)))) {
+      if (!dir || automount(c, c.P.resolve(dir, p))) continue
+      if (await isFile(c.P.join(dir, p))) {
         found = c.P.resolve(dir, p)
         break
       }
@@ -454,9 +480,10 @@ export async function buildManifest(
     // Remote sources: the sets skip them (and count them for the hint), nothing to stage.
     if (/^(https?:)?\/\/|^data:/i.test(ref)) continue
     const e = expandNotePath(ref, env, win)
-    // A UNC/device path counts as missing (see uncPath).
+    // A UNC/device path counts as missing (see uncPath), as does an automount path.
     if (uncPath(c, e)) continue
     const p = against(c, baseDir, e)
+    if (automount(c, p)) continue
     // Missing: the script warns „Bild nicht gefunden“ for a probe source without an entry.
     if (!(await isFile(p))) continue
     if (await isSafeImage(p)) images.push({ ref, path: p })
@@ -578,6 +605,7 @@ async function findProfileYaml(
     const e = expandNotePath(value, c.env, c.win)
     if (uncPath(c, e)) throw outsideRoots(value)
     const p = against(c, c.baseDir, e)
+    if (automount(c, p)) throw outsideRoots(value)
     if (!(await isFile(p))) throw new ManifestError(`Profil nicht gefunden: ${value}`)
     if (!(await insideProfileRoots(c, p))) throw outsideRoots(value)
     return p
