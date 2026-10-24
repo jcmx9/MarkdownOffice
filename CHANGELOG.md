@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- Export: images come only from the note's folder and its subfolders (links resolved, no hidden folders); a visibly linked image from elsewhere (`../Steuer/scan.png`, `~/Ausweis.jpg`, an absolute path, a link leading out) is left out with the hint „Bild liegt außerhalb des Notizordners, kommt nicht ins PDF“, so a note someone sent cannot put a private file into a PDF that is passed on. With `MDO_BASE_DIR` (the app's temporary copy) that folder counts as the note's
+
 ## [26.10.3] - 2026-10-24
 
 ### Added
