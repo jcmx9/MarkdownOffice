@@ -2,10 +2,11 @@ import { yamlLanguage } from '@codemirror/lang-yaml'
 import type { Text } from '@codemirror/state'
 import { parseMixed } from '@lezer/common'
 import type { MarkdownConfig } from '@lezer/markdown'
-import { FrontmatterSyntax } from '../../core/markdown-syntax'
-
-const OPEN = /^---\s*$/
-const CLOSE = /^(---|\.\.\.)\s*$/
+import {
+  FRONTMATTER_CLOSE as CLOSE,
+  FrontmatterSyntax,
+  FRONTMATTER_OPEN as OPEN,
+} from '../../core/markdown-syntax'
 
 /**
  * YAML front matter: only at the very start, `---` … `---`/`...` (pipeline/pandoc rule). The

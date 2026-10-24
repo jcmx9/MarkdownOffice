@@ -16,8 +16,9 @@ import { scanInlineMath } from './math-delims'
 // GFM, Subscript, Superscript, Emoji) plus these two extensions, `markdownParser` below is that
 // parser without CodeMirror (markdown-syntax.test.ts compares both trees).
 
-const FM_OPEN = /^---\s*$/
-const FM_CLOSE = /^(---|\.\.\.)\s*$/
+/** A front matter's opening line and its closing line (`---` or `...`), for every reader of it. */
+export const FRONTMATTER_OPEN = /^---\s*$/
+export const FRONTMATTER_CLOSE = /^(---|\.\.\.)\s*$/
 
 /**
  * YAML front matter: only at the very start, `---` … `---`/`...` (pipeline/pandoc rule). The
@@ -33,12 +34,12 @@ export const FrontmatterSyntax: MarkdownConfig = {
       name: 'Frontmatter',
       before: 'HorizontalRule',
       parse(cx: BlockContext, line: Line): boolean {
-        if (cx.lineStart !== 0 || !FM_OPEN.test(line.text)) return false
+        if (cx.lineStart !== 0 || !FRONTMATTER_OPEN.test(line.text)) return false
         const marks: Element[] = [cx.elt('FrontmatterMark', 0, line.text.length)]
         let end = line.text.length
         while (cx.nextLine()) {
           end = cx.lineStart + line.text.length
-          if (FM_CLOSE.test(line.text)) {
+          if (FRONTMATTER_CLOSE.test(line.text)) {
             marks.push(cx.elt('FrontmatterMark', cx.lineStart, end))
             cx.nextLine()
             break

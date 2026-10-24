@@ -1,4 +1,4 @@
-import type { SyntaxNode } from '@lezer/common'
+import type { SyntaxNode, Tree } from '@lezer/common'
 import { CORE_SCHEMA, load } from 'js-yaml'
 import { markdownBodyParser, markdownParser } from './markdown-syntax'
 
@@ -100,30 +100,128 @@ function normalizeLabel(label: string): string {
   return label.trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
-// An `<img>` tag with its attributes (quoted values may hold `>`). cmarker matches the tag name
-// case-insensitively but attribute names exactly (`SRC=` is no source; it breaks the build).
-const IMG_TAG_RE =
-  /<img(?=[\s/>])((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*\/?>/gi
-const ATTR_RE = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
+interface Tag {
+  name: string
+  attrs: [string, string][]
+  end: number
+}
 
-/** The first `src` of each `<img>` in an HTML fragment; comments in it show nothing. */
-function htmlImageSources(html: string): string[] {
-  const out: string[] = []
-  const text = html.replace(/<!--[\s\S]*?(-->|$)/g, '')
-  for (const tag of text.matchAll(IMG_TAG_RE)) {
-    for (const a of (tag[1] ?? '').matchAll(ATTR_RE)) {
-      if (a[1] !== 'src') continue
-      out.push(decodeAttribute(a[2] ?? a[3] ?? a[4] ?? ''))
-      break
+const isSpace = (c: string | undefined) =>
+  c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f'
+
+/**
+ * The start tag at `i` (`<name attr="v" …>`), or null if none starts there or the text ends
+ * inside it. Read like HTML's tokenizer reads it, in one forward pass: quoted values are skipped
+ * as a whole (`<img` inside another tag's `title="…"` is part of that value, as in cmarker), and
+ * stray characters are taken as attribute-name characters instead of ending the tag, so no start
+ * position is ever scanned twice. Note text is untrusted, hence no backtracking regex.
+ */
+function readTag(s: string, i: number): Tag | null {
+  if (s[i] !== '<' || !/[A-Za-z]/.test(s[i + 1] ?? '')) return null
+  let j = i + 1
+  while (j < s.length && !isSpace(s[j]) && s[j] !== '/' && s[j] !== '>') j++
+  const name = s.slice(i + 1, j).toLowerCase()
+  const attrs: [string, string][] = []
+  for (;;) {
+    while (isSpace(s[j]) || s[j] === '/') j++
+    if (j >= s.length) return null
+    if (s[j] === '>') return { name, attrs, end: j + 1 }
+    const from = j++
+    while (j < s.length && !isSpace(s[j]) && !'/>='.includes(s[j] as string)) j++
+    const attr = s.slice(from, j)
+    let k = j
+    while (isSpace(s[k])) k++
+    if (s[k] !== '=') {
+      attrs.push([attr, ''])
+      continue
     }
+    k++
+    while (isSpace(s[k])) k++
+    const q = s[k]
+    if (q === '"' || q === "'") {
+      const close = s.indexOf(q, k + 1)
+      if (close < 0) return null
+      attrs.push([attr, s.slice(k + 1, close)])
+      j = close + 1
+    } else {
+      const vFrom = k
+      while (k < s.length && !isSpace(s[k]) && s[k] !== '>') k++
+      attrs.push([attr, s.slice(vFrom, k)])
+      j = k
+    }
+  }
+}
+
+/**
+ * The source of an `<img>` tag: its first `src` (cmarker matches the tag name case-insensitively
+ * but attribute names exactly; `SRC=` is no source and breaks the build), or null.
+ */
+function imgSource(tag: Tag | null): string | null {
+  if (tag?.name !== 'img') return null
+  const src = tag.attrs.find(([a]) => a === 'src')
+  return src ? decodeAttribute(src[1]) : null
+}
+
+/**
+ * The `<img>` sources of an HTML block, read tag by tag. A comment runs from `<!--` to the next
+ * `-->` after it (`<!-->` does not close itself in cmarker) and shows nothing.
+ */
+function htmlBlockImageSources(html: string): string[] {
+  const out: string[] = []
+  let i = 0
+  while (i < html.length) {
+    if (html.startsWith('<!--', i)) {
+      const close = html.indexOf('-->', i + 4)
+      if (close < 0) break
+      i = close + 3
+      continue
+    }
+    if (html[i] !== '<') {
+      i++
+      continue
+    }
+    const tag = readTag(html, i)
+    if (!tag) {
+      // The text ends inside this tag (HTML drops it), or `<` starts no tag.
+      if (/[A-Za-z]/.test(html[i + 1] ?? '')) break
+      i++
+      continue
+    }
+    const src = imgSource(tag)
+    if (src !== null) out.push(src)
+    i = tag.end
   }
   return out
 }
 
+/** Blocks whose inline content cmarker hands to its HTML parser as one stream. */
+const INLINE_BLOCKS = /^(Paragraph|TableCell|ATXHeading\d|SetextHeading\d)$/
+
+/**
+ * Where an inline comment opens in `block` that never closes for cmarker, or Infinity:
+ * `<!-->` / `<!--->` (text for lezer) open a comment there that swallows every later tag of the
+ * paragraph, whatever follows (checked against the PDF). Code spans and real comments don't count.
+ */
+function swallowFrom(tree: Tree, text: string, block: SyntaxNode): number {
+  const body = text.slice(block.from, block.to)
+  for (let i = body.indexOf('<!--'); i >= 0; i = body.indexOf('<!--', i + 1)) {
+    if (!/^<!---?>/.test(body.slice(i, i + 6))) continue
+    const at = tree.resolveInner(block.from + i, 1)
+    // Lezer may read `<!---> … -->` as one comment; cmarker's still never closes.
+    const inComment = at.name === 'Comment' && at.from !== block.from + i
+    if (at.name !== 'InlineCode' && at.name !== 'CodeText' && !inComment) {
+      return block.from + i
+    }
+  }
+  return Number.POSITIVE_INFINITY
+}
+
 // lib/markdown.typ's image-attrs: `![alt](src){width=…}` becomes `<img src="src">` with the
 // destination taken raw (no backslash unescaping, `"` as %22) before cmarker sees it, so the PDF
-// asks for that spelling. Same regex, anchored where the Image node starts.
-const IMAGE_ATTR_RE = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)\{([^}]*)\}/y
+// asks for that spelling. Its regex is split to stay linear on any note: the part up to `)` is
+// matched against the Image node alone (Image nodes don't overlap), the `{…}` part by finding the
+// next `}` on the line with forward-only pointers.
+const IMAGE_ATTR_HEAD_RE = /^!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)$/
 
 /**
  * A header the PDF also strips: `---` first, then a `---`/`...` line (lib/markdown.typ's
@@ -159,11 +257,52 @@ export function visibleImages(markdown: string): string[] {
     },
   })
 
+  // image-attrs, like Typst's per-line replace: matches never overlap, so an image inside an
+  // earlier match's `{…}` is attribute text. `brace`/`newline` only move forward.
+  let consumed = -1
+  let brace = -1
+  let newline = -1
+  const next = (ch: string, pos: number, cur: number): number => {
+    if (cur >= pos) return cur
+    const at = text.indexOf(ch, pos)
+    return at < 0 ? Number.POSITIVE_INFINITY : at
+  }
+  const imageAttrSource = (node: SyntaxNode): string | null => {
+    if (node.from < consumed || text[node.to] !== '{') return null
+    const head = IMAGE_ATTR_HEAD_RE.exec(slice(node))
+    if (!head) return null
+    brace = next('}', node.to, brace)
+    newline = next('\n', node.to, newline)
+    if (brace === Number.POSITIVE_INFINITY || newline < brace) return null
+    consumed = brace + 1
+    return head[2] ?? null
+  }
+
+  // Once per paragraph (or cell, heading), so a paragraph full of tags stays linear.
+  const swallowCache = new Map<number, number>()
+  const swallowed = (node: SyntaxNode): number => {
+    let block: SyntaxNode | null = node.parent
+    while (block && !INLINE_BLOCKS.test(block.name)) block = block.parent
+    if (!block) return Number.POSITIVE_INFINITY
+    let at = swallowCache.get(block.from)
+    if (at === undefined) {
+      at = swallowFrom(tree, text, block)
+      swallowCache.set(block.from, at)
+    }
+    return at
+  }
+
   const found: string[] = []
   tree.iterate({
     enter: (n) => {
-      if (n.name === 'HTMLTag' || n.name === 'HTMLBlock') {
-        found.push(...htmlImageSources(slice(n.node)))
+      if (n.name === 'HTMLBlock') {
+        found.push(...htmlBlockImageSources(slice(n.node)))
+        return false
+      }
+      if (n.name === 'HTMLTag') {
+        // Lezer already split the inline HTML into tags; only the tag itself counts.
+        const src = imgSource(readTag(slice(n.node), 0))
+        if (src !== null && n.from < swallowed(n.node)) found.push(src)
         return false
       }
       if (n.name !== 'Image') return undefined
@@ -183,9 +322,8 @@ export function visibleImages(markdown: string): string[] {
         const dest = refs.get(normalizeLabel(name))
         if (dest !== undefined) found.push(dest)
       }
-      IMAGE_ATTR_RE.lastIndex = node.from
-      const attr = IMAGE_ATTR_RE.exec(text)
-      if (attr?.[2]) found.push(decodeAttribute(attr[2].replace(/"/g, '%22')))
+      const raw = imageAttrSource(node)
+      if (raw !== null) found.push(decodeAttribute(raw.replace(/"/g, '%22')))
       // An image in another image's alt text is shown as text, not as an image.
       return false
     },
@@ -209,11 +347,36 @@ const startsWith = (b: Uint8Array, sig: readonly number[], at = 0) =>
 const ascii = (s: string) => [...s].map((c) => c.charCodeAt(0))
 
 /**
- * An SVG document: optional BOM, XML declaration, comments and a DOCTYPE without internal subset
- * (Illustrator and Inkscape write one; an internal subset could declare entities), then `<svg`.
+ * True if `head` is the start of an SVG document: optional BOM, XML declaration, comments and a
+ * DOCTYPE without internal subset (Illustrator and Inkscape write one; an internal subset could
+ * declare entities), then `<svg`. A hand loop, linear in the input (file content is untrusted).
  */
-const SVG_START_RE =
-  /^﻿?\s*(?:<\?xml[^>]*\?>\s*)?(?:(?:<!--[\s\S]*?-->|<!DOCTYPE\s+svg[^[>]*>)\s*)*<svg[\s/>]/
+function isSvgStart(head: string): boolean {
+  let i = head.charCodeAt(0) === 0xfeff ? 1 : 0
+  const skipSpace = () => {
+    while (isSpace(head[i])) i++
+  }
+  skipSpace()
+  if (head.startsWith('<?xml', i)) {
+    const close = head.indexOf('?>', i)
+    if (close < 0 || head.slice(i, close).includes('>')) return false
+    i = close + 2
+  }
+  for (;;) {
+    skipSpace()
+    if (head.startsWith('<!--', i)) {
+      const close = head.indexOf('-->', i + 4)
+      if (close < 0) return false
+      i = close + 3
+    } else if (/^<!DOCTYPE\s+svg/i.test(head.slice(i, i + 14))) {
+      const close = head.indexOf('>', i)
+      if (close < 0 || head.slice(i, close).includes('[')) return false
+      i = close + 1
+    } else {
+      return head.startsWith('<svg', i) && /[\s/>]/.test(head[i + 4] ?? '')
+    }
+  }
+}
 
 /**
  * The image type of a file, or null: extension and content must agree, so a renamed key file
@@ -235,30 +398,64 @@ export function imageKind(bytes: Uint8Array, name: string): ImageKind | null {
     case 'svg': {
       // The start decides; an SVG's head fits in a few KB unless its comments are huge.
       const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, 65536))
-      return SVG_START_RE.test(head) ? kind : null
+      return isSvgStart(head) ? kind : null
     }
   }
 }
 
-const HREF_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi
-const URL_RE = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi
+/** `#…` or a `data:` URI that is not itself an SVG (a nested SVG could hide references). */
 const internal = (v: string) => {
   const s = v.trim()
-  return s.startsWith('#') || /^data:/i.test(s)
+  return s.startsWith('#') || (/^data:/i.test(s) && !/^data:\s*image\/svg\+xml/i.test(s))
+}
+
+/** Each `href=` value; `null` for one whose quote never closes (counted as external). */
+function* hrefValues(svg: string): Generator<string | null> {
+  // `\s*=\s*` cannot overlap, so this regex stays linear; the values are read by hand.
+  for (const m of svg.matchAll(/\bhref\s*=\s*/gi)) {
+    const at = (m.index ?? 0) + m[0].length
+    const q = svg[at]
+    if (q === '"' || q === "'") {
+      const close = svg.indexOf(q, at + 1)
+      yield close < 0 ? null : svg.slice(at + 1, close)
+    } else {
+      let end = at
+      while (end < svg.length && !' \t\n\r\f"\'>'.includes(svg[end] as string)) end++
+      yield svg.slice(at, end)
+    }
+  }
+}
+
+/** Each CSS `url(…)` value without quotes; `null` for one that never closes. */
+function* urlValues(svg: string): Generator<string | null> {
+  const lower = svg.toLowerCase()
+  let close = -1
+  for (let i = lower.indexOf('url('); i >= 0; i = lower.indexOf('url(', i + 4)) {
+    // `url(url(url(…)` shares one `)`: search again only past the last one found.
+    if (close < i + 4) close = svg.indexOf(')', i + 4)
+    if (close < 0) {
+      yield null
+      return
+    }
+    const v = svg.slice(i + 4, close).trim()
+    const q = v[0]
+    yield (q === '"' || q === "'") && v.endsWith(q) && v.length > 1 ? v.slice(1, -1) : v
+  }
 }
 
 /**
- * True if an SVG references anything outside itself: an `href`/`xlink:href` or CSS `url(…)` that
- * is neither `#…` nor `data:`, an `@import`, or an entity declaration. Typst would try to load
- * such a file from the root, so the SVG is not staged (shown as missing). Deliberately coarse:
- * any match counts, also in comments, rather than parsing XML and CSS exactly.
+ * True if an SVG may reference anything outside itself: an `href`/`xlink:href` or CSS `url(…)`
+ * that is neither `#…` nor a non-SVG `data:` URI, a CSS escape inside `url(…)`, any `@import`,
+ * or an entity declaration. Typst would try to load such a file from the root, so the SVG is not
+ * staged (shown as missing). Defence in depth, deliberately coarse (matches in comments count
+ * too): the boundary itself is the staging root, which holds nothing the note does not name.
+ * Hand-read values, linear in the input (file content is untrusted).
  */
 export function svgHasExternalRefs(svg: string): boolean {
   if (/@import/i.test(svg) || /<!ENTITY/i.test(svg)) return true
-  for (const re of [HREF_RE, URL_RE]) {
-    for (const m of svg.matchAll(re)) {
-      if (!internal(m[1] ?? m[2] ?? m[3] ?? '')) return true
-    }
+  for (const v of hrefValues(svg)) if (v === null || !internal(v)) return true
+  for (const v of urlValues(svg)) {
+    if (v === null || v.includes('\\') || !internal(v)) return true
   }
   return false
 }

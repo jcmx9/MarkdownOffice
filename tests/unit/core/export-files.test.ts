@@ -7,6 +7,7 @@ import {
   svgHasExternalRefs,
   visibleImages,
 } from '../../../src/core/export-files'
+import { markdownParser } from '../../../src/core/markdown-syntax'
 
 // Expected spellings were checked against the PDF side: the memo set's probe pass
 // (`typst eval … query(<mdo-image>)` with probe=true) on the same notes lists these. One known
@@ -84,6 +85,18 @@ describe('visibleImages', () => {
     ],
     ['empty destinations', '![]() ![](<>) <img src="">'],
     ['attribute names are case-sensitive in cmarker', '<img SRC="x.png">'],
+    ["<img> text in an inline tag's attribute", 'x <a title="<img src=\'attr.png\'>">y</a>'],
+    ["<img> text in a span's attribute", 'x <span title="<img src=\'s.png\'>">z</span>'],
+    [
+      "<img> text in an HTML block tag's attribute",
+      '<div title="<img src=\'d.png\'>">\ntext\n</div>',
+    ],
+    ['a tag after an inline `<!-->`', 'a <!--> <img src="cs2.png"> b'],
+    [
+      'a tag after an inline `<!--->`, even past a later `-->`',
+      'a <!---> <img src="x.png"> b --> <img src="y.png">',
+    ],
+    ['a tag after `<!-->` in an HTML block', '<div>\n<!--> <img src="x.png">\n</div>'],
     ['undefined reference', '![r][nope] ![nope2]'],
   ])('ignores %s', (_label, md) => {
     expect(visibleImages(md).filter((s) => s !== 'out.png')).toEqual([])
@@ -134,6 +147,14 @@ describe('visibleImages', () => {
     ])
   })
 
+  it('reads HTML tags like cmarker: `>` in quoted values, unquoted values up to space or `>`', () => {
+    expect(
+      visibleImages(
+        '<div>\n<img src="a.png" title="x>y"> <img src=b.png/>\n</div>\n\nx <span title="<img src=\'s.png\'>">z</span> <img src="ok.png">',
+      ),
+    ).toEqual(['a.png', 'b.png/', 'ok.png'])
+  })
+
   it('deduplicates in document order', () => {
     expect(visibleImages('![](b.png) ![](a.png)\n\n<img src="b.png"> ![](a.png)')).toEqual([
       'b.png',
@@ -160,6 +181,39 @@ const GIF = enc('GIF89a\x01\x00')
 const WEBP = enc('RIFF\x10\x00\x00\x00WEBPVP8 ')
 const SVG = enc('<svg xmlns="http://www.w3.org/2000/svg"/>')
 const RSA = enc('-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n')
+
+describe('visibleImages stays linear on hostile notes', () => {
+  // Note text is untrusted: no input may make the scan quadratic or worse.
+  it.each([
+    ['unclosed quotes in an HTML block', `<div>\n${'<a b="'.repeat(5000)}`],
+    ['many tags in one paragraph after `<!-->`', `x <!--> ${'<b>'.repeat(10000)}`],
+    ['many tags in one paragraph', `x ${'<b>'.repeat(10000)} <img src="a.png">`],
+    ['an image with many spaces', `![](a${' '.repeat(20000)}){width=1}`],
+    ['many images with unclosed attributes', '![a](b){'.repeat(5000)],
+    ['many images with attributes closed at the end', `${'![a](b){'.repeat(5000)}}`],
+    ['many images with titles and unclosed attributes', '![a](b "c"){'.repeat(5000)],
+  ])('%s', (_label, md) => {
+    const t = performance.now()
+    visibleImages(md)
+    expect(performance.now() - t).toBeLessThan(100)
+  })
+
+  it('adds little to the parse itself on many unclosed image openers', () => {
+    // Lezer's own parse of this text is superlinear (the editor parses the same text); what
+    // visibleImages does on top of it must not be.
+    const md = '![a]('.repeat(5000)
+    let t = performance.now()
+    markdownParser.parse(md)
+    const parse = performance.now() - t
+    t = performance.now()
+    visibleImages(md)
+    expect(performance.now() - t - parse).toBeLessThan(100)
+  })
+
+  it('keeps the image after a block of tags', () => {
+    expect(visibleImages(`x ${'<b>'.repeat(100)} <img src="a.png">`)).toEqual(['a.png'])
+  })
+})
 
 describe('imageKind', () => {
   it.each([
@@ -204,6 +258,31 @@ describe('imageKind', () => {
   })
 })
 
+describe('linear scans of untrusted files', () => {
+  it.each([
+    ['many empty comments before no <svg> (n=200)', `${'<!---->'.repeat(200)}x`],
+    ['many empty comments (n=20000)', `${'<!---->'.repeat(20000)}x`],
+    ['an unclosed XML declaration', `<?xml${' '.repeat(20000)}`],
+    ['many DOCTYPE openers', '<!DOCTYPE svg '.repeat(5000)],
+  ])('imageKind: %s', (_label, svg) => {
+    const t = performance.now()
+    expect(imageKind(enc(svg), 'a.svg')).toBeNull()
+    expect(performance.now() - t).toBeLessThan(100)
+  })
+
+  it.each([
+    ['url( and 20 000 spaces', `url(${' '.repeat(20000)}`],
+    ['nested url( openers', `${'url('.repeat(5000)}#a)`],
+    ['unclosed href quotes', 'href="'.repeat(5000)],
+    ['href and many spaces', `href${' '.repeat(20000)}`],
+    ['href= and many spaces', `href=${' '.repeat(20000)}`],
+  ])('svgHasExternalRefs: %s', (_label, svg) => {
+    const t = performance.now()
+    svgHasExternalRefs(svg)
+    expect(performance.now() - t).toBeLessThan(100)
+  })
+})
+
 describe('svgHasExternalRefs', () => {
   it.each([
     '<svg><image href="file:///etc/passwd"/></svg>',
@@ -215,6 +294,13 @@ describe('svgHasExternalRefs', () => {
     "<svg><image HREF='x.png'/></svg>",
     '<svg><image href="  x.png"/></svg>',
     '<!DOCTYPE svg [<!ENTITY e SYSTEM "file:///etc/passwd">]><svg>&e;</svg>',
+    // A nested SVG could hide references in its base64; CSS escapes could spell anything.
+    '<svg><image href="data:image/svg+xml;base64,PHN2Zz4="/></svg>',
+    '<svg><image href="DATA:Image/SVG+XML,%3Csvg%3E"/></svg>',
+    '<svg><rect fill="url(\\66 ile.png)"/></svg>',
+    '<svg><rect fill="url(\'#a\\29 x.png\')"/></svg>',
+    '<svg><rect fill="url(#a"/></svg>',
+    '<svg><image href="x.png/></svg>',
   ])('true for %s', (svg) => {
     expect(svgHasExternalRefs(svg)).toBe(true)
   })
