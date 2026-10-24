@@ -1091,6 +1091,27 @@ test_sandbox() {
   [[ ! -e "${out_dir}/sb-direkt.pdf" ]] || die "build.sh ohne Manifest erzeugt ein PDF"
   ok "build.sh ohne MDO_MANIFEST: Exit 1 mit Hinweis auf markdown-office"
 
+  # Das Manifest einer anderen Notiz (oder eines ohne Notiz) exportiert nicht; dieselbe Notiz über
+  # einen verlinkten Ordner geschrieben schon (verglichen werden die echten Pfade).
+  local mdir="${out_dir}/sb-manifest" mjson
+  mkdir -p "${mdir}"
+  ln -s "${sb}/notiz" "${sb}/notiz-link"
+  for mjson in "{\"note\":\"${sb}/notiz/umbruch.md\",\"images\":[]}" '{"images":[]}'; do
+    printf '%s\n' "${mjson}" >"${mdir}/manifest.json"
+    code=0
+    text="$(cd "${sb}/notiz" && MDO_MANIFEST="${mdir}/manifest.json" bash "${build}" aussen.md \
+      "${out_dir}/sb-fremdmanifest.pdf" 2>&1 >/dev/null)" || code=$?
+    [[ "${code}" -eq 1 ]] || die "build.sh mit fremdem Manifest (${mjson}): Exit ${code}"
+    grep -q "Export-Manifest gehört zu einer anderen Notiz" <<<"${text}" ||
+      die "build.sh mit fremdem Manifest: unklare Meldung: ${text}"
+    [[ ! -e "${out_dir}/sb-fremdmanifest.pdf" ]] || die "build.sh mit fremdem Manifest erzeugt ein PDF"
+  done
+  printf '{"note":"%s","images":[]}\n' "${sb}/notiz-link/aussen.md" >"${mdir}/manifest.json"
+  (cd "${sb}/notiz" && MDO_MANIFEST="${mdir}/manifest.json" bash "${build}" aussen.md \
+    "${out_dir}/sb-eigenmanifest.pdf" >/dev/null 2>"${out_dir}/sb-eigenmanifest.err") ||
+    die "build.sh mit Manifest über verlinkten Ordner: $(cat "${out_dir}/sb-eigenmanifest.err")"
+  ok "build.sh: Manifest einer anderen Notiz abgewiesen, dieselbe Notiz über einen Link angenommen"
+
   # din5008a: Profil in einem gemeinsamen profiles/-Ordner neben einem anderen Profil. Nur das
   # eigene Profil und die Unterschrift, die es nennt, liegen im Staging-Ordner (/profile/…).
   local vorl="${MDO_TEMPLATES}"

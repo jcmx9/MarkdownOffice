@@ -554,11 +554,24 @@ no_net+=(HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 ALL_PROXY=
 # ---------------------------------------------------------------------------
 # Manifest lesen (JSON, vom Wrapper geschrieben und geprüft). Typst liest es (kein jq nötig),
 # mit dem Ordner des Manifests als Wurzel; heraus kommt eine Zeile je Wert mit einem
-# Kennbuchstaben davor: I/P Bild (Schreibweise in der Notiz / absoluter Pfad), L Logo,
+# Kennbuchstaben davor: N die Notiz, für die es geschrieben wurde, I/P Bild (Schreibweise in der Notiz / absoluter Pfad), L Logo,
 # Y Profil-YAML, F Datei neben dem Profil. Werte mit Steuerzeichen (Zeilenumbruch) entfallen;
 # ein solches Bild fehlt dann nur. Logo und Profil kommen NUR von hier: eigene Suchen nach
 # Pfaden aus der Notiz würden wieder beliebige Dateien in den Staging-Ordner holen.
 # ---------------------------------------------------------------------------
+# real_path <pfad>: Pfad mit allen Symlinks aufgelöst (ohne realpath/readlink -f, die ältere
+# macOS nicht kennen); Exit 1 bei einer Schleife oder einem fehlenden Ordner.
+real_path() {
+  local p="$1" t d n=0
+  while [[ -L "${p}" ]]; do
+    (( n++ < 40 )) || return 1
+    t="$(readlink "${p}")" || return 1
+    case "${t}" in /*) p="${t}" ;; *) p="$(dirname "${p}")/${t}" ;; esac
+  done
+  d="$(cd -P "$(dirname "${p}")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s' "${d}" "$(basename "${p}")"
+}
+
 # JSON-String-Literal aus typst eval in Klartextzeilen zerlegen (\n, \t, \",
 # \\ und \/ werden aufgelöst; \uXXXX kommt in Pfaden praktisch nicht vor).
 json_string_lines() {
@@ -592,6 +605,8 @@ manifest_expr='{
   let plain(v) = type(v) == str and v != "" and v.match(regex("[\u{0}-\u{1f}\u{7f}]")) == none
   let abs(v) = plain(v) and v.starts-with("/")
   let out = ()
+  let note = m.at("note", default: none)
+  if abs(note) { out.push("N" + note) }
   let imgs = m.at("images", default: ())
   for i in if type(imgs) == array { imgs } else { () } {
     if type(i) == dictionary and plain(i.at("ref", default: none)) and abs(i.at("path", default: none)) {
@@ -617,6 +632,7 @@ if ! manifest_out="$("${no_net[@]}" "${typst_bin}" eval --root "${manifest_dir}"
   echo "Error: Export-Manifest nicht lesbar: ${MDO_MANIFEST}" >&2
   exit 1
 fi
+m_note=""
 m_refs=()
 m_paths=()
 m_logo=""
@@ -624,6 +640,7 @@ m_profile=""
 m_profile_files=()
 while IFS= read -r line; do
   case "${line}" in
+    N*) m_note="${line#N}" ;;
     I*) m_refs+=("${line#I}") ;;
     P*) m_paths+=("${line#P}") ;;
     L*) m_logo="${line#L}" ;;
@@ -631,6 +648,17 @@ while IFS= read -r line; do
     F*) m_profile_files+=("${line#F}") ;;
   esac
 done < <(printf '%s' "${manifest_out}" | json_string_lines)
+# Das Manifest gilt nur für die Notiz, für die der Wrapper es schrieb (verglichen als echte Pfade,
+# Symlinks aufgelöst). Warum: mit dem Manifest einer anderen Notiz (MDO_MANIFEST von Hand gesetzt
+# oder vertauscht) lägen deren Bilder und Profil im Staging-Ordner, lesbar für diese Notiz. Fail
+# closed: fehlt die Angabe oder ist ein Pfad nicht auflösbar, kein Export.
+src_real="$(real_path "${src_abs}")" || src_real=""
+note_real=""
+if [[ -n "${m_note}" ]]; then note_real="$(real_path "${m_note}")" || note_real=""; fi
+if [[ -z "${src_real}" || "${src_real}" != "${note_real}" ]]; then
+  echo "Error: Export-Manifest gehört zu einer anderen Notiz (${m_note:-ohne Angabe}) – bitte über markdown-office exportieren: markdown-office ${1}" >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Staging-Ordner: frisch und privat (700) im Temp-Ordner, nie neben der Notiz; die Marke
@@ -700,19 +728,6 @@ copy_failed() {
   echo "Error: nicht in den Staging-Ordner kopierbar: $1" >&2
   exit 1
 }
-# real_path <pfad>: Pfad mit allen Symlinks aufgelöst (ohne realpath/readlink -f, die ältere
-# macOS nicht kennen); Exit 1 bei einer Schleife oder einem fehlenden Ordner.
-real_path() {
-  local p="$1" t d n=0
-  while [[ -L "${p}" ]]; do
-    (( n++ < 40 )) || return 1
-    t="$(readlink "${p}")" || return 1
-    case "${t}" in /*) p="${t}" ;; *) p="$(dirname "${p}")/${t}" ;; esac
-  done
-  d="$(cd -P "$(dirname "${p}")" 2>/dev/null && pwd -P)" || return 1
-  printf '%s/%s' "${d}" "$(basename "${p}")"
-}
-
 # skipped_rel <relativer-pfad>: Exit 0, wenn ein Teil des Pfads mit . beginnt oder profiles heißt,
 # in jeder Schreibweise (Profiles, PROFILES). Warum jede: macOS und Windows unterscheiden Groß- und
 # Kleinschreibung im Dateisystem nicht, die Profilsuche des Wrappers findet Profiles/ als profiles/;

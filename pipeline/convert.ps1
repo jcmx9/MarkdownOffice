@@ -572,7 +572,9 @@ function Read-ExportManifest {
   try {
     $m = [IO.File]::ReadAllText($File, (New-Object Text.UTF8Encoding $false)) | ConvertFrom-Json
   } catch { throw "Export-Manifest nicht lesbar: $File" }
-  $r = @{ Refs = @(); Paths = @(); Logo = ''; Profile = ''; ProfileFiles = @() }
+  $r = @{ Note = ''; Refs = @(); Paths = @(); Logo = ''; Profile = ''; ProfileFiles = @() }
+  $note = Get-JsonValue $m 'note'
+  if (Test-AbsValue $note) { $r.Note = [string]$note }
   foreach ($i in @(Get-JsonValue $m 'images')) {
     $ref = Get-JsonValue $i 'ref'
     $path = Get-JsonValue $i 'path'
@@ -780,6 +782,17 @@ function Convert-One {
   # Exportiert wird nur mit dem Manifest des Wrappers: nur er weiss (aus dem Markdown-Parser des
   # Editors, nicht aus Typst), welche Dateien die Notiz sichtbar einbindet.
   $manifest = Read-ExportManifest $env:MDO_MANIFEST
+  # Das Manifest gilt nur fuer die Notiz, fuer die der Wrapper es schrieb (spiegelt build.sh;
+  # verglichen als echte Pfade, Links aufgeloest, ohne Gross-/Kleinschreibung). Warum: mit dem
+  # Manifest einer anderen Notiz laegen deren Bilder und Profil im Staging-Ordner, lesbar fuer
+  # diese Notiz. Fail closed: fehlt die Angabe oder ist ein Pfad nicht aufloesbar, kein Export.
+  $srcReal = Resolve-RealPath $Src
+  $noteReal = if ($manifest.Note) { Resolve-RealPath $manifest.Note } else { $null }
+  if (-not $srcReal -or -not $noteReal -or
+      -not [string]::Equals($srcReal, $noteReal, [StringComparison]::OrdinalIgnoreCase)) {
+    $named = if ($manifest.Note) { $manifest.Note } else { 'ohne Angabe' }
+    throw "Export-Manifest gehoert zu einer anderen Notiz ($named) - bitte ueber markdown-office exportieren: markdown-office $Src"
+  }
 
   # Staging-Ordner (siehe Kopfkommentar und New-StageDir). Aufbau (Pfade in Typst ab der Wurzel):
   #   /note/<name>.md   die Notiz (Quelle und PDF/A-3-Anhang; der Name bleibt der Anhangsname)

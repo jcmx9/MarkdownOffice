@@ -806,6 +806,19 @@ elseif ($rr.Text -notmatch 'markdown-office') { Fail "convert.ps1 ohne Manifest:
 elseif (Test-Path -LiteralPath (Join-Path $outDir 'sb-direkt.pdf')) { Fail 'convert.ps1 ohne Manifest erzeugt ein PDF' }
 else { Ok 'convert.ps1 ohne MDO_MANIFEST: Exit 1 mit Hinweis auf markdown-office' }
 
+# Das Manifest einer anderen Notiz exportiert nicht (spiegelt test-pdf.sh); das der Notiz selbst
+# in anderer Schreibweise (Gross-/Kleinschreibung) schon.
+$mOk = $true
+Push-Location $sbNote
+$rr = Invoke-ConvertDirect @('aussen.md', (Join-Path $outDir 'sb-fremdmanifest.pdf')) (New-TestManifest (Join-Path $sbNote 'umbruch.md'))
+$own = Invoke-ConvertDirect @('aussen.md', (Join-Path $outDir 'sb-eigenmanifest.pdf')) (New-TestManifest (Join-Path $sbNote 'AUSSEN.md'))
+Pop-Location
+if ($rr.Code -ne 1 -or $rr.Text -notmatch 'Export-Manifest gehoert zu einer anderen Notiz') {
+  Fail "convert.ps1 mit fremdem Manifest: Exit $($rr.Code)`n$($rr.Text)"; $mOk = $false
+} elseif (Test-Path -LiteralPath (Join-Path $outDir 'sb-fremdmanifest.pdf')) { Fail 'convert.ps1 mit fremdem Manifest erzeugt ein PDF'; $mOk = $false }
+if ($own.Code -ne 0) { Fail "convert.ps1 mit eigenem Manifest: Exit $($own.Code)`n$($own.Text)"; $mOk = $false }
+if ($mOk) { Ok 'convert.ps1: Manifest einer anderen Notiz abgewiesen, das eigene angenommen' }
+
 # din5008a: Profil in einem gemeinsamen profiles\-Ordner neben einem anderen Profil. Nur das
 # eigene Profil und die Unterschrift, die es nennt, liegen im Staging-Ordner (/profile/...).
 $dinSet = Join-Path $env:MDO_SETS_DIR 'din5008a'
