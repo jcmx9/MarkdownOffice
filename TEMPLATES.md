@@ -396,6 +396,15 @@ Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-
 
 A drawn Mermaid diagram (§8.2, `mermaid:`) sits in a `.mdo-diagram` block. It is not one of the head and foot blocks: a rule on `.mdo-diagram` is a rule that may reach the note's text, so it keeps only the typography and spacing properties of the list above (`margin*`, `padding*`, `background*`, `border*`, `font*`, `color`, `min-height`, …), nothing else. The app's own spacing is 1.4em above and below; the diagram is centred and scaled to the block's content box, so horizontal `padding` narrows the room it is fitted into. The SVG inside is not part of the set-CSS contract: it is drawn as the PDF draws it, and rules aimed at it are unsupported.
 
+A display formula (a paragraph that is exactly one `$$…$$`, cursor elsewhere) sits in a `.mdo-math` block. Like `.mdo-diagram` it is not a head or foot block, so a rule on it keeps only the typography and spacing properties above; use it for spacing (`margin*`, `padding*`). Its default spacing is the line box a text line would have (half the leading above and below, following `--mdo-line-height`), and the blank lines around the `$$` block add `--mdo-par-gap`, as between two paragraphs, which is what Typst's `par.spacing` around a block equation looks like. The SVG inside is not part of the set-CSS contract.
+
+**Formulas.** `$…$` and `$$…$$` are set by the bundled Typst with the bundled mitex, the same call your `.typ` makes when it passes `math: mitex` to cmarker, in Typst's math font New Computer Modern Math. The preview sizes a formula in `em` of the text around it (body, heading, table cell) and draws it in that text's colour. There is no key to declare: neither `<name>.css` nor `<name>.preview.yaml` describes formulas, and a set that changes the math font or colour in its `.typ` (`show math.equation: set text(…)`) is not followed by the preview. The formula with the cursor, the code view and a formula whose result is still pending show the source; a formula the PDF cannot build (an unknown LaTeX command such as `\ce`) keeps its source, underlined, with mitex's message as a tooltip. mitex commands that run Typst code (`\iftypst`, `\includegraphics`, `\hspace`, `\vspace`, `\raisebox`) are never executed in the preview and are flagged the same way. Known differences from the PDF:
+
+- An inline formula never breaks across lines in the preview; Typst may break a long one at a relation or operator.
+- A `$$…$$` written inside a line of text (`text $$x$$ text`) is shown in display style within that line; Typst starts a new paragraph before and after it.
+- `\color{black}` follows the text colour in the preview (the app draws black glyphs in the context colour, so formulas stay readable in the dark theme); the PDF prints black.
+- A bare URL directly before a formula (`http://example.com$a$`): the editor reads the `$…$` as part of the link, the PDF as a formula. Put a space or `<…>` around the URL.
+
 **Fonts.** Only the bundled families are available ("mdo Sans", "mdo Serif", "mdo Code", see section 4 and `src/renderer/ui/fonts.ts`); name them through the tokens or `var(--mdo-font-*)`. `@font-face` is dropped.
 
 ### 8.2 `<name>.preview.yaml`
@@ -509,6 +518,8 @@ You need: a test note that uses every element of your set (paragraphs long enoug
 | 11 | `nobreak:` in `<name>.preview.yaml` | the phrases and units your `.typ` joins with a no-break space (`show "z. B.": [z.~B.]`, a regex for number + unit); copy them as plain strings (§8.2). No such rules: leave the key out | 10 phrases, 19 units | — |
 | 11a | `mermaid:` in `<name>.preview.yaml` | the arguments of your `.typ`'s `mermaid-svg` call and its size rule: `base-theme`, the `theme` dict (mmdr field names), the `layout` dict, the `max-height` of the `box`/`scale` (none if it caps only the width), and a `font-weight` only if the `.typ` writes one into the SVG (§8.2). No Mermaid rule: leave the key out | memo.typ's theme, layout `node_spacing: 25, rank_spacing: 35`, `12cm`, weight 500 | see the set's `din5008a.preview.yaml` |
 | 12 | `head:`, `foot:` in `<name>.preview.yaml`, block classes in `<name>.css` | what the `.typ` prints from the front matter and the profile above and below the body, in the same order; distances measured in the PDF become `margin-*`/`padding-*` on the `.mdo-tb-*` classes | title block | letter head, closing, signature, enclosures |
+
+Formulas need no row either: the preview sets them with the PDF's own Typst and mitex in New Computer Modern Math (§8.1, *Formulas*); `.mdo-math` only takes spacing.
 
 The optical size needs no row: the app derives `--mdo-*-opsz` from the pt sizes of rows 2 and 7 (§8.1, *Optical size*). Only fonts and sizes in `pt` derive it, so write the sizes in `pt`, not `em` or `mm`.
 

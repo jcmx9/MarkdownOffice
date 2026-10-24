@@ -96,6 +96,8 @@ function firstError(stderr: string, code: number | null): string {
  * outside it; it is removed afterwards.
  */
 export class MathRenderer {
+  /** The bundled pipeline folder (bin/typst, fonts/, vendor/mitex), as the export uses it. */
+  private readonly root: string
   private readonly timeoutMs: number
   private readonly deadlineMs: number
   private readonly spawnImpl: typeof spawn
@@ -104,11 +106,13 @@ export class MathRenderer {
   private generation = 0
   private running: ChildProcess | null = null
 
+  // A plain field, no parameter property: pipeline/tests/test-math.sh runs this class under
+  // Node's type stripping, which only erases types.
   constructor(
-    /** The bundled pipeline folder (bin/typst, fonts/, vendor/mitex), as the export uses it. */
-    private readonly root: string,
+    root: string,
     opts: { timeoutMs?: number; deadlineMs?: number; spawnImpl?: typeof spawn } = {},
   ) {
+    this.root = root
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.deadlineMs = opts.deadlineMs ?? DEFAULT_DEADLINE_MS
     this.spawnImpl = opts.spawnImpl ?? spawn

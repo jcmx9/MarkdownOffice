@@ -1,8 +1,8 @@
 # Third-party notices
 
 Markdown Office is AGPL-3.0-or-later (see `LICENSE`). The editor preview sets paragraphs like
-Typst and draws Mermaid diagrams like the PDF, and for that contains the following third-party
-code and data. Fonts, the Typst compiler and
+Typst, draws Mermaid diagrams and checks formulas like the PDF, and for that contains the following
+third-party code and data. Fonts, the Typst compiler and
 the Typst packages that ship with the pipeline have their own licence files in
 `pipeline/licenses/`.
 
@@ -187,3 +187,16 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## mitex 0.2.7 - Apache-2.0
+
+`vendor/mitex/mitex.wasm` (the Typst package mitex 0.2.7 by Myriad-Dreamin, OrangeX4, Enter-tainer
+and Shichien, https://github.com/mitex-rs/mitex) converts LaTeX formulas to Typst math. The PDF
+pipeline has always shipped it (the set's Typst runs it for every `$…$` and `$$…$$`); the app's
+editor preview now runs the very same file in the UI as well, to check each formula before it is
+set (`src/renderer/editor/math-render.ts`, loaded by the main process through `src/main/plugins.ts`).
+The formulas themselves are set by the bundled Typst with the package, as in the PDF.
+
+Copyright the mitex contributors. Licensed under the Apache License, Version 2.0,
+http://www.apache.org/licenses/LICENSE-2.0. The package ships no NOTICE file; its full licence text
+ships with the app as `pipeline/licenses/packages/mitex/LICENSE`.
