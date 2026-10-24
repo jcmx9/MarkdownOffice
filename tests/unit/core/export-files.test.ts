@@ -274,6 +274,9 @@ describe('linear scans of untrusted files', () => {
     ['url( and 20 000 spaces', `url(${' '.repeat(20000)}`],
     ['nested url( openers', `${'url('.repeat(5000)}#a)`],
     ['unclosed href quotes', 'href="'.repeat(5000)],
+    ['unquoted href values holding further hrefs', 'href=#'.repeat(20000)],
+    ['url(# openers sharing no )', 'url(#'.repeat(100000)],
+    ['url(# openers sharing one far )', `${'url(#'.repeat(100000)})`],
     ['href and many spaces', `href${' '.repeat(20000)}`],
     ['href= and many spaces', `href=${' '.repeat(20000)}`],
   ])('svgHasExternalRefs: %s', (_label, svg) => {

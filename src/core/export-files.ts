@@ -411,17 +411,25 @@ const internal = (v: string) => {
 
 /** Each `href=` value; `null` for one whose quote never closes (counted as external). */
 function* hrefValues(svg: string): Generator<string | null> {
-  // `\s*=\s*` cannot overlap, so this regex stays linear; the values are read by hand.
-  for (const m of svg.matchAll(/\bhref\s*=\s*/gi)) {
-    const at = (m.index ?? 0) + m[0].length
+  // `\s*=\s*` cannot overlap, so this regex stays linear; the values are read by hand, and the
+  // search resumes after each value (`href=#href=#…` would otherwise rescan the rest each time).
+  const re = /\bhref\s*=\s*/gi
+  for (let m = re.exec(svg); m; m = re.exec(svg)) {
+    const at = m.index + m[0].length
     const q = svg[at]
     if (q === '"' || q === "'") {
       const close = svg.indexOf(q, at + 1)
-      yield close < 0 ? null : svg.slice(at + 1, close)
+      if (close < 0) {
+        yield null
+        return
+      }
+      yield svg.slice(at + 1, close)
+      re.lastIndex = close + 1
     } else {
       let end = at
       while (end < svg.length && !' \t\n\r\f"\'>'.includes(svg[end] as string)) end++
       yield svg.slice(at, end)
+      re.lastIndex = Math.max(end, at + 1)
     }
   }
 }
@@ -430,16 +438,21 @@ function* hrefValues(svg: string): Generator<string | null> {
 function* urlValues(svg: string): Generator<string | null> {
   const lower = svg.toLowerCase()
   let close = -1
-  for (let i = lower.indexOf('url('); i >= 0; i = lower.indexOf('url(', i + 4)) {
+  for (let i = lower.indexOf('url('); i >= 0; ) {
     // `url(url(url(…)` shares one `)`: search again only past the last one found.
     if (close < i + 4) close = svg.indexOf(')', i + 4)
     if (close < 0) {
       yield null
       return
     }
-    const v = svg.slice(i + 4, close).trim()
+    // A value ends at its `)` or at the next `url(`, whichever comes first, so every character is
+    // sliced once (a truncated value is still checked, and the next `url(` gets its own turn).
+    const next = lower.indexOf('url(', i + 4)
+    const end = next >= 0 && next < close ? next : close
+    const v = svg.slice(i + 4, end).trim()
     const q = v[0]
     yield (q === '"' || q === "'") && v.endsWith(q) && v.length > 1 ? v.slice(1, -1) : v
+    i = next
   }
 }
 
