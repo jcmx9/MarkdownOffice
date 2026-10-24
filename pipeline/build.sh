@@ -661,7 +661,11 @@ stage="$(mktemp -d "${tmp_base%/}/mdo-stage-XXXXXX")" || {
 cleanup() {
   [[ -d "${stage}" ]] || return 0
   find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -exec rm -rf {} + 2>/dev/null || true
-  rm -f "${stage}/.mdo-stage" && rmdir "${stage}" 2>/dev/null || true
+  # Die Marke fällt nur, wenn sonst nichts mehr im Ordner liegt.
+  if [[ -z "$(find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -print 2>/dev/null)" ]]; then
+    rm -f "${stage}/.mdo-stage"
+    rmdir "${stage}" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 # Nach einem Signal endet das Skript; der EXIT-Trap räumt auf.
