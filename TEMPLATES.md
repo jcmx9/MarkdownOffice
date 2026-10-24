@@ -60,10 +60,10 @@ typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-f
 | Staged path | Content |
 |---|---|
 | `/note/<name>.md` | the note (`source`, and the attachment) |
-| `/img/<n>-<name>` | the images the note visibly includes (SVG, PNG, JPEG, GIF, WebP by content; SVGs without external references) |
+| `/img/<n><ext>` | the images the note visibly includes, numbered from 1 with the source's extension (`/img/1.png`; the original name is not kept); SVG, PNG, JPEG, GIF, WebP by content; SVGs without external references |
 | `/logo/<name>` | the logo |
 | `/profile/<name>` | the profile YAML and the files next to it that the profile names as values |
-| `/set/…` | a set folder without top-level `profiles` and `.git`; for a single `.typ` found by name its folder, filtered (no `profiles` at any depth, no hidden entries, no links leading out); for a `.typ` named in the note only that file |
+| `/set/…` | a set folder without top-level `profiles` and `.git` (any letter case); for a single `.typ` found by name its folder, filtered (no `profiles` at any depth or letter case, no hidden entries, no links leading out); for a `.typ` named in the note only that file |
 | `/mdo/lib`, `/mdo/vendor/…` | pipeline parts (`mdo`) |
 | `/images.json` | the `images` map |
 
