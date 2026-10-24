@@ -203,7 +203,7 @@ if ($OtherTemp) {
   $drvNote = New-DriveNote $drvDir
   $drvPdf = Join-Path $drvOut 'notiz.pdf'
   $r = Invoke-Convert @($drvNote, $drvPdf)
-  $leftover = Get-StageLeftovers @([IO.Path]::GetTempPath(), $env:LOCALAPPDATA, (Get-Location).Path, $Root, $drvDir, $drvOut)
+  $leftover = @(Get-StageLeftovers @([IO.Path]::GetTempPath(), $env:LOCALAPPDATA, (Get-Location).Path, $Root, $drvDir, $drvOut))
   if ($r.Code -ne 0) { Fail "anderes Laufwerk: Exit $($r.Code)`n$($r.Text)" }
   elseif (-not (Test-PdfA $drvPdf)) { Fail "anderes Laufwerk: PDF fehlt am Zielpfad`n$($r.Text)" }
   elseif ($r.Text -match 'nicht gefunden') { Fail "anderes Laufwerk: Bild/Logo nicht gefunden`n$($r.Text)" }
@@ -225,7 +225,7 @@ if ($OtherTemp) {
   $r = Invoke-Convert @($edNote)
   Pop-Location
   $env:TEMP = $saved.TEMP; $env:TMP = $saved.TMP; $env:LOCALAPPDATA = $saved.LOCALAPPDATA
-  $leftover = Get-StageLeftovers @($edTemp, $edLocal, $edDir, $Root)
+  $leftover = @(Get-StageLeftovers @($edTemp, $edLocal, $edDir, $Root))
   if ($r.Code -ne 0) { Fail "Editor-Fall (anderes Laufwerk, Arbeitsordner = Notizordner): Exit $($r.Code)`n$($r.Text)" }
   elseif (-not (Test-PdfA $edPdf)) { Fail "Editor-Fall: PDF fehlt neben der Notiz`n$($r.Text)" }
   elseif ($r.Text -match 'nicht gefunden') { Fail "Editor-Fall: Bild/Logo nicht gefunden`n$($r.Text)" }

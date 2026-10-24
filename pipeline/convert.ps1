@@ -740,9 +740,11 @@ function Convert-One {
   # darin (auch Unterordner), weil ein Set Hilfsdateien einbinden kann. Bei einer einzelnen
   # .typ nur diese, weil ihre Nachbarn andere Sets sein koennen (bindet sie eine Nachbardatei
   # ein, die nach einem fremden Paket greift, stoppt das der Proxy).
-  $scan = if ($isSet) {
-    @(Get-ChildItem -LiteralPath $tplDir -Recurse -File -Force -Filter '*.typ' | ForEach-Object { $_.FullName })
-  } else { @($templateSrc) }
+  # @(...) um das if: eine Zuweisung aus einer Anweisung entpackt ein einelementiges Array zu
+  # einem Skalar (Strict Mode kennt dort kein .Count).
+  $scan = @(if ($isSet) {
+    Get-ChildItem -LiteralPath $tplDir -Recurse -File -Force -Filter '*.typ' | ForEach-Object { $_.FullName }
+  } else { $templateSrc })
   foreach ($f in $scan) {
     foreach ($m in [regex]::Matches([IO.File]::ReadAllText($f), '@preview/[^"\s]*')) {
       $spec = $m.Value.Substring('@preview/'.Length)
@@ -912,9 +914,9 @@ function Convert-One {
     # Hilfsdatei stehen). Eine einzelne .typ: nur sie - ihr mitkopierter Ordner enthaelt oft
     # andere Sets (din5008a\), die das Element kennen, und dann verschwaenden die Seitenumbrueche
     # dieser Vorlage still.
-    $breakScan = if ($isSet) {
-      @(Get-ChildItem -LiteralPath $stageSet -Recurse -File -Force | ForEach-Object { $_.FullName })
-    } else { @($stagedTemplate) }
+    $breakScan = @(if ($isSet) {
+      Get-ChildItem -LiteralPath $stageSet -Recurse -File -Force | ForEach-Object { $_.FullName }
+    } else { $stagedTemplate })
     if ($breakScan.Count -gt 0 -and (Select-String -LiteralPath $breakScan -Pattern 'mdo-pagebreak' -SimpleMatch -Quiet)) {
       $inputs += @('--input', 'pagebreak=html')
     }
@@ -1041,5 +1043,9 @@ catch {
   # Fehler auf stderr (aufrufende Programme zeigen ihn an), dann sofort Exit 1.
   # Der Staging-Ordner ist hier schon entfernt (finally in Convert-One).
   [Console]::Error.WriteLine("Fehler: $($_.Exception.Message)")
+  # Die Stelle im Skript (Zeile) dazu, damit ein unerwarteter Fehler (z. B. in der CI) zuzuordnen ist.
+  if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+    [Console]::Error.WriteLine($_.InvocationInfo.PositionMessage)
+  }
   exit 1
 }
