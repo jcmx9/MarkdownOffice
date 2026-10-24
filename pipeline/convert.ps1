@@ -424,9 +424,13 @@ function Test-NoteTemplate {
   if (-not $item -or $item.PSIsContainer) { return $false }
   if ((Test-LinkItem $item) -or $item.LinkType) { return $false }
   if ((Get-LinkCount $item.FullName) -ne 1) { return $false }
+  # Kein 8.3-Kurzname (RUNNER~1) im Pfad: die Vergleiche unten sind textuell und erweitern
+  # Kurznamen nicht (Abwehr in der Tiefe; der Wrapper vergleicht aufgeloeste Pfade).
+  if (@($item.FullName.Split([char[]]@('\', '/')) | Where-Object { $_ -match '~\d' }).Count) { return $false }
   $dir = Resolve-RealPath (Split-Path -Parent $item.FullName)
   if (-not $dir) { return $false }
   $real = [IO.Path]::Combine($dir, $item.Name)
+  if (@($real.Split([char[]]@('\', '/')) | Where-Object { $_ -match '~\d' }).Count) { return $false }
   if ([IO.Path]::GetExtension($real) -ne '.typ') { return $false }
   foreach ($root in $Roots) {
     if (-not $root) { continue }
@@ -495,6 +499,7 @@ function New-StageDir {
             'ContainerInherit, ObjectInherit', 'None', 'Allow')))
       [void][IO.Directory]::CreateDirectory($d, $sec)
     } catch {
+      Write-Verbose "Zugriffsrechte des Staging-Ordners nicht setzbar ($($_.Exception.Message)): $d"
       [void][IO.Directory]::CreateDirectory($d)
     }
     [IO.File]::WriteAllText((Join-Path $d '.mdo-stage'), '')
@@ -507,8 +512,9 @@ function New-StageDir {
 # -Recurse loescht durch eine Junction hindurch auch das Ziel). Schreibgeschuetzte Kopien werden
 # vorher freigegeben. Scheitert es, bleibt der Ordner mit seiner Marke fuer den Wrapper.
 function Remove-StageTree {
-  param([IO.DirectoryInfo]$Dir)
+  param([IO.DirectoryInfo]$Dir, [string]$Keep = '')
   foreach ($e in $Dir.GetFileSystemInfos()) {
+    if ($Keep -and $e.Name -eq $Keep) { continue }
     if ($e.Attributes -band [IO.FileAttributes]::ReadOnly) {
       $e.Attributes = $e.Attributes -band -bnot [IO.FileAttributes]::ReadOnly
     }
@@ -520,14 +526,22 @@ function Remove-StageTree {
       $e.Delete()
     }
   }
-  $Dir.Delete()
+  if (-not $Keep) { $Dir.Delete() }
 }
+# Die Marke zuletzt: scheitert das Loeschen mittendrin, bleibt ein markierter Ordner, den der
+# Wrapper spaeter wegraeumt (ohne Marke bliebe er mit Kopien der Notiz, der Bilder und der
+# Unterschrift fuer immer liegen).
 function Remove-StageDir {
   param([string]$Dir)
   if (-not $Dir) { return }
   try {
     $info = New-Object IO.DirectoryInfo $Dir
-    if ($info.Exists) { Remove-StageTree $info }
+    if ($info.Exists) {
+      Remove-StageTree $info '.mdo-stage'
+      $marker = New-Object IO.FileInfo (Join-Path $Dir '.mdo-stage')
+      if ($marker.Exists) { $marker.Attributes = [IO.FileAttributes]::Normal; $marker.Delete() }
+      $info.Delete()
+    }
   } catch {
     Write-Verbose "Staging-Ordner nicht entfernt: $Dir"
   }
@@ -724,7 +738,13 @@ function Convert-One {
   }
   $tplDir = Split-Path -Parent $templateSrc
   $tplLeaf = Split-Path -Leaf $templateSrc
-  $isSet = $byName -and ((Split-Path -Leaf $tplDir) -eq [IO.Path]::GetFileNameWithoutExtension($templateSrc))
+  # Set-Ordner nach dem Suchort, der traf (Vorlagen\<name>\<name>.typ oder Sets\<name>\<name>.typ),
+  # nicht nach dem Ordnernamen: ein Vorlagen-Ordner, der zufaellig wie das Set heisst (...\meinset
+  # mit meinset.typ), ist kein Set-Ordner und bekommt den Filter einer einzelnen .typ.
+  $setName = if ($templateValue) { $templateValue } else { 'memo' }
+  $setCands = @((Join-Path (Join-Path $SetsDir $setName) "$setName.typ"))
+  if ($UserTemplates) { $setCands += (Join-Path (Join-Path $UserTemplates $setName) "$setName.typ") }
+  $isSet = $byName -and ($setCands -contains $templateSrc)
   # Offline-Paketablage (spiegelt build.sh): @preview-Pakete aus vendor\packages im
   # Cache-Layout preview\<name>\<version>, nie aus dem Netz; --package-path auf einen Ordner,
   # der nicht mitgeliefert wird (keine @local-Pakete des Rechners). Die Pfade liegen nicht unter
@@ -763,7 +783,7 @@ function Convert-One {
 
   # Staging-Ordner (siehe Kopfkommentar und New-StageDir). Aufbau (Pfade in Typst ab der Wurzel):
   #   /note/<name>.md   die Notiz (Quelle und PDF/A-3-Anhang; der Name bleibt der Anhangsname)
-  #   /img/<n>-<name>   die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
+  #   /img/<n>.<endung> die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
   #   /logo/<name>      das Logo
   #   /profile/<name>   das Profil und die Bilder daneben, die es nennt (das Set liest sie dort)
   #   /set/...          das Set: Set-Ordner ohne .git und profiles\; bei einer einzelnen, ueber
@@ -826,12 +846,13 @@ function Convert-One {
       }
     } catch { throw "nicht in den Staging-Ordner kopierbar: $PipelineRoot\lib, vendor ($($_.Exception.Message))" }
 
-    # Bilder aus dem Manifest: /img/<n>-<name>. Verschwindet eine Datei seit dem Manifest, fehlt
+    # Bilder aus dem Manifest: /img/<n><.endung> (kurz, damit der Pfad unter MAX_PATH bleibt, das
+    # .NET Framework ohne Langpfade sonst ablehnt; die Endung wie in der Quelle). Verschwindet eine Datei seit dem Manifest, fehlt
     # nur dieses Bild (Platzhalter im PDF), wie ein nicht gefundenes. Die Zuordnung ist exakt
     # (gross/klein wie in der Notiz), wie json().at() in Typst.
     $imageMap = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
     for ($n = 0; $n -lt $manifest.Refs.Count -and $n -lt $manifest.Paths.Count; $n++) {
-      $dest = '/img/' + ($n + 1) + '-' + [IO.Path]::GetFileName($manifest.Paths[$n])
+      $dest = '/img/' + ($n + 1) + [IO.Path]::GetExtension($manifest.Paths[$n])
       try {
         [IO.File]::Copy($manifest.Paths[$n], (Join-Path $stage ($dest.Substring(1) -replace '/', '\')), $true)
         $imageMap[$manifest.Refs[$n]] = $dest
@@ -990,7 +1011,11 @@ function Convert-One {
         --pdf-standard a-3b `
         @inputs 2>&1 | ForEach-Object {
           if ($_ -is [Management.Automation.ErrorRecord]) {
-            $line = $_.ToString()
+            # Die Zeile steht in TargetObject; eine leere stderr-Zeile hat keins, und ihre Meldung
+            # waere nur der Typname (System.Management.Automation.RemoteException).
+            if ($_.TargetObject -is [string]) { $line = [string]$_.TargetObject }
+            elseif ($_.Exception.Message -eq $_.Exception.GetType().FullName) { $line = '' }
+            else { $line = $_.Exception.Message }
             $typstErr.Add($line)
             [Console]::Error.WriteLine($line)
           } else {
@@ -1043,8 +1068,9 @@ catch {
   # Fehler auf stderr (aufrufende Programme zeigen ihn an), dann sofort Exit 1.
   # Der Staging-Ordner ist hier schon entfernt (finally in Convert-One).
   [Console]::Error.WriteLine("Fehler: $($_.Exception.Message)")
-  # Die Stelle im Skript (Zeile) dazu, damit ein unerwarteter Fehler (z. B. in der CI) zuzuordnen ist.
-  if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+  # Mit MDO_DEBUG (CI) die Stelle im Skript dazu, damit ein unerwarteter Fehler zuzuordnen ist;
+  # sonst nicht: die App zeigt stderr unter jedem gescheiterten Export.
+  if ($env:MDO_DEBUG -and $_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
     [Console]::Error.WriteLine($_.InvocationInfo.PositionMessage)
   }
   exit 1

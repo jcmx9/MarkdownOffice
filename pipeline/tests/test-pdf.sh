@@ -1023,6 +1023,19 @@ test_sandbox() {
   ln -s "${out_dir}/sb-repo/meinset2.typ" "${mv}/meinset2.typ"
   MDO_TEMPLATES="${mv}" hostile meinset2 'Text.' "" --template meinset2
   expect "sandbox meinset2" "${text}" "MEINSET2-MARKE"
+  # Ein Vorlagen-Ordner, der wie das Set heißt (…/meinset mit meinset.typ): kein Set-Ordner (das
+  # entscheidet der Suchort <Vorlagen>/<name>/<name>.typ, nicht der Ordnername), also derselbe
+  # Filter wie oben, kein ungefiltertes Kopieren.
+  local gleich="${out_dir}/sb-gleich/meinset"
+  mkdir -p "${gleich}/x/profiles"
+  cp "${mv}/meinset.typ" "${mv}/helper.typ" "${gleich}/"
+  printf 'DOT-MARKE\n' >"${gleich}/.hidden.txt"
+  printf 'Y-MARKE\n' >"${gleich}/x/profiles/y.yaml"
+  MDO_TEMPLATES="${gleich}" hostile gleich 'Text.' "" --template meinset
+  for mf in .hidden.txt x/profiles/y.yaml; do
+    MDO_TEMPLATES="${gleich}" hostile gleich-fremd "\$\\text{\\label{#read(\"/set/${mf}\")}}\$" "${not_found}" \
+      --template meinset
+  done
   ok "sandbox: einzelne .typ über den Namen: Nachbardateien ja, profiles/, Punkt-Einträge, Links nach außen nein"
 
   # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.

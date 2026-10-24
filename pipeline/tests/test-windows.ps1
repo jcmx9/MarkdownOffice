@@ -717,7 +717,35 @@ if (New-TestLink 'SymbolicLink' (Join-Path $mv 'meinset2.typ') (Join-Path $repo2
   if (-not $r.Ok) { $mvOk = $false }
   elseif (-not (Test-PdfMarker $r.Pdf 'MEINSET2-MARKE')) { Fail 'sandbox meinset2: verlinkte Vorlage nicht kopiert'; $mvOk = $false }
 }
-if ($mvOk) { Ok "sandbox: einzelne .typ ueber den Namen: Nachbardateien ja; $($fremd -join ', ') nein" }
+# Ein Vorlagen-Ordner, der wie das Set heisst (...\meinset mit meinset.typ): kein Set-Ordner (das
+# entscheidet der Suchort Vorlagen\<name>\<name>.typ, nicht der Ordnername), also derselbe
+# Filter, kein ungefiltertes Kopieren.
+$gleich = Join-Path $sbRoot 'sb-gleich\meinset'
+New-Item -ItemType Directory -Force -Path (Join-Path $gleich 'x\profiles') | Out-Null
+Copy-Item -LiteralPath (Join-Path $mv 'meinset.typ'), (Join-Path $mv 'helper.typ') -Destination $gleich
+[IO.File]::WriteAllText((Join-Path $gleich '.hidden.txt'), "DOT-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $gleich 'x\profiles\y.yaml'), "Y-MARKE`n", $utf8)
+$r = Invoke-Hostile 'gleich' 'Text.' '' @('--template', 'meinset') $gleich
+if (-not $r.Ok) { $mvOk = $false }
+foreach ($mf in @('.hidden.txt', 'x/profiles/y.yaml')) {
+  $r = Invoke-Hostile 'gleich-fremd' ('$\text{\label{#read("/set/' + $mf + '")}}$') $notFound @('--template', 'meinset') $gleich
+  if (-not $r.Ok) { $mvOk = $false }
+}
+if ($mvOk) { Ok "sandbox: einzelne .typ ueber den Namen: Nachbardateien ja; $($fremd -join ', ') nein (auch im gleichnamigen Vorlagen-Ordner)" }
+
+# Eine Vorlage als UNC-Pfad aus der Notiz: sofort "Vorlage nicht gefunden", ohne den Server zu
+# fragen (kein Haengen, kein SMB-Kontakt, der den NTLM-Hash preisgaebe).
+[IO.File]::WriteAllText((Join-Path $sbNote 'unc.md'), "---`ntemplate: //nonexistent.invalid/x.typ`n---`n`nText.`n", $utf8)
+$watch = [Diagnostics.Stopwatch]::StartNew()
+Push-Location $sbNote
+$rr = Invoke-Convert @('unc.md', (Join-Path $outDir 'sb-unc.pdf'))
+Pop-Location
+$watch.Stop()
+if ($rr.Code -ne 1 -or $rr.Text -notmatch 'Vorlage nicht gefunden: //nonexistent\.invalid/x\.typ') {
+  Fail "sandbox UNC-Vorlage: Exit $($rr.Code)`n$($rr.Text)"
+} elseif ($watch.Elapsed.TotalSeconds -gt 30) {
+  Fail "sandbox UNC-Vorlage: $([int]$watch.Elapsed.TotalSeconds) s (Server gefragt?)"
+} else { Ok "sandbox: UNC-Vorlage aus der Notiz sofort abgelehnt ($([int]$watch.Elapsed.TotalSeconds) s)" }
 
 # Legitim: ein sichtbar verlinktes Bild ausserhalb des Notizordners kommt ins PDF.
 Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $sb 'bilder\aussen.png')

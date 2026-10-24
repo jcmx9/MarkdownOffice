@@ -505,9 +505,14 @@ pkg_arg=(--package-cache-path "${pipeline_root}/vendor/packages" --package-path 
 template_dir="$(dirname "${template_file}")"
 scan_files=("${template_file}")
 # Set-Ordner <name>/<name>.typ: geprüft und in den Staging-Ordner kopiert wird der ganze Ordner;
-# bei einer einzelnen .typ nur diese Datei (ihre Nachbarn können andere Sets sein).
+# bei einer einzelnen .typ nur diese Datei (ihre Nachbarn können andere Sets sein). Entschieden
+# nach dem Suchort, der traf (<Vorlagen>/<name>/<name>.typ oder <Sets>/<name>/<name>.typ), nicht
+# nach dem Ordnernamen: ein Vorlagen-Ordner, der zufällig wie das Set heißt (…/meinset mit
+# meinset.typ), ist kein Set-Ordner und bekommt den Filter einer einzelnen .typ.
 template_is_set=""
-if [[ -n "${template_by_name}" && "$(basename "${template_dir}")" == "$(basename "${template_file}" .typ)" ]]; then
+set_name="${template_value:-memo}"
+if [[ -n "${template_by_name}" && ( "${template_file}" == "${user_templates}/${set_name}/${set_name}.typ" ||
+      "${template_file}" == "${sets_dir}/${set_name}/${set_name}.typ" ) ]]; then
   template_is_set=1
   if ! found="$(find -H "${template_dir}" -type f -name '*.typ')"; then
     echo "Error: Vorlage nicht prüfbar (Set-Ordner nicht lesbar): ${template_dir}" >&2
@@ -633,7 +638,7 @@ done < <(printf '%s' "${manifest_out}" | json_string_lines)
 # zurückließ. Entfernt bei jedem abfangbaren Ende (Erfolg, Fehler, Signal).
 # Aufbau (Pfade in Typst ab der Wurzel):
 #   /note/<name>.md   die Notiz (Quelle und PDF/A-3-Anhang; der Name bleibt der Anhangsname)
-#   /img/<n>-<name>   die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
+#   /img/<n>.<endung> die Bilder aus dem Manifest (n: kollisionsfrei, die Endung bleibt)
 #   /logo/<name>      das Logo
 #   /profile/<name>   das Profil und die Bilder daneben, die es nennt (das Set liest sie dort)
 #   /set/…            das Set: Set-Ordner ohne .git und profiles/; bei einer einzelnen, über den
@@ -650,7 +655,14 @@ stage="$(mktemp -d "${tmp_base%/}/mdo-stage-XXXXXX")" || {
   echo "Error: Staging-Ordner nicht anlegbar in ${tmp_base}" >&2
   exit 1
 }
-cleanup() { rm -rf "${stage}"; }
+# Die Marke zuletzt: scheitert das Löschen mittendrin, bleibt ein markierter Ordner, den der
+# Wrapper später wegräumt (ohne Marke bliebe er mit Kopien der Notiz, der Bilder und der
+# Unterschrift für immer liegen).
+cleanup() {
+  [[ -d "${stage}" ]] || return 0
+  find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -exec rm -rf {} + 2>/dev/null || true
+  rm -f "${stage}/.mdo-stage" && rmdir "${stage}" 2>/dev/null || true
+}
 trap cleanup EXIT
 # Nach einem Signal endet das Skript; der EXIT-Trap räumt auf.
 trap 'exit 129' HUP
@@ -744,13 +756,17 @@ if [[ "${#vendor_parts[@]}" -gt 0 ]]; then
   cp -RL -- "${vendor_parts[@]}" "${stage}/mdo/vendor/" || copy_failed "${pipeline_root}/vendor"
 fi
 
-# Bilder aus dem Manifest: /img/<n>-<name>. Verschwindet eine Datei seit dem Manifest, fehlt
-# nur dieses Bild (Platzhalter im PDF), wie ein nicht gefundenes.
+# Bilder aus dem Manifest: /img/<n><.endung> (kurz: unter Windows bleibt der Pfad so unter
+# MAX_PATH; die Endung wie in der Quelle, Typst erkennt daran das Format). Verschwindet eine
+# Datei seit dem Manifest, fehlt nur dieses Bild (Platzhalter im PDF), wie ein nicht gefundenes.
 staged_refs=()
 staged_paths=()
 n=0
 while (( n < ${#m_refs[@]} && n < ${#m_paths[@]} )); do
-  dest="/img/$((n + 1))-${m_paths[n]##*/}"
+  img_name="${m_paths[n]##*/}"
+  img_ext=""
+  case "${img_name}" in ?*.*) img_ext=".${img_name##*.}" ;; esac
+  dest="/img/$((n + 1))${img_ext}"
   if cp -- "${m_paths[n]}" "${stage}${dest}" 2>/dev/null; then
     staged_refs+=("${m_refs[n]}")
     staged_paths+=("${dest}")

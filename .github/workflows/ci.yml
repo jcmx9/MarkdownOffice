@@ -147,6 +147,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: .\pipeline\tests\test-windows.ps1
+        env:
+          # convert.ps1 adds the script position to an unexpected error (never shown in the app).
+          MDO_DEBUG: '1'
 
       - name: Package (electron-builder)
         run: npm run dist
