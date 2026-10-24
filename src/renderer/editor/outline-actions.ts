@@ -46,6 +46,8 @@ export function foldsChanged(tr: Transaction): boolean {
 export interface OutlineTarget {
   render(entries: OutlineEntry[], active: OutlineEntry | null): void
   setVisible(on: boolean): void
+  /** Centre the list again on the next render (another note is shown). */
+  recentre(): void
 }
 
 export interface FrameScheduler {
@@ -94,6 +96,7 @@ export class OutlineSync {
   /** The shown state was replaced (tab switch, reload). */
   invalidate(): void {
     this.entries = null
+    this.target.recentre()
     if (this.visible) this.schedule()
   }
 

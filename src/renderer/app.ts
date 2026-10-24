@@ -584,6 +584,8 @@ export class App {
     this.root.editor.style.setProperty('--mdo-scale', String(scale))
     // The outline follows the zoom of the mode, not Present's larger text factor.
     this.root.outline.style.setProperty('--mdo-ol-zoom', String(this.zoom[this.mode]))
+    // A re-render centres the outline again for its new size.
+    this.outline.refresh()
     this.editor.requestMeasure()
   }
 
