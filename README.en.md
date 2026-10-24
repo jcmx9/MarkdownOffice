@@ -272,7 +272,7 @@ hard_breaks: false           # line breaks become spaces
 | `embed_source` | `true` / `false` | `true` | Embed the Markdown source as an attachment. |
 | `hard_breaks` | `true` / `false` | `true` | Every line break stays one (as typed in the editor), even without an entry. Only `false` switches to CommonMark: a single break becomes a space. |
 
-**Rules:** empty values (`subtitle: ""` or just `subtitle:`) are ignored, never an error. Yes/no keys accept `true`/`false`, `yes`/`no`, `on`/`off` in any case; an unrecognised value produces a warning and the default applies. Comments (`# …`) may stand on their own lines and after values. In paths (`logo:`, images) `~`, `$VAR`, `${VAR}` and `%VAR%` are expanded.
+**Rules:** empty values (`subtitle: ""` or just `subtitle:`) are ignored, never an error. Yes/no keys accept `true`/`false`, `yes`/`no`, `on`/`off` in any case; an unrecognised value produces a warning and the default applies. Comments (`# …`) may stand on their own lines and after values. In image paths `~`, `$VAR`, `${VAR}` and `%VAR%` are expanded; `logo:` takes relative paths only.
 
 **Check YAML:** the menu **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) checks the note's header against the rules of the pipeline and of the chosen set: invalid values (for example `toc: ja`, `date: 20.10.26`, an unknown set or a `profile:` that is not found), repeated keys and presumed typos. Extra keys of your own are always allowed. The dialog shows every finding with a suggested fix; „Übernehmen“ writes the ticked fixes as **one** undo step, everything else in the note stays byte for byte. „Fehlende ergänzen“ appends the set's keys the header does not have yet (off by default). Without findings „YAML in Ordnung“ appears. On export the app checks the header silently first; with errors a notice „YAML hat n Fehler“ offers „Prüfen …“, and the export runs anyway. The same goes for „Einfügen → Vorlage …“. When the note names a set (`template:`), the status line shows its name next to the file name; for this the app checks the header silently in the background (on opening, on switching tabs and half a second after the last keystroke). With errors the name turns red (warnings and hints do not count; a set that is not installed or a profile that is not found is an error too), the tooltip gives the count („memo – 2 Fehler im YAML-Kopf“); a click opens „YAML prüfen …“. Which keys and values a set expects is described in its `name.schema.yaml`, see [TEMPLATES.md](TEMPLATES.md). The same check exists in the terminal: [`markdown-office validate`](#check-yaml).
 
@@ -282,14 +282,13 @@ A logo appears **only** when `logo:` is set. Without the key, with an empty valu
 
 | Value of `logo:` | Looked up |
 |------------------|-----------|
-| `company.svg`, `logos/company.svg` | 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the home folder (`~`, Windows `%USERPROFILE%`), 3. in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`), 4. in the app's pipeline folder – the first existing file wins |
-| `/path/company.svg`, `C:\Logos\company.png` | exactly this file |
-| `~/company.svg`, `$HOME/company.svg`, `%USERPROFILE%\company.svg` | exactly this file, variables expanded |
+| `company.svg`, `logos/company.svg` | 1. in the note's folder (or `MDO_BASE_DIR`), 2. in the profile's folder (`profile:`), 3. in the template's folder (the set's or the `.typ` file's) – the first existing file wins |
+| `/path/company.svg`, `C:\Logos\company.png`, `~/company.svg`, `$HOME/company.svg`, `%USERPROFILE%\company.svg`, `../company.svg` | nothing: no logo, with a note |
 
 - Allowed are `.svg`, `.png`, `.jpg` and `.jpeg`.
 - If nothing is found (or the extension is wrong, or it is a web address), the PDF is built **without a logo**, with a note, never with an error.
-- **Your own logo for all documents:** put it in the templates folder once (`~/Documents/Markdown Office/Vorlagen/company.svg`) and write `logo: company.svg` in each note. A file of the same name next to the note takes precedence, e.g. for a client logo.
-- The app ships the Markdown Office mark as `logo.svg`: `logo: logo.svg` finds it as long as no `logo.svg` of your own lies next to the note, in the home folder or in the templates folder.
+- Why relative only: otherwise a note from someone else could pull a private file into a PDF that is passed on with `logo: ~/passport.png`. The file found must stay (links resolved) inside the folder it was found in; in the note's folder, hidden folders do not count.
+- **Your own logo for all documents:** put it next to a profile (e.g. `~/Documents/Markdown Office/Vorlagen/profiles/company.yaml` with `company.svg` beside it) and write `profile: company` and `logo: company.svg` in each note, or into the folder of a set of your own. A file of the same name next to the note takes precedence, e.g. for a client logo.
 
 ## Markdown in the PDF
 

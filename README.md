@@ -272,7 +272,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `embed_source` | `true` / `false` | `true` | Markdown-Quelle als Anhang ins PDF einbetten. |
 | `hard_breaks` | `true` / `false` | `true` | Jeder Zeilenumbruch bleibt einer (wie im Editor getippt), auch ohne Eintrag. Nur `false` setzt CommonMark: Ein einzelner Umbruch wird zum Leerzeichen. |
 
-**Regeln:** Leere Werte (`subtitle: ""` oder nur `subtitle:`) werden ignoriert, nie ein Fehler. Ja/Nein-Schlüssel verstehen `true`/`false`, `yes`/`no`, `on`/`off` in jeder Schreibweise; ein nicht erkannter Wert erzeugt eine Warnung, der Standard bleibt. Kommentare (`# …`) dürfen auf eigenen Zeilen und hinter Werten stehen. In Pfaden (`logo:`, Bilder) werden `~`, `$VAR`, `${VAR}` und `%VAR%` ersetzt.
+**Regeln:** Leere Werte (`subtitle: ""` oder nur `subtitle:`) werden ignoriert, nie ein Fehler. Ja/Nein-Schlüssel verstehen `true`/`false`, `yes`/`no`, `on`/`off` in jeder Schreibweise; ein nicht erkannter Wert erzeugt eine Warnung, der Standard bleibt. Kommentare (`# …`) dürfen auf eigenen Zeilen und hinter Werten stehen. In Bildpfaden werden `~`, `$VAR`, `${VAR}` und `%VAR%` ersetzt; `logo:` nimmt nur relative Pfade.
 
 **YAML prüfen:** Das Menü **Bearbeiten → „YAML prüfen …“** (Mod+Shift+Y) prüft den Header der Notiz gegen die Regeln der Pipeline und des gewählten Sets: ungültige Werte (etwa `toc: ja`, `date: 20.10.26`, ein unbekanntes Set oder ein nicht gefundenes `profile:`), mehrfach vorkommende Schlüssel und vermutete Tippfehler. Zusätzliche eigene Schlüssel sind immer erlaubt. Der Dialog zeigt jeden Befund mit einem Korrekturvorschlag; „Übernehmen“ schreibt die angehakten Korrekturen als **einen** Undo-Schritt, alles andere in der Notiz bleibt Byte für Byte. „Fehlende ergänzen“ hängt die Schlüssel des Sets an, die der Header noch nicht hat (standardmäßig aus). Ohne Befund erscheint „YAML in Ordnung“. Beim Export prüft die App den Header still vorab; bei Fehlern meldet ein Hinweis „YAML hat n Fehler“ mit „Prüfen …“, der Export läuft trotzdem. Das gilt auch nach „Einfügen → Vorlage …“. Nennt die Notiz ein Set (`template:`), zeigt die Statuszeile seinen Namen neben dem Dateinamen; die App prüft den Header dafür still im Hintergrund (beim Öffnen, beim Tab-Wechsel und eine halbe Sekunde nach dem letzten Tastendruck). Bei Fehlern wird der Name rot (Warnungen und Hinweise zählen nicht, auch ein nicht installiertes Set oder ein nicht gefundenes Profil ist ein Fehler), der Tooltip nennt die Anzahl („memo – 2 Fehler im YAML-Kopf“); ein Klick öffnet „YAML prüfen …“. Welche Schlüssel und Werte ein Set erwartet, steht in seiner `name.schema.yaml`, siehe [TEMPLATES.md](TEMPLATES.md) (Englisch). Dieselbe Prüfung gibt es im Terminal: [`markdown-office validate`](#yaml-prüfen).
 
@@ -282,14 +282,13 @@ Ein Logo erscheint **nur**, wenn `logo:` gesetzt ist. Ohne den Schlüssel, mit l
 
 | Wert von `logo:` | Gesucht wird |
 |------------------|--------------|
-| `firma.svg`, `logos/firma.svg` | 1. im Ordner der Notiz (bzw. `MDO_BASE_DIR`), 2. im Benutzerordner (`~`, Windows `%USERPROFILE%`), 3. im Vorlagen-Ordner (`~/Documents/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`), 4. im Pipeline-Ordner der App – die erste vorhandene Datei gewinnt |
-| `/Pfad/firma.svg`, `C:\Logos\firma.png` | genau diese Datei |
-| `~/firma.svg`, `$HOME/firma.svg`, `%USERPROFILE%\firma.svg` | genau diese Datei, Variablen ersetzt |
+| `firma.svg`, `logos/firma.svg` | 1. im Ordner der Notiz (bzw. `MDO_BASE_DIR`), 2. im Ordner des Profils (`profile:`), 3. im Ordner der Vorlage (des Sets bzw. der `.typ`-Datei) – die erste vorhandene Datei gewinnt |
+| `/Pfad/firma.svg`, `C:\Logos\firma.png`, `~/firma.svg`, `$HOME/firma.svg`, `%USERPROFILE%\firma.svg`, `../firma.svg` | nichts: kein Logo, mit Hinweis |
 
 - Erlaubt sind `.svg`, `.png`, `.jpg` und `.jpeg`.
 - Wird nichts gefunden (oder ist die Endung falsch, oder ist es eine Web-Adresse), entsteht das PDF **ohne Logo**, mit einem Hinweis, nie mit einem Fehler.
-- **Eigenes Logo für alle Dokumente:** einmal im Vorlagen-Ordner ablegen (`~/Documents/Markdown Office/Vorlagen/firma.svg`) und in jeder Notiz `logo: firma.svg` schreiben. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
-- Die App bringt das Markdown-Office-Zeichen als `logo.svg` mit: `logo: logo.svg` findet es, solange keine eigene `logo.svg` neben der Notiz, im Benutzerordner oder im Vorlagen-Ordner liegt.
+- Warum nur relativ: Eine fremde Notiz könnte sonst mit `logo: ~/Ausweis.png` eine private Datei in ein weitergegebenes PDF holen. Die gefundene Datei muss (Verknüpfungen aufgelöst) in dem Ordner bleiben, in dem sie gefunden wurde; im Notizordner zählen versteckte Ordner nicht.
+- **Eigenes Logo für alle Dokumente:** neben ein Profil legen (z. B. `~/Documents/Markdown Office/Vorlagen/profiles/firma.yaml` und `firma.svg` daneben) und in jeder Notiz `profile: firma` und `logo: firma.svg` schreiben, oder in den Ordner eines eigenen Sets. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
 
 ## Markdown im PDF
 
