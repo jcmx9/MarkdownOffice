@@ -1,14 +1,44 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { dirname, join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MathItem, MathResult } from '../../../src/core/math'
 import { Ch } from '../../../src/shared/ipc'
 
 type Handler = (e: unknown, ...args: unknown[]) => unknown
 const handlers = new Map<string, Handler>()
+
+// A gate in front of the mitex copy: lets a test dispose() while the temp dir is being prepared.
+const gate = vi.hoisted(() => ({
+  hold: null as Promise<void> | null,
+  reached: (_dest: string) => {},
+}))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...real,
+    cp: async (...args: Parameters<typeof real.cp>) => {
+      gate.reached(String(args[1]))
+      if (gate.hold) await gate.hold
+      return real.cp(...args)
+    },
+  }
+})
+
+/** Temp dirs a test made; removed after each test. */
+const made: string[] = []
+afterEach(async () => {
+  gate.hold = null
+  gate.reached = () => {}
+  await Promise.all(made.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+})
+const tempDir = async (prefix: string): Promise<string> => {
+  const dir = await mkdtemp(join(tmpdir(), prefix))
+  made.push(dir)
+  return dir
+}
 
 vi.mock('electron', () => ({
   app: { isPackaged: false, quit: vi.fn() },
@@ -78,17 +108,19 @@ describe.skipIf(skip)('MathRenderer (real Typst)', () => {
       { tex: 'b^2', display: false },
     ])
     expect(ok(res[0]).svg).toMatch(/^<svg/)
-    expect(res[1]).toEqual({ ok: false, error: 'error: missing argument: den' })
+    expect(res[1]).toEqual({ ok: false, error: 'missing argument: den' })
     expect(ok(res[2]).svg).toMatch(/^<svg/)
   })
 
-  it('never reads files: #read is formula text, not code', async () => {
+  it('sets a bare # call as math text (mitex escapes it)', async () => {
+    // What this proves: a plain `#read(…)` in TeX is not Typst code, it renders as a short
+    // formula. It is no sandbox proof: mitex's \iftypst … \fi does pass code through, which
+    // the renderer refuses before compiling (see below), and --root / package dirs / dead
+    // proxy limit what code could reach.
     const r = new MathRenderer(ROOT)
     const [res] = await r.render([{ tex: '#read("/etc/passwd")', display: false }])
-    expect(res).toBeDefined()
     expect(JSON.stringify(res)).not.toContain('root:')
-    // A rendered file would be many lines wide; the literal source is one short formula.
-    if (res?.ok) expect(res.width).toBeLessThan(20)
+    expect(ok(res).width).toBeLessThan(20)
   })
 
   it('runs Typst with --root on a temp dir that is gone afterwards', async () => {
@@ -120,7 +152,7 @@ describe.skipIf(skip)('MathRenderer (real Typst)', () => {
 
 /** A root with a (fake) typst binary and mitex folder, for stubbed spawns. */
 const fakeRoot = async (): Promise<string> => {
-  const root = await mkdtemp(join(tmpdir(), 'mdo-math-test-'))
+  const root = await tempDir('mdo-math-test-')
   await mkdir(join(root, 'bin'))
   await writeFile(join(root, 'bin', process.platform === 'win32' ? 'typst.exe' : 'typst'), '')
   await mkdir(join(root, 'vendor', 'mitex'), { recursive: true })
@@ -169,14 +201,18 @@ describe('MathRenderer (process handling)', () => {
     'times out: every item fails and the child is killed',
     async () => {
       const hang = hangingSpawn()
-      const r = new MathRenderer(await fakeRoot(), { timeoutMs: 50, spawnImpl: hang.impl })
+      // The overall deadline equals the timeout: no time left to split the batch further.
+      const r = new MathRenderer(await fakeRoot(), {
+        timeoutMs: 50,
+        deadlineMs: 50,
+        spawnImpl: hang.impl,
+      })
       const res = await r.render([
         { tex: 'x', display: false },
         { tex: 'y', display: false },
       ])
-      expect(res).toHaveLength(2)
-      for (const item of res) expect(item.ok).toBe(false)
-      // A timeout does not retry each formula singly: one process only.
+      const timeout = { ok: false, error: 'Zeitüberschreitung' }
+      expect(res).toEqual([timeout, timeout])
       expect(hang.children).toHaveLength(1)
       const child = hang.children[0] as ChildProcess
       await exited(child)
@@ -197,15 +233,118 @@ describe('MathRenderer (process handling)', () => {
       expect(await first).toEqual([aborted])
       expect(await second).toEqual([aborted])
       expect(hang.children).toHaveLength(1)
-      await exited(hang.children[0] as ChildProcess)
+      const child = hang.children[0] as ChildProcess
+      await exited(child)
+      expect(child.signalCode).toBe('SIGTERM')
     },
   )
+
+  it('never spawns Typst after a dispose during the temp dir setup', async () => {
+    const spawnImpl = vi.fn() as unknown as typeof spawn
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl })
+    let release = () => {}
+    gate.hold = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const reached = new Promise<string>((resolve) => {
+      gate.reached = resolve
+    })
+    const res = r.render([{ tex: 'x', display: false }])
+    const tmp = dirname(await reached)
+    r.dispose()
+    release()
+    expect(await res).toEqual([{ ok: false, error: 'abgebrochen' }])
+    expect(spawnImpl).not.toHaveBeenCalled()
+    expect(existsSync(tmp)).toBe(false)
+  })
+
+  it('refuses raw Typst code (\\iftypst) without compiling it', async () => {
+    const spawnImpl = vi.fn() as unknown as typeof spawn
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl })
+    const res = await r.render([
+      { tex: '\\iftypst #{import "@preview/x:0.0.1": y} \\fi', display: false },
+    ])
+    expect(res).toEqual([
+      { ok: false, error: 'Typst-Code in Formeln wird in der Vorschau nicht ausgeführt' },
+    ])
+    expect(spawnImpl).not.toHaveBeenCalled()
+  })
+
+  it('spawns with no TYPST_* settings, a dead proxy and package dirs in the temp dir', async () => {
+    const seen: { args: string[]; opts: { cwd: string; env: NodeJS.ProcessEnv } }[] = []
+    const spawnImpl = ((
+      _cmd: string,
+      args: string[],
+      opts: { cwd: string; env: NodeJS.ProcessEnv },
+    ) => {
+      seen.push({ args, opts })
+      return spawn(process.execPath, ['-e', ''], opts)
+    }) as unknown as typeof spawn
+    vi.stubEnv('TYPST_PACKAGE_PATH', '/somewhere/else')
+    vi.stubEnv('https_proxy', 'http://corp-proxy:8080')
+    try {
+      const r = new MathRenderer(await fakeRoot(), { spawnImpl })
+      await r.render([{ tex: 'x', display: true }])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    const call = seen[0]
+    if (!call) throw new Error('no spawn')
+    const env = call.opts.env
+    expect(Object.keys(env).filter((k) => k.toUpperCase().startsWith('TYPST_'))).toEqual([])
+    for (const k of [
+      'HTTPS_PROXY',
+      'https_proxy',
+      'HTTP_PROXY',
+      'http_proxy',
+      'ALL_PROXY',
+      'all_proxy',
+    ])
+      expect(env[k]).toBe('http://127.0.0.1:9')
+    expect(env.NO_PROXY).toBe('')
+    expect(env.no_proxy).toBe('')
+    expect(env.PATH).toBe(process.env.PATH)
+    const flag = (name: string) => call.args[call.args.indexOf(name) + 1]
+    expect(flag('--package-path')).toBe(join(call.opts.cwd, 'pkg'))
+    expect(flag('--package-cache-path')).toBe(join(call.opts.cwd, 'pkg-cache'))
+    expect(flag('--root')).toBe(call.opts.cwd)
+  })
+
+  it('finds one bad formula of 16 by halving (at most 9 compiles)', async () => {
+    let calls = 0
+    // A stand-in Typst: fails when the batch holds `bad`, else writes one tight page per page.
+    const spawnImpl = ((_cmd: string, _args: string[], opts: { cwd: string }) => {
+      calls++
+      const items = JSON.parse(readFileSync(join(opts.cwd, 'formulas.json'), 'utf8')) as MathItem[]
+      if (items.some((i) => i.tex === 'bad'))
+        return spawn(
+          process.execPath,
+          ['-e', 'console.error("error: bad formula"); process.exit(1)'],
+          opts,
+        )
+      const pages = items.reduce((n, i) => n + (i.display ? 1 : 2), 0)
+      for (let p = 1; p <= pages; p++)
+        writeFileSync(join(opts.cwd, `out-${p}.svg`), '<svg width="5pt" height="4pt"></svg>')
+      return spawn(process.execPath, ['-e', ''], opts)
+    }) as unknown as typeof spawn
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl })
+    const items = Array.from({ length: 16 }, (_, i) => ({
+      tex: i === 11 ? 'bad' : `x_${i}`,
+      display: i % 3 === 0,
+    }))
+    const res = await r.render(items)
+    expect(calls).toBeLessThanOrEqual(9)
+    expect(res[11]).toEqual({ ok: false, error: 'bad formula' })
+    res.forEach((item, i) => {
+      if (i !== 11) expect(item.ok).toBe(true)
+    })
+  })
 })
 
 describe('IPC renderMath', () => {
   const setup = async () => {
     handlers.clear()
-    const dir = await mkdtemp(join(tmpdir(), 'mdo-math-ipc-'))
+    const dir = await tempDir('mdo-math-ipc-')
     registerIpc(new AppContext(dir, dir))
     const h = handlers.get(Ch.renderMath)
     if (!h) throw new Error('no renderMath handler')
@@ -217,6 +356,7 @@ describe('IPC renderMath', () => {
     ['an extra key', [{ tex: 'x', display: false, font: 'Arial' }]],
     ['a wrong type', [{ tex: 1, display: false }]],
     ['too many items', Array.from({ length: 501 }, () => ({ tex: 'x', display: false }))],
+    ['a formula over 10 000 characters', [{ tex: 'x'.repeat(10_001), display: false }]],
   ])('rejects a batch with %s', async (_name, items) => {
     const invoke = await setup()
     await expect(invoke(items)).rejects.toThrow('Ungültiger Parameter.')
