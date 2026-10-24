@@ -304,6 +304,10 @@ describe('svgHasExternalRefs', () => {
     '<svg><rect fill="url(\'#a\\29 x.png\')"/></svg>',
     '<svg><rect fill="url(#a"/></svg>',
     '<svg><image href="x.png/></svg>',
+    // A quoted "value" opened in a comment or text swallows markup up to a real reference.
+    '<svg><!-- href="# -->\n<image href="file:///etc/passwd"/></svg>',
+    "<svg><desc>href='#</desc><image href='x.png'/></svg>",
+    '<svg><!-- url(#a --><image href="x.png"/>)</svg>',
   ])('true for %s', (svg) => {
     expect(svgHasExternalRefs(svg)).toBe(true)
   })

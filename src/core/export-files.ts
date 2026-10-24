@@ -404,9 +404,14 @@ export function imageKind(bytes: Uint8Array, name: string): ImageKind | null {
 }
 
 /** `#…` or a `data:` URI that is not itself an SVG (a nested SVG could hide references). */
+// The scan also sees `href=` in comments and text, where a quoted "value" can swallow the markup up
+// to a real reference (`<!-- href="# -->…<image href="file:…">` reads as `# -->…<image href=`).
+// So only a clean value counts as internal: an id reference or a data: URI without whitespace,
+// quotes or angle brackets; anything else is external.
 const internal = (v: string) => {
   const s = v.trim()
-  return s.startsWith('#') || (/^data:/i.test(s) && !/^data:\s*image\/svg\+xml/i.test(s))
+  if (/[\s<>"']/.test(s)) return false
+  return s.startsWith('#') || (/^data:/i.test(s) && !/^data:image\/svg\+xml/i.test(s))
 }
 
 /** Each `href=` value; `null` for one whose quote never closes (counted as external). */
