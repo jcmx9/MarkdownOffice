@@ -250,6 +250,15 @@ describe('sanitizeMathSvg', () => {
     expect(out.querySelector('use')).toBeNull()
   })
 
+  it.each([
+    ['xlink first', '<use xlink:href="#g" href="http://x/#g"/>'],
+    ['href first', '<use href="http://x/#g" xlink:href="#g"/>'],
+  ])('keeps only the rewritten local href of a use with an external one too (%s)', (_, use) => {
+    const out = cleanMath(svg(`<symbol id="g"><path d="M0 0h1"/></symbol>${use}`)) as SVGSVGElement
+    const el = out.querySelector('use') as Element
+    expect(Array.from(el.attributes).map((a) => `${a.name}=${a.value}`)).toEqual(['href=#m1-g'])
+  })
+
   it('drops scripts, foreign content and event handlers', () => {
     const out = cleanMath(
       svg(

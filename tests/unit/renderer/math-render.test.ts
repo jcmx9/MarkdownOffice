@@ -8,6 +8,7 @@ import {
   createMathService,
   MATH_FAILED,
   MATH_TOO_LONG,
+  MATH_UNSHOWABLE,
   type MathEntry,
 } from '../../../src/renderer/editor/math-render'
 
@@ -134,21 +135,48 @@ describe('createMathService', () => {
     expect(render).toHaveBeenCalledTimes(1)
   })
 
-  it('never lets an older response overwrite what a newer batch stored', async () => {
+  it('never sends a formula again while its render is in flight', async () => {
     const { render, calls } = deferredRender()
     const service = createMathService({ loadMitex: async () => mitex(), render })
     service.request([I('x'), I('a')])
     await settle()
-    service.request([I('x')])
+    service.request([I('x'), I('b')])
     await settle()
-    expect(calls.map((c) => c.items)).toEqual([[I('x'), I('a')], [I('x')]])
-    calls[1]?.resolve([okResult()])
-    await vi.advanceTimersByTimeAsync(0)
-    calls[0]?.resolve([{ ok: false, error: 'stale' }, okResult()])
+    expect(calls.map((c) => c.items)).toEqual([[I('x'), I('a')], [I('b')]])
+    calls[0]?.resolve([okResult(), okResult()])
     await vi.advanceTimersByTimeAsync(0)
     expect(state(service.get(I('x')))).toBe('ok')
-    // Keys only the older batch asked for still take its result.
-    expect(state(service.get(I('a')))).toBe('ok')
+  })
+
+  it('never sends a formula again while its pre-check waits for mitex', async () => {
+    const { render, calls } = deferredRender()
+    let loaded: (p: TypstPlugin) => void = () => {}
+    const loadMitex = vi.fn(() => new Promise<TypstPlugin>((r) => (loaded = r)))
+    const service = createMathService({ loadMitex, render })
+    service.request([I('x')])
+    await settle()
+    // The queue is empty now, the flush awaits mitex: x is still pending.
+    service.request([I('x')])
+    await settle()
+    loaded(mitex())
+    await settle()
+    expect(calls.map((c) => c.items)).toEqual([[I('x')]])
+    expect(loadMitex).toHaveBeenCalledTimes(1)
+  })
+
+  it('loads mitex once for overlapping batches', async () => {
+    const { render, calls } = deferredRender()
+    let loaded: (p: TypstPlugin) => void = () => {}
+    const loadMitex = vi.fn(() => new Promise<TypstPlugin>((r) => (loaded = r)))
+    const service = createMathService({ loadMitex, render })
+    service.request([I('x')])
+    await settle()
+    service.request([I('y')])
+    await settle()
+    loaded(mitex())
+    await settle()
+    expect(loadMitex).toHaveBeenCalledTimes(1)
+    expect(calls.map((c) => c.items)).toEqual([[I('x')], [I('y')]])
   })
 
   it('turns a rejected render into errors and warns once', async () => {
@@ -176,6 +204,7 @@ describe('createMathService', () => {
     const loadMitex = vi.fn(async () => {
       throw new Error('no wasm')
     })
+    const console = vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {})
     const service = createMathService({ loadMitex, render, warn })
     service.request([I('x')])
     await settle()
@@ -184,7 +213,11 @@ describe('createMathService', () => {
     expect(calls.map((c) => c.items)).toEqual([[I('x')], [I('y')]])
     // No retry: the file is missing for the whole session.
     expect(loadMitex).toHaveBeenCalledTimes(1)
-    expect(warn).toHaveBeenCalledTimes(1)
+    // A diagnostic for the console; the injected warn is for MATH_FAILED only.
+    expect(console).toHaveBeenCalledTimes(1)
+    expect(console.mock.calls[0]?.[0]).toContain('Formelprüfung nicht verfügbar')
+    expect(warn).not.toHaveBeenCalled()
+    console.mockRestore()
   })
 
   it('reloads mitex after a crash (not an error result) and still renders the formula', async () => {
@@ -201,11 +234,16 @@ describe('createMathService', () => {
         },
       }),
     )
-    const service = createMathService({ loadMitex, render, warn: vi.fn() })
+    const warn = vi.fn()
+    const console = vi.spyOn(globalThis.console, 'warn').mockImplementation(() => {})
+    const service = createMathService({ loadMitex, render, warn })
     service.request([I('x'), I('y')])
     await settle()
     expect(calls[0]?.items).toEqual([I('x'), I('y')])
     expect(loadMitex).toHaveBeenCalledTimes(2)
+    expect(console.mock.calls[0]?.[0]).toContain('Formelprüfung abgestürzt')
+    expect(warn).not.toHaveBeenCalled()
+    console.mockRestore()
   })
 
   it('splits more formulas than one request may carry and refuses over-long ones locally', async () => {
@@ -220,11 +258,13 @@ describe('createMathService', () => {
 
   it('flags a result whose SVG the sanitiser rejects', async () => {
     const { render, calls } = deferredRender()
-    const service = createMathService({ loadMitex: async () => mitex(), render, warn: vi.fn() })
+    const warn = vi.fn()
+    const service = createMathService({ loadMitex: async () => mitex(), render, warn })
     service.request([I('x')])
     await settle()
     calls[0]?.resolve([{ ok: true, svg: '<html/>', width: 1, height: 1, depth: 0 }])
     await vi.advanceTimersByTimeAsync(0)
-    expect(state(service.get(I('x')))).toBe('error')
+    expect(service.get(I('x'))).toEqual({ state: 'error', message: MATH_UNSHOWABLE })
+    expect(warn).not.toHaveBeenCalled()
   })
 })

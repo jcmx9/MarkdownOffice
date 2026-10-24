@@ -54,6 +54,7 @@ export interface MathServiceOptions {
   /** Sets a batch with Typst (default: `mdo.renderMath`). */
   render?: (items: MathItem[]) => Promise<MathResult[]>
   debounceMs?: number
+  /** Told MATH_FAILED, once per service (diagnostics go to the console). */
   warn?: (message: string) => void
 }
 
@@ -87,62 +88,66 @@ export function createMathService(options: MathServiceOptions = {}): MathService
   const warn = options.warn ?? ((message: string) => console.warn(message))
 
   const cache = new Map<string, Settled>()
-  /** Generation of the batch whose result a key holds; an older batch never overwrites it. */
-  const settledBy = new Map<string, number>()
+  /**
+   * Keys requested and not settled yet: queued, in the pre-check or in flight. A formula's result
+   * depends on its key alone, so a pending key is never sent again (no duplicate Typst runs while
+   * the first render of a newly shown formula takes its ~0.3 s).
+   */
+  const pending = new Set<string>()
   const queue = new Map<string, MathItem>()
   const listeners = new Set<() => void>()
-  const warned = new Set<string>()
+  const diagnosed = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | null = null
-  let generation = 0
+  let failureWarned = false
 
-  let mitex: TypstPlugin | null = null
+  /** The mitex load in progress or done (shared by overlapping batches); null: load anew. */
+  let mitexLoading: Promise<TypstPlugin | null> | null = null
   let mitexFailed = false
 
-  function warnOnce(message: string): void {
-    if (warned.has(message)) return
-    warned.add(message)
-    warn(message)
+  /** Developer diagnostics (console, once each); the injected `warn` is for MATH_FAILED only. */
+  function diagnose(reason: string, detail: unknown): void {
+    if (diagnosed.has(reason)) return
+    diagnosed.add(reason)
+    console.warn(`Markdown Office: ${reason}: ${String(detail)}`)
   }
 
   function notify(): void {
     for (const cb of Array.from(listeners)) cb()
   }
 
-  /** Stores `entry` for `key` unless a newer batch already did (true when stored). */
-  function store(key: string, gen: number, entry: Settled): boolean {
-    if ((settledBy.get(key) ?? 0) > gen) return false
-    settledBy.set(key, gen)
+  function store(key: string, entry: Settled): void {
+    pending.delete(key)
     cache.delete(key)
     cache.set(key, entry)
-    if (cache.size > CACHE_SIZE) {
-      const oldest = cache.keys().next().value as string
-      cache.delete(oldest)
-      settledBy.delete(oldest)
-    }
-    return true
+    if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value as string)
+  }
+
+  function getMitex(): Promise<TypstPlugin | null> {
+    if (mitexFailed) return Promise.resolve(null)
+    mitexLoading ??= loadMitex().catch((e: unknown) => {
+      // No retry: the file is missing or broken for this whole session. Typst still sets the
+      // formula (with the same mitex), so an error then comes from main instead.
+      mitexFailed = true
+      diagnose('Formelprüfung nicht verfügbar', e)
+      return null
+    })
+    return mitexLoading
   }
 
   /** mitex's verdict: its error message, or null when it converts (or cannot be asked). */
   async function precheck(tex: string): Promise<string | null> {
-    if (!mitex && !mitexFailed) {
-      try {
-        mitex = await loadMitex()
-      } catch (e) {
-        // No retry: the file is missing or broken for this whole session. Typst still sets the
-        // formula (with the same mitex), so an error then comes from main instead.
-        mitexFailed = true
-        warnOnce(`Markdown Office: Formelprüfung nicht verfügbar: ${String(e)}`)
-      }
-    }
+    const loading = getMitex()
+    const mitex = await loading
     if (!mitex) return null
     try {
       mitex.call('convert_math', encoder.encode(tex), NO_SPEC)
       return null
     } catch (e) {
       if (e instanceof TypstPluginError) return mitexMessage(e.message)
-      // A trap may leave the instance's memory broken: the next formula loads a fresh one.
-      mitex = null
-      warnOnce(`Markdown Office: Formelprüfung abgestürzt: ${String(e)}`)
+      // A trap may leave the instance's memory broken: the next formula loads a fresh one
+      // (unless another batch already started that reload).
+      if (mitexLoading === loading) mitexLoading = null
+      diagnose('Formelprüfung abgestürzt', e)
       return null
     }
   }
@@ -156,14 +161,14 @@ export function createMathService(options: MathServiceOptions = {}): MathService
       svg = sanitizeMathSvg(result.svg, prefix, document)
     } catch (e) {
       // Pathological output (deep nesting) can exhaust the stack.
-      warnOnce(`Markdown Office: ${MATH_UNSHOWABLE}: ${String(e)}`)
+      diagnose(MATH_UNSHOWABLE, e)
     }
     if (!svg) return { state: 'error', message: MATH_UNSHOWABLE }
     const { width, height, depth } = result
     return { state: 'ok', svg, prefix, width, height, depth }
   }
 
-  async function renderBatch(items: MathItem[], gen: number): Promise<void> {
+  async function renderBatch(items: MathItem[]): Promise<void> {
     let results: MathResult[]
     try {
       results = await render(items)
@@ -171,37 +176,42 @@ export function createMathService(options: MathServiceOptions = {}): MathService
       // Main never rejects a valid batch, so this is IPC or the app going away: flag the batch
       // (cached, no retry loop) and say so once per window.
       results = items.map(() => ({ ok: false, error: MATH_FAILED }))
-      warnOnce(MATH_FAILED)
+      if (!failureWarned) {
+        failureWarned = true
+        warn(MATH_FAILED)
+      }
     }
-    let changed = false
     items.forEach((item, i) => {
-      if (store(keyOf(item), gen, toEntry(results[i]))) changed = true
+      store(keyOf(item), toEntry(results[i]))
     })
-    if (changed) notify()
+    notify()
   }
 
   async function flush(): Promise<void> {
     timer = null
-    // A newer batch may overlap a key still in flight here: whichever settles, the result of
-    // the newer generation is the one kept (an older failure never hides a newer success).
-    const gen = ++generation
+    // The keys stay in `pending` through the awaits below, so a request meanwhile skips them.
     const items = Array.from(queue.values())
     queue.clear()
     const send: MathItem[] = []
     let flagged = false
     for (const item of items) {
       if (item.tex.length > MATH_MAX_TEX) {
-        flagged = store(keyOf(item), gen, { state: 'error', message: MATH_TOO_LONG }) || flagged
+        store(keyOf(item), { state: 'error', message: MATH_TOO_LONG })
+        flagged = true
         continue
       }
       const error = await precheck(item.tex)
-      if (error === null) send.push(item)
-      else flagged = store(keyOf(item), gen, { state: 'error', message: error }) || flagged
+      if (error === null) {
+        send.push(item)
+      } else {
+        store(keyOf(item), { state: 'error', message: error })
+        flagged = true
+      }
     }
     if (flagged) notify()
     const batches: Promise<void>[] = []
     for (let i = 0; i < send.length; i += MATH_MAX_ITEMS) {
-      batches.push(renderBatch(send.slice(i, i + MATH_MAX_ITEMS), gen))
+      batches.push(renderBatch(send.slice(i, i + MATH_MAX_ITEMS)))
     }
     await Promise.all(batches)
   }
@@ -219,7 +229,8 @@ export function createMathService(options: MathServiceOptions = {}): MathService
     request(items) {
       for (const item of items) {
         const key = keyOf(item)
-        if (cache.has(key) || queue.has(key)) continue
+        if (cache.has(key) || pending.has(key)) continue
+        pending.add(key)
         // Fresh plain objects: exactly what main's validation accepts.
         queue.set(key, { tex: item.tex, display: item.display })
       }

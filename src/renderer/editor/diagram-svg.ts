@@ -201,6 +201,13 @@ export function sanitizeMathSvg(
   return rebuildSvg(svg, idPrefix, doc, MATH)
 }
 
+/**
+ * The rebuild both sanitisers share: parse as XML, copy allowed elements and attributes into
+ * `doc`, prefix ids and resolve `url(#…)` references within the drawing. The profile decides
+ * the rest: which elements and attributes are allowed, whether `<use>` survives (local hrefs
+ * only), how `fill`/`stroke` values are rewritten, and whether a drawing with nothing drawable
+ * is rejected.
+ */
 function rebuildSvg(
   svg: string,
   idPrefix: string,
@@ -247,7 +254,9 @@ function rebuildSvg(
       const href =
         attr.localName === 'href' && (attr.namespaceURI === null || attr.namespaceURI === XLINK_NS)
       if (use && href) {
-        use.id = LOCAL_HREF.exec(attr.value.trim())?.[1] ?? null
+        // Only a local target counts; another href on the same <use> is dropped, never kept.
+        const local = LOCAL_HREF.exec(attr.value.trim())?.[1]
+        if (local) use.id = local
         continue
       }
       if (attr.namespaceURI !== null) continue
