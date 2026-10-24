@@ -161,10 +161,11 @@ describe('OutlineSync', () => {
     const view = mkView(doc)
     const render = vi.fn<(entries: OutlineEntry[], active: OutlineEntry | null) => void>()
     const setVisible = vi.fn<(on: boolean) => void>()
+    const recentre = vi.fn<() => void>()
     const frames: (() => void)[] = []
     const compute = vi.fn(outlineEntries)
     const sync = new OutlineSync(
-      { render, setVisible },
+      { render, setVisible, recentre },
       () => view.state,
       {
         request: (cb) => {
@@ -185,7 +186,7 @@ describe('OutlineSync', () => {
       view.dispatch(tr)
       sync.update([tr])
     }
-    return { view, render, setVisible, sync, flush, compute, dispatch }
+    return { view, render, setVisible, recentre, sync, flush, compute, dispatch }
   }
 
   it('does nothing while hidden', () => {
@@ -241,5 +242,10 @@ describe('OutlineSync', () => {
     expect(setVisible).toHaveBeenLastCalledWith(false)
     flush()
     expect(render).not.toHaveBeenCalled()
+  })
+  it('a replaced state (tab switch) centres the list again', () => {
+    const { sync, recentre } = setup()
+    sync.invalidate()
+    expect(recentre).toHaveBeenCalledTimes(1)
   })
 })
