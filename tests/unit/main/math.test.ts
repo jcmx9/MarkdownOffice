@@ -113,10 +113,10 @@ describe.skipIf(skip)('MathRenderer (real Typst)', () => {
   })
 
   it('sets a bare # call as math text (mitex escapes it)', async () => {
-    // What this proves: a plain `#read(…)` in TeX is not Typst code, it renders as a short
-    // formula. It is no sandbox proof: mitex's \iftypst … \fi does pass code through, which
-    // the renderer refuses before compiling (see below), and --root / package dirs / dead
-    // proxy limit what code could reach.
+    // What this proves: mitex escapes a bare `#`, so `#read(…)` renders as a short formula. It
+    // proves nothing about the sandbox: several mitex commands do pass text into Typst code; the
+    // known ones are refused before compiling (tests below), and the boundary for the rest is
+    // the sandbox (--root temp dir, empty package dirs, dead proxy, timeout).
     const r = new MathRenderer(ROOT)
     const [res] = await r.render([{ tex: '#read("/etc/passwd")', display: false }])
     expect(JSON.stringify(res)).not.toContain('root:')
@@ -258,13 +258,20 @@ describe('MathRenderer (process handling)', () => {
     expect(existsSync(tmp)).toBe(false)
   })
 
-  it('refuses raw Typst code (\\iftypst) without compiling it', async () => {
+  // The known mitex passthroughs to Typst code (mitex 0.2.7). A lookalike such as `\hspacex`
+  // needs no test: mitex rejects it as an unknown command anyway.
+  it.each([
+    '\\iftypst #{import "@preview/x:0.0.1": y} \\fi',
+    '\\includegraphics[width=panic("PWNED")]{a}',
+    '\\includegraphics{a"),panic("X"),image("b}',
+    '\\hspace{\\text{panic("PWNED-hspace")}}',
+    '\\vspace{\\text{panic("PWNED-vspace")}}',
+    '\\raisebox{\\text{panic("PWNED-raise")}}{x}',
+    '\\hspace{\\text{panic(read("/formulas.json"))}}',
+  ])('refuses raw Typst code without compiling it: %s', async (tex) => {
     const spawnImpl = vi.fn() as unknown as typeof spawn
     const r = new MathRenderer(await fakeRoot(), { spawnImpl })
-    const res = await r.render([
-      { tex: '\\iftypst #{import "@preview/x:0.0.1": y} \\fi', display: false },
-    ])
-    expect(res).toEqual([
+    expect(await r.render([{ tex, display: false }])).toEqual([
       { ok: false, error: 'Typst-Code in Formeln wird in der Vorschau nicht ausgeführt' },
     ])
     expect(spawnImpl).not.toHaveBeenCalled()
@@ -365,5 +372,73 @@ describe('IPC renderMath', () => {
   it('answers a valid empty batch', async () => {
     const invoke = await setup()
     expect(await invoke([])).toEqual([])
+  })
+})
+
+/**
+ * A stand-in Typst: `decide` sees the batch and says whether it renders (one tight SVG per page),
+ * fails with `error: bad formula`, or hangs.
+ */
+const fakeTypst = (decide: (items: MathItem[]) => 'ok' | 'fail' | 'hang') => {
+  const batches: string[][] = []
+  const impl = ((_cmd: string, _args: string[], opts: { cwd: string }) => {
+    const items = JSON.parse(readFileSync(join(opts.cwd, 'formulas.json'), 'utf8')) as MathItem[]
+    batches.push(items.map((i) => i.tex))
+    const how = decide(items)
+    const fail = 'console.error("error: bad formula"); process.exit(1)'
+    if (how === 'fail') return spawn(process.execPath, ['-e', fail], opts)
+    if (how === 'hang') return spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], opts)
+    const pages = items.reduce((n, i) => n + (i.display ? 1 : 2), 0)
+    for (let p = 1; p <= pages; p++)
+      writeFileSync(join(opts.cwd, `out-${p}.svg`), '<svg width="5pt" height="4pt"></svg>')
+    return spawn(process.execPath, ['-e', ''], opts)
+  }) as unknown as typeof spawn
+  return { impl, batches }
+}
+
+describe.skipIf(process.platform === 'win32')('MathRenderer (deadline)', () => {
+  const items = ['a', 'b', 'c', 'slow'].map((tex) => ({ tex, display: true }))
+
+  it('splits a timed-out sub-batch further while the deadline allows', async () => {
+    const typst = fakeTypst((batch) => (batch.some((i) => i.tex === 'slow') ? 'hang' : 'ok'))
+    const r = new MathRenderer(await fakeRoot(), {
+      timeoutMs: 200,
+      deadlineMs: 10_000,
+      spawnImpl: typst.impl,
+    })
+    const res = await r.render(items)
+    expect(res.slice(0, 3).map((x) => x.ok)).toEqual([true, true, true])
+    expect(res[3]).toEqual({ ok: false, error: 'Zeitüberschreitung' })
+    expect(typst.batches).toEqual([
+      ['a', 'b', 'c', 'slow'],
+      ['a', 'b'],
+      ['c', 'slow'],
+      ['c'],
+      ['slow'],
+    ])
+  })
+
+  it('gives non-isolated items a timeout, not the batch error, once the deadline passed', async () => {
+    // The batch fails with a real error, and the deadline passes while it runs (clock moved on
+    // at spawn): no time to isolate the culprit, so none of the four gets `bad formula`.
+    const realNow = Date.now.bind(Date)
+    let offset = 0
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + offset)
+    try {
+      const typst = fakeTypst(() => {
+        offset = 60_000
+        return 'fail'
+      })
+      const r = new MathRenderer(await fakeRoot(), {
+        timeoutMs: 5000,
+        deadlineMs: 10_000,
+        spawnImpl: typst.impl,
+      })
+      const timeout = { ok: false, error: 'Zeitüberschreitung' }
+      expect(await r.render(items)).toEqual([timeout, timeout, timeout, timeout])
+      expect(typst.batches).toHaveLength(1)
+    } finally {
+      clock.mockRestore()
+    }
   })
 })

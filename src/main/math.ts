@@ -35,10 +35,15 @@ const TIMEOUT = 'Zeitüberschreitung'
 const TYPST_CODE = 'Typst-Code in Formeln wird in der Vorschau nicht ausgeführt'
 
 /**
- * mitex hands everything between `\iftypst` and `\fi` to Typst's eval as code, so a formula could
- * run Typst (read files in the root, fetch packages). The preview never compiles such formulas.
+ * Defense in depth, not the boundary. Some mitex commands pass formula text into Typst code
+ * (eval or raw `#…` output), so a formula can run Typst. As of mitex 0.2.7: `\iftypst … \fi`,
+ * `\includegraphics` (options and path emitted raw), `\hspace`/`\vspace` and `\raisebox`
+ * (their `\text{…}` argument is evaluated, specs/latex/standard.typ). The preview refuses these
+ * before compiling. The list is not exhaustive: the security boundary is the sandbox (root = a
+ * temp dir with only mitex and this batch, empty package dirs, dead proxy, timeout). A mitex
+ * update must re-check specs/latex/standard.typ for eval and raw output.
  */
-const RAW_TYPST = /\\iftypst/
+const RAW_TYPST = /\\(iftypst|includegraphics|hspace|vspace|raisebox)(?![A-Za-z])/
 
 /** A dead local port: any network access Typst tries (package download) fails at once. */
 const DEAD_PROXY = 'http://127.0.0.1:9'
@@ -184,7 +189,9 @@ export class MathRenderer {
           })
           return
         }
-        if (part.length === 1 || Date.now() >= deadline) return set(res.error)
+        if (part.length === 1) return set(res.error)
+        // No time left to isolate the culprit: the batch's error is not these items' own.
+        if (Date.now() >= deadline) return set(TIMEOUT)
         // One formula Typst rejects (or that hangs) fails the whole compile: halve until the
         // culprits stand alone, so k bad of n cost about 2·k·log2(n) runs instead of n.
         const mid = Math.ceil(part.length / 2)
