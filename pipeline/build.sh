@@ -814,8 +814,8 @@ while (( n < ${#m_refs[@]} && n < ${#m_paths[@]} )); do
   n=$((n + 1))
 done
 
-# Logo (logo: im Frontmatter; gesucht hat der Wrapper: Ordner der Notiz bzw. MDO_BASE_DIR,
-# Benutzerordner, Vorlagen-Ordner, Pipeline-Ordner). Ohne Logo nur ein Hinweis, nie ein Fehler.
+# Logo (logo: im Frontmatter, nur relativ; gesucht hat der Wrapper: Ordner der Notiz bzw.
+# MDO_BASE_DIR, Ordner des Profils, Ordner der Vorlage). Ohne Logo nur ein Hinweis, nie ein Fehler.
 logo=""
 if [[ -n "${m_logo}" ]] && cp -- "${m_logo}" "${stage}/logo/${m_logo##*/}" 2>/dev/null; then
   logo="/logo/${m_logo##*/}"

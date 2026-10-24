@@ -35,7 +35,7 @@ Varianten, die dieses Dokument nicht zeigt:
   ihn aus.
 - `lang: en` stellt Datum, Beschriftungen und Anführungszeichen auf Englisch um.
 - Ohne `logo:` bleibt der Kopf ohne Logo. `logo: kunde.png` sucht die Datei neben der Notiz,
-  dann im Benutzerordner, dann im Installordner.
+  dann neben dem Profil, dann im Ordner der Vorlage (nur relative Pfade).
 
 Alle Schlüssel mit ==Standardwerten== stehen in `header.md`.
 

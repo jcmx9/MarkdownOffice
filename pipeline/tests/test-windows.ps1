@@ -237,13 +237,15 @@ if ($OtherTemp) {
   Skip 'anderes Laufwerk (kein Temp-Ordner auf einem anderen Laufwerk als das Repo)'
 }
 
-# 3b) Logo nur mit logo:; relativ gesucht im Notizordner, dann im Benutzerordner
-#     (%USERPROFILE%), dann im Vorlagen-Ordner (MDO_TEMPLATES), dann im
-#     Pipeline-Ordner. Nicht gefunden: Hinweis, Exit 0.
+# 3b) Logo nur mit logo: und nur als relativer Pfad: gesucht im Notizordner, dann im
+#     Ordner des Profils, dann im Ordner der Vorlage (spiegelt test-pdf.sh, das die
+#     Reihenfolge prueft). Benutzer-, Vorlagen- und Pipeline-Ordner werden nicht mehr
+#     durchsucht; %VAR% und absolute Pfade bleiben draussen. Immer Exit 0.
 $logoDir  = Join-Path $Work 'logo notiz'
 $logoHome = Join-Path $Work 'logo home'
 $logoVorl = Join-Path $Work 'logo vorlagen'
 New-Item -ItemType Directory -Force -Path $logoDir, $logoHome, $logoVorl | Out-Null
+Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoDir 'notiz-logo.png')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoHome 'mein-logo.png')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoVorl 'vorlagen-logo.png')
 $logoPdf = Join-Path $outDir 'logo.pdf'
@@ -252,11 +254,14 @@ $savedTemplates = $env:MDO_TEMPLATES
 $env:USERPROFILE = $logoHome
 $env:MDO_TEMPLATES = $logoVorl
 foreach ($case in @(
-    @{ Logo = 'mein-logo.png'; Hint = $false; Name = 'logo: aus dem Benutzerordner' },
-    @{ Logo = 'vorlagen-logo.png'; Hint = $false; Name = 'logo: aus dem Vorlagen-Ordner' },
+    @{ Logo = 'notiz-logo.png'; Hint = $false; Name = 'logo: aus dem Notizordner' },
+    @{ Logo = 'mein-logo.png'; Hint = $true; Name = 'logo: Benutzerordner wird nicht durchsucht' },
+    @{ Logo = 'vorlagen-logo.png'; Hint = $true; Name = 'logo: Vorlagen-Ordner wird nicht durchsucht' },
+    @{ Logo = '%USERPROFILE%\mein-logo.png'; Hint = $true; Name = 'logo: %VAR% -> ohne Logo' },
+    @{ Logo = (Join-Path $logoHome 'mein-logo.png'); Hint = $true; Name = 'logo: absoluter Pfad -> ohne Logo' },
     @{ Logo = 'fehlt.png';     Hint = $true;  Name = 'logo: nicht gefunden -> ohne Logo' },
     @{ Logo = 'mein-logo.txt'; Hint = $true;  Name = 'logo: falsche Endung -> ohne Logo' })) {
-  $noteText = "---`nlogo: $($case.Logo)`n---`n`nText.`n"
+  $noteText = "---`nlogo: `"$($case.Logo)`"`n---`n`nText.`n"
   [IO.File]::WriteAllText((Join-Path $logoDir 'notiz.md'), $noteText, (New-Object Text.UTF8Encoding $false))
   $r = Invoke-Convert @((Join-Path $logoDir 'notiz.md'), $logoPdf)
   $hinted = $r.Text -match 'Hinweis: Logo'

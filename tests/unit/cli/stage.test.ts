@@ -175,16 +175,29 @@ describe.runIf(posix)('buildManifest images', () => {
 describe.runIf(posix)('buildManifest logo', () => {
   const note = (logo: string) => tree({ 'notes/n.md': `---\nlogo: ${logo}\n---\nText\n` })
 
-  it('searches the note folder, then HOME, then the templates folder, then the pipeline', async () => {
-    tree({ 'pipeline/l.svg': SVG, 'user/l.svg': SVG, 'home/l.svg': SVG })
-    note('l.svg')
-    expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBe(at('home/l.svg'))
-    rmSync(at('home/l.svg'))
-    expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBe(at('user/l.svg'))
-    rmSync(at('user/l.svg'))
-    expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBe(at('pipeline/l.svg'))
-    tree({ 'notes/l.svg': SVG })
-    expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBe(at('notes/l.svg'))
+  it('searches the note folder, then the profile folder, then the template folder', async () => {
+    tree({
+      'pipeline/l.svg': SVG,
+      'user/l.svg': SVG,
+      'home/l.svg': SVG,
+      'user/profiles/p.yaml': 'name: P\n',
+      'user/profiles/l.svg': SVG,
+      'sets/din5008a/din5008a.typ': '// set\n',
+      'sets/din5008a/l.svg': SVG,
+      'notes/n.md': '---\ntemplate: din5008a\nprofile: p\nlogo: l.svg\n---\nText\n',
+    })
+    const logo = async () => (await buildManifest(at('notes/n.md'), opts())).manifest.logo
+    expect(await logo()).toBe(at('user/profiles/l.svg'))
+    rmSync(at('user/profiles/l.svg'))
+    expect(await logo()).toBe(at('sets/din5008a/l.svg'))
+    rmSync(at('sets/din5008a/l.svg'))
+    // HOME, the templates folder and the pipeline are no longer searched.
+    expect(await logo()).toBeNull()
+    tree({ 'notes/logos/l.svg': SVG })
+    writeFileSync(at('notes/n.md'), '---\ntemplate: din5008a\nprofile: p\nlogo: logos/l.svg\n---\n')
+    expect(await logo()).toBe(at('notes/logos/l.svg'))
+    tree({ 'notes/logos/l.svg': SVG, 'user/profiles/logos/l.svg': SVG })
+    expect(await logo()).toBe(at('notes/logos/l.svg'))
   })
 
   it('reads no header behind a BOM, as build.sh does', async () => {
@@ -192,12 +205,30 @@ describe.runIf(posix)('buildManifest logo', () => {
     expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBeNull()
   })
 
-  it('takes an absolute or ~ path as exactly that file', async () => {
-    tree({ 'home/logos/x.png': PNG })
-    note('~/logos/x.png')
-    expect((await buildManifest(at('notes/n.md'), opts())).manifest.logo).toBe(
+  it('refuses an absolute, ~, $VAR or %VAR% path and one leading out, with a hint', async () => {
+    tree({ 'home/logos/x.png': PNG, 'outside/x.png': PNG, 'notes/.hidden/x.png': PNG })
+    for (const v of [
+      '~/logos/x.png',
+      '$HOME/logos/x.png',
+      '%HOME%/logos/x.png',
       at('home/logos/x.png'),
-    )
+      '../outside/x.png',
+      '.hidden/x.png',
+    ]) {
+      note(v)
+      const r = await buildManifest(at('notes/n.md'), opts())
+      expect(r.manifest.logo, v).toBeNull()
+      expect(r.hints.join('\n'), v).toContain(`kommt nicht ins PDF: ${v}`)
+    }
+  })
+
+  it('refuses a logo whose link leads out of the folder it was found in', async () => {
+    tree({ 'home/x.png': PNG })
+    note('x.png')
+    symlinkSync(at('home/x.png'), at('notes/x.png'))
+    const r = await buildManifest(at('notes/n.md'), opts())
+    expect(r.manifest.logo).toBeNull()
+    expect(r.hints.join('\n')).toContain('Logo liegt außerhalb')
   })
 
   it('drops a logo that is no real image, a remote one and a wrong extension', async () => {
