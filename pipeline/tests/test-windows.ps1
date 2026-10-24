@@ -177,8 +177,9 @@ function New-DriveNote([string]$Dir) {
   New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'bilder') | Out-Null
   Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $Dir 'bilder')
   Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination $Dir
-  $absImg = (Join-Path $Fixtures 'bilder\screenshot.png')
-  $noteText = "---`ntitle: `"Andere Platte`"`nlogo: logo.png`n---`n`n# Kapitel`n`n![Relativ](bilder/screenshot.png)`n`n![Absolut auf dem Repo-Laufwerk]($absImg)`n`nText nach den Bildern.`n"
+  # Absolut, aber im Notizordner: Bilder von ausserhalb des Notizordners kommen nicht ins PDF.
+  $absImg = (Join-Path $Dir 'bilder\screenshot.png')
+  $noteText = "---`ntitle: `"Andere Platte`"`nlogo: logo.png`n---`n`n# Kapitel`n`n![Relativ](bilder/screenshot.png)`n`n![Absolut mit Laufwerksbuchstabe](<$absImg>)`n`nText nach den Bildern.`n"
   $n = Join-Path $Dir 'notiz.md'
   [IO.File]::WriteAllText($n, $noteText, (New-Object Text.UTF8Encoding $false))
   return $n
