@@ -706,11 +706,21 @@ real_path() {
   printf '%s/%s' "${d}" "$(basename "${p}")"
 }
 
+# skipped_rel <relativer-pfad>: Exit 0, wenn ein Teil des Pfads mit . beginnt oder profiles heißt,
+# in jeder Schreibweise (Profiles, PROFILES). Warum jede: macOS und Windows unterscheiden Groß- und
+# Kleinschreibung im Dateisystem nicht, die Profilsuche des Wrappers findet Profiles/ als profiles/;
+# ein Profiles/ im Vorlagen-Ordner hält also ebenso die Profile aller Absender.
+skipped_rel() {
+  case "/$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')/" in */.*|*/profiles/*) return 0 ;; esac
+  return 1
+}
+
 # stage_folder <ordner> <ziel>: der Ordner einer einzelnen, über den Set-Namen gefundenen .typ
 # (<Vorlagen>/meinset.typ), damit sie Nachbardateien einbinden kann (Entscheidung des Besitzers,
 # 2026-10-24). Der Ordner ist meist der Vorlagen-Ordner selbst; daher bleiben draußen: jeder
-# Ordner namens profiles (in jeder Tiefe; dort liegen die Profile aller Absender), jeder Eintrag,
-# dessen Name mit . beginnt, und jeder Symlink, dessen Ziel den Ordner verlässt. Ein Symlink auf
+# Ordner namens profiles (in jeder Tiefe und Schreibweise, siehe skipped_rel; dort liegen die Profile
+# aller Absender), jeder Eintrag, dessen Name mit . beginnt, und jeder Symlink, dessen Ziel den
+# Ordner verlässt. Ein Symlink auf
 # eine Datei im Ordner wird als Inhalt kopiert, einer auf einen Ordner nie verfolgt.
 stage_folder() {
   local src="$1" dest="$2" rsrc e rel r
@@ -720,7 +730,7 @@ stage_folder() {
     if [[ -L "${src}/${rel}" ]]; then
       r="$(real_path "${src}/${rel}")" || continue
       case "${r}" in "${rsrc}"/*) ;; *) continue ;; esac
-      case "/${r#"${rsrc}"/}/" in */.*|*/profiles/*) continue ;; esac
+      if skipped_rel "${r#"${rsrc}"/}"; then continue; fi
       [[ -f "${r}" ]] || continue
       cp -- "${r}" "${dest}/${rel}" || return 1
     elif [[ -d "${src}/${rel}" ]]; then
@@ -728,7 +738,7 @@ stage_folder() {
     elif [[ -f "${src}/${rel}" ]]; then
       cp -P -- "${src}/${rel}" "${dest}/${rel}" || return 1
     fi
-  done < <(cd "${src}" && find . -mindepth 1 \( -name '.*' -o \( -type d -name profiles \) \) -prune -o -print0)
+  done < <(cd "${src}" && find . -mindepth 1 \( -name '.*' -o \( -type d -iname profiles \) \) -prune -o -print0)
 }
 
 # Je Ziel ein cp-Aufruf (ein Export soll kaum langsamer werden als ohne Staging-Ordner).
@@ -736,7 +746,11 @@ if [[ -n "${template_is_set}" ]]; then
   set_entries=()
   shopt -s dotglob nullglob
   for entry in "${template_dir}"/*; do
-    case "${entry##*/}" in .git|profiles) ;; *) set_entries+=("${entry}") ;; esac
+    # Jede Schreibweise (.GIT, Profiles; siehe skipped_rel).
+    case "$(printf '%s' "${entry##*/}" | tr '[:upper:]' '[:lower:]')" in
+      .git|profiles) ;;
+      *) set_entries+=("${entry}") ;;
+    esac
   done
   shopt -u dotglob nullglob
   cp -RL -- "${set_entries[@]}" "${stage}/set/" || copy_failed "${template_dir}"
@@ -940,14 +954,10 @@ cat "${stage}/typst.err" >&2
 if (( compile_rc != 0 )); then
   if [[ -z "${template_by_name}" ]]; then
     missing="$(sed -n 's|.*file not found (searched at .*/mdo-stage-[^/]*/set/\(.*\))$|\1|p' "${stage}/typst.err" | head -n 1)"
-    case "/${missing}/" in
-      //|*/.*|*/profiles/*) ;;
-      *)
-        if [[ "${missing}" != "$(basename "${template_file}")" && -e "${template_dir}/${missing}" ]]; then
-          echo "Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>/<name>.typ." >&2
-        fi
-        ;;
-    esac
+    if [[ -n "${missing}" ]] && ! skipped_rel "${missing}" &&
+      [[ "${missing}" != "$(basename "${template_file}")" && -e "${template_dir}/${missing}" ]]; then
+      echo "Hinweis: Vorlagen mit mehreren Dateien brauchen einen Set-Ordner <name>/<name>.typ." >&2
+    fi
   fi
   exit "${compile_rc}"
 fi

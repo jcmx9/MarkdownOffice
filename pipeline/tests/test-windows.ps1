@@ -733,6 +733,33 @@ foreach ($mf in @('.hidden.txt', 'x/profiles/y.yaml')) {
 }
 if ($mvOk) { Ok "sandbox: einzelne .typ ueber den Namen: Nachbardateien ja; $($fremd -join ', ') nein (auch im gleichnamigen Vorlagen-Ordner)" }
 
+# Jede Schreibweise von profiles und .git bleibt draussen (spiegelt test-pdf.sh): Windows
+# unterscheidet sie im Dateisystem nicht, die Profilsuche des Wrappers findet Profiles\ als
+# profiles\. Einzelne .typ ueber den Namen (meinset) wie Set-Ordner (fset).
+$gross = Join-Path $sbRoot 'sb-gross'
+New-Item -ItemType Directory -Force -Path (Join-Path $gross 'Profiles'), (Join-Path $gross 'x\PROFILES'),
+  (Join-Path $gross 'fset\Profiles'), (Join-Path $gross 'fset\.GIT') | Out-Null
+Copy-Item -LiteralPath (Join-Path $mv 'meinset.typ'), (Join-Path $mv 'helper.typ') -Destination $gross
+Copy-Item -LiteralPath (Join-Path $mv 'meinset.typ') -Destination (Join-Path $gross 'fset\fset.typ')
+Copy-Item -LiteralPath (Join-Path $mv 'helper.typ') -Destination (Join-Path $gross 'fset')
+[IO.File]::WriteAllText((Join-Path $gross 'Profiles\other.yaml'), "OTHER-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $gross 'x\PROFILES\y.yaml'), "Y-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $gross 'fset\Profiles\other.yaml'), "OTHER-MARKE`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $gross 'fset\.GIT\config'), "GIT-MARKE`n", $utf8)
+$grossOk = $true
+foreach ($t in @('meinset', 'fset')) {
+  if (-not (Invoke-Hostile "gross-$t" 'Text.' '' @('--template', $t) $gross).Ok) { $grossOk = $false }
+}
+foreach ($mf in @('Profiles/other.yaml', 'x/PROFILES/y.yaml', 'fset/Profiles/other.yaml')) {
+  $r = Invoke-Hostile 'gross-fremd' ('$\text{\label{#read("/set/' + $mf + '")}}$') $notFound @('--template', 'meinset') $gross
+  if (-not $r.Ok) { $grossOk = $false }
+}
+foreach ($mf in @('Profiles/other.yaml', '.GIT/config')) {
+  $r = Invoke-Hostile 'gross-fremd' ('$\text{\label{#read("/set/' + $mf + '")}}$') $notFound @('--template', 'fset') $gross
+  if (-not $r.Ok) { $grossOk = $false }
+}
+if ($grossOk) { Ok 'sandbox: Profiles\, PROFILES\ und .GIT\ bleiben draussen wie profiles\ und .git\' }
+
 # Eine Vorlage als UNC-Pfad aus der Notiz: sofort "Vorlage nicht gefunden", ohne den Server zu
 # fragen (kein Haengen, kein SMB-Kontakt, der den NTLM-Hash preisgaebe).
 [IO.File]::WriteAllText((Join-Path $sbNote 'unc.md'), "---`ntemplate: //nonexistent.invalid/x.typ`n---`n`nText.`n", $utf8)

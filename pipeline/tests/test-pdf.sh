@@ -1038,6 +1038,31 @@ test_sandbox() {
   done
   ok "sandbox: einzelne .typ über den Namen: Nachbardateien ja, profiles/, Punkt-Einträge, Links nach außen nein"
 
+  # Jede Schreibweise von profiles und .git bleibt draußen: macOS und Windows unterscheiden sie im
+  # Dateisystem nicht, die Profilsuche des Wrappers findet Profiles/ als profiles/. Einzelne .typ
+  # über den Namen (meinset; auch ein Link auf ein Profil darin) wie Set-Ordner (fset).
+  local gross="${out_dir}/sb-gross"
+  mkdir -p "${gross}/Profiles" "${gross}/x/PROFILES" "${gross}/fset/Profiles" "${gross}/fset/.GIT"
+  cp "${mv}/meinset.typ" "${mv}/helper.typ" "${gross}/"
+  cp "${mv}/meinset.typ" "${gross}/fset/fset.typ"
+  cp "${mv}/helper.typ" "${gross}/fset/"
+  printf 'OTHER-MARKE\n' >"${gross}/Profiles/other.yaml"
+  printf 'Y-MARKE\n' >"${gross}/x/PROFILES/y.yaml"
+  ln -s Profiles/other.yaml "${gross}/plink.yaml"
+  printf 'OTHER-MARKE\n' >"${gross}/fset/Profiles/other.yaml"
+  printf 'GIT-MARKE\n' >"${gross}/fset/.GIT/config"
+  MDO_TEMPLATES="${gross}" hostile gross 'Text.' "" --template meinset
+  MDO_TEMPLATES="${gross}" hostile gross-set 'Text.' "" --template fset
+  for mf in Profiles/other.yaml x/PROFILES/y.yaml plink.yaml fset/Profiles/other.yaml; do
+    MDO_TEMPLATES="${gross}" hostile gross-fremd "\$\\text{\\label{#read(\"/set/${mf}\")}}\$" "${not_found}" \
+      --template meinset
+  done
+  for mf in Profiles/other.yaml .GIT/config; do
+    MDO_TEMPLATES="${gross}" hostile gross-fremd "\$\\text{\\label{#read(\"/set/${mf}\")}}\$" "${not_found}" \
+      --template fset
+  done
+  ok "sandbox: Profiles/, PROFILES/ und .GIT/ bleiben draußen wie profiles/ und .git/"
+
   # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.
   cp "${fixtures}/bilder/screenshot.png" "${sb}/bilder/aussen.png"
   printf '# Außen\n\n![](../bilder/aussen.png)\n\nENDE.\n' >"${sb}/notiz/aussen.md"
