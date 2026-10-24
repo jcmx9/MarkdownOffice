@@ -4,6 +4,7 @@ import {
   MATH_MAX_TEX,
   MATH_PROGRAM,
   MATH_REF_PT,
+  MATH_REFUSED,
   pagesPerItem,
   svgSizePt,
   validateMathBatch,
@@ -50,13 +51,27 @@ describe('validateMathBatch', () => {
 describe('MATH_PROGRAM', () => {
   it('is a fixed program that reads the formulas from formulas.json', () => {
     expect(MATH_PROGRAM).toContain('json("formulas.json")')
-    expect(MATH_PROGRAM).toContain('#import "mitex/lib.typ"')
+    expect(MATH_PROGRAM).toContain('#import "mitex/mitex.typ": mitex-convert, mitex-scope')
     expect(MATH_PROGRAM).not.toMatch(/\{\{|\$\{|%s|<placeholder>/)
   })
 
-  it('calls mitex with an explicit block flag per kind, as cmarker calls the set', () => {
-    expect(MATH_PROGRAM).toContain('mitex(item.tex, block: false)')
-    expect(MATH_PROGRAM).toContain('mitex(item.tex, block: true)')
+  it("sets each formula as mitex's mimath does, with an explicit block flag per kind", () => {
+    expect(MATH_PROGRAM).toContain('let res = mitex-convert(tex)')
+    expect(MATH_PROGRAM).toContain(
+      'math.equation(block: block, eval("$" + res + "$", scope: scope))',
+    )
+    expect(MATH_PROGRAM).toContain('formula(item.tex, true)')
+    expect(MATH_PROGRAM).toContain('formula(item.tex, false)')
+  })
+
+  it('refuses unknown # emissions and takes the evaluating commands out of the scope', () => {
+    expect(MATH_PROGRAM).toContain(`panic(${JSON.stringify(MATH_REFUSED)})`)
+    expect(MATH_PROGRAM).toContain('.contains("#") { refuse() }')
+    expect(MATH_PROGRAM).toContain(
+      'mitex-scope + (hspace: refuse, vspace: refuse, raisebox: refuse)',
+    )
+    // \includegraphics's emissions stay out of the allowlist (a file read).
+    expect(MATH_PROGRAM).not.toMatch(/image|miteximage/)
   })
 
   it('sets tight transparent pages at the reference size', () => {

@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -48,7 +48,10 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn(), setApplicationMenu: vi.fn() },
 }))
 
-const { MathRenderer } = await import('../../../src/main/math')
+const { MathRenderer, firstError } = await import('../../../src/main/math')
+const { MATH_PROGRAM, MATH_REFUSED } = await import('../../../src/core/math')
+
+const TYPST_CODE = 'Typst-Code in Formeln wird in der Vorschau nicht ausgeführt'
 const { AppContext } = await import('../../../src/main/context')
 const { registerIpc } = await import('../../../src/main/ipc')
 
@@ -112,15 +115,32 @@ describe.skipIf(skip)('MathRenderer (real Typst)', () => {
     expect(ok(res[2]).svg).toMatch(/^<svg/)
   })
 
-  it('sets a bare # call as math text (mitex escapes it)', async () => {
-    // What this proves: mitex escapes a bare `#`, so `#read(…)` renders as a short formula. It
-    // proves nothing about the sandbox: several mitex commands do pass text into Typst code; the
-    // known ones are refused before compiling (tests below), and the boundary for the rest is
-    // the sandbox (--root temp dir, empty package dirs, dead proxy, timeout).
+  it('sets an escaped \\# as math text; a bare # is refused before compiling', async () => {
+    // What this proves: the escape renders and a bare `#` never reaches Typst. It proves nothing
+    // about the sandbox: several mitex commands do pass text into Typst code; the known ones are
+    // refused (tests below), and the boundary for the rest is the sandbox (--root temp dir,
+    // empty package dirs, dead proxy, timeout, memory watchdog).
     const r = new MathRenderer(ROOT)
-    const [res] = await r.render([{ tex: '#read("/etc/passwd")', display: false }])
-    expect(JSON.stringify(res)).not.toContain('root:')
-    expect(ok(res).width).toBeLessThan(20)
+    const [escaped, bare] = await r.render([
+      { tex: '\\#read("/etc/passwd")', display: false },
+      { tex: '#read("/etc/passwd")', display: false },
+    ])
+    expect(JSON.stringify([escaped, bare])).not.toContain('root:')
+    expect(ok(escaped).width).toBeLessThan(20)
+    expect(bare).toEqual({ ok: false, error: TYPST_CODE })
+  })
+
+  it.each([
+    ['a display label', 'x \\label{eq:1}', true],
+    ['a label in text mode', '\\text{\\label{eq:1} a}', false],
+    ['an escaped # in text', '\\text{a \\# b}', false],
+    ['a colour by name', '\\textcolor{red}{x}', false],
+    ['a colour with a model', '\\color[rgb]{1,0,0} x', true],
+    ['$ inside \\text', '\\text{a $x$ b}', false],
+  ])('still renders %s', async (_name, tex, display) => {
+    const r = new MathRenderer(ROOT)
+    const [res] = await r.render([{ tex, display }])
+    expect(ok(res).svg).toMatch(/^<svg/)
   })
 
   it('runs Typst with --root on a temp dir that is gone afterwards', async () => {
@@ -268,6 +288,23 @@ describe('MathRenderer (process handling)', () => {
     '\\vspace{\\text{panic("PWNED-vspace")}}',
     '\\raisebox{\\text{panic("PWNED-raise")}}{x}',
     '\\hspace{\\text{panic(read("/formulas.json"))}}',
+    // \\label's argument is raw in text mode (the sixth passthrough): a bare # is refused.
+    '\\text{\\label{#panic(read("/formulas.json"))}}',
+    '\\text{\\label{x>#panic(1)<y}}',
+    '\\text{\\label{#panic(str(range(2000000).len()))}}',
+    '\\includegraphics{a"b}',
+    '#read("/etc/passwd")',
+    // An escaped backslash before it: the # is bare.
+    '\\\\#panic(1)',
+    // The same passthrough without any #: out of the label into markup, math or code.
+    '\\text{\\label{x>$hspace(p a n i c \\( 1 \\))$<y}}',
+    '\\textcolor{\\label{x>], panic(1), [<y}}{z}',
+    '\\newcommand{\\x}{\\label}\\text{\\x{a>], panic(1), [<b}}',
+    // The colour model is raw too, as a code argument.
+    '\\color[{x], panic(1), [y}]{red} z',
+    '\\textcolor[$hspace(p a n i c \\( 1 \\))$]{red}{z}',
+    '\\textcolor%\n[{a]}]{red}{x}',
+    '\\newcommand{\\x}{\\textcolor}\\x[{a]}]{red}{x}',
   ])('refuses raw Typst code without compiling it: %s', async (tex) => {
     const spawnImpl = vi.fn() as unknown as typeof spawn
     const r = new MathRenderer(await fakeRoot(), { spawnImpl })
@@ -275,6 +312,15 @@ describe('MathRenderer (process handling)', () => {
       { ok: false, error: 'Typst-Code in Formeln wird in der Vorschau nicht ausgeführt' },
     ])
     expect(spawnImpl).not.toHaveBeenCalled()
+  })
+
+  it('pins mitex 0.2.7, the version the refusals and the output allowlist were audited for', () => {
+    // A mitex bump must re-audit specs/latex/standard.typ (eval, raw output) and re-probe the
+    // converter's `#` emissions (MITEX_CODE in src/core/math.ts) before this pin may change.
+    const assets = JSON.parse(
+      readFileSync(join(__dirname, '../../../scripts/pipeline-assets.json'), 'utf8'),
+    ) as { packages: { name: string; version: string }[] }
+    expect(assets.packages.find((p) => p.name === 'mitex')?.version).toBe('0.2.7')
   })
 
   it('spawns with no TYPST_* settings, a dead proxy and package dirs in the temp dir', async () => {
@@ -440,5 +486,178 @@ describe.skipIf(process.platform === 'win32')('MathRenderer (deadline)', () => {
     } finally {
       clock.mockRestore()
     }
+  })
+})
+
+/** Runs MATH_PROGRAM alone (no source checks) on `items` with the real Typst; its stderr. */
+const runProgram = async (items: MathItem[]): Promise<{ code: number | null; stderr: string }> => {
+  const dir = await tempDir('mdo-math-program-')
+  await cp(join(ROOT, 'vendor', 'mitex'), join(dir, 'mitex'), { recursive: true })
+  await writeFile(join(dir, 'main.typ'), MATH_PROGRAM)
+  await writeFile(join(dir, 'formulas.json'), JSON.stringify(items))
+  return new Promise((resolve) => {
+    let stderr = ''
+    const args = ['compile', '--root', dir, '--format', 'svg', 'main.typ', 'out-{0p}.svg']
+    const child = spawn(TYPST, args, { cwd: dir, stdio: ['ignore', 'ignore', 'pipe'] })
+    child.stderr.setEncoding('utf8').on('data', (d: string) => {
+      stderr += d
+    })
+    child.on('close', (code) => resolve({ code, stderr }))
+  })
+}
+
+describe.skipIf(skip)('MATH_PROGRAM output checks (real Typst, no source checks)', () => {
+  // The second layer: these reach Typst only if main's source checks missed them.
+  it.each([
+    '\\text{\\label{#panic(1)}}',
+    '\\text{\\label{x>#panic(1)<y}}',
+    '\\text{\\label{x>$hspace(p a n i c \\( 1 \\))$<y}}',
+    '\\textcolor[$hspace(p a n i c \\( 1 \\))$]{red}{z}',
+    '\\color[{x], panic(1), [y}]{red} z',
+    '\\text{\\includegraphics{x}}',
+    '\\text{\\iftypst #panic(1) \\fi}',
+  ])('panics with the refusal marker: %s', async (tex) => {
+    const res = await runProgram([{ tex, display: true }])
+    expect(res.code).not.toBe(0)
+    expect(res.stderr).toContain(MATH_REFUSED)
+    expect(res.stderr).not.toContain('panicked with: 1')
+  })
+
+  it.each([
+    'x \\label{eq:1}',
+    '\\text{a \\# b}',
+    '\\textcolor[rgb]{1,0,0}{x}',
+    '\\text{\\textbf{b} \\emph{e} $x$}',
+    '\\text{\\footnote{f} \\section{s}}',
+    '\\begin{cases} a & b \\\\ c & d \\end{cases}',
+  ])('leaves legitimate output alone: %s', async (tex) => {
+    const res = await runProgram([{ tex, display: false }])
+    expect(res.stderr).toBe('')
+    expect(res.code).toBe(0)
+  })
+})
+
+/** A stand-in Typst that runs `script` (Node) in the run's temp dir. */
+const scriptSpawn = (script: (cwd: string) => string) => {
+  let calls = 0
+  const impl = ((_cmd: string, _args: string[], opts: { cwd: string }) => {
+    calls++
+    return spawn(process.execPath, ['-e', script(opts.cwd)], opts)
+  }) as unknown as typeof spawn
+  return { impl, calls: () => calls }
+}
+
+/** Node code writing `pages` tight SVG pages of `body` into the run's dir. */
+const writePages = (pages: number, body = '') =>
+  `for (let p = 1; p <= ${pages}; p++) require('fs').writeFileSync('out-' + p + '.svg', '<svg width="5pt" height="4pt">${body}</svg>')`
+
+describe('MathRenderer (limits and messages)', () => {
+  it('turns the program refusal marker into the refusal message', async () => {
+    const typst = scriptSpawn(
+      () => `console.error('error: panicked with: "${MATH_REFUSED}"'); process.exit(1)`,
+    )
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl: typst.impl, rssProbe: null })
+    expect(await r.render([{ tex: 'x', display: true }])).toEqual([
+      { ok: false, error: TYPST_CODE },
+    ])
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'kills a run whose memory passes the limit and says why',
+    async () => {
+      const hang = hangingSpawn()
+      const probed: number[] = []
+      const r = new MathRenderer(await fakeRoot(), {
+        timeoutMs: 20_000,
+        spawnImpl: hang.impl,
+        maxRssBytes: 1024 ** 3,
+        rssProbe: async (pid) => {
+          probed.push(pid)
+          return 2 * 1024 ** 3
+        },
+      })
+      const res = await r.render([{ tex: 'x', display: true }])
+      expect(res).toEqual([{ ok: false, error: 'Formel braucht zu viel Speicher' }])
+      const child = hang.children[0] as ChildProcess
+      expect(probed[0]).toBe(child.pid)
+      await exited(child)
+      expect(child.signalCode).toBe('SIGTERM')
+    },
+  )
+
+  it('leaves a run below the memory limit alone', async () => {
+    const typst = scriptSpawn(() => `setTimeout(() => { ${writePages(1)} }, 600)`)
+    let probes = 0
+    const r = new MathRenderer(await fakeRoot(), {
+      spawnImpl: typst.impl,
+      rssProbe: async () => {
+        probes++
+        return 100 * 1024 ** 2
+      },
+    })
+    const [res] = await r.render([{ tex: 'x', display: true }])
+    expect(res?.ok).toBe(true)
+    expect(probes).toBeGreaterThan(0)
+  })
+
+  it('fails formulas whose SVG output passes the size cap', async () => {
+    const typst = scriptSpawn(() => writePages(1, 'x'.repeat(2000)))
+    const r = new MathRenderer(await fakeRoot(), {
+      spawnImpl: typst.impl,
+      rssProbe: null,
+      maxSvgBytes: 1000,
+    })
+    expect(await r.render([{ tex: 'x', display: true }])).toEqual([
+      { ok: false, error: 'Formel zu groß für die Vorschau' },
+    ])
+  })
+
+  it('stops halving when every run fails the same way without a formula to blame', async () => {
+    const typst = scriptSpawn(
+      () => `console.error('error: dyld: Library not loaded: libfoo'); process.exit(1)`,
+    )
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl: typst.impl, rssProbe: null })
+    const items = Array.from({ length: 8 }, (_, i) => ({ tex: `x_${i}`, display: true }))
+    const res = await r.render(items)
+    expect(res).toEqual(items.map(() => ({ ok: false, error: 'dyld: Library not loaded: libfoo' })))
+    // The whole batch, then halves down to the first item: 4 runs, not 15.
+    expect(typst.calls()).toBe(4)
+  })
+
+  it('keeps halving when the first formula itself is the culprit', async () => {
+    // Typst's excerpt points into the program: a formula error, even with the batch's message.
+    const typst = fakeTypst((batch) => (batch.some((i) => i.tex === 'bad') ? 'fail' : 'ok'))
+    const located = ((cmd: string, args: string[], opts: { cwd: string }) => {
+      const items = JSON.parse(readFileSync(join(opts.cwd, 'formulas.json'), 'utf8')) as MathItem[]
+      if (items.some((i) => i.tex === 'bad')) {
+        const err =
+          "console.error('error: unknown variable: bad\\n   ┌─ main.typ:9:5'); process.exit(1)"
+        return spawn(process.execPath, ['-e', err], opts)
+      }
+      return typst.impl(cmd, args, opts as never)
+    }) as unknown as typeof spawn
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl: located, rssProbe: null })
+    const items = ['bad', 'a', 'b', 'c'].map((tex) => ({ tex, display: true }))
+    const res = await r.render(items)
+    expect(res[0]).toEqual({ ok: false, error: 'unknown variable: bad' })
+    expect(res.slice(1).map((x) => x.ok)).toEqual([true, true, true])
+  })
+
+  it('cuts the temp dir from Typst messages', async () => {
+    const typst = scriptSpawn(
+      (cwd) =>
+        `console.error('error: file not found (searched at ' + ${JSON.stringify(cwd)} + '/formulas.json)'); process.exit(1)`,
+    )
+    const r = new MathRenderer(await fakeRoot(), { spawnImpl: typst.impl, rssProbe: null })
+    const [res] = await r.render([{ tex: 'x', display: true }])
+    expect(res).toEqual({ ok: false, error: 'file not found (searched at formulas.json)' })
+  })
+
+  it('firstError cuts every given spelling of the dir, the longer one first', () => {
+    const stderr = 'error: failed to load /private/var/T/mdo-math-1/x.typ and /var/T/mdo-math-1\n'
+    expect(firstError(stderr, 1, ['/var/T/mdo-math-1', '/private/var/T/mdo-math-1'])).toBe(
+      'failed to load x.typ and ',
+    )
+    expect(firstError('', 3)).toBe('Typst endete mit Code 3.')
   })
 })

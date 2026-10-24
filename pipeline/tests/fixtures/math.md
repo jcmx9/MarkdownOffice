@@ -49,6 +49,9 @@ $$
 | Pipe | $a \| b$ |
 | Display | $$x \le y$$ |
 
+Textmodus: $\text{a \# b}$, $\textbf{fett}$, $\textcolor{red}{x}$, $\color[rgb]{0,0,1} y$,
+$\text{\textit{kursiv} \label{t:1} mit \emph{e}}$ und $\operatorname{sin} x$.
+
 **Fett $x*y*z$ fett** und _kursiv $a_b_c$ kursiv_.
 
 ```

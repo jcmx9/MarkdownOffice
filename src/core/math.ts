@@ -56,27 +56,84 @@ export function validateMathBatch(x: unknown): MathItem[] | null {
 }
 
 /**
- * The batch program. Pages come out in item order: a display formula is one tight page with
- * `mitex(tex, block: true)`; an inline formula is two pages with `mitex(tex, block: false)` in a
- * text line (the calls cmarker makes to the set's `math:` function):
+ * The marker MATH_PROGRAM panics with when a formula would run Typst code; main turns it into
+ * the refusal message. Not a word a formula error contains.
+ */
+export const MATH_REFUSED = 'MDO-REFUSED-TYPST-CODE'
+
+/**
+ * Every `#` (code mode) mitex 0.2.7's converter legitimately writes into its output, found by
+ * probing the real wasm (\text, \textbf … \texttt, \mathrm, \operatorname, \color,
+ * \textcolor, \colorbox, \boxed, cases, arrays, aligned, \tag, \ref, \footnote, \section,
+ * figure/quote/tabular in text mode) and from the `#…` aliases of specs/latex/standard.typ:
+ * - text commands: `#textmath[` (\text), `#textbf[` … `#texttt[`, `#textmd[`, `#textnormal[`,
+ *   in text mode `#strong[`, `#emph[`;
+ * - `#mitexref[`, `#mitexcite[`, `#footnote[`, `#heading(level: 1–3)[`;
+ * - colours with a model of letters only: `#mitexcolor(`, `#colortext(`, `#mitexcolorbox(` +
+ *   `none, [` or `[rgb], [` (the model is raw in the output; anything else in it is code);
+ * - `$…$` inside \text: `#math.equation(block: false, $`;
+ * - text-mode environments: `#figure()[`, `#figure(caption: [`, `#quote(block: true)[`,
+ *   `#table(stroke: none,` + newline.
+ * Left out on purpose: `#image(` and `#miteximage` (\includegraphics, a file read). A `\#` is
+ * mitex's escape of a literal `#` (an odd run of backslashes before it). Why: the converter
+ * passes some arguments raw (`\label` in text mode, the colour model), so a formula can make
+ * it emit `#panic(…)`; any `#` outside this list is refused. A mitex bump must re-probe it.
+ */
+const MITEX_CODE = `#(?:${[
+  String.raw`(?:textmath|textmd|textnormal|textbf|textit|textrm|textup|textsf|texttt)\[`,
+  String.raw`(?:strong|emph|mitexref|mitexcite|footnote)\[`,
+  String.raw`heading\(level: [1-3]\)\[`,
+  String.raw`(?:mitexcolor|colortext|mitexcolorbox)\((?:none|\[[A-Za-z]*\]), \[`,
+  String.raw`math\.equation\(block: false, \$`,
+  String.raw`figure\((?:\)\[|caption: \[)`,
+  String.raw`quote\(block: true\)\[`,
+  String.raw`table\(stroke: none,\n`,
+].join('|')})`
+/** A backslash pair (a literal backslash) or `\#` (a literal `#`), read left to right. */
+const MITEX_ESCAPE = String.raw`\\[\\#]`
+
+/**
+ * The batch program. Pages come out in item order: a display formula is one tight page, set as
+ * a block equation; an inline formula is two pages set inline in a text line (as cmarker hands
+ * a formula to the set's `math:` function, which calls mitex):
  * page 1 with top and bottom edge at the glyph bounds (full height), page 2 with the same top edge
  * but the bottom edge on the baseline, so depth below the baseline = height 1 − height 2.
  * Typst 0.15.0 has no per-element baseline in SVG output; this keeps it to one compile with no
  * formula text in the source. Checked against the real toolchain: page 1 draws the glyphs with
  * their baseline at exactly height 2 (`x\frac{1}{2}`: the `x` sits at 8.588pt, page 2 is 8.588pt).
  * Pages are transparent (fill: none) so the preview's background shows through.
+ *
+ * A formula is set exactly as mitex's `mimath` sets it (convert, then
+ * `math.equation(block: …, eval("$" + res + "$", scope: mitex-scope))`), with two guards
+ * between, because the converter passes some formula text into Typst code (main also refuses
+ * the known cases in the source; the sandbox stays the boundary):
+ * - the converted string may only contain the `#` emissions above (else: panic MATH_REFUSED);
+ * - `\hspace`, `\vspace` and `\raisebox` evaluate their argument as Typst code
+ *   (specs/latex/standard.typ), and raw text can call them in math without any `#`
+ *   (`\textcolor[$hspace(…)$]…`): in this scope they panic MATH_REFUSED instead.
+ * Neither changes a formula the PDF sets (pipeline/tests/test-math.sh compares them).
  */
-export const MATH_PROGRAM = `#import "mitex/lib.typ": mitex
+export const MATH_PROGRAM = `#import "mitex/mitex.typ": mitex-convert, mitex-scope
+#let refuse(..args) = panic(${JSON.stringify(MATH_REFUSED)})
+#let scope = mitex-scope + (hspace: refuse, vspace: refuse, raisebox: refuse)
+#let code = regex(${JSON.stringify(MITEX_CODE)})
+#let escape = regex(${JSON.stringify(MITEX_ESCAPE)})
+#let formula(tex, block) = {
+  let res = mitex-convert(tex)
+  if res.replace(escape, "__").replace(code, "_").contains("#") { refuse() }
+  math.equation(block: block, eval("$" + res + "$", scope: scope))
+}
 #set page(width: auto, height: auto, margin: 0pt, fill: none)
 #set text(size: ${MATH_REF_PT}pt)
 #for (i, item) in json("formulas.json").enumerate() {
   if i > 0 { pagebreak() }
   if item.display {
-    mitex(item.tex, block: true)
+    formula(item.tex, true)
   } else {
-    text(top-edge: "bounds", bottom-edge: "bounds", mitex(item.tex, block: false))
+    let f = formula(item.tex, false)
+    text(top-edge: "bounds", bottom-edge: "bounds", f)
     pagebreak()
-    text(top-edge: "bounds", bottom-edge: "baseline", mitex(item.tex, block: false))
+    text(top-edge: "bounds", bottom-edge: "baseline", f)
   }
 }
 `
