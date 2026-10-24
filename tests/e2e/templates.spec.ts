@@ -233,6 +233,10 @@ test('Profil anlegen …: copies the din5008a example, sets profile: and opens t
   await expect(tabs(page)).toHaveCount(1)
 
   await clickMenu(app, 'create-profile')
+  // The set picker offers only sets with profiles, the note's set preselected.
+  await expect(page.getByTestId('tpl-set-din5008a')).toBeChecked()
+  await expect(page.getByTestId('tpl-profile-row')).toBeHidden()
+  await page.getByTestId('tpl-ok').click()
   await page.locator('dialog.prompt input').fill('kanzlei')
   await page.keyboard.press('Enter')
 
@@ -260,6 +264,10 @@ test('Profil anlegen …: copies the din5008a example, sets profile: and opens t
   // The same name again: refused, nothing overwritten.
   await tabs(page).first().click()
   await clickMenu(app, 'create-profile')
+  // The set picker offers only sets with profiles, the note's set preselected.
+  await expect(page.getByTestId('tpl-set-din5008a')).toBeChecked()
+  await expect(page.getByTestId('tpl-profile-row')).toBeHidden()
+  await page.getByTestId('tpl-ok').click()
   await page.locator('dialog.prompt input').fill('kanzlei')
   await page.keyboard.press('Enter')
   await expect(page.locator('.toast').last()).toContainText('Profil kanzlei gibt es schon.')
@@ -277,13 +285,22 @@ test('Profil anlegen …: copies the din5008a example, sets profile: and opens t
   await app.close()
 })
 
-test('Profil anlegen … is refused for a note without template:', async () => {
+test('Profil anlegen … without a fitting note: set picker, the note stays untouched', async () => {
   const dirs = await makeDirs()
   const note = join(dirs.notes, 'Notiz.md')
-  await writeFile(note, '# Notiz\n')
+  const text = '---\ntemplate: memo\n---\n\n# Notiz\n'
+  await writeFile(note, text)
   const { app, page } = await launch({ dirs, args: [note] })
   await clickMenu(app, 'create-profile')
-  await expect(page.locator('.toast')).toContainText('kein Vorlagen-Set')
-  await expect(page.locator('dialog.prompt')).toHaveCount(0)
+  // memo has no profiles, so it is not offered; din5008a is.
+  await expect(page.getByTestId('tpl-set-memo')).toHaveCount(0)
+  await expect(page.getByTestId('tpl-set-din5008a')).toBeChecked()
+  await page.getByTestId('tpl-ok').click()
+  await page.locator('dialog.prompt input').fill('kanzlei')
+  await page.keyboard.press('Enter')
+  await waitForFile(join(dirs.templates, 'din5008a', 'profiles', 'kanzlei.yaml'))
+  await expect(page.locator('[data-testid=tab].active .tab-label')).toHaveText('kanzlei.yaml')
+  // A note of another set does not get the profile.
+  expect(await readFile(note, 'utf8')).toBe(text)
   await app.close()
 })
