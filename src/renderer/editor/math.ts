@@ -9,7 +9,9 @@
  *   inline widget on the text baseline, revealed like the other inline marks when the selection
  *   touches the formula.
  * - Display (`BlockMath`, a paragraph that is one `$$…$$`): a centred block widget, revealed for
- *   the whole block when the selection touches any of its lines (like tables and Mermaid).
+ *   the whole block when the selection touches any of its lines (like tables and Mermaid). In a
+ *   list item or quote it stays an inline widget of the item's line, centred within the item.
+ * - Table cells: drawn by the table widget with {@link formulaElement}, the same classes.
  * - Pending (first sight, ~0.3 s): the source in the muted mark colour, no placeholder box, so
  *   nothing is laid out at a guessed size. Error: the source underlined, the reason as tooltip.
  *
@@ -30,7 +32,7 @@ import type { MathItem } from '../../core/math'
 import { reprefix } from './diagram-svg'
 import { type MathEntry, type MathService, mathRefresh, mathService } from './math-render'
 import { mathTex } from './math-syntax'
-import { previewView, selectionTouches } from './rendered'
+import { layoutDecorations, previewView, selectionTouches } from './rendered'
 
 /** Tooltip of a formula the PDF cannot build (mitex's or Typst's message follows). */
 export const MATH_ERROR_TITLE = 'Formel wird im PDF nicht gebaut: '
@@ -81,8 +83,11 @@ const nextPrefix = (): string => `mdo-mi${++prefixes}`
 /** em values rounded like paragraphs.ts rounds px: stable strings, no float noise. */
 const em = (value: number): string => `${Math.round(value * 10000) / 10000}em`
 
-/** The widget's padding-block in em (theme.css .mdo-math), for the height estimate. */
-const BLOCK_PAD_EM = 0.425
+/**
+ * The widget's padding-block in em for the height estimate: theme.css derives it from the line
+ * height (`(1lh - cap height) / 2`); estimated here at the default line height 1.5.
+ */
+const BLOCK_PAD_EM = (1.5 - 0.658) / 2
 /** px of 1em at the 10pt reference size and zoom 1: only for the height estimate. */
 const EM_PX = 10 * (96 / 72)
 
@@ -91,19 +96,30 @@ class MathWidget extends WidgetType {
     readonly key: string,
     readonly entry: OkEntry,
     readonly block: boolean,
+    /** A `$$` block nested in a list item or quote: centred within the item's line. */
+    readonly centred = false,
   ) {
     super()
   }
   override eq(other: MathWidget): boolean {
     // The entry object changes only when the service settles the formula anew.
-    return other.key === this.key && other.entry === this.entry && other.block === this.block
+    return (
+      other.key === this.key &&
+      other.entry === this.entry &&
+      other.block === this.block &&
+      other.centred === this.centred
+    )
   }
   override get estimatedHeight(): number {
     return this.block ? (this.entry.height + 2 * BLOCK_PAD_EM) * EM_PX : -1
   }
   override toDOM(): HTMLElement {
     const wrap = document.createElement(this.block ? 'div' : 'span')
-    wrap.className = this.block ? 'mdo-math' : 'mdo-math-inline'
+    wrap.className = this.block
+      ? 'mdo-math'
+      : this.centred
+        ? 'mdo-math-inline mdo-math-centred'
+        : 'mdo-math-inline'
     // A clone of the sanitised tree: DOM nodes only, never markup; with ids of its own.
     const svg = reprefix(
       this.entry.svg.cloneNode(true) as SVGSVGElement,
@@ -139,6 +155,24 @@ function isDisplay(node: SyntaxNode): boolean {
   if (node.name === 'BlockMath') return true
   const open = node.firstChild
   return open !== null && open.name === 'MathMark' && open.to - open.from === 2
+}
+
+/**
+ * A formula outside the editor's lines (a table cell, drawn by the table widget) as the inline
+ * widget shows it: the SVG when set, else its `source` muted (pending) or flagged (error).
+ */
+export function formulaElement(entry: MathEntry, item: MathItem, source: string): HTMLElement {
+  if (entry.state === 'ok') {
+    return new MathWidget(`${item.display ? 'D' : 'I'}:${item.tex}`, entry, false).toDOM()
+  }
+  const span = document.createElement('span')
+  span.textContent = source
+  if (entry.state === 'pending') span.className = 'mdo-math-pending'
+  else {
+    span.className = 'mdo-math-error'
+    span.title = `${MATH_ERROR_TITLE}${entry.message}`
+  }
+  return span
 }
 
 /**
@@ -178,7 +212,9 @@ export function createMath(opts: { service?: MathService } = {}) {
           const key = `${item.display ? 'D' : 'I'}:${item.tex}`
           out.push(
             Decoration.replace({
-              widget: new MathWidget(key, entry, block),
+              // A nested $$ block stays in the item's line but is centred there, as Typst
+              // centres a block equation within the list item or quote.
+              widget: new MathWidget(key, entry, block, n.name === 'BlockMath' && !block),
               block,
               rf: block ? 'math-block' : 'math-inline',
             }).range(from, to),
@@ -204,7 +240,11 @@ export function createMath(opts: { service?: MathService } = {}) {
         tr.effects.some((e) => e.is(mathRefresh))
       return rebuild ? build(tr.state) : value
     },
-    provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
+    provide: (f) => [
+      EditorView.decorations.from(f, (v) => v.deco),
+      // Formulas change their lines' widths: the paragraph setter keys its breaks on them.
+      layoutDecorations.from(f, (v) => v.deco),
+    ],
   })
 
   /** Redraws the view when the service settles formulas. */

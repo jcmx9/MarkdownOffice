@@ -1,61 +1,16 @@
 // @vitest-environment happy-dom
-import { history, undo } from '@codemirror/commands'
+import { history, redo, undo } from '@codemirror/commands'
 import { EditorState, type Extension } from '@codemirror/state'
 import { EditorView, type WidgetType } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { MathItem } from '../../../src/core/math'
 import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
 import { createMath } from '../../../src/renderer/editor/math'
-import type { MathEntry, MathService } from '../../../src/renderer/editor/math-render'
+import type { MathService } from '../../../src/renderer/editor/math-render'
 import { mathRefresh } from '../../../src/renderer/editor/math-render'
 import { presentMode } from '../../../src/renderer/editor/mode'
 import { previewView } from '../../../src/renderer/editor/rendered'
+import { okEntry, stubService } from './math-stub'
 import { parsed } from './parsed'
-
-const SVG_NS = 'http://www.w3.org/2000/svg'
-const keyOf = (item: MathItem): string => `${item.display ? 'D' : 'I'}:${item.tex}`
-
-/** A sanitised formula as the service caches it: prefixed ids, unitless viewBox size. */
-function okEntry(prefix = 'mdo-mxT', width = 0.6, height = 0.8, depth = 0.1): MathEntry {
-  const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement
-  svg.setAttribute('viewBox', '0 0 6 8')
-  svg.setAttribute('width', '6')
-  svg.setAttribute('height', '8')
-  const symbol = document.createElementNS(SVG_NS, 'symbol')
-  symbol.setAttribute('id', `${prefix}-g1`)
-  const use = document.createElementNS(SVG_NS, 'use')
-  use.setAttribute('href', `#${prefix}-g1`)
-  svg.append(symbol, use)
-  return { state: 'ok', svg, prefix, width, height, depth }
-}
-
-interface Stub extends MathService {
-  entries: Map<string, MathEntry>
-  /** Every request call's keys. */
-  requests: string[][]
-  emit(): void
-}
-
-function stubService(entries: Record<string, MathEntry> = {}): Stub {
-  const map = new Map(Object.entries(entries))
-  const listeners = new Set<() => void>()
-  const requests: string[][] = []
-  return {
-    entries: map,
-    requests,
-    get: (item) => map.get(keyOf(item)) ?? { state: 'pending' },
-    request: (items) => {
-      requests.push(items.map(keyOf))
-    },
-    onUpdate: (cb) => {
-      listeners.add(cb)
-      return () => listeners.delete(cb)
-    },
-    emit: () => {
-      for (const cb of listeners) cb()
-    },
-  }
-}
 
 const views: EditorView[] = []
 afterEach(() => {
@@ -200,6 +155,25 @@ describe('inline formula widget', () => {
     expect(view.dom.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
   })
 
+  it('redo of typing inside a formula shows the edited formula once the cursor leaves', () => {
+    const service = stubService({ 'I:x': okEntry(), 'I:xy': okEntry('mdo-mxU') })
+    const view = mount(DOC, 4, service)
+    view.dispatch({
+      changes: { from: 4, insert: 'y' },
+      selection: { anchor: 5 },
+      userEvent: 'input',
+    })
+    undo(view)
+    redo(view)
+    expect(view.state.doc.toString()).toBe('a $xy$ b')
+    // The cursor is back in the formula after the redo: source, nothing sent.
+    expect(view.dom.querySelector('.mdo-math-inline')).toBeNull()
+    expect(service.requests.flat()).toEqual([])
+    moveTo(view, view.state.doc.length)
+    expect(view.dom.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
+    expect(view.dom.querySelector('.mdo-math-inline use')?.getAttribute('href')).toMatch(/^#mdo-mi/)
+  })
+
   it('leaves formulas in table source to the table widget', () => {
     const service = stubService({ 'I:x': okEntry() })
     const view = mount('| a | b |\n|---|---|\n| $x$ | c |\n\nEnde', 0, service)
@@ -272,5 +246,28 @@ describe('block formula widget', () => {
     const view = mount(doc, doc.length, service)
     expect(view.dom.querySelector('.mdo-math')).toBeNull()
     expect(view.dom.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
+  })
+  it.each([
+    ['list item', '- $$\n  x\n  $$\n\nEnde', '\n  x\n  '],
+    ['quote', '> $$\n> x\n> $$\n\nEnde', '\nx\n'],
+  ])('a multi-line $$ block in a %s is centred within the item', (_name, doc, tex) => {
+    const service = stubService({ [`D:${tex}`]: okEntry() })
+    const view = mount(doc, doc.length, service)
+    expect(view.dom.querySelector('.mdo-math')).toBeNull()
+    // One widget for the whole block, on the item's first line (marker and quote bar stay).
+    const widget = view.dom.querySelector('.mdo-math-inline.mdo-math-centred')
+    expect(widget).not.toBeNull()
+    expect(widget?.querySelectorAll('svg')).toHaveLength(1)
+    expect(view.dom.querySelectorAll('.mdo-math-inline')).toHaveLength(1)
+    expect(view.dom.querySelector('.cm-content')?.textContent).not.toContain('$$')
+    expect(view.state.doc.toString()).toBe(doc)
+  })
+
+  it('a $$…$$ inside a line of a list item stays in the line, not centred', () => {
+    const service = stubService({ 'D:x': okEntry() })
+    const doc = '- a $$x$$ b\n\nEnde'
+    const view = mount(doc, doc.length, service)
+    expect(view.dom.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
+    expect(view.dom.querySelector('.mdo-math-centred')).toBeNull()
   })
 })

@@ -1,8 +1,13 @@
 import { syntaxTree } from '@codemirror/language'
 import { type EditorState, type Range, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
+import type { SyntaxNode } from '@lezer/common'
+import type { MathItem } from '../../core/math'
 import { renderInline } from './inline-render'
 import { referenceLabels } from './link-refs'
+import { formulaElement } from './math'
+import { type MathEntry, type MathService, mathRefresh, mathService } from './math-render'
+import { unescapeCellPipes } from './math-syntax'
 
 export type Align = 'left' | 'center' | 'right'
 export interface TableModel {
@@ -155,17 +160,54 @@ function sameLabels(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   return a.size === b.size && [...a].every((l) => b.has(l))
 }
 
+/** Entries that draw the same: the cached object, or both still pending (fresh each time). */
+function sameEntries(a: readonly MathEntry[], b: readonly MathEntry[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((e, i) => e === b[i] || (e.state === 'pending' && b[i]?.state === 'pending'))
+  )
+}
+
+/**
+ * The formulas in a table's cells as the PDF gets them: the raw source between the marks, with
+ * GFM's escaped pipes (`\|`) unescaped, since the table splits the row before the formula is read.
+ */
+function cellFormulas(state: EditorState, table: SyntaxNode): MathItem[] {
+  const out: MathItem[] = []
+  syntaxTree(state).iterate({
+    from: table.from,
+    to: table.to,
+    enter: (n) => {
+      if (n.name !== 'InlineMath') return undefined
+      const [open, close] = n.node.getChildren('MathMark')
+      if (open && close && n.from >= table.from && n.to <= table.to) {
+        const tex = unescapeCellPipes(state.doc.sliceString(open.to, close.from))
+        out.push({ tex, display: open.to - open.from === 2 })
+      }
+      return false
+    },
+  })
+  return out
+}
+
 class TableWidget extends WidgetType {
   constructor(
     readonly model: TableModel,
     readonly source: string,
     /** The document's reference labels: a cell `[21]` is a link only if one matches. */
     readonly labels: ReadonlySet<string>,
+    readonly service: MathService,
+    /** The cell formulas' entries when built: a settled formula draws the table anew. */
+    readonly formulas: readonly MathEntry[],
   ) {
     super()
   }
   override eq(other: TableWidget): boolean {
-    return other.source === this.source && sameLabels(other.labels, this.labels)
+    return (
+      other.source === this.source &&
+      sameLabels(other.labels, this.labels) &&
+      sameEntries(other.formulas, this.formulas)
+    )
   }
   override toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div')
@@ -176,10 +218,13 @@ class TableWidget extends WidgetType {
     const colgroup = document.createElement('colgroup')
     for (let i = 0; i < this.model.head.length; i++) colgroup.append(document.createElement('col'))
     table.append(colgroup)
+    // Cell formulas as the inline widget draws them (math.ts), at the cell's text size.
+    const formula = (item: MathItem, source: string) =>
+      formulaElement(this.service.get(item), item, source)
     const thead = table.createTHead().insertRow()
     for (const cell of this.model.head) {
       const th = document.createElement('th')
-      renderInline(cell, th, this.labels)
+      renderInline(cell, th, this.labels, formula)
       thead.append(th)
     }
     const body = table.createTBody()
@@ -190,7 +235,7 @@ class TableWidget extends WidgetType {
       cells.forEach((cell, i) => {
         const td = tr.insertCell()
         td.className = `mdo-al-${this.model.aligns[i] ?? 'left'}`
-        renderInline(cell, td, this.labels)
+        renderInline(cell, td, this.labels, formula)
       })
     })
     wrap.append(table)
@@ -228,12 +273,13 @@ class TableWidget extends WidgetType {
   }
 }
 
-function build(state: EditorState): DecorationSet {
+function build(state: EditorState, service: MathService): DecorationSet {
   const out: Range<Decoration>[] = []
   const doc = state.doc
   const tree = syntaxTree(state)
   // Collected once per build and only if a table is shown as widget.
   let labels: Set<string> | undefined
+  const want: MathItem[] = []
   tree.iterate({
     enter: (n) => {
       // Only top-level tables (direct children of Document): no deep walk into other blocks,
@@ -246,9 +292,21 @@ function build(state: EditorState): DecorationSet {
       if (!touched) {
         const source = doc.sliceString(from, to)
         labels ??= referenceLabels(tree, (a, b) => doc.sliceString(a, b))
+        // Only a shown table asks for its formulas; one being edited shows its source.
+        const items = cellFormulas(state, n.node)
+        const formulas = items.map((item) => service.get(item))
+        formulas.forEach((e, i) => {
+          if (e.state === 'pending') want.push(items[i] as MathItem)
+        })
         out.push(
           Decoration.replace({
-            widget: new TableWidget(tableModel(source.split('\n')), source, labels),
+            widget: new TableWidget(
+              tableModel(source.split('\n')),
+              source,
+              labels,
+              service,
+              formulas,
+            ),
             block: true,
             rf: 'table',
           }).range(from, to),
@@ -257,15 +315,30 @@ function build(state: EditorState): DecorationSet {
       return false
     },
   })
+  // The service skips formulas it has or is setting; math.ts's plugin redraws on its updates.
+  if (want.length > 0) service.request(want)
   return Decoration.set(out)
 }
 
-/** Preview-only: tables as PDF-like widgets while the cursor is elsewhere. */
-export const tableField = StateField.define<DecorationSet>({
-  create: build,
-  update(deco, tr) {
-    const treeChanged = syntaxTree(tr.startState) !== syntaxTree(tr.state)
-    return tr.docChanged || tr.selection || treeChanged ? build(tr.state) : deco
-  },
-  provide: (f) => EditorView.decorations.from(f),
-})
+/**
+ * Preview-only: tables as PDF-like widgets while the cursor is elsewhere. Cell formulas come
+ * from `service` (the window's by default) and are redrawn on {@link mathRefresh}, which the
+ * formula extension (math.ts) dispatches when the service settles formulas.
+ */
+export function createTableField(opts: { service?: MathService } = {}) {
+  const service = opts.service ?? mathService
+  return StateField.define<DecorationSet>({
+    create: (state) => build(state, service),
+    update(deco, tr) {
+      const treeChanged = syntaxTree(tr.startState) !== syntaxTree(tr.state)
+      const refresh = tr.effects.some((e) => e.is(mathRefresh))
+      return tr.docChanged || tr.selection || treeChanged || refresh
+        ? build(tr.state, service)
+        : deco
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  })
+}
+
+/** The editor's table field, on the window's formula service. */
+export const tableField = createTableField()

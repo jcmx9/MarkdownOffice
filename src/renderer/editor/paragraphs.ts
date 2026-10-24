@@ -10,7 +10,8 @@
  * - Measuring: the rendered line is cloned into a hidden copy of the editor's DOM scope (same
  *   classes, set scope, zoom) with `white-space: pre`, and every display character's x is read in
  *   one layout pass. Widget text (typographic quotes, dashes) is measured as rendered but never
- *   broken inside.
+ *   broken inside. An inline formula (math.ts) is one object of its rendered width, U+FFFC in
+ *   the display text as in Typst's paragraph, so no break falls inside it.
  * - Rendering: the line gets `mdo-par-set` (no browser wrapping, natural spaces, left aligned),
  *   each break a widget `<br>` (after a hyphen when hyphenated), each adjusted line a
  *   `word-spacing` mark. The trailing space of a line stays in the DOM before its break; the
@@ -39,7 +40,7 @@ import { presentMode } from './mode'
 import { type ParagraphSettings, paragraphSettings } from './paragraph-settings'
 import { ALERT_RE, previewPlugin } from './preview'
 import { previewSource } from './preview-source'
-import { lineIsRendered } from './rendered'
+import { layoutDecorations, lineIsRendered } from './rendered'
 
 /** One rendered line as the engine needs it, in display characters (what the reader sees). */
 export interface Measured {
@@ -217,7 +218,9 @@ interface Candidate {
 /**
  * What a line's result depends on besides the environment: its text and the preview's
  * decorations on it (hidden marks, widgets, list indent, no-break spans), so a change of
- * typography language, link definitions or reveal state re-sets the line.
+ * typography language, link definitions or reveal state re-sets the line. The fields'
+ * {@link layoutDecorations} count too: a formula going from pending source to its SVG (or back
+ * to source) changes the line's widths without changing its text.
  */
 function lineSignature(
   view: EditorView,
@@ -225,16 +228,19 @@ function lineSignature(
 ): { sig: string; nobreak: Candidate['nobreak'] } {
   let sig = ''
   const nobreak: Candidate['nobreak'] = []
-  view.plugin(previewPlugin)?.decorations.between(line.from, line.to, (from, to, d) => {
-    const spec = d.spec as {
-      rf?: string
-      attributes?: { style?: string }
-      widget?: { text?: unknown }
-    }
-    if (spec.rf === 'mark:mdo-nobreak') nobreak.push({ from, to })
-    const widgetText = typeof spec.widget?.text === 'string' ? spec.widget.text : ''
-    sig += `${from - line.from},${to - line.from},${spec.rf ?? ''},${spec.attributes?.style ?? ''},${widgetText};`
-  })
+  const sets = [view.plugin(previewPlugin)?.decorations, ...view.state.facet(layoutDecorations)]
+  for (const set of sets) {
+    set?.between(line.from, line.to, (from, to, d) => {
+      const spec = d.spec as {
+        rf?: string
+        attributes?: { style?: string }
+        widget?: { text?: unknown }
+      }
+      if (spec.rf === 'mark:mdo-nobreak') nobreak.push({ from, to })
+      const widgetText = typeof spec.widget?.text === 'string' ? spec.widget.text : ''
+      sig += `${from - line.from},${to - line.from},${spec.rf ?? ''},${spec.attributes?.style ?? ''},${widgetText};`
+    })
+  }
   return { sig, nobreak }
 }
 
@@ -402,15 +408,53 @@ export function lineElement(view: EditorView, line: Line): HTMLElement | null {
 const isWidgetRoot = (e: Element) =>
   e.getAttribute('contenteditable') === 'false' || (e as HTMLElement).contentEditable === 'false'
 
-/** Text nodes of a line in order, without the break widgets this plugin drew. */
-function textNodes(el: HTMLElement): Text[] {
-  const out: Text[] = []
-  const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (!n.parentElement?.closest('.mdo-par-eol')) out.push(n as Text)
+/**
+ * An inline formula widget (math.ts): an SVG without text, measured as one object of its
+ * rendered width. Typst sets an inline equation as one box in the paragraph (U+FFFC in its
+ * text), so the engine sees the same char, with Typst's break opportunities around it and none
+ * inside.
+ */
+const OBJECT_CLASS = 'mdo-math-inline'
+/** The display char of an object (Typst's OBJ_REPLACE). */
+const OBJECT_CHAR = '\uFFFC'
+
+/** A display unit of a line: a text node, or an object measured as one char. */
+type LineItem = Text | Element
+const isText = (item: Node): item is Text => item.nodeType === 3
+
+/** The next node after `walker`'s current one and its subtree. */
+function skipSubtree(walker: TreeWalker): Node | null {
+  for (;;) {
+    const next = walker.nextSibling()
+    if (next) return next
+    if (!walker.parentNode()) return null
+  }
+}
+
+/** Text nodes and objects of a line in order, without the break widgets this plugin drew. */
+function lineItems(el: HTMLElement): LineItem[] {
+  const out: LineItem[] = []
+  const walker = el.ownerDocument.createTreeWalker(
+    el,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+  )
+  let n = walker.nextNode()
+  while (n) {
+    if (isText(n)) out.push(n)
+    else if ((n as Element).classList.contains('mdo-par-eol')) {
+      n = skipSubtree(walker)
+      continue
+    } else if ((n as Element).classList.contains(OBJECT_CLASS)) {
+      out.push(n as Element)
+      n = skipSubtree(walker)
+      continue
+    }
+    n = walker.nextNode()
   }
   return out
 }
+
+const itemText = (item: LineItem): string => (isText(item) ? item.data : OBJECT_CHAR)
 
 function insideWidget(node: Node, line: HTMLElement): boolean {
   for (let e = node.parentElement; e && e !== line; e = e.parentElement) {
@@ -420,20 +464,24 @@ function insideWidget(node: Node, line: HTMLElement): boolean {
 }
 
 export interface LineWalk {
-  nodes: Text[]
+  nodes: LineItem[]
   text: string
   docPos: Int32Array
 }
 
-/** The display text of a drawn line and where each char sits in the doc (-1: widget text). */
+/**
+ * The display text of a drawn line and where each char sits in the doc (-1: widget text, and
+ * the object char of a formula, whose source is not what the reader sees).
+ */
 export function walkLine(view: EditorView, el: HTMLElement): LineWalk {
-  const nodes = textNodes(el)
+  const nodes = lineItems(el)
   let text = ''
   const pos: number[] = []
   for (const n of nodes) {
-    const base = insideWidget(n, el) ? -1 : view.posAtDOM(n, 0)
-    for (let k = 0; k < n.data.length; k++) pos.push(base < 0 ? -1 : base + k)
-    text += n.data
+    const data = itemText(n)
+    const base = !isText(n) || insideWidget(n, el) ? -1 : view.posAtDOM(n, 0)
+    for (let k = 0; k < data.length; k++) pos.push(base < 0 ? -1 : base + k)
+    text += data
   }
   return { nodes, text, docPos: Int32Array.from(pos) }
 }
@@ -504,7 +552,7 @@ interface Pending {
   orig: HTMLElement
   clone: HTMLElement
   walk: LineWalk
-  cloneNodes: Text[]
+  cloneNodes: LineItem[]
 }
 
 function measureLines(view: EditorView, lines: readonly Line[]): Map<number, Measured | null> {
@@ -540,7 +588,7 @@ function measureLines(view: EditorView, lines: readonly Line[]): Map<number, Mea
     for (const e of clone.querySelectorAll('.mdo-par-adjust')) e.removeAttribute('style')
     content.append(clone)
     const walk = walkLine(view, orig)
-    pending.push({ line, orig, clone, walk, cloneNodes: textNodes(clone) })
+    pending.push({ line, orig, clone, walk, cloneNodes: lineItems(clone) })
   }
   if (pending.length === 0) return out
 
@@ -565,10 +613,18 @@ function measureLines(view: EditorView, lines: readonly Line[]): Map<number, Mea
       let i = 0
       let right = Number.NEGATIVE_INFINITY
       for (const t of cloneNodes) {
-        const parent = t.parentElement as HTMLElement
+        const parent = (isText(t) ? t.parentElement : t) as HTMLElement
         const cs = getComputedStyle(parent)
         const key = FONT_PROPS.map((k) => cs.getPropertyValue(k)).join('|')
         if (!fonts.has(key)) fonts.set(key, { parent, width: Number.NaN })
+        if (!isText(t)) {
+          // An object: one char from its left edge to its right, whatever it holds.
+          keys[i] = key
+          const r = t.getBoundingClientRect()
+          x[i++] = r.left
+          right = Math.max(right, r.right)
+          continue
+        }
         for (let k = 0; k < t.data.length; k++, i++) {
           keys[i] = key
           const code = t.data.charCodeAt(k)
@@ -756,7 +812,9 @@ export function paragraphs(options: ParagraphsOptions = {}) {
           u.viewportChanged ||
           u.selectionSet ||
           syntaxTree(u.startState) !== syntaxTree(u.state) ||
-          u.startState.field(previewSource, false) !== u.state.field(previewSource, false)
+          u.startState.field(previewSource, false) !== u.state.field(previewSource, false) ||
+          // A formula settled or was revealed: its line's signature changed (lineSignature).
+          u.startState.facet(layoutDecorations) !== u.state.facet(layoutDecorations)
         ) {
           // Lines with a known result switch at once (a selection leaving a paragraph shows it
           // set in the same frame); the others are measured after this update.
