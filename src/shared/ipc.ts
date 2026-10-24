@@ -40,4 +40,5 @@ export const Ch = {
   updateSettings: 'mdo:settings-update',
   choosePath: 'mdo:settings-choose-path',
   pluginWasm: 'mdo:plugin-wasm',
+  renderMath: 'mdo:render-math',
 } as const

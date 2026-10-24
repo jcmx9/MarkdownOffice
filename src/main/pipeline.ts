@@ -48,7 +48,8 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-function killTree(child: ChildProcess): void {
+/** Ends a detached child and everything it started (also used by the formula renderer). */
+export function killTree(child: ChildProcess): void {
   if (child.pid === undefined) return
   if (process.platform === 'win32') {
     const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true })
