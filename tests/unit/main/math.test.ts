@@ -48,7 +48,7 @@ vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn(), setApplicationMenu: vi.fn() },
 }))
 
-const { MathRenderer, firstError } = await import('../../../src/main/math')
+const { MathRenderer, firstError, inFormula } = await import('../../../src/main/math')
 const { MATH_PROGRAM, MATH_REFUSED } = await import('../../../src/core/math')
 
 const TYPST_CODE = 'Typst-Code in Formeln wird in der Vorschau nicht ausgeführt'
@@ -709,6 +709,17 @@ describe('MathRenderer (limits and messages)', () => {
     expect(res).toEqual({ ok: false, error: 'file not found (searched at formulas.json)' })
   })
 
+  it.each([
+    ['box drawing', 'error: x\n   ┌─ mitex/mitex.typ:18:8\n'],
+    ['ASCII', 'error: x\n   --> mitex\\mitex.typ:18:8\n'],
+    ['rooted path', 'error: x\n   ┌─ C:\\Temp\\mdo-math-1\\mitex\\mitex.typ:18:8\n'],
+    ['plugin error alone', 'error: plugin errored with: error: unknown command: \\ce\n'],
+  ])('inFormula blames the formula for a %s excerpt', (_, stderr) => {
+    expect(inFormula(stderr)).toBe(true)
+  })
+  it('inFormula does not blame a formula for a failure outside it', () => {
+    expect(inFormula('error: failed to load font\n')).toBe(false)
+  })
   it('firstError cuts every given spelling of the dir, the longer one first', () => {
     const stderr = 'error: failed to load /private/var/T/mdo-math-1/x.typ and /var/T/mdo-math-1\n'
     expect(firstError(stderr, 1, ['/var/T/mdo-math-1', '/private/var/T/mdo-math-1'])).toBe(

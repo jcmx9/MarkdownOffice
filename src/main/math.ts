@@ -174,10 +174,15 @@ export function firstError(
 
 /**
  * A Typst failure located in a formula: an excerpt from main.typ or mitex (a mitex error such as
- * `unknown command: \ce` points into mitex/mitex.typ), or the marker.
+ * `unknown command: \ce` points into mitex/mitex.typ), or the marker. The excerpt header is
+ * `┌─` with box drawing and `-->` with ASCII characters (Typst on the Windows CI), and its path
+ * may carry the root in front. A mitex plugin error is always the formula's, whatever the excerpt
+ * looks like (the Windows CI showed one not matched by the excerpt rule).
  */
-const inFormula = (stderr: string): boolean =>
-  stderr.includes(MATH_REFUSED) || /┌─\s*(?:main\.typ|mitex[\\/])/.test(stderr)
+export const inFormula = (stderr: string): boolean =>
+  stderr.includes(MATH_REFUSED) ||
+  stderr.includes('plugin errored with') ||
+  /(?:┌─|-->)\s*(?:\S*[\\/])?(?:main\.typ|mitex[\\/])/.test(stderr)
 
 /**
  * Renders formula batches for the preview with the bundled Typst and mitex, the same toolchain
