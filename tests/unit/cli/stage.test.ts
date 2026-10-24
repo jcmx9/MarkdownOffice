@@ -222,17 +222,39 @@ describe.runIf(posix)('buildManifest profile', () => {
       'sets/memo/memo.typ': '',
       'notes/sub/a.yaml': 'n: a\nsig: s.png\n',
       'notes/sub/s.png': PNG,
-      'home/b.yml': 'x: 1\n',
+      'user/profiles/b.yml': 'x: 1\n',
     })
     note('profile: sub/a.yaml')
     expect((await buildManifest(at('notes/n.md'), opts())).manifest.profile).toEqual({
       yaml: at('notes/sub/a.yaml'),
       files: [at('notes/sub/s.png')],
     })
-    note('profile: $HOME/b.yml')
-    expect((await buildManifest(at('notes/n.md'), opts())).manifest.profile?.yaml).toBe(
-      at('home/b.yml'),
+    note('profile: $TPL/profiles/b.yml')
+    const env = { HOME: at('home'), TPL: at('user') }
+    expect((await buildManifest(at('notes/n.md'), opts({ env }))).manifest.profile?.yaml).toBe(
+      at('user/profiles/b.yml'),
     )
+    tree({ 'notes/kanzlei.yaml': 'n: k\n' })
+    note('profile: ./kanzlei.yaml')
+    expect((await buildManifest(at('notes/n.md'), opts())).manifest.profile?.yaml).toBe(
+      at('notes/kanzlei.yaml'),
+    )
+  })
+
+  it('refuses a .yaml path outside the note and templates folders or under a dot folder', async () => {
+    tree({
+      'sets/memo/memo.typ': '',
+      'home/.config/x.yaml': 'token: secret\n',
+      'elsewhere/p.yaml': 'n: x\n',
+      'notes/.hidden/p.yaml': 'n: x\n',
+    })
+    symlinkSync(at('elsewhere/p.yaml'), at('notes/link.yaml'))
+    for (const v of ['~/.config/x.yaml', at('elsewhere/p.yaml'), 'link.yaml', '.hidden/p.yaml']) {
+      note(`profile: ${v}`)
+      await expect(buildManifest(at('notes/n.md'), opts())).rejects.toThrow(
+        `Profil muss im Ordner der Notiz oder im Vorlagen-Ordner liegen: ${v}`,
+      )
+    }
   })
 
   it('names only image files that exist next to the profile and are real images', async () => {

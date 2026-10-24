@@ -242,6 +242,7 @@ async function isSafeImage(p: string): Promise<boolean> {
 interface Ctx {
   P: typeof path.posix
   win: boolean
+  noteDir: string
   env: Env
   cwd: string
   baseDir: string
@@ -352,6 +353,7 @@ export async function buildManifest(
   const c: Ctx = {
     P,
     win,
+    noteDir: P.dirname(note),
     env,
     cwd,
     baseDir,
@@ -399,10 +401,40 @@ export async function buildManifest(
   return { manifest: { note, images, logo, profile }, hints }
 }
 
+async function realOrNull(p: string): Promise<string | null> {
+  try {
+    return await fs.realpath(p)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Why: a path-valued `profile:` comes from note text, and the YAML lands in the staging root,
+ * where note Typst code (mitex passthroughs) can read it — `profile: ~/.config/gh/hosts.yml`
+ * would stage a token file. So the file (symlinks resolved) must lie under the note's folder
+ * (or MDO_BASE_DIR, which relative values resolve against) or the templates folder, with no
+ * dot segment (`.config`, `.ssh`, …) below that root. Bare names keep their fixed lookup.
+ */
+async function insideProfileRoots(c: Ctx, p: string): Promise<boolean> {
+  const real = await realOrNull(p)
+  if (real === null) return false
+  for (const root of [c.noteDir, c.baseDir, c.templatesDir]) {
+    const r = await realOrNull(root)
+    if (r === null) continue
+    const rel = c.P.relative(r, real)
+    if (rel === '' || rel.startsWith('..') || c.P.isAbsolute(rel)) continue
+    if (rel.split(/[\\/]/).some((seg) => seg.startsWith('.'))) continue
+    return true
+  }
+  return false
+}
+
 /**
  * The profile lookup of the scripts: a name -> profiles/<name>.yaml in the note's folder (or
  * MDO_BASE_DIR), <templates>/<set>/profiles, <templates>/profiles, then the set's own folder;
- * a value on .yaml/.yml -> that file (relative to the note, `~`/$VAR expanded). Not found or
+ * a value on .yaml/.yml -> that file (relative to the note, `~`/$VAR expanded), but only under
+ * the note's or the templates folder (insideProfileRoots; stricter than the scripts were). Not found or
  * invalid -> ManifestError with the scripts' message. Only called once the set was found: with a
  * missing set the script fails first, with its own message.
  */
@@ -431,6 +463,11 @@ async function findProfileYaml(
   if (/\.ya?ml$/i.test(value)) {
     const p = against(c, c.baseDir, expandNotePath(value, c.env, c.win))
     if (!(await isFile(p))) throw new ManifestError(`Profil nicht gefunden: ${value}`)
+    if (!(await insideProfileRoots(c, p))) {
+      throw new ManifestError(
+        `Profil muss im Ordner der Notiz oder im Vorlagen-Ordner liegen: ${value}`,
+      )
+    }
     return p
   }
   throw new ManifestError(
