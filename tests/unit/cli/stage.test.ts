@@ -94,10 +94,7 @@ describe.runIf(posix)('buildManifest (the brief case)', () => {
 
     expect(manifest).toEqual({
       note: at('notes/n.md'),
-      images: [
-        { ref: 'a.png', path: at('notes/a.png') },
-        { ref: '../outside/b.png', path: at('outside/b.png') },
-      ],
+      images: [{ ref: 'a.png', path: at('notes/a.png') }],
       logo: null,
       profile: {
         yaml: at('user/profiles/kanzlei.yaml'),
@@ -107,18 +104,22 @@ describe.runIf(posix)('buildManifest (the brief case)', () => {
     expect(hints.join('\n')).toContain('id_rsa')
     expect(hints.join('\n')).toContain('key.png')
     expect(hints.join('\n')).toContain('evil.svg')
+    expect(hints.join('\n')).toContain(
+      'Hinweis: Bild liegt außerhalb des Notizordners, kommt nicht ins PDF: ../outside/b.png',
+    )
   })
 })
 
 describe.runIf(posix)('buildManifest images', () => {
   it('expands ~, $VAR and %XX in a destination like expand_path, keyed by the note spelling', async () => {
-    tree({ 'home/pics/h.png': PNG, 'notes/a b.png': PNG, 'notes/n.md': '' })
-    writeFileSync(at('notes/n.md'), '![](~/pics/h.png) ![]($HOME/pics/h.png) ![](a%20b.png)\n')
-    const { manifest } = await buildManifest(at('notes/n.md'), opts())
+    // HOME is the note folder here: the expansion is under test, not the folder rule.
+    tree({ 'home/pics/h.png': PNG, 'home/a b.png': PNG, 'home/n.md': '' })
+    writeFileSync(at('home/n.md'), '![](~/pics/h.png) ![]($HOME/pics/h.png) ![](a%20b.png)\n')
+    const { manifest } = await buildManifest(at('home/n.md'), opts())
     expect(manifest.images).toEqual([
       { ref: '~/pics/h.png', path: at('home/pics/h.png') },
       { ref: '$HOME/pics/h.png', path: at('home/pics/h.png') },
-      { ref: 'a%20b.png', path: at('notes/a b.png') },
+      { ref: 'a%20b.png', path: at('home/a b.png') },
     ])
   })
 
@@ -135,10 +136,33 @@ describe.runIf(posix)('buildManifest images', () => {
   })
 
   it('keeps a symlinked image whose target is a real image, under the linked name', async () => {
-    tree({ 'store/real.png': PNG, 'notes/n.md': '![](l.png)\n' })
-    symlinkSync(at('store/real.png'), at('notes/l.png'))
+    tree({ 'notes/store/real.png': PNG, 'notes/n.md': '![](l.png)\n' })
+    symlinkSync(at('notes/store/real.png'), at('notes/l.png'))
     const { manifest } = await buildManifest(at('notes/n.md'), opts())
     expect(manifest.images).toEqual([{ ref: 'l.png', path: at('notes/l.png') }])
+  })
+
+  it('takes images from the note folder and its subfolders only', async () => {
+    tree({
+      'notes/n/bild.png': PNG,
+      'notes/.hidden/x.png': PNG,
+      'home/Ausweis.png': PNG,
+      'other/c.png': PNG,
+      'notes/n.md': '![](n/bild.png) ![](.hidden/x.png) ![](~/Ausweis.png) ![](../other/c.png)\n',
+    })
+    // An absolute path to the very same outside file, and a link inside that leads outside.
+    writeFileSync(
+      at('notes/n.md'),
+      `${readFileSync(at('notes/n.md'), 'utf8')}![](<${at('other/c.png')}>) ![](l.png)\n`,
+    )
+    symlinkSync(at('home/Ausweis.png'), at('notes/l.png'))
+    const { manifest, hints } = await buildManifest(at('notes/n.md'), opts())
+    expect(manifest.images).toEqual([{ ref: 'n/bild.png', path: at('notes/n/bild.png') }])
+    const outside = hints.filter((h) => h.includes('außerhalb des Notizordners'))
+    expect(outside).toHaveLength(5)
+    for (const ref of ['.hidden/x.png', '~/Ausweis.png', '../other/c.png', 'l.png']) {
+      expect(outside.join('\n')).toContain(ref)
+    }
   })
 
   it('never lists a folder, even one named like an image', async () => {

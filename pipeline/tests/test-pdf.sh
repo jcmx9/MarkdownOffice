@@ -1063,15 +1063,24 @@ test_sandbox() {
   done
   ok "sandbox: Profiles/, PROFILES/ und .GIT/ bleiben draußen wie profiles/ und .git/"
 
-  # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.
+  # Bilder nur aus dem Notizordner und seinen Unterordnern: ein sichtbar verlinktes Bild außerhalb
+  # fehlt im PDF (mit Hinweis), eines im Unterordner erscheint.
   cp "${fixtures}/bilder/screenshot.png" "${sb}/bilder/aussen.png"
   printf '# Außen\n\n![](../bilder/aussen.png)\n\nENDE.\n' >"${sb}/notiz/aussen.md"
   (cd "${sb}/notiz" && "${mdo[@]}" aussen.md "${out_dir}/sb-aussen.pdf" >/dev/null 2>"${out_dir}/sb-aussen.err") ||
     die "sandbox aussen: Export fehlgeschlagen: $(cat "${out_dir}/sb-aussen.err")"
-  text="$(pdf_text "${out_dir}/sb-aussen.pdf")"
-  reject "sandbox aussen" "${text}" "Bild fehlt"
-  [[ "$(image_count "${out_dir}/sb-aussen.pdf")" != 0 ]] || die "sandbox aussen: Bild fehlt im PDF"
-  ok "sandbox: Bild außerhalb des Notizordners, sichtbar verlinkt, erscheint"
+  expect "sandbox aussen" "$(pdf_text "${out_dir}/sb-aussen.pdf")" "[Bild fehlt: ../bilder/aussen.png]" "ENDE."
+  [[ "$(image_count "${out_dir}/sb-aussen.pdf")" == 0 ]] || die "sandbox aussen: Bild von außerhalb im PDF"
+  grep -q "Bild liegt außerhalb des Notizordners, kommt nicht ins PDF: ../bilder/aussen.png" \
+    "${out_dir}/sb-aussen.err" || die "sandbox aussen: kein Hinweis auf stderr"
+  mkdir -p "${sb}/notiz/innen"
+  cp "${fixtures}/bilder/screenshot.png" "${sb}/notiz/innen/bild.png"
+  printf '# Innen\n\n![](innen/bild.png)\n\nENDE.\n' >"${sb}/notiz/innen.md"
+  (cd "${sb}/notiz" && "${mdo[@]}" innen.md "${out_dir}/sb-innen.pdf" >/dev/null 2>"${out_dir}/sb-innen.err") ||
+    die "sandbox innen: Export fehlgeschlagen: $(cat "${out_dir}/sb-innen.err")"
+  reject "sandbox innen" "$(pdf_text "${out_dir}/sb-innen.pdf")" "Bild fehlt"
+  [[ "$(image_count "${out_dir}/sb-innen.pdf")" != 0 ]] || die "sandbox innen: Bild fehlt im PDF"
+  ok "sandbox: Bild außerhalb des Notizordners bleibt draußen, Bild im Unterordner erscheint"
 
   # Seitenumbruch alter Form: ein Set ohne mdo-pagebreak (probe, raw-typst an) bricht weiter um.
   printf '# Eins\n\n\\newpage\n\n# Zwei\n' >"${sb}/notiz/umbruch.md"

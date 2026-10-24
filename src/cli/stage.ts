@@ -486,6 +486,10 @@ export async function buildManifest(
     if (automount(c, p)) continue
     // Missing: the script warns „Bild nicht gefunden“ for a probe source without an entry.
     if (!(await isFile(p))) continue
+    if (!(await insideImageRoots(c, p))) {
+      hints.push(`Hinweis: Bild liegt außerhalb des Notizordners, kommt nicht ins PDF: ${ref}`)
+      continue
+    }
     if (await isSafeImage(p)) images.push({ ref, path: p })
     else hints.push(`Hinweis: kein gültiges Bild, kommt nicht ins PDF: ${ref}`)
   }
@@ -550,6 +554,20 @@ async function realUnder(c: Ctx, p: string, root: string, noDot: boolean): Promi
  */
 async function insideProfileRoots(c: Ctx, p: string): Promise<boolean> {
   for (const root of [c.noteDir, c.baseDir, c.templatesDir]) {
+    if (await realUnder(c, p, root, true)) return true
+  }
+  return false
+}
+
+/**
+ * Why: a visible `![](../../Steuer/scan.png)` or `![](~/Ausweis.jpg)` in a note someone sent
+ * would put a private file into a PDF that gets passed on; the path is visible, where it leads
+ * mostly is not. An image must lie (symlinks resolved) under the note's folder or MDO_BASE_DIR
+ * (the real note folder when the app exports a temporary copy), with no dot segment below.
+ * The editor copies dropped images into such a subfolder, so its own notes are unaffected.
+ */
+async function insideImageRoots(c: Ctx, p: string): Promise<boolean> {
+  for (const root of [c.noteDir, c.baseDir]) {
     if (await realUnder(c, p, root, true)) return true
   }
   return false
