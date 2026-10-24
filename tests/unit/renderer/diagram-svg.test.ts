@@ -2,7 +2,11 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { sanitizeDiagramSvg } from '../../../src/renderer/editor/diagram-svg'
+import {
+  reprefix,
+  sanitizeDiagramSvg,
+  sanitizeMathSvg,
+} from '../../../src/renderer/editor/diagram-svg'
 
 const FIXTURES = join(__dirname, '../../fixtures/mermaid')
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -178,5 +182,108 @@ describe('sanitizeDiagramSvg', () => {
     expect(text.style.fontFamily).toBe(css)
     // The weight memo writes for the PDF stays, so the preview draws the same instance.
     expect(text.getAttribute('font-weight')).toBe('500')
+  })
+})
+
+/**
+ * Formula SVG as the bundled Typst 0.15.0 + mitex write it (MathRenderer, src/main/math.ts, on
+ * build/pipeline-dev): frac = `x\frac{1}{2}` inline (fraction bar as a stroked path), sum =
+ * `\sum_{k=1}^n k^2` display, color = `\color{red}{x} + y`, white = `\color{white}{x}`.
+ * A broader run (matrices, cases, \text, sqrt, accents, integrals) showed no other element or
+ * attribute: svg, g, defs, symbol (id, overflow), use (xlink:href, x, y, fill, fill-rule) and path.
+ */
+const MATH = join(__dirname, '../../fixtures/math')
+const math = (file: string) => readFileSync(join(MATH, file), 'utf8')
+const cleanMath = (s: string, prefix = 'm1') => sanitizeMathSvg(s, prefix, document)
+
+describe('sanitizeMathSvg', () => {
+  it.each(['frac.svg', 'sum.svg', 'color.svg', 'white.svg'])(
+    'keeps every element of the Typst formula %s',
+    (file) => {
+      const source = math(file)
+      const parsed = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement
+      const out = cleanMath(source)
+      expect(out).not.toBeNull()
+      expect(tags(out as SVGSVGElement)).toEqual(tags(parsed))
+      expect(out?.getAttribute('viewBox')).toBe(parsed.getAttribute('viewBox'))
+    },
+  )
+
+  it('keeps symbols and local uses with prefixed ids', () => {
+    const out = cleanMath(math('frac.svg'), 'mx7') as SVGSVGElement
+    const ids = new Set(Array.from(out.querySelectorAll('symbol')).map((s) => s.id))
+    const uses = Array.from(out.querySelectorAll('use'))
+    expect(uses.length).toBe(3)
+    for (const use of uses) {
+      const href = use.getAttribute('href') ?? ''
+      expect(href.startsWith('#mx7-g')).toBe(true)
+      expect(ids.has(href.slice(1))).toBe(true)
+      expect(use.hasAttribute('xlink:href')).toBe(false)
+    }
+    expect(out.querySelector('symbol')?.getAttribute('overflow')).toBe('visible')
+  })
+
+  it('turns default black into currentColor and keeps colours, white and none', () => {
+    const frac = cleanMath(math('frac.svg')) as SVGSVGElement
+    for (const use of Array.from(frac.querySelectorAll('use'))) {
+      expect(use.getAttribute('fill')).toBe('currentColor')
+    }
+    // The fraction bar: a stroked path whose fill stays none.
+    const bar = frac.querySelector('path[stroke]')
+    expect(bar?.getAttribute('stroke')).toBe('currentColor')
+    expect(bar?.getAttribute('fill')).toBe('none')
+    const red = cleanMath(math('color.svg')) as SVGSVGElement
+    expect(red.querySelector('use')?.getAttribute('fill')).toBe('#ff0000')
+    const white = cleanMath(math('white.svg')) as SVGSVGElement
+    expect(white.querySelector('use')?.getAttribute('fill')).toBe('#ffffff')
+  })
+
+  it.each([
+    ['external href', '<use href="http://x/y.svg#a" x="0"/>'],
+    ['external xlink:href', '<use xlink:href="https://x/#a"/>'],
+    ['javascript href', '<use href="javascript:alert(1)"/>'],
+    ['undefined local id', '<use href="#elsewhere"/>'],
+    ['data URL', '<use href="data:image/svg+xml,&lt;svg/&gt;"/>'],
+  ])('drops a use with an %s', (_, use) => {
+    const out = cleanMath(svg(`${use}<path d="M0 0h1"/>`)) as SVGSVGElement
+    expect(out).not.toBeNull()
+    expect(out.querySelector('use')).toBeNull()
+  })
+
+  it('drops scripts, foreign content and event handlers', () => {
+    const out = cleanMath(
+      svg(
+        '<script>alert(1)</script><foreignObject><p>x</p></foreignObject><image href="x.png"/><symbol id="g" onload="alert(1)"><path d="M0 0h1"/></symbol><use href="#g" onclick="x()"/>',
+      ),
+    ) as SVGSVGElement
+    expect(tags(out)).toEqual(['svg', 'symbol', 'path', 'use'])
+    expect(out.querySelector('[onload], [onclick]')).toBeNull()
+  })
+
+  it('keeps an empty formula (a space has a width) but rejects non-SVG', () => {
+    expect(cleanMath(svg(''))).not.toBeNull()
+    expect(cleanMath('<svg><path d="M0 0"/></svg>')).toBeNull()
+    expect(cleanMath('not svg')).toBeNull()
+  })
+
+  it('leaves diagrams without symbol and use', () => {
+    const out = clean(
+      svg(
+        '<defs><symbol id="g"><path d="M0 0h1"/></symbol></defs><use href="#g"/><rect width="1" height="1" fill="#000000"/>',
+      ),
+    )
+    expect(out?.querySelector('symbol, use')).toBeNull()
+    // Diagram colours are mmdr's own, never rewritten.
+    expect(out?.querySelector('rect')?.getAttribute('fill')).toBe('#000000')
+  })
+
+  it('moves a clone to a new prefix, local hrefs included', () => {
+    const out = cleanMath(math('frac.svg'), 'a1') as SVGSVGElement
+    const copy = reprefix(out.cloneNode(true) as SVGSVGElement, 'a1', 'b2')
+    const ids = new Set(Array.from(copy.querySelectorAll('symbol')).map((s) => s.id))
+    expect([...ids].every((id) => id.startsWith('b2-'))).toBe(true)
+    for (const use of Array.from(copy.querySelectorAll('use'))) {
+      expect(ids.has((use.getAttribute('href') ?? '').slice(1))).toBe(true)
+    }
   })
 })
