@@ -476,22 +476,25 @@ describe('manifestOptions', () => {
 describe('windowsTemplates', () => {
   const env = { USERPROFILE: 'C:\\Users\\u' }
   const answer = (out: string) => async () => out
+  // PowerShell answers with the Base64 of the path's UTF-8 bytes (code-page proof).
+  const b64 = (p: string) => `${Buffer.from(p, 'utf8').toString('base64')}\r\n`
 
   it('asks PowerShell for MyDocuments and passes <docs>\\Markdown Office\\Vorlagen', async () => {
     let seen: string[] = []
     const r = await windowsTemplates(env, 'ps.exe', async (file, args, timeout) => {
       seen = [file, ...args]
       expect(timeout).toBeLessThanOrEqual(5000)
-      return 'D:\\OneDrive\\Dokumente\r\n'
+      return b64('D:\\OneDrive\\Dokumente')
     })
-    expect(seen).toEqual([
-      'ps.exe',
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      "[Environment]::GetFolderPath('MyDocuments')",
-    ])
+    expect(seen.slice(0, 4)).toEqual(['ps.exe', '-NoProfile', '-NonInteractive', '-Command'])
+    expect(seen[4]).toContain("[Environment]::GetFolderPath('MyDocuments')")
+    expect(seen[4]).toContain('ToBase64String')
     expect(r.MDO_TEMPLATES).toBe('D:\\OneDrive\\Dokumente\\Markdown Office\\Vorlagen')
+  })
+
+  it('keeps umlauts in the Documents path whatever the console code page', async () => {
+    const r = await windowsTemplates(env, 'ps.exe', answer(b64('C:\\Users\\Jürgen\\Dokumente ß')))
+    expect(r.MDO_TEMPLATES).toBe('C:\\Users\\Jürgen\\Dokumente ß\\Markdown Office\\Vorlagen')
   })
 
   it('falls back to %USERPROFILE%\\Documents when PowerShell fails', async () => {
@@ -504,7 +507,9 @@ describe('windowsTemplates', () => {
   it('no Documents folder: no templates for both; an existing MDO_TEMPLATES is kept', async () => {
     expect((await windowsTemplates(env, 'ps.exe', answer('\r\n'))).MDO_TEMPLATES).toBeUndefined()
     const set = { ...env, MDO_TEMPLATES: 'X' }
-    expect(await windowsTemplates(set, 'ps.exe', answer('D:\\no'))).toBe(set)
+    expect(await windowsTemplates(set, 'ps.exe', answer(b64('D:\\no')))).toBe(set)
+    const lower = { ...env, mdo_templates: 'X' }
+    expect(await windowsTemplates(lower, 'ps.exe', answer(b64('D:\\no')))).toBe(lower)
   })
 })
 

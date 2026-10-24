@@ -352,7 +352,7 @@ export type Runner = (file: string, args: string[], timeoutMs: number) => Promis
  * MDO_TEMPLATES is kept.
  */
 export async function windowsTemplates(env: Env, powershell: string, run: Runner): Promise<Env> {
-  if (env.MDO_TEMPLATES) return env
+  if (envLookup(env, 'MDO_TEMPLATES', true)) return env
   let docs: string
   try {
     docs = (
@@ -362,11 +362,14 @@ export async function windowsTemplates(env: Env, powershell: string, run: Runner
           '-NoProfile',
           '-NonInteractive',
           '-Command',
-          "[Environment]::GetFolderPath('MyDocuments')",
+          // Base64 of the UTF-8 bytes: Windows PowerShell writes stdout in the OEM code page, so a
+          // Documents path with ü/ß would arrive mangled; ASCII output survives any code page.
+          "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::GetFolderPath('MyDocuments')))",
         ],
         5000,
       )
     ).trim()
+    docs = Buffer.from(docs, 'base64').toString('utf8')
   } catch {
     const home = envLookup(env, 'USERPROFILE', true)
     docs = home ? path.win32.join(home, 'Documents') : ''
