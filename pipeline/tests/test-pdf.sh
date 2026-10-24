@@ -1162,6 +1162,23 @@ test_sandbox() {
     ok "sandbox din5008a: Profil im verlinkten Set-Ordner"
   fi
 
+  # Aufräumen fail closed: scheitert die Leerprüfung (find), bleibt die Marke im Staging-Ordner,
+  # damit der Wrapper ihn später wegräumt. Ein find davor im PATH scheitert nur bei ihr.
+  local fakebin="${out_dir}/fakebin" real_find stages
+  real_find="$(command -v find)"
+  mkdir -p "${fakebin}"
+  printf '#!/usr/bin/env bash\ncase "$*" in *"-maxdepth 1 ! -name .mdo-stage -print") exit 1 ;; esac\nexec "%s" "$@"\n' \
+    "${real_find}" >"${fakebin}/find"
+  chmod +x "${fakebin}/find"
+  (cd "${sb}/notiz" && PATH="${fakebin}:${PATH}" "${mdo[@]}" aussen.md "${out_dir}/sb-findfehler.pdf" \
+    >/dev/null 2>"${out_dir}/sb-findfehler.err") ||
+    die "sandbox findfehler: Export fehlgeschlagen: $(cat "${out_dir}/sb-findfehler.err")"
+  stages="$(find "${TMPDIR}" -mindepth 1 -maxdepth 1 -name 'mdo-stage-*')"
+  [[ -n "${stages}" && "$(wc -l <<<"${stages}" | tr -d ' ')" == 1 && -f "${stages}/.mdo-stage" ]] ||
+    die "sandbox findfehler: Marke nicht stehen geblieben: ${stages:-kein Staging-Ordner}"
+  rm -rf "${stages}"
+  ok "sandbox: scheitert die Leerprüfung beim Aufräumen, bleibt die Marke"
+
   # Kein Staging-Ordner bleibt zurück, weder nach Erfolg noch nach gescheitertem Export.
   local left
   left="$(find "${TMPDIR}" -maxdepth 1 -name 'mdo-stage-*')"

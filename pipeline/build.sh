@@ -659,10 +659,17 @@ stage="$(mktemp -d "${tmp_base%/}/mdo-stage-XXXXXX")" || {
 # Wrapper später wegräumt (ohne Marke bliebe er mit Kopien der Notiz, der Bilder und der
 # Unterschrift für immer liegen).
 cleanup() {
+  # Ein weiteres Signal (zweites Strg+C, Beenden der Prozessgruppe) bricht das Aufräumen nicht ab:
+  # ignoriert, auch von find und rm (sie erben es). Sonst endete ein abgebrochenes find mit leerer
+  # Ausgabe, und die Marke fiele, obwohl Kopien liegen bleiben.
+  trap '' INT TERM HUP
   [[ -d "${stage}" ]] || return 0
   find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -exec rm -rf {} + 2>/dev/null || true
-  # Die Marke fällt nur, wenn sonst nichts mehr im Ordner liegt.
-  if [[ -z "$(find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -print 2>/dev/null)" ]]; then
+  # Die Marke fällt nur, wenn sonst nichts mehr im Ordner liegt: find muss gelingen und nichts
+  # mehr finden (fail closed; ein gescheitertes find lässt die Marke für den Wrapper stehen).
+  local rest
+  if rest="$(find "${stage}" -mindepth 1 -maxdepth 1 ! -name .mdo-stage -print 2>/dev/null)" &&
+    [[ -z "${rest}" ]]; then
     rm -f "${stage}/.mdo-stage"
     rmdir "${stage}" 2>/dev/null || true
   fi
