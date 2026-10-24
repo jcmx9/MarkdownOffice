@@ -152,3 +152,69 @@ export function appLaunch(o: { args: string[]; env: Env; execPath: string }): Ap
   const wait = o.args.some((a) => ['--version', '-V', '--help', '-h'].includes(a))
   return { file: o.execPath, args: o.args, env, wait, log }
 }
+
+/** One pipeline run: its arguments, the note it exports (null: none) and `--template`. */
+export interface ExportRun {
+  args: string[]
+  note: string | null
+  template: string
+}
+
+const PS_VERSION = ['--version', '-V', '-Version', '-version']
+const PS_HELP = ['--help', '-h', '-Help', '-help', '-?']
+
+/**
+ * The note each pipeline run exports, read from the arguments as build.sh / convert.ps1 read
+ * them, so the wrapper can write that note's manifest (src/cli/stage.ts). Help, version, no
+ * source or a usage error -> one run with the arguments unchanged and no note (the script
+ * answers). build.sh exports its first path (a second one is the PDF). convert.ps1 exports every
+ * path (two paths ending in .pdf: note and PDF); with several notes each gets its own run — one
+ * manifest per run — with the options and `--` before the note, ending at the first failure as
+ * the script did.
+ */
+export function exportRuns(platform: string, args: string[]): ExportRun[] {
+  const win = platform === 'win32'
+  const none: ExportRun[] = [{ args, note: null, template: '' }]
+  const options: string[] = []
+  const paths: string[] = []
+  let template = ''
+  let help = false
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i] as string
+    if (a === '--') {
+      paths.push(...args.slice(i + 1))
+      break
+    }
+    if (
+      win ? PS_VERSION.includes(a) || PS_HELP.includes(a) : /^(-h|--help|-V|--version)$/.test(a)
+    ) {
+      // build.sh answers at once; convert.ps1 parses on, but answers before any export.
+      if (!win) return none
+      help = true
+    } else if (['--no-source', '--hard-breaks', '--soft-breaks'].includes(a)) {
+      options.push(a)
+    } else if (a === '--template' || (win && a === '-Template')) {
+      const v = args[i + 1]
+      if (!v) return none
+      template = v
+      options.push(a, v)
+      i++
+    } else if (a.startsWith('--template=')) {
+      template = a.slice('--template='.length)
+      if (!template) return none
+      options.push(a)
+    } else if (a.startsWith('-')) {
+      return none
+    } else {
+      paths.push(a)
+    }
+  }
+  if (help || paths.length === 0) return none
+  if (!win) return [{ args, note: paths[0] as string, template }]
+  const notes =
+    paths.length === 2 && path.win32.extname(paths[1] as string).toLowerCase() === '.pdf'
+      ? [paths[0] as string]
+      : paths
+  if (notes.length === 1) return [{ args, note: notes[0] as string, template }]
+  return notes.map((note) => ({ args: [...options, '--', note], note, template }))
+}

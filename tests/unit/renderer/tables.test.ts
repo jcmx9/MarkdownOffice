@@ -3,14 +3,20 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { ensureSyntaxTree } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
 import { EditorView, type WidgetType } from '@codemirror/view'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
+import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
+import { createMath } from '../../../src/renderer/editor/math'
+import { previewView } from '../../../src/renderer/editor/rendered'
 import {
+  createTableField,
   splitRow,
   tableField,
   tableModel,
   typstAutoColumns,
 } from '../../../src/renderer/editor/tables'
+import { okEntry, type Stub, stubService } from './math-stub'
+import { parsed } from './parsed'
 
 const TABLE =
   '| Produkt | Menge | Preis |\n|:--|:-:|---|\n| Espresso | 12 | 3,50 € |\n| Filter | 8 | 2 € |\n| **Neu** | | 1.200,00 EUR |'
@@ -196,5 +202,119 @@ describe('tableField', () => {
     const [w1] = tables(before)
     const [w2] = tables(after)
     expect(w2?.widget.eq(w1?.widget as WidgetType)).toBe(false)
+  })
+})
+
+describe('formulas in table cells', () => {
+  const views: EditorView[] = []
+  afterEach(() => {
+    for (const v of views.splice(0)) v.destroy()
+  })
+
+  /** A view with the app's Markdown, a table field and the formula redraw on one stub service. */
+  function mountTable(doc: string, service: Stub) {
+    const field = createTableField({ service })
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const view = new EditorView({
+      parent,
+      state: parsed(
+        EditorState.create({
+          doc,
+          selection: { anchor: doc.length },
+          extensions: [
+            mdoMarkdown(),
+            previewView.of(true),
+            field,
+            createMath({ service }).extension,
+          ],
+        }),
+      ),
+    })
+    views.push(view)
+    return view
+  }
+  const cells = (view: EditorView) => [...view.dom.querySelectorAll('.mdo-table tbody td')]
+  const DOC = '| a | b |\n|---|---|\n| $x$ | c |\n\nEnde'
+
+  it('a cell formula with a result shows its SVG, sized like the inline widget', () => {
+    const service = stubService({ 'I:x': okEntry('mdo-mxT', 1.25, 0.9, 0.2) })
+    const view = mountTable(DOC, service)
+    const svg = cells(view)[0]?.querySelector('.mdo-math-inline svg') as SVGSVGElement | null
+    expect(svg).not.toBeNull()
+    expect(svg?.style.width).toBe('1.25em')
+    expect(svg?.style.verticalAlign).toBe('-0.2em')
+    expect(cells(view)[0]?.textContent).not.toContain('$')
+  })
+
+  it('a formula the PDF cannot build stays flagged source in its cell', () => {
+    const service = stubService({ 'I:x': { state: 'error', message: 'kaputt' } })
+    const view = mountTable(DOC, service)
+    const flagged = cells(view)[0]?.querySelector('.mdo-math-error')
+    expect(flagged?.textContent).toBe('$x$')
+    expect(flagged?.getAttribute('title')).toBe('Formel wird im PDF nicht gebaut: kaputt')
+    expect(cells(view)[0]?.querySelector('svg')).toBeNull()
+  })
+
+  it('a pending cell formula is requested, shown muted and drawn once the result is there', async () => {
+    const service = stubService()
+    const view = mountTable(DOC, service)
+    expect(cells(view)[0]?.querySelector('.mdo-math-pending')?.textContent).toBe('$x$')
+    expect(service.requests.flat()).toContain('I:x')
+    service.entries.set('I:x', okEntry())
+    service.emit()
+    await Promise.resolve()
+    expect(cells(view)[0]?.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
+  })
+
+  it('a \\| in a cell formula is the escaped pipe (GFM), and $$…$$ is display style', () => {
+    const doc = '| a | b |\n|---|---|\n| $x\\|y$ | $$z$$ |\n\nEnde'
+    const service = stubService()
+    const view = mountTable(doc, service)
+    expect(service.requests.flat()).toEqual(expect.arrayContaining(['I:x|y', 'D:z']))
+    service.entries.set('I:x|y', okEntry())
+    service.entries.set('D:z', okEntry())
+    service.emit()
+    return Promise.resolve().then(() => {
+      expect(cells(view)[0]?.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
+      expect(cells(view)[1]?.querySelectorAll('.mdo-math-inline svg')).toHaveLength(1)
+    })
+  })
+
+  it('a cell formula drawn pending that its build never asked for is requested then', () => {
+    // Settled when the field was built (so not requested), gone by the time the widget draws
+    // (evicted): without a request in toDOM it would stay pending for ever.
+    const service = stubService({ 'I:x': okEntry() })
+    const field = createTableField({ service })
+    const state = parsed(
+      EditorState.create({
+        doc: DOC,
+        selection: { anchor: DOC.length },
+        extensions: [mdoMarkdown(), previewView.of(true), field],
+      }),
+    )
+    expect(service.requests).toEqual([])
+    let widget: WidgetType | undefined
+    state.field(field).between(0, state.doc.length, (_f, _t, d) => {
+      widget = d.spec.widget as WidgetType
+    })
+    service.entries.delete('I:x')
+    const dom = widget?.toDOM({} as EditorView)
+    expect(dom?.querySelector('.mdo-math-pending')?.textContent).toBe('$x$')
+    expect(service.requests.flat()).toEqual(['I:x'])
+  })
+
+  it('a table being edited shows its source and asks for nothing', () => {
+    const service = stubService()
+    const field = createTableField({ service })
+    const state = parsed(
+      EditorState.create({
+        doc: DOC,
+        selection: { anchor: DOC.indexOf('$x$') + 1 },
+        extensions: [mdoMarkdown(), field],
+      }),
+    )
+    expect(state.field(field).size).toBe(0)
+    expect(service.requests).toEqual([])
   })
 })

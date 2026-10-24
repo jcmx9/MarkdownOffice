@@ -53,6 +53,7 @@ const api: MdoApi = {
   updateSettings: (patch) => ipcRenderer.invoke(Ch.updateSettings, patch),
   choosePath: (kind, current) => ipcRenderer.invoke(Ch.choosePath, kind, current),
   pluginWasm: (name) => ipcRenderer.invoke(Ch.pluginWasm, name),
+  renderMath: (items) => ipcRenderer.invoke(Ch.renderMath, items),
   onFullScreenLeft: (cb) => {
     ipcRenderer.on(Ch.fullScreenLeft, () => cb())
   },

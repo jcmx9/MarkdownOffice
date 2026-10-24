@@ -1,6 +1,7 @@
 import { mkdir, stat } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { validateMathBatch } from '../core/math'
 import { SET_NAME_RE } from '../core/sets'
 import { Ch } from '../shared/ipc'
 import type {
@@ -49,6 +50,13 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(Ch.startup, () => ctx.startup())
   // Typst's WebAssembly plugins for the preview; the renderer names a key, main owns the path.
   ipcMain.handle(Ch.pluginWasm, (_e, name: unknown) => pluginWasm(ctx.pipeline.paths.root, name))
+  // Preview formulas: the batch comes from the renderer, so only exactly { tex, display } entries
+  // within the limits reach Typst (validateMathBatch); anything else rejects the call.
+  ipcMain.handle(Ch.renderMath, async (_e, items: unknown) => {
+    const batch = validateMathBatch(items)
+    if (!batch) throw new TypeError('Ungültiger Parameter.')
+    return ctx.math.render(batch)
+  })
   ipcMain.handle(Ch.listSnippets, () => loadUserSnippets(ctx.settings.snippetFolder))
   ipcMain.handle(Ch.noteMenu, (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)

@@ -25,7 +25,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 | Bundled sets | `<MDO_SETS_DIR>/<name>/<name>.typ` | default `<pipeline>/../sets`; the app ships `<resources>/sets/memo/` |
 | Set repository | `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
 
-Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`) and the bundled store packages (`@preview/…`), see §4. On Windows a template on a different drive than the pipeline is copied alone into a staging folder, so sibling files of the `.typ` are not reachable there.
+Keep the set in **one self-contained `.typ` file**. Only import from the pipeline (`mdo`) and the bundled store packages (`@preview/…`), see §4. Which sibling files are reachable depends on how the set was found (see the staging folder in §2): a set folder `<name>/<name>.typ` is staged whole, a single `.typ` found by name brings its folder (without `profiles` folders, hidden entries and links leading out), a `.typ` named as a path in the note is staged alone. Multi-file sets should therefore be folders `<name>/<name>.typ`. Set `raw-typst: false` in `cmarker.render` and map the page break with `html: (mdo-pagebreak: (attrs, body) => pagebreak(weak: true))` (§5): a note must not be able to run Typst code.
 
 ## 2. How the pipeline finds and runs a set
 
@@ -47,15 +47,27 @@ Both scripts run Typst ≥ 0.15 twice on the resolved `.typ`:
 # 1. probe: collect image sources (see §5.1); errors are ignored
 typst eval --in <set>.typ '<query expression>' --font-path <pipeline>/fonts --ignore-system-fonts \
   --package-cache-path <pipeline>/vendor/packages --package-path <pipeline>/vendor/local-packages \
-  --root / <all --input …> --input probe=true
+  --root <staging folder> <all --input …> --input probe=true
 # 2. real build
 typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-fonts \
   --package-cache-path <pipeline>/vendor/packages --package-path <pipeline>/vendor/local-packages \
-  --root / --pdf-standard a-3b <all --input …> --input images=<map.json>
+  --root <staging folder> --pdf-standard a-3b <all --input …> --input images=<map.json>
 ```
 
-- `--root /` (Windows: the drive root of the pipeline folder): every input path is absolute and readable with `read()`, `image()`, `json()`.
-- On Windows path inputs are **drive-less, forward-slash** paths (`C:\Users\a\n.md` → `/Users/a/n.md`). Files on another drive are copied to a staging folder first. Treat paths as opaque strings and only split on `/`.
+- `--root <staging folder>`: Typst reads only a fresh, private folder per export (removed afterwards) that holds exactly the files below. Every input path is an absolute path **inside that root** (`/note/…`, `/img/…`), readable with `read()`, `image()`, `json()`; anything else on the disk is unreachable. Treat paths as opaque strings and only split on `/`.
+- Layout, as build.sh stages it (convert.ps1 the same):
+
+| Staged path | Content |
+|---|---|
+| `/note/<name>.md` | the note (`source`, and the attachment) |
+| `/img/<n><ext>` | the images the note visibly includes, numbered from 1 with the source's extension (`/img/1.png`; the original name is not kept); SVG, PNG, JPEG, GIF, WebP by content; SVGs without external references |
+| `/logo/<name>` | the logo |
+| `/profile/<name>` | the profile YAML and the files next to it that the profile names as values |
+| `/set/…` | a set folder without top-level `profiles` and `.git` (any letter case); for a single `.typ` found by name its folder, filtered (no `profiles` at any depth or letter case, no hidden entries, no links leading out); for a `.typ` named in the note only that file |
+| `/mdo/lib`, `/mdo/vendor/…` | pipeline parts (`mdo`) |
+| `/images.json` | the `images` map |
+
+- **A set must not read files the note does not name.** Only the staged files above exist for it; do not build paths to anything else (a sibling of the note, a file in the home folder), they are not there.
 - `SOURCE_DATE_EPOCH` is set to the source's modification time unless the caller set it, so `date: auto` in `set document` is reproducible.
 - The **front matter is parsed by the scripts**, not by the template. Only the keys listed in §3 reach the template; unknown front-matter keys are not passed. A set that needs its own keys must parse `read(sys.inputs.source)` itself.
 
@@ -70,18 +82,18 @@ Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote v
 
 ### Profiles (decided by the script)
 
-A set that needs a sender (a letter) reads a profile: a YAML file plus the files next to it (signature, logo). The note names it with `profile:`; the script finds it and passes the absolute path as input `profile` (`""` without `profile:`). A set reads it with `yaml(sys.inputs.profile)` and further files relative to the profile's folder, e.g. `read(dir + "/" + data.signature)` with `dir` = the path up to the last `/`.
+A set that needs a sender (a letter) reads a profile: a YAML file plus the files next to it (signature, logo). The note names it with `profile:`; the wrapper finds it and the script stages it; the staging-root path (`/profile/<name>.yaml`) is the input `profile` (`""` without `profile:`). A set reads it with `yaml(sys.inputs.profile)` and further files relative to the profile's folder, e.g. `read(dir + "/" + data.signature)` with `dir` = the path up to the last `/`.
 
 | Value of `profile:` | Looked up |
 |---|---|
 | a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `<name>.yaml` 1. in `profiles/` in the note's folder (or `MDO_BASE_DIR`), 2. in `<set>/profiles/` in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`; the set's profiles, also for a bundled set – only when `template:` is a set name, not a `.typ` file), 3. in `profiles/` in the templates folder (shared by all sets), 4. in `profiles/` in the folder of the resolved set (its example profiles) – the first existing file wins |
-| a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded |
+| a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded; the file must lie in the note's folder (or `MDO_BASE_DIR`) or the templates folder, with no hidden folder (name starting with `.`) on the way; anything else is refused |
 
 **Overriding values per note.** A set that prints profile values may let the note override single ones: `x-profile-<key>` in the front matter replaces the profile's `<key>` (for example `x-profile-phone`). The editor preview follows the same convention for `{profile.<key>}` (section 8). `signature` cannot be overridden: it names a file next to the profile.
 
 A folder `Vorlagen/<set>/` that holds only `profiles/` (no `<set>.typ`) does not shadow the bundled set: a set is resolved by its `.typ` only.
 
-A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. On Windows only the files directly in the profile's folder (no subfolders) are copied to the staging folder when it is on another drive than Typst's root, so a signature (or logo) must sit **directly next to the profile**, not in a subfolder; a profile directly in a drive root is refused there ("Profil darf nicht im Wurzelverzeichnis eines Laufwerks liegen") so no export copies a whole drive.
+A profile that is not found stops the export with exit code 1 and „Profil nicht gefunden: <name>“, listing the searched folders, and writes no PDF: a letter without a sender is worse than none. Only the profile and the files next to it (directly in the profile's folder, no subfolders) whose names the YAML holds as values are staged, so a signature (or logo) must sit **directly next to the profile**, not in a subfolder, and be named in the YAML. On Windows, network (UNC) and device paths are refused.
 
 ## 3. Inputs (`sys.inputs`)
 
@@ -103,16 +115,17 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `header` | Front matter `header:` (fixed header text) | text | `""` |
 | `watermark` | Front matter `watermark:` | text | `""` |
 | `hard_breaks` | Front matter `hard_breaks:`; `--hard-breaks` / `--soft-breaks` win | `true` / `false` | `true` |
-| `logo` | Resolved logo file (see §2) | absolute path | `""` = no logo |
+| `logo` | Staged logo file (see §2) | staging-root path | `""` = no logo |
 | `logo_height` | Front matter `logo-height:`, **raw**; the template validates it | e.g. `13mm`, `1.5cm`, `40pt` | `""` |
-| `profile` | Resolved sender profile (front matter `profile:`, see "Profiles" in §2); files next to it (signature, logo) are readable; on Windows forward slashes | absolute path | `""` = no `profile:` |
-| `source` | The Markdown source to render | absolute path | always set |
-| `attach` | File to embed as PDF attachment; `embed_source: false` or `--no-source` empties it | absolute path (= `source`) | `""` = do not embed |
-| `docdir` | Base folder for relative image paths: `MDO_BASE_DIR` or the source's folder | absolute path | always set |
-| `mdo` | Pipeline folder containing `lib/` and `vendor/` | absolute path | always set |
+| `profile` | Staged sender profile (front matter `profile:`, see "Profiles" in §2); the files it names next to it (signature, logo) are readable | staging-root path, `/profile/<name>` | `""` = no `profile:` |
+| `source` | The Markdown source to render | staging-root path, `/note/<name>.md` | always set |
+| `attach` | File to embed as PDF attachment; `embed_source: false` or `--no-source` empties it | staging-root path (= `source`) | `""` = do not embed |
+| `docdir` | Folder of the source (`/note`) in the staging root; the note's own folder is not reachable, relative images come through `images` | staging-root path | always set |
+| `mdo` | Staged pipeline parts containing `lib/` and `vendor/` | staging-root path, `/mdo` | always set |
 | `version` | Markdown Office version (`MDO_VERSION`) | e.g. `26.10.0` | `dev` |
+| `pagebreak` | Form of the page break `preprocess` emits: `html` only for a set whose `.typ` mentions `mdo-pagebreak` (see §5) | `html` | absent (= raw-typst form) |
 | `probe` | Set only in the probe run (§5.1) | `true` | absent |
-| `images` | Set only in the real build: JSON file mapping each raw image source to a resolved absolute path, `""` when the file is missing | path to a JSON object | absent |
+| `images` | Set only in the real build: JSON file mapping each raw image source to its staged path (`/img/…`), `""` when the file is missing | path to a JSON object | absent |
 
 `template`, `isodate_praefix` and `embed_source` are consumed by the scripts and are not inputs (`embed_source` shows up as an empty `attach`).
 
@@ -159,7 +172,7 @@ The template must render the body as:
 
 | Markdown | Becomes | The set must |
 |----------|---------|--------------|
-| `<!-- pagebreak -->`, `\newpage`, `\pagebreak`, `\clearpage` alone on a line | `<!--raw-typst #pagebreak(weak: true) -->` | nothing (cmarker runs it; keep `raw-typst` enabled, the default) |
+| `<!-- pagebreak -->`, `\newpage`, `\pagebreak`, `\clearpage` alone on a line | with input `pagebreak=html`: `<mdo-pagebreak></mdo-pagebreak>`; otherwise `<!--raw-typst #pagebreak(weak: true) -->` | `html: (mdo-pagebreak: (attrs, body) => pagebreak(weak: true))` with `raw-typst: false`; a set that never names `mdo-pagebreak` gets the raw-typst form (cmarker runs it while `raw-typst` is enabled, the default; a note's own `<!--raw-typst …-->` runs then too, so a set should switch it off). The closed form `<mdo-pagebreak></mdo-pagebreak>` is deliberate: cmarker reads an element not declared void like HTML, so `<mdo-pagebreak/>` would only open it and swallow the text after it |
 | `"…"`, `'…'`, `geht's`, `--`, `---`, `...` | `„…“`/`‚…‘` (lang `de*`) or `“…”`/`‘…’`, `’`, `–`, `—`, `…` | pass `smart-punctuation: false` (otherwise cmarker re-quotes) |
 | `> [!NOTE]` … (also `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`, German `INFO`, `TIPP`, `WICHTIG`, `HINWEIS`, `ACHTUNG`) | `<mdo-alert kind="note\|tip\|important\|warning\|caution">` + Markdown body + `</mdo-alert>` | handle `mdo-alert` |
 | A list made **only** of tasks `- [ ] Task – Owner, bis Date` | `<mdo-tasks>` with one `<mdo-task done="true\|false" owner="…" due="…">` + Markdown body per item | handle `mdo-tasks` and `mdo-task` |
@@ -396,6 +409,16 @@ Colour tokens such as `--mdo-heading`, `--mdo-hairline` and the families `--mdo-
 
 A drawn Mermaid diagram (§8.2, `mermaid:`) sits in a `.mdo-diagram` block. It is not one of the head and foot blocks: a rule on `.mdo-diagram` is a rule that may reach the note's text, so it keeps only the typography and spacing properties of the list above (`margin*`, `padding*`, `background*`, `border*`, `font*`, `color`, `min-height`, …), nothing else. The app's own spacing is 1.4em above and below; the diagram is centred and scaled to the block's content box, so horizontal `padding` narrows the room it is fitted into. The SVG inside is not part of the set-CSS contract: it is drawn as the PDF draws it, and rules aimed at it are unsupported.
 
+A display formula (a paragraph that is exactly one `$$…$$`, cursor elsewhere) sits in a `.mdo-math` block. Like `.mdo-diagram` it is not a head or foot block, so a rule on it keeps only the typography and spacing properties above; use it for spacing (`margin*`, `padding*`). Its default spacing is the line box a text line would have (half the leading above and below, following `--mdo-line-height`), and the blank lines around the `$$` block add `--mdo-par-gap`, as between two paragraphs, which is what Typst's `par.spacing` around a block equation looks like. The SVG inside is not part of the set-CSS contract.
+
+**Formulas.** `$…$` and `$$…$$` are set by the bundled Typst with the bundled mitex, the same call your `.typ` makes when it passes `math: mitex` to cmarker, in Typst's math font New Computer Modern Math. The preview sizes a formula in `em` of the text around it (body, heading, table cell) and draws it in that text's colour. There is no key to declare: neither `<name>.css` nor `<name>.preview.yaml` describes formulas, and a set that changes the math font or colour in its `.typ` (`show math.equation: set text(…)`) is not followed by the preview. The formula with the cursor, the code view and a formula whose result is still pending show the source; a formula the PDF cannot build (an unknown LaTeX command such as `\ce`) keeps its source, underlined, with mitex's message as a tooltip. Known ways from a formula into Typst code are refused in the preview and flagged the same way: the mitex commands `\iftypst`, `\includegraphics`, `\hspace`, `\vspace` and `\raisebox`, an unescaped `#`, a `\label` whose argument is more than a plain name (mitex 0.2.7 copies it raw in text mode) and a colour model other than letters (`\color[rgb]{…}` is fine); the preview's batch program also checks mitex's output for Typst code it does not expect. The list is not exhaustive: the boundary is the sandbox (a temp dir as Typst's root with only mitex and the batch, no packages, no network, a timeout and a memory limit). Known differences from the PDF:
+
+- An inline formula never breaks across lines in the preview; Typst may break a long one at a relation or operator.
+- A `$$…$$` written inside a line of text (`text $$x$$ text`) is shown in display style within that line; Typst starts a new paragraph before and after it.
+- `\color{black}` follows the text colour in the preview (the app draws black glyphs in the context colour, so formulas stay readable in the dark theme); the PDF prints black.
+- Macros with parameters (`\newcommand{\f}[1]{…#1…}`, `\def\f#1{…}`) are refused in the preview (their `#1` is an unescaped `#`) and flagged; the PDF builds them. Macros without parameters render.
+- A bare URL directly before a formula (`http://example.com$a$`): the editor reads the `$…$` as part of the link, the PDF as a formula. Put a space or `<…>` around the URL.
+
 **Fonts.** Only the bundled families are available ("mdo Sans", "mdo Serif", "mdo Code", see section 4 and `src/renderer/ui/fonts.ts`); name them through the tokens or `var(--mdo-font-*)`. `@font-face` is dropped.
 
 ### 8.2 `<name>.preview.yaml`
@@ -467,7 +490,7 @@ Placeholders: `{key}` is the note's front-matter value, `{profile.key}` a value 
 
 Omission: an element with at least one placeholder whose placeholders are all empty is left out. An element made of literal text only is always shown. All text is inserted as text, never as HTML.
 
-**Where the blocks appear.** The head replaces the front matter in the preview with the header hidden and in Present; the foot sits after the text under the same conditions. Neither appears in the code view.
+**Where the blocks appear.** The head replaces the front matter in the preview with the header hidden and in Present; the foot sits after the text under the same conditions. Neither appears in the code view. The foot starts one paragraph gap (`--mdo-par-gap`, the height of a blank line) below the last line of text, as a `parbreak()` before the closing does in the PDF: the app puts that gap at the top of `.mdo-footblock` (`.mdo-footblock-gap`) and collapses blank lines at the end of the note, so the gap is the same whether the note ends with a line break or not. Measure your foot's spacing from there.
 
 ### 8.3 Profile access
 
@@ -509,6 +532,8 @@ You need: a test note that uses every element of your set (paragraphs long enoug
 | 11 | `nobreak:` in `<name>.preview.yaml` | the phrases and units your `.typ` joins with a no-break space (`show "z. B.": [z.~B.]`, a regex for number + unit); copy them as plain strings (§8.2). No such rules: leave the key out | 10 phrases, 19 units | — |
 | 11a | `mermaid:` in `<name>.preview.yaml` | the arguments of your `.typ`'s `mermaid-svg` call and its size rule: `base-theme`, the `theme` dict (mmdr field names), the `layout` dict, the `max-height` of the `box`/`scale` (none if it caps only the width), and a `font-weight` only if the `.typ` writes one into the SVG (§8.2). No Mermaid rule: leave the key out | memo.typ's theme, layout `node_spacing: 25, rank_spacing: 35`, `12cm`, weight 500 | see the set's `din5008a.preview.yaml` |
 | 12 | `head:`, `foot:` in `<name>.preview.yaml`, block classes in `<name>.css` | what the `.typ` prints from the front matter and the profile above and below the body, in the same order; distances measured in the PDF become `margin-*`/`padding-*` on the `.mdo-tb-*` classes | title block | letter head, closing, signature, enclosures |
+
+Formulas need no row either: the preview sets them with the PDF's own Typst and mitex in New Computer Modern Math (§8.1, *Formulas*); `.mdo-math` only takes spacing.
 
 The optical size needs no row: the app derives `--mdo-*-opsz` from the pt sizes of rows 2 and 7 (§8.1, *Optical size*). Only fonts and sizes in `pt` derive it, so write the sizes in `pt`, not `em` or `mm`.
 
@@ -666,7 +691,7 @@ The app will offer sets for one-click installation from a catalog. A set is list
 **Security review.** A set must not put users at risk. In particular:
 
 - **No hard-coded links.** No fixed URLs in the `.typ`, `.css`, `.preview.yaml` or `.header.md` (no `link("https://…")`, no URLs in text, no `url()` in the CSS: the editor drops it anyway): a link in a client PDF can lead to a dangerous site, and a reader cannot tell. Links come only from the user's own note.
-- **Read only what the pipeline hands over:** `read()` only on `sys.inputs.source` and files under `mdo`; no other paths.
+- **Read only what the pipeline hands over:** `read()` only on `sys.inputs.source`, the staged profile files and files under `mdo`; no other paths. `raw-typst: false`, with `<mdo-pagebreak>` mapped.
 - **No obfuscated content** (encoded payloads, embedded files other than the source attachment).
 
 These checks will run automatically in the catalog's CI before a set is listed; a reviewer confirms the result.
@@ -675,6 +700,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 
 - [ ] Name matches `^[a-z0-9_-]+$`; files are `<name>.typ`, `<name>.header.md`, `<name>.css`, `<name>.preview.yaml`.
 - [ ] `.typ` is self-contained; imports only `mdo + "/lib/…"`, `mdo + "/vendor/…"` and bundled store packages (`@preview/<name>:<version>` with the exact pinned version, section 4); no `@preview/` in comments.
+- [ ] `cmarker.render(…, raw-typst: false, html: (…, mdo-pagebreak: (attrs, body) => pagebreak(weak: true)))`; reads only staged files (§2).
 - [ ] Every input is read with `sys.inputs.at(key, default: …)`; booleans compared as strings.
 - [ ] Body rendered with `cmarker.render(preprocess(read(source), hard-breaks: …, lang: …), …)`, `smart-punctuation: false`, `math: mitex`.
 - [ ] `html:` handles `mdo-alert`, `mdo-tasks`, `mdo-task`, `mdo-keep`.
@@ -685,7 +711,7 @@ These checks will run automatically in the catalog's CI before a set is listed; 
 - [ ] `<name>.header.md` contains `template: <name>` and every key the set honours.
 - [ ] If the set has a `.css` or `.preview.yaml`: print units for sizes, no `url()` or at-rules, `.preview.yaml` starts with `preview: 1` and only uses the documented keys (section 8); a note without them still looks right (memo fallback). Each token's value is derived as in §8.5 and its source is written in a comment; the test note's lines end where the PDF's do, apart from the limits §8.5 names.
 - [ ] Ships `<name>.schema.yaml` for its `x-` keys (section 6, *Schema*).
-- [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
+- [ ] If the header has `profile: <value>`, the set ships `profiles/<value>.yaml` (an example profile plus its companion files), so a new note exports right away. Companion files are named `<value>-…` or `<value>.…` (e.g. `beispiel-unterschrift.svg`) and referenced from the YAML by that bare name: „Profil anlegen …“ (offered for every set whose header has `profile:`) copies exactly these, renamed to the new profile's name. So no second profile may start with `<value>-` or `<value>.` (e.g. `beispiel-zwei.yaml` next to `beispiel.yaml`): it would count as a companion and turn up as an extra profile in every copy.
 - [ ] A test note with all elements renders with exit 0, no warnings, PDF/A-3, attachment present.
 - [ ] Repo `MarkdownOffice-set-<name>`, CalVer tag `vYY.M.MICRO`; for bundling, manifest entry with the archive's SHA-256.
 - [ ] For the catalog: only freely licensed fonts with licence texts; no hard-coded links; `read()` only on pipeline inputs (section 12).

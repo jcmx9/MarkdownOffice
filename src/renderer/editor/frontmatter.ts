@@ -1,18 +1,19 @@
 import { yamlLanguage } from '@codemirror/lang-yaml'
 import type { Text } from '@codemirror/state'
 import { parseMixed } from '@lezer/common'
-import { tags as t } from '@lezer/highlight'
-import type { BlockContext, Element, Line, MarkdownConfig } from '@lezer/markdown'
+import type { MarkdownConfig } from '@lezer/markdown'
+import {
+  FRONTMATTER_CLOSE as CLOSE,
+  FrontmatterSyntax,
+  FRONTMATTER_OPEN as OPEN,
+} from '../../core/markdown-syntax'
 
-const OPEN = /^---\s*$/
-const CLOSE = /^(---|\.\.\.)\s*$/
-
-/** YAML front matter: only at the very start, `---` … `---`/`...` (pipeline/pandoc rule). */
+/**
+ * YAML front matter: only at the very start, `---` … `---`/`...` (pipeline/pandoc rule). The
+ * block parser lives in core (the CLI parses notes like the editor); here only the highlighting.
+ */
 export const Frontmatter: MarkdownConfig = {
-  defineNodes: [
-    { name: 'Frontmatter', block: true, style: t.meta },
-    { name: 'FrontmatterMark', style: t.processingInstruction },
-  ],
+  ...FrontmatterSyntax,
   // The lines between the marks are parsed as YAML (keys, strings, comments get colours).
   wrap: parseMixed((node) => {
     if (node.name !== 'Frontmatter') return null
@@ -22,29 +23,6 @@ export const Frontmatter: MarkdownConfig = {
     const to = close ? close.from - 1 : node.to
     return to > from ? { parser: yamlLanguage.parser, overlay: [{ from, to }] } : null
   }),
-  parseBlock: [
-    {
-      name: 'Frontmatter',
-      before: 'HorizontalRule',
-      parse(cx: BlockContext, line: Line): boolean {
-        if (cx.lineStart !== 0 || !OPEN.test(line.text)) return false
-        const marks: Element[] = [cx.elt('FrontmatterMark', 0, line.text.length)]
-        let end = line.text.length
-        while (cx.nextLine()) {
-          end = cx.lineStart + line.text.length
-          if (CLOSE.test(line.text)) {
-            marks.push(cx.elt('FrontmatterMark', cx.lineStart, end))
-            cx.nextLine()
-            break
-          }
-        }
-        // An unclosed header still forms one block, so typing it never yields setext headings
-        // (frontmatterRange returns null for it).
-        cx.addElement(cx.elt('Frontmatter', 0, end, marks))
-        return true
-      },
-    },
-  ],
 }
 
 export function frontmatterRange(doc: Text): { from: number; to: number } | null {

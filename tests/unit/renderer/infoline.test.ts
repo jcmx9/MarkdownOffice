@@ -8,6 +8,7 @@ const actions = () => ({
   showCode: vi.fn(),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
+  toggleOutline: vi.fn(),
 })
 const q = (el: HTMLElement, id: string) => el.querySelector(`[data-testid=${id}]`) as HTMLElement
 
@@ -34,6 +35,7 @@ describe('InfoLine', () => {
       1,
       'Gespeichert',
       1.25,
+      false,
     )
     const tabs = el.querySelectorAll('[data-testid=il-tab]')
     expect([...tabs].map((t) => t.textContent)).toEqual(['A.md', 'B.md'])
@@ -49,6 +51,22 @@ describe('InfoLine', () => {
     expect(a.exitPresent).toHaveBeenCalledOnce()
     expect(a.zoomIn).toHaveBeenCalledOnce()
     expect(a.zoomOut).toHaveBeenCalledOnce()
+  })
+  it('shows the outline toggle lifted when the outline is on and calls the action', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const line = new InfoLine(el, a)
+    line.render([{ name: 'A.md', dirty: false }], 0, 'Gespeichert', 1, false)
+    const b = q(el, 'il-outline')
+    expect(b.textContent).toBe('Gliederung')
+    expect(b.getAttribute('aria-pressed')).toBe('false')
+    line.render([{ name: 'A.md', dirty: false }], 0, 'Gespeichert', 1, true)
+    expect(b.classList.contains('active')).toBe(true)
+    expect(b.getAttribute('aria-pressed')).toBe('true')
+    b.click()
+    expect(a.toggleOutline).toHaveBeenCalledOnce()
+    // No YAML toggle: Present refuses the header toggle.
+    expect(q(el, 'il-yaml')).toBeNull()
   })
   it('updates the clock while started and stops cleanly', () => {
     let now = new Date(2026, 9, 15, 14, 30)

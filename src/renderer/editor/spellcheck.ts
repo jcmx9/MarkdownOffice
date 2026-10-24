@@ -17,17 +17,29 @@ import type { Mode } from '../../shared/types'
 export const spellcheckCompartment = new Compartment()
 
 const noSpell = Decoration.line({ attributes: { spellcheck: 'false' } })
-const SKIP = new Set(['FencedCode', 'CodeBlock', 'Frontmatter'])
+// A formula is TeX, not words: a `$$` block's lines are skipped whole, an inline formula only
+// itself (a mark), so the words around it in the line are still checked.
+const SKIP = new Set(['FencedCode', 'CodeBlock', 'Frontmatter', 'BlockMath'])
+const SKIP_INLINE = new Set(['InlineMath'])
+const noSpellMark = Decoration.mark({ attributes: { spellcheck: 'false' } })
 
 function build(view: EditorView): DecorationSet {
   const b = new RangeSetBuilder<Decoration>()
   // Visible ranges can touch the same node twice; a line may be decorated only once.
   const seen = new Set<number>()
+  const seenInline = new Set<number>()
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(view.state).iterate({
       from,
       to,
       enter: (n) => {
+        if (SKIP_INLINE.has(n.name)) {
+          if (!seenInline.has(n.from)) {
+            seenInline.add(n.from)
+            b.add(n.from, n.to, noSpellMark)
+          }
+          return false
+        }
         if (!SKIP.has(n.name)) return undefined
         for (let pos = n.from; pos <= n.to; ) {
           const line = view.state.doc.lineAt(pos)
@@ -44,7 +56,7 @@ function build(view: EditorView): DecorationSet {
   return b.finish()
 }
 
-/** Marks every line of code blocks and front matter as not to be spell checked. */
+/** Marks code blocks, front matter and formulas as not to be spell checked. */
 export const noSpellLines: Extension = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet
