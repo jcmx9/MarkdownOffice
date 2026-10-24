@@ -144,9 +144,22 @@
 }
 
 // Seitenumbruch: "<!-- pagebreak -->", "\newpage", "\pagebreak" oder
-// "\clearpage" allein auf einer Zeile -> Typst-Umbruch (cmarker führt
-// <!--raw-typst …--> als Typst-Code aus). Leerzeilen drumherum machen ihn zum
-// eigenen Block, auch wenn in der Notiz keine stehen.
+// "\clearpage" allein auf einer Zeile -> Typst-Umbruch. Leerzeilen drumherum
+// machen ihn zum eigenen Block, auch wenn in der Notiz keine stehen.
+// Form nach Eingabe pagebreak: "html" -> das Element mdo-pagebreak, das das Set
+// über seine html:-Zuordnung setzt (Sets mit raw-typst: false, in denen Notiztext
+// nie als Typst-Code läuft; build.sh/convert.ps1 senden "html" nur an Sets, deren
+// .typ mdo-pagebreak nennt). Ausdrücklich geschlossen: cmarker liest ein nicht als
+// "void" erklärtes Element wie HTML, ein <mdo-pagebreak/> öffnete es nur und der
+// Rest der Notiz würde sein (verworfener) Inhalt; mit Schluss-Tag gilt das für
+// beide Erklärungsarten. Sonst (ältere und eigene Sets) wie bisher
+// <!--raw-typst …-->, das cmarker als Typst-Code ausführt – kein Set verliert so
+// still seine Seitenumbrüche.
+#let pagebreak-line = if sys.inputs.at("pagebreak", default: "raw") == "html" {
+  "<mdo-pagebreak></mdo-pagebreak>"
+} else {
+  "<!--raw-typst #pagebreak(weak: true) -->"
+}
 #let pagebreaks(lines) = {
   let mask = code-mask(lines)
   let out = ()
@@ -154,7 +167,7 @@
     let t = l.trim()
     if not mask.at(i) and (t in ("\\newpage", "\\pagebreak", "\\clearpage")
         or t.match(regex("^<!--\s*pagebreak\s*-->$")) != none) {
-      out += ("", "<!--raw-typst #pagebreak(weak: true) -->", "")
+      out += ("", pagebreak-line, "")
     } else {
       out.push(l)
     }

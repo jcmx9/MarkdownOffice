@@ -690,6 +690,11 @@ function Convert-One {
     '--input', ('mdo=' + (ConvertTo-TypstPath $script:TypstMdo)),
     '--input', "version=$MdoVersion"
   )
+  # Seitenumbruch als Element mdo-pagebreak nur fuer Sets, die es kennen (raw-typst aus); alle
+  # anderen bekommen wie bisher die raw-typst-Form (lib/markdown.typ pagebreaks, wie build.sh).
+  if (Select-String -LiteralPath $templateSrc -Pattern 'mdo-pagebreak' -SimpleMatch -Quiet) {
+    $inputs += @('--input', 'pagebreak=html')
+  }
 
   # Reproduzierbarer Metadaten-Zeitstempel: ohne Frontmatter-date: nutzt das Template
   # date: auto -> Typst schriebe sonst den Build-Zeitpunkt in CreateDate/ModifyDate.

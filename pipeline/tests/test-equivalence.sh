@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Äquivalenztest: das Set memo muss genauso rendern wie rf-doc aus
 # rf-document 26.10.21 (Commit 8b5255d). Für jede Referenz in
-# tests/equivalence/<fixture>.txt|.meta wird tests/fixtures/<fixture>.md mit
-# build.sh gebaut und verglichen:
+# tests/equivalence/<fixture>.txt|.meta wird tests/fixtures/<fixture>.md wie von
+# einem Nutzer über markdown-office (cli.js unter Node, mit Manifest und
+# Staging-Ordner) gebaut und verglichen:
 #
 #   <fixture>.txt   pdftotext -layout (Seitentext inkl. Kopf- und Fußzeilen)
 #   <fixture>.meta  pdfinfo Title, Author, Subject, CreationDate, ModDate, Pages,
@@ -98,7 +99,9 @@ if [[ -z "${MDO_PIPELINE_ROOT:-}" ]]; then
   export MDO_PIPELINE_ROOT="${dev}/pipeline"
   export MDO_SETS_DIR="${dev}/sets"
 fi
-readonly build="${MDO_PIPELINE_ROOT}/build.sh"
+# Aufruf wie markdown-office: cli.js schreibt das Manifest, ohne das build.sh nicht exportiert.
+[[ -f "${MDO_PIPELINE_ROOT}/cli.js" ]] || die "${MDO_PIPELINE_ROOT}/cli.js fehlt (npm run build:cli)"
+mdo=(node "${MDO_PIPELINE_ROOT}/cli.js")
 export MDO_NO_OPEN=1
 export SOURCE_DATE_EPOCH=1
 # Bilder über Variable (absolute-paths.md) wie beim Erzeugen der Referenzen.
@@ -138,7 +141,7 @@ for ref in "${refs}"/*.txt; do
         skipped=$((skipped + 1))
         continue
       fi
-      (cd "${fixtures}" && MDO_TEMPLATES="${din_templates}" bash "${build}" --template din5008a \
+      (cd "${fixtures}" && MDO_TEMPLATES="${din_templates}" "${mdo[@]}" --template din5008a \
         "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
         die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
       extract "${pdf}" "${out_dir}/${name}.raw"
@@ -147,7 +150,7 @@ for ref in "${refs}"/*.txt; do
       grep -v -E '^(CreationDate|ModDate|Attachments):' "${out_dir}/${name}.raw.meta" >"${out_dir}/${name}.meta"
       ;;
     *)
-      (cd "${fixtures}" && bash "${build}" "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
+      (cd "${fixtures}" && "${mdo[@]}" "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
         die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
       extract "${pdf}" "${out_dir}/${name}"
       ;;

@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# End-to-End-Test: baut die Testnotizen aus pipeline/tests/fixtures/ mit
-# build.sh und prüft den Text der erzeugten PDFs (pdftotext oder mutool) sowie
-# die Schnittstelle (Ausgabepfad, Exit-Codes, eingebettete Quelle, minimaler PATH).
+# End-to-End-Test: baut die Testnotizen aus pipeline/tests/fixtures/ wie ein
+# Nutzer über markdown-office (cli.js, unter Node; schreibt das Manifest
+# MDO_MANIFEST und ruft build.sh) und prüft den Text der erzeugten PDFs
+# (pdftotext oder mutool) sowie die Schnittstelle (Ausgabepfad, Exit-Codes,
+# eingebettete Quelle, minimaler PATH) und den Staging-Ordner (eine Notiz liest
+# nur sich selbst und die Dateien, die sie sichtbar einbindet).
 #
-# Layout: getestet wird build.sh im Pipeline-Ordner MDO_PIPELINE_ROOT mit den
-# Sets in MDO_SETS_DIR. Ohne MDO_PIPELINE_ROOT baut der Test das
+# Layout: getestet werden cli.js und build.sh im Pipeline-Ordner MDO_PIPELINE_ROOT
+# mit den Sets in MDO_SETS_DIR. Ohne MDO_PIPELINE_ROOT baut der Test das
 # Entwicklungs-Layout build/pipeline-dev/ (tests/dev-layout.sh, braucht
 # build/pipeline-assets aus `npm run assets`), das dem gepackten Layout der App
 # entspricht. Alles, was der Test schreibt, liegt in einem mktemp-Ordner; eigene
@@ -26,10 +29,21 @@ readonly build="${MDO_PIPELINE_ROOT}/build.sh"
 readonly fixtures="${test_dir}/fixtures"
 readonly version="${MDO_VERSION:-dev}"
 export MDO_NO_OPEN=1
+# Aufruf wie markdown-office: cli.js schreibt das Manifest, ohne das build.sh nicht exportiert.
+# Node mit absolutem Pfad, damit auch der Test mit minimalem PATH (env -i) ihn findet.
+[[ -f "${MDO_PIPELINE_ROOT}/cli.js" ]] || {
+  printf 'FEHLER: %s fehlt (npm run build:cli)\n' "${MDO_PIPELINE_ROOT}/cli.js" >&2
+  exit 1
+}
+mdo=("$(command -v node)" "${MDO_PIPELINE_ROOT}/cli.js")
 
 out_dir="$(mktemp -d)"
 cleanup() { rm -rf "${out_dir}"; }
 trap cleanup EXIT
+# Eigener Temp-Ordner: Staging-Ordner (mdo-stage-*) des Wrappers und von build.sh landen hier;
+# test_sandbox prüft, dass keiner zurückbleibt.
+export TMPDIR="${out_dir}/tmp"
+mkdir -p "${TMPDIR}"
 # Leerer Vorlagen-Ordner mit Leerzeichen: kein Set aus ~/Documents verfälscht den Test.
 export MDO_TEMPLATES="${out_dir}/Keine Vorlagen"
 mkdir -p "${MDO_TEMPLATES}"
@@ -64,7 +78,7 @@ attachments() {
 render() {
   local name="$1" pdf="${out_dir}/${1%.md}.pdf"
   shift
-  (cd "${fixtures}" && bash "${build}" "$@" "${name}" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
+  (cd "${fixtures}" && "${mdo[@]}" "$@" "${name}" "${pdf}" >/dev/null 2>"${out_dir}/${name}.err") ||
     die "${name}: Export fehlgeschlagen: $(cat "${out_dir}/${name}.err")"
   [[ -s "${pdf}" ]] || die "${name}: leeres PDF"
   strings "${pdf}" | quiet_grep 'part>3</pdfaid:part' || die "${name}: kein PDF/A-3"
@@ -262,7 +276,7 @@ test_fixtures() {
   text="$(render soft-breaks.md --soft-breaks)"
   expect "soft-breaks.md --soft-breaks" "${text}" "Zeile eins Zeile zwei"
   printf -- '---\nhard_breaks: false\n---\n\nZeile eins\nZeile zwei\n' >"${out_dir}/weich.md"
-  (cd "${out_dir}" && bash "${build}" weich.md weich.pdf >/dev/null 2>&1) || die "weich.md: Export fehlgeschlagen"
+  (cd "${out_dir}" && "${mdo[@]}" weich.md weich.pdf >/dev/null 2>&1) || die "weich.md: Export fehlgeschlagen"
   expect "hard_breaks: false" "$(pdf_text "${out_dir}/weich.pdf")" "Zeile eins Zeile zwei"
   ok "soft-breaks.md (Standard hart, --hard-breaks, --soft-breaks, hard_breaks: false)"
 
@@ -369,7 +383,7 @@ test_fixtures() {
   }
   logo_build() {
     printf -- '---\nlogo: %s\n---\n\nText.\n' "$1" >"${ldir}/n.md"
-    (cd "${ldir}" && HOME="${lhome}" MDO_TEMPLATES="${lvorl}" MDO_PIPELINE_ROOT="${mroot}" bash "${build}" n.md "${out_dir}/logo.pdf" \
+    (cd "${ldir}" && HOME="${lhome}" MDO_TEMPLATES="${lvorl}" MDO_PIPELINE_ROOT="${mroot}" "${mdo[@]}" n.md "${out_dir}/logo.pdf" \
       >/dev/null 2>"${out_dir}/logo.err") || die "logo: ${1}: Export fehlgeschlagen: $(cat "${out_dir}/logo.err")"
     pdf_text "${out_dir}/logo.pdf"
   }
@@ -406,7 +420,7 @@ test_fixtures() {
 
   # Das ausgelieferte pipeline/logo.svg (ohne Text) lässt sich einbinden.
   printf -- '---\nlogo: logo.svg\n---\n\nText.\n' >"${ldir}/n.md"
-  (cd "${ldir}" && HOME="${lhome}" bash "${build}" n.md "${out_dir}/logo.pdf" \
+  (cd "${ldir}" && HOME="${lhome}" "${mdo[@]}" n.md "${out_dir}/logo.pdf" \
     >/dev/null 2>"${out_dir}/logo.err") || die "ausgeliefertes Logo: Export fehlgeschlagen: $(cat "${out_dir}/logo.err")"
   ! grep -q "Logo nicht gefunden" "${out_dir}/logo.err" || die "ausgeliefertes Logo: nicht gefunden"
   ok "ausgeliefertes logo.svg wird eingebunden"
@@ -443,7 +457,7 @@ test_fixtures() {
 
   # Header-Vorlage des Sets memo (alle Schlüssel mit Standardwerten) baut ohne Warnung.
   cp "${MDO_SETS_DIR}/memo/memo.header.md" "${out_dir}/header.md"
-  (cd "${out_dir}" && bash "${build}" header.md "${out_dir}/header.pdf" >/dev/null 2>"${out_dir}/header.err") ||
+  (cd "${out_dir}" && "${mdo[@]}" header.md "${out_dir}/header.pdf" >/dev/null 2>"${out_dir}/header.err") ||
     die "memo.header.md: Export fehlgeschlagen: $(cat "${out_dir}/header.err")"
   if grep -q "Warnung" "${out_dir}/header.err"; then
     die "memo.header.md: unerwartete Warnung: $(cat "${out_dir}/header.err")"
@@ -455,7 +469,7 @@ test_interface() {
   local err code text
 
   # Ausdrücklich angegebene Ausgabe: exakt dieser Pfad, kein ISO-Präfix.
-  (cd "${fixtures}" && bash "${build}" toptitle-meta.md "${out_dir}/exakt.pdf" >/dev/null 2>&1)
+  (cd "${fixtures}" && "${mdo[@]}" toptitle-meta.md "${out_dir}/exakt.pdf" >/dev/null 2>&1)
   [[ -s "${out_dir}/exakt.pdf" ]] || die "Ausgabe nicht exakt geschrieben"
   [[ ! -e "${out_dir}/2026-10-12_exakt.pdf" && ! -e "${fixtures}/2026-10-12_toptitle-meta.pdf" ]] ||
     die "ISO-Präfix trotz ausdrücklicher Ausgabe"
@@ -463,27 +477,27 @@ test_interface() {
 
   # Ohne Ausgabe: neben der Quelle, deutsches Datum -> ISO-Präfix.
   cp "${fixtures}/toptitle-meta.md" "${fixtures}/logo.png" "${out_dir}/"
-  (cd "${out_dir}" && bash "${build}" toptitle-meta.md >/dev/null 2>&1)
+  (cd "${out_dir}" && "${mdo[@]}" toptitle-meta.md >/dev/null 2>&1)
   [[ -s "${out_dir}/2026-10-12_toptitle-meta.pdf" ]] || die "ISO-Präfix aus 12.10.2026 fehlt"
   ok "ISO-Präfix aus deutschem Datum"
 
   # Fehlende Quelle: Exit != 0, kurze Meldung auf stderr.
   code=0
-  err="$(bash "${build}" "${out_dir}/gibt-es-nicht.md" "${out_dir}/x.pdf" 2>&1 >/dev/null)" || code=$?
+  err="$("${mdo[@]}" "${out_dir}/gibt-es-nicht.md" "${out_dir}/x.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -ne 0 ]] || die "fehlende Quelle liefert Exit 0"
   grep -q "Quelle nicht gefunden" <<<"${err}" || die "fehlende Quelle: unklare Meldung: ${err}"
   ok "Exit-Code bei fehlender Quelle (${code})"
 
   # Unbekannte Option: Exit 2.
   code=0
-  bash "${build}" --gibt-es-nicht >/dev/null 2>&1 || code=$?
+  "${mdo[@]}" --gibt-es-nicht >/dev/null 2>&1 || code=$?
   [[ "${code}" -eq 2 ]] || die "unbekannte Option liefert Exit ${code}"
   ok "Exit-Code bei unbekannter Option"
 
   # '--' beendet die Optionen: danach ist auch '-strich.md' eine Quelle (Parität zu convert.ps1).
   printf -- '# Strich\n\nText.\n' >"${out_dir}/-strich.md"
   code=0
-  (cd "${out_dir}" && bash "${build}" --no-source -- -strich.md "${out_dir}/strich.pdf" >/dev/null 2>&1) || code=$?
+  (cd "${out_dir}" && "${mdo[@]}" --no-source -- -strich.md "${out_dir}/strich.pdf" >/dev/null 2>&1) || code=$?
   [[ "${code}" -eq 0 && -s "${out_dir}/strich.pdf" ]] || die "'--' als Ende der Optionen: Exit ${code}"
   ok "'--' beendet die Optionen"
 
@@ -493,7 +507,7 @@ test_interface() {
   mkdir -p "${noarg}"
   before="$(find -L "${MDO_PIPELINE_ROOT}" -name '*.pdf' | sort)"
   code=0
-  text="$(cd "${noarg}" && bash "${build}" 2>&1)" || code=$?
+  text="$(cd "${noarg}" && "${mdo[@]}" 2>&1)" || code=$?
   after="$(find -L "${MDO_PIPELINE_ROOT}" -name '*.pdf' | sort)"
   [[ "${code}" -eq 0 ]] || die "ohne Argumente: Exit ${code}"
   grep -q '^Usage:' <<<"${text}" || die "ohne Argumente: keine Hilfe: ${text}"
@@ -521,7 +535,7 @@ test_interface() {
   mkdir -p "${in_dir}/bilder" "${target_dir}"
   cp "${fixtures}/edge-cases.md" "${in_dir}/meine notiz.md"
   cp "${fixtures}/bilder/screenshot.png" "${in_dir}/bilder/"
-  (cd / && bash "${build}" --no-source --hard-breaks "${in_dir}/meine notiz.md" "${target_dir}/mein pdf.pdf" \
+  (cd / && "${mdo[@]}" --no-source --hard-breaks "${in_dir}/meine notiz.md" "${target_dir}/mein pdf.pdf" \
     >/dev/null 2>"${out_dir}/spaces.err") || die "Pfade mit Leerzeichen: Export fehlgeschlagen: $(cat "${out_dir}/spaces.err")"
   [[ -s "${target_dir}/mein pdf.pdf" ]] || die "Pfade mit Leerzeichen: PDF fehlt am Zielpfad"
   ok "absolute Pfade mit Leerzeichen"
@@ -532,7 +546,7 @@ test_interface() {
   local tmp_copy="${out_dir}/tmpkopie"
   mkdir -p "${tmp_copy}"
   cp "${fixtures}/edge-cases.md" "${tmp_copy}/edge-cases.md"
-  (cd "${fixtures}" && MDO_BASE_DIR="${fixtures}" bash "${build}" "${tmp_copy}/edge-cases.md" \
+  (cd "${fixtures}" && MDO_BASE_DIR="${fixtures}" "${mdo[@]}" "${tmp_copy}/edge-cases.md" \
     "${out_dir}/basis.pdf" >/dev/null 2>"${out_dir}/basis.err") ||
     die "MDO_BASE_DIR: Export fehlgeschlagen: $(cat "${out_dir}/basis.err")"
   text="$(pdf_text "${out_dir}/basis.pdf")"
@@ -543,10 +557,10 @@ test_interface() {
     [[ "$(attachments "${out_dir}/basis.pdf")" == "edge-cases.md" ]] || die "MDO_BASE_DIR: Anhangsname falsch"
   fi
   # Gegenprobe: ohne MDO_BASE_DIR fehlt das Bild neben der Kopie.
-  (cd "${fixtures}" && bash "${build}" "${tmp_copy}/edge-cases.md" "${out_dir}/ohne-basis.pdf" >/dev/null 2>&1)
+  (cd "${fixtures}" && "${mdo[@]}" "${tmp_copy}/edge-cases.md" "${out_dir}/ohne-basis.pdf" >/dev/null 2>&1)
   expect "ohne MDO_BASE_DIR" "$(pdf_text "${out_dir}/ohne-basis.pdf")" "Bild fehlt: bilder/screenshot.png"
   # Ungültiger MDO_BASE_DIR: Warnung, Rückfall auf den Ordner der Quelle.
-  MDO_BASE_DIR="${out_dir}/gibt-es-nicht" bash "${build}" "${fixtures}/edge-cases.md" "${out_dir}/x.pdf" \
+  MDO_BASE_DIR="${out_dir}/gibt-es-nicht" "${mdo[@]}" "${fixtures}/edge-cases.md" "${out_dir}/x.pdf" \
     >/dev/null 2>"${out_dir}/basis2.err" || die "ungültiger MDO_BASE_DIR bricht den Export ab"
   grep -q "MDO_BASE_DIR ist kein Ordner" "${out_dir}/basis2.err" || die "ungültiger MDO_BASE_DIR ohne Warnung"
   ok "MDO_BASE_DIR (temporäre Kopie) + Dateiname"
@@ -555,7 +569,7 @@ test_interface() {
   # typst kommt aus bin/typst, Pipeline-Ordner und Sets aus dem Ort von build.sh.
   if [[ -x "${MDO_PIPELINE_ROOT}/bin/typst" ]]; then
     (cd "${fixtures}" && env -i HOME="${out_dir}/minpath-home" PATH=/usr/bin:/bin MDO_NO_OPEN=1 \
-      bash "${build}" edge-cases.md "${out_dir}/minpath.pdf" >/dev/null 2>"${out_dir}/minpath.err") ||
+      "${mdo[@]}" edge-cases.md "${out_dir}/minpath.pdf" >/dev/null 2>"${out_dir}/minpath.err") ||
       die "Build mit minimalem PATH fehlgeschlagen: $(cat "${out_dir}/minpath.err")"
     ok "minimaler PATH"
   else
@@ -586,7 +600,7 @@ test_templates() {
   printf -- '---\ntitle: "Set-Test"\ntemplate: "probe"   # Testset\n---\n\n# Kapitel\n\nText "zitiert".\n' >"${note}"
 
   # Eigenes Set aus MDO_TEMPLATES über den Frontmatter-Schlüssel (mit Quotes und Kommentar).
-  (cd / && MDO_TEMPLATES="${sets}" bash "${build}" "${note}" "${out_dir}/probe.pdf" \
+  (cd / && MDO_TEMPLATES="${sets}" "${mdo[@]}" "${note}" "${out_dir}/probe.pdf" \
     >/dev/null 2>"${out_dir}/probe.err") || die "Set probe: Export fehlgeschlagen: $(cat "${out_dir}/probe.err")"
   strings "${out_dir}/probe.pdf" | quiet_grep 'part>3</pdfaid:part' || die "Set probe: kein PDF/A-3"
   text="$(pdf_text "${out_dir}/probe.pdf")"
@@ -599,7 +613,7 @@ test_templates() {
   local home="${out_dir}/home"
   mkdir -p "${home}/Documents/Markdown Office/Vorlagen"
   cp "${sets}/probe.typ" "${home}/Documents/Markdown Office/Vorlagen/"
-  (env -u MDO_TEMPLATES HOME="${home}" bash "${build}" "${note}" "${out_dir}/home.pdf" >/dev/null 2>&1) ||
+  (env -u MDO_TEMPLATES HOME="${home}" "${mdo[@]}" "${note}" "${out_dir}/home.pdf" >/dev/null 2>&1) ||
     die "Set aus ~/Documents/Markdown Office/Vorlagen nicht gefunden"
   expect "Benutzerordner" "$(pdf_text "${out_dir}/home.pdf")" "SET-PROBE"
   ok "Set aus ~/Documents/Markdown Office/Vorlagen"
@@ -607,17 +621,17 @@ test_templates() {
   # Relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers.
   mkdir -p "${out_dir}/rel/ordner"
   cp "${sets}/probe.typ" "${out_dir}/rel/ordner/"
-  (cd "${out_dir}/rel" && MDO_TEMPLATES=ordner bash "${build}" "${note}" "${out_dir}/rel.pdf" >/dev/null 2>&1) ||
+  (cd "${out_dir}/rel" && MDO_TEMPLATES=ordner "${mdo[@]}" "${note}" "${out_dir}/rel.pdf" >/dev/null 2>&1) ||
     die "relatives MDO_TEMPLATES: Export fehlgeschlagen"
   expect "relatives MDO_TEMPLATES" "$(pdf_text "${out_dir}/rel.pdf")" "SET-PROBE"
   ok "relatives MDO_TEMPLATES ab Arbeitsordner"
 
   # --template gewinnt über den Frontmatter-Schlüssel; beide Schreibweisen.
-  MDO_TEMPLATES="${sets}" bash "${build}" --template memo "${note}" "${out_dir}/cli.pdf" >/dev/null 2>&1 ||
+  MDO_TEMPLATES="${sets}" "${mdo[@]}" --template memo "${note}" "${out_dir}/cli.pdf" >/dev/null 2>&1 ||
     die "--template memo: Export fehlgeschlagen"
   reject "--template memo" "$(pdf_text "${out_dir}/cli.pdf")" "SET-PROBE"
   printf -- '# Ohne Schlüssel\n' >"${out_dir}/Set Ordner/ohne.md"
-  MDO_TEMPLATES="${sets}" bash "${build}" --template=probe "${out_dir}/Set Ordner/ohne.md" "${out_dir}/cli3.pdf" \
+  MDO_TEMPLATES="${sets}" "${mdo[@]}" --template=probe "${out_dir}/Set Ordner/ohne.md" "${out_dir}/cli3.pdf" \
     >/dev/null 2>&1 || die "--template=probe: Export fehlgeschlagen"
   expect "--template=probe" "$(pdf_text "${out_dir}/cli3.pdf")" "SET-PROBE"
   ok "--template NAME / --template=NAME vor dem Frontmatter"
@@ -630,13 +644,13 @@ test_templates() {
   # Ein eigenes memo im Benutzerordner (Pfad mit Leerzeichen) überschattet das mitgelieferte.
   mkdir -p "${out_dir}/Eigene Vorlagen"
   cp "${sets}/probe.typ" "${out_dir}/Eigene Vorlagen/memo.typ"
-  MDO_TEMPLATES="${out_dir}/Eigene Vorlagen" bash "${build}" "${out_dir}/Set Ordner/ohne.md" "${out_dir}/schatten.pdf" \
+  MDO_TEMPLATES="${out_dir}/Eigene Vorlagen" "${mdo[@]}" "${out_dir}/Set Ordner/ohne.md" "${out_dir}/schatten.pdf" \
     >/dev/null 2>&1 || die "eigenes memo: Export fehlgeschlagen"
   expect "eigenes memo" "$(pdf_text "${out_dir}/schatten.pdf")" "SET-PROBE"
   ok "Benutzerordner vor mitgelieferten Sets"
 
   # Set-Ordner im Benutzerordner: <templates>/<name>/<name>.typ (geklontes Set-Repo).
-  MDO_TEMPLATES="${sets}" bash "${build}" --template folderset "${out_dir}/Set Ordner/ohne.md" \
+  MDO_TEMPLATES="${sets}" "${mdo[@]}" --template folderset "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/folder.pdf" >/dev/null 2>"${out_dir}/folder.err" ||
     die "Set-Ordner: Export fehlgeschlagen: $(cat "${out_dir}/folder.err")"
   expect "Set-Ordner" "$(pdf_text "${out_dir}/folder.pdf")" "SET-FOLDER"
@@ -644,7 +658,7 @@ test_templates() {
   mkdir -p "${out_dir}/Flach/probe"
   cp "${sets}/probe.typ" "${out_dir}/Flach/probe.typ"
   cp "${sets}/folderset/folderset.typ" "${out_dir}/Flach/probe/probe.typ"
-  MDO_TEMPLATES="${out_dir}/Flach" bash "${build}" --template probe "${out_dir}/Set Ordner/ohne.md" \
+  MDO_TEMPLATES="${out_dir}/Flach" "${mdo[@]}" --template probe "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/flach.pdf" >/dev/null 2>&1 || die "flach vor Ordner: Export fehlgeschlagen"
   expect "flach vor Ordner" "$(pdf_text "${out_dir}/flach.pdf")" "SET-PROBE"
   ok "Set-Ordner <name>/<name>.typ im Benutzerordner"
@@ -653,7 +667,7 @@ test_templates() {
   # Shell-Parser lesen nur Schlüssel ganz links (eingerückte Zeilen ändern date/title nicht).
   local fmnote="${out_dir}/Set Ordner/fm.md"
   printf -- '---\ndate: 2026-10-18\nx-to:\n  - Sonnenschein Verlag GmbH\n  - Rosenstraße 5\nx-subject: "Ihre Anfrage"\nx-map:\n  inner: tief\n  title: falsch\n  date: 1999-01-01\n---\n\nText.\n' >"${fmnote}"
-  MDO_TEMPLATES="${sets}" bash "${build}" --template fm "${fmnote}" "${out_dir}/fm.pdf" \
+  MDO_TEMPLATES="${sets}" "${mdo[@]}" --template fm "${fmnote}" "${out_dir}/fm.pdf" \
     >/dev/null 2>"${out_dir}/fm.err" || die "frontmatter(): Export fehlgeschlagen: $(cat "${out_dir}/fm.err")"
   text="$(pdf_text "${out_dir}/fm.pdf")"
   expect "frontmatter()" "${text}" "TO=Sonnenschein Verlag GmbH|Rosenstraße 5" "SUBJ=Ihre Anfrage" \
@@ -663,24 +677,24 @@ test_templates() {
   ok "frontmatter() im Set; eingerückte und x-Zeilen ändern die Pipeline-Werte nicht"
 
   # Offline-Paketablage: @preview/cades (mit jogs) aus vendor/packages, ohne Netz.
-  MDO_TEMPLATES="${sets}" bash "${build}" --template qr "${out_dir}/Set Ordner/ohne.md" "${out_dir}/qr.pdf" \
+  MDO_TEMPLATES="${sets}" "${mdo[@]}" --template qr "${out_dir}/Set Ordner/ohne.md" "${out_dir}/qr.pdf" \
     >/dev/null 2>"${out_dir}/qr.err" || die "QR-Paket: Export fehlgeschlagen: $(cat "${out_dir}/qr.err")"
   expect "QR-Paket" "$(pdf_text "${out_dir}/qr.pdf")" "QR-OK"
   # Nicht mitgeliefertes Paket: Abbruch vor Typst, Exit 1, klare Meldung.
   code=0
-  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template netimport "${out_dir}/Set Ordner/ohne.md" \
+  err="$(MDO_TEMPLATES="${sets}" "${mdo[@]}" --template netimport "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "fremdes Paket liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:1.0.0" <<<"${err}" || die "fremdes Paket: unklare Meldung: ${err}"
   # Fail closed: auch eine ungültige Angabe (Großbuchstaben, Unterstrich) ist ein Paket-Import.
   code=0
-  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template netupper "${out_dir}/Set Ordner/ohne.md" \
+  err="$(MDO_TEMPLATES="${sets}" "${mdo[@]}" --template netupper "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "ungültige Paketangabe liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/Gibts_Nicht:1.0.0" <<<"${err}" || die "ungültige Paketangabe: unklare Meldung: ${err}"
   # Ein Set-Ordner wird ganz geprüft: der Import steht in einer Hilfsdatei des Sets.
   code=0
-  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
+  err="$(MDO_TEMPLATES="${sets}" "${mdo[@]}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "Import in Hilfsdatei liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "Import in Hilfsdatei: unklare Meldung: ${err}"
@@ -692,12 +706,12 @@ test_templates() {
   ln -s "${out_dir}/Repo/linkmain" "${links}/linkmain"
   ln -s "${sets}/nethelper" "${links}/nethelper"
   code=0
-  err="$(MDO_TEMPLATES="${links}" bash "${build}" --template linkmain "${out_dir}/Set Ordner/ohne.md" \
+  err="$(MDO_TEMPLATES="${links}" "${mdo[@]}" --template linkmain "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "verlinkter Set-Ordner liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:3.0.0" <<<"${err}" || die "verlinkter Set-Ordner: unklare Meldung: ${err}"
   code=0
-  err="$(MDO_TEMPLATES="${links}" bash "${build}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
+  err="$(MDO_TEMPLATES="${links}" "${mdo[@]}" --template nethelper "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "verlinkter Set-Ordner mit Hilfsdatei liefert Exit ${code}"
   grep -q "Paket nicht mitgeliefert: @preview/gibtsnicht:2.0.0" <<<"${err}" || die "verlinkter Set-Ordner mit Hilfsdatei: unklare Meldung: ${err}"
@@ -707,7 +721,7 @@ test_templates() {
   printf 'x\n' >"${out_dir}/Unlesbar/unlesbar/helper.typ"
   chmod 000 "${out_dir}/Unlesbar/unlesbar/helper.typ"
   code=0
-  err="$(MDO_TEMPLATES="${out_dir}/Unlesbar" bash "${build}" --template unlesbar "${out_dir}/Set Ordner/ohne.md" \
+  err="$(MDO_TEMPLATES="${out_dir}/Unlesbar" "${mdo[@]}" --template unlesbar "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/net.pdf" 2>&1 >/dev/null)" || code=$?
   chmod 644 "${out_dir}/Unlesbar/unlesbar/helper.typ"
   [[ "${code}" -eq 1 ]] || die "unlesbare Set-Datei liefert Exit ${code}"
@@ -717,7 +731,7 @@ test_templates() {
   local store_before
   store_before="$(ls -R "${MDO_PIPELINE_ROOT}/vendor/packages/")"
   code=0
-  MDO_TEMPLATES="${sets}" bash "${build}" --template netconcat "${out_dir}/Set Ordner/ohne.md" \
+  MDO_TEMPLATES="${sets}" "${mdo[@]}" --template netconcat "${out_dir}/Set Ordner/ohne.md" \
     "${out_dir}/concat.pdf" >/dev/null 2>"${out_dir}/concat.err" || code=$?
   [[ "${code}" -ne 0 ]] || die "verkettete Paketangabe: Build ohne Fehler (Download nicht gesperrt?)"
   [[ ! -e "${out_dir}/concat.pdf" ]] || die "verkettete Paketangabe erzeugt trotzdem ein PDF"
@@ -728,31 +742,31 @@ test_templates() {
   # Einzelne .typ-Datei relativ zur Notiz (Leerzeichen im Namen), Aufruf aus fremdem cwd.
   cp "${sets}/probe.typ" "${out_dir}/Set Ordner/eigene vorlage.typ"
   printf -- '---\ntemplate: ./eigene vorlage.typ\n---\n\n# Pfad\n' >"${out_dir}/Set Ordner/pfad.md"
-  (cd / && bash "${build}" "${out_dir}/Set Ordner/pfad.md" "${out_dir}/pfad.pdf" >/dev/null 2>"${out_dir}/pfad.err") ||
+  (cd / && "${mdo[@]}" "${out_dir}/Set Ordner/pfad.md" "${out_dir}/pfad.pdf" >/dev/null 2>"${out_dir}/pfad.err") ||
     die "Pfad-Vorlage: Export fehlgeschlagen: $(cat "${out_dir}/pfad.err")"
   expect "Pfad-Vorlage" "$(pdf_text "${out_dir}/pfad.pdf")" "SET-PROBE"
   # Mit MDO_BASE_DIR (temporäre Kopie) gilt der Pfad relativ zum Originalordner.
   mkdir -p "${out_dir}/kopie"
   cp "${out_dir}/Set Ordner/pfad.md" "${out_dir}/kopie/pfad.md"
-  MDO_BASE_DIR="${out_dir}/Set Ordner" bash "${build}" "${out_dir}/kopie/pfad.md" "${out_dir}/pfad2.pdf" \
+  MDO_BASE_DIR="${out_dir}/Set Ordner" "${mdo[@]}" "${out_dir}/kopie/pfad.md" "${out_dir}/pfad2.pdf" \
     >/dev/null 2>&1 || die "Pfad-Vorlage mit MDO_BASE_DIR nicht gefunden"
   ok "Vorlage als .typ-Datei relativ zur Notiz / zu MDO_BASE_DIR"
 
   # Fehler: unbekanntes Set und ungültiger Wert -> Exit 1; --template ohne Wert -> Exit 2.
   code=0
-  err="$(MDO_TEMPLATES="${sets}" bash "${build}" --template gibt-es-nicht "${note}" "${out_dir}/set-fehler.pdf" 2>&1 >/dev/null)" || code=$?
+  err="$(MDO_TEMPLATES="${sets}" "${mdo[@]}" --template gibt-es-nicht "${note}" "${out_dir}/set-fehler.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "unbekanntes Set liefert Exit ${code}"
   grep -q "Vorlage nicht gefunden: gibt-es-nicht" <<<"${err}" || die "unbekanntes Set: unklare Meldung: ${err}"
   [[ ! -e "${out_dir}/set-fehler.pdf" ]] || die "unbekanntes Set erzeugt trotzdem ein PDF"
   code=0
-  err="$(bash "${build}" --template ../etwas "${note}" "${out_dir}/set-fehler.pdf" 2>&1 >/dev/null)" || code=$?
+  err="$("${mdo[@]}" --template ../etwas "${note}" "${out_dir}/set-fehler.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "ungültige Vorlage liefert Exit ${code}"
   grep -q "ungültige Vorlage: ../etwas" <<<"${err}" || die "ungültige Vorlage: unklare Meldung: ${err}"
   code=0
-  bash "${build}" --template >/dev/null 2>&1 || code=$?
+  "${mdo[@]}" --template >/dev/null 2>&1 || code=$?
   [[ "${code}" -eq 2 ]] || die "--template ohne Wert liefert Exit ${code}"
-  bash "${build}" --help | quiet_grep -- '--template' || die "--help nennt --template nicht"
-  bash "${build}" --help | quiet_grep -- 'markdown-office --app \[notiz.md' || die "--help nennt --app nicht"
+  "${mdo[@]}" --help | quiet_grep -- '--template' || die "--help nennt --template nicht"
+  "${mdo[@]}" --help | quiet_grep -- 'markdown-office --app \[notiz.md' || die "--help nennt --app nicht"
   ok "Fehlerfälle und --help"
 }
 
@@ -763,7 +777,7 @@ test_profiles() {
   cp "${fixtures}/profiles/testprofil.yaml" "${fixtures}/profiles/sig.svg" "${vorl}/profiles/"
   cp "${sets}/profile.typ" "${vorl}/"
   printf -- '---\ntemplate: profile\nprofile: testprofil\n---\n\nText.\n' >"${pdir}/brief.md"
-  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/brief.md" "${out_dir}/p1.pdf" >/dev/null 2>"${out_dir}/p1.err" ||
+  MDO_TEMPLATES="${vorl}" "${mdo[@]}" "${pdir}/brief.md" "${out_dir}/p1.pdf" >/dev/null 2>"${out_dir}/p1.err" ||
     die "profile: Vorlagen-Ordner: $(cat "${out_dir}/p1.err")"
   text="$(pdf_text "${out_dir}/p1.pdf")"
   expect "profile: Vorlagen-Ordner" "${text}" "NAME=PROFIL-NAME" "SIG-OK"
@@ -771,26 +785,26 @@ test_profiles() {
   # profiles/ neben der Notiz gewinnt.
   sed 's/PROFIL-NAME/NOTIZ-PROFIL/' "${fixtures}/profiles/testprofil.yaml" >"${pdir}/profiles/testprofil.yaml"
   cp "${fixtures}/profiles/sig.svg" "${pdir}/profiles/"
-  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/brief.md" "${out_dir}/p2.pdf" >/dev/null 2>&1 ||
+  MDO_TEMPLATES="${vorl}" "${mdo[@]}" "${pdir}/brief.md" "${out_dir}/p2.pdf" >/dev/null 2>&1 ||
     die "profile: Notizordner: Export fehlgeschlagen"
   expect "profile: Notizordner" "$(pdf_text "${out_dir}/p2.pdf")" "NAME=NOTIZ-PROFIL"
 
   # Als Pfad (relativ zur Notiz, mit ~ und $VAR) statt als Name.
   printf -- '---\ntemplate: profile\nprofile: profiles/testprofil.yaml\n---\n\nText.\n' >"${pdir}/pfad.md"
-  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/pfad.md" "${out_dir}/p3.pdf" >/dev/null 2>&1 ||
+  MDO_TEMPLATES="${vorl}" "${mdo[@]}" "${pdir}/pfad.md" "${out_dir}/p3.pdf" >/dev/null 2>&1 ||
     die "profile: Pfad: Export fehlgeschlagen"
   expect "profile: Pfad" "$(pdf_text "${out_dir}/p3.pdf")" "NAME=NOTIZ-PROFIL"
 
   # Ohne profile: leere Eingabe.
   printf -- '---\ntemplate: profile\n---\n\nText.\n' >"${pdir}/ohne.md"
-  MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/ohne.md" "${out_dir}/p4.pdf" >/dev/null 2>&1 ||
+  MDO_TEMPLATES="${vorl}" "${mdo[@]}" "${pdir}/ohne.md" "${out_dir}/p4.pdf" >/dev/null 2>&1 ||
     die "profile: ohne: Export fehlgeschlagen"
   expect "profile: ohne" "$(pdf_text "${out_dir}/p4.pdf")" "KEIN-PROFIL"
 
   # Tippfehler: Exit 1, klare Meldung mit den gesuchten Ordnern, kein PDF.
   printf -- '---\ntemplate: profile\nprofile: testprofli\n---\n\nText.\n' >"${pdir}/falsch.md"
   code=0
-  err="$(MDO_TEMPLATES="${vorl}" bash "${build}" "${pdir}/falsch.md" "${out_dir}/p5.pdf" 2>&1 >/dev/null)" || code=$?
+  err="$(MDO_TEMPLATES="${vorl}" "${mdo[@]}" "${pdir}/falsch.md" "${out_dir}/p5.pdf" 2>&1 >/dev/null)" || code=$?
   [[ "${code}" -eq 1 ]] || die "profile: Tippfehler liefert Exit ${code}"
   grep -q "Profil nicht gefunden: testprofli" <<<"${err}" || die "profile: unklare Meldung: ${err}"
   grep -q "${vorl}/profiles" <<<"${err}" || die "profile: Meldung nennt den Vorlagen-Ordner nicht: ${err}"
@@ -809,7 +823,7 @@ test_profiles() {
   done
   printf -- '---\ntemplate: profset\nprofile: testprofil\n---\n\nText.\n' >"${sdir}/brief.md"
   for name in SET-PROFIL GEMEINSAM SET-BEISPIEL; do
-    MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" bash "${build}" "${sdir}/brief.md" "${out_dir}/ps.pdf" \
+    MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" "${mdo[@]}" "${sdir}/brief.md" "${out_dir}/ps.pdf" \
       >/dev/null 2>"${out_dir}/ps.err" || die "profile: Set-Profile (${name}): $(cat "${out_dir}/ps.err")"
     expect "profile: Set-Profile (${name})" "$(pdf_text "${out_dir}/ps.pdf")" "NAME=${name}"
     # Nächster Durchlauf: den Ordner, der eben gewann, leeren.
@@ -821,7 +835,7 @@ test_profiles() {
 
   # Nicht gefunden: die Meldung nennt auch <Vorlagen>/<set>/profiles.
   printf -- '---\ntemplate: profset\nprofile: fehlt\n---\n\nText.\n' >"${sdir}/fehlt.md"
-  err="$(MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" bash "${build}" "${sdir}/fehlt.md" "${out_dir}/pf.pdf" 2>&1 >/dev/null)" || true
+  err="$(MDO_SETS_DIR="${bsets}" MDO_TEMPLATES="${svorl}" "${mdo[@]}" "${sdir}/fehlt.md" "${out_dir}/pf.pdf" 2>&1 >/dev/null)" || true
   grep -qF "${svorl}/profset/profiles" <<<"${err}" || die "profile: Meldung nennt die Set-Profile nicht: ${err}"
   ok "profile: <Vorlagen>/<set>/profiles → <Vorlagen>/profiles → Beispiel des Sets"
 }
@@ -863,7 +877,7 @@ test_din5008a() {
     name="${case_%%|*}"
     msg="${case_#*|}"
     code=0
-    err="$(MDO_TEMPLATES="${vorl}" bash "${build}" --template din5008a "${ddir}/${name}.md" \
+    err="$(MDO_TEMPLATES="${vorl}" "${mdo[@]}" --template din5008a "${ddir}/${name}.md" \
       "${out_dir}/din-${name}.pdf" 2>&1 >/dev/null)" || code=$?
     [[ "${code}" -eq 1 ]] || die "din5008a: ${name} liefert Exit ${code}: ${err}"
     grep -qF -- "${msg}" <<<"${err}" || die "din5008a: ${name}: Meldung ohne \"${msg}\": ${err}"
@@ -872,9 +886,146 @@ test_din5008a() {
   ok "din5008a: ohne profile:, x-to mit 7 Zeilen und leeres x-to brechen ab"
 }
 
+# Staging-Ordner: Typst sieht nur die Notiz, die Bilder, die sie sichtbar einbindet, ihr Logo und
+# Profil (mit den Bildern, die das Profil nennt), das Set und die Pipeline-Bausteine. Feindliche
+# Notizen versuchen, eine Datei außerhalb zu lesen (raw-typst, mitex-Durchreichungen, ein Link
+# auf eine Nicht-Bilddatei, gefälschte Probe-Metadaten für ein nicht verlinktes Bild): der Export
+# scheitert dann an Typst oder das PDF enthält nichts davon (Text, Bilder, Anhänge).
+test_sandbox() {
+  local sb="${out_dir}/sandbox" geheim="${out_dir}/geheim" text code pdf
+  mkdir -p "${sb}/notiz" "${sb}/bilder" "${geheim}"
+  printf 'CANARY-GEHEIM\n' >"${geheim}/canary.txt"
+  cp "${fixtures}/logo.png" "${geheim}/canary.png"
+  # Liegt neben der Notiz, ist aber nicht verlinkt: nur gefälschte Probe-Metadaten nennen es.
+  cp "${fixtures}/logo.png" "${sb}/notiz/canary.png"
+
+  # image_count <pdf>: Zahl der eingebetteten Bilder (pdfimages), leer ohne poppler.
+  image_count() {
+    if command -v pdfimages >/dev/null 2>&1; then pdfimages -list "$1" | tail -n +3 | wc -l | tr -d ' '; fi
+  }
+  # hostile <name> <zeile> [optionen…]: Notiz mit der Zeile exportieren; scheitert der Export,
+  # darf kein PDF entstehen, sonst darf das PDF keinen Kanarienvogel enthalten.
+  hostile() {
+    local name="$1" line="$2"
+    shift 2
+    pdf="${out_dir}/sb-${name}.pdf"
+    printf '# Feind\n\n%s\n\nENDE.\n' "${line}" >"${sb}/notiz/${name}.md"
+    code=0
+    (cd "${sb}/notiz" && "${mdo[@]}" "$@" "${name}.md" "${pdf}" >/dev/null 2>"${out_dir}/sb-${name}.err") || code=$?
+    if [[ "${code}" -ne 0 ]]; then
+      [[ ! -e "${pdf}" ]] || die "sandbox ${name}: gescheiterter Export hinterlässt ein PDF"
+      return 0
+    fi
+    text="$(pdf_text "${pdf}")"
+    reject "sandbox ${name}" "${text}" "CANARY-GEHEIM"
+    [[ "$(image_count "${pdf}")" != [1-9]* ]] || die "sandbox ${name}: fremdes Bild im PDF"
+    if command -v mutool >/dev/null 2>&1; then
+      [[ "$(attachments "${pdf}")" == "${name}.md" ]] ||
+        die "sandbox ${name}: fremder Anhang: $(attachments "${pdf}")"
+    fi
+  }
+  local forge_meta forge_use
+  forge_meta='$\text{\label{#metadata("canary.png")<mdo-image>}}$'
+  forge_use='$\text{\label{#(sys.inputs.at("images", default: none),).filter(f => f != none).map(f => image(json(f).at("canary.png"))).join()}}$'
+  hostile raw "<!--raw-typst #read(\"${geheim}/canary.txt\") -->"
+  # Ein eigenes Set mit raw-typst an (probe): die Notiz läuft als Typst-Code, sieht aber nur
+  # den Staging-Ordner.
+  MDO_TEMPLATES="${fixtures}/templates" hostile raw-probe "<!--raw-typst #read(\"${geheim}/canary.txt\") -->" \
+    --template probe
+  MDO_TEMPLATES="${fixtures}/templates" hostile raw-probe-bild \
+    "<!--raw-typst #image(\"${geheim}/canary.png\") -->" --template probe
+  hostile label "\$\\text{\\label{#read(\"${geheim}/canary.txt\")}}\$"
+  hostile graphics "\$\\includegraphics{${geheim}/canary.png}\$"
+  hostile forged "${forge_meta} ${forge_use}"
+  # Ein Link auf eine Nicht-Bilddatei kommt nicht in den Staging-Ordner: Platzhalter statt Abbruch.
+  hostile textlink '![](../../geheim/canary.txt)'
+  [[ "${code}" -eq 0 ]] || die "sandbox textlink: Export fehlgeschlagen: $(cat "${out_dir}/sb-textlink.err")"
+  expect "sandbox textlink" "${text}" "[Bild fehlt: ../../geheim/canary.txt]"
+  ok "sandbox: raw-typst, mitex (\\label, \\includegraphics), Nicht-Bild-Link, gefälschte Probe lesen nichts"
+
+  # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.
+  cp "${fixtures}/bilder/screenshot.png" "${sb}/bilder/aussen.png"
+  printf '# Außen\n\n![](../bilder/aussen.png)\n\nENDE.\n' >"${sb}/notiz/aussen.md"
+  (cd "${sb}/notiz" && "${mdo[@]}" aussen.md "${out_dir}/sb-aussen.pdf" >/dev/null 2>"${out_dir}/sb-aussen.err") ||
+    die "sandbox aussen: Export fehlgeschlagen: $(cat "${out_dir}/sb-aussen.err")"
+  text="$(pdf_text "${out_dir}/sb-aussen.pdf")"
+  reject "sandbox aussen" "${text}" "Bild fehlt"
+  [[ "$(image_count "${out_dir}/sb-aussen.pdf")" != 0 ]] || die "sandbox aussen: Bild fehlt im PDF"
+  ok "sandbox: Bild außerhalb des Notizordners, sichtbar verlinkt, erscheint"
+
+  # Seitenumbruch alter Form: ein Set ohne mdo-pagebreak (probe, raw-typst an) bricht weiter um.
+  printf '# Eins\n\n\\newpage\n\n# Zwei\n' >"${sb}/notiz/umbruch.md"
+  (cd "${sb}/notiz" && MDO_TEMPLATES="${fixtures}/templates" "${mdo[@]}" --template probe umbruch.md \
+    "${out_dir}/sb-umbruch.pdf" >/dev/null 2>"${out_dir}/sb-umbruch.err") ||
+    die "sandbox umbruch: Export fehlgeschlagen: $(cat "${out_dir}/sb-umbruch.err")"
+  pdfinfo "${out_dir}/sb-umbruch.pdf" | quiet_grep '^Pages: *2$' ||
+    die "sandbox umbruch: Set ohne mdo-pagebreak verliert den Seitenumbruch"
+  ok "sandbox: Seitenumbruch für ein Set ohne mdo-pagebreak (raw-typst-Form)"
+
+  # build.sh allein (ohne Manifest des Wrappers) exportiert nicht.
+  code=0
+  text="$(cd "${sb}/notiz" && env -u MDO_MANIFEST bash "${build}" aussen.md "${out_dir}/sb-direkt.pdf" 2>&1 >/dev/null)" ||
+    code=$?
+  [[ "${code}" -eq 1 ]] || die "build.sh ohne Manifest: Exit ${code}"
+  grep -q "markdown-office" <<<"${text}" || die "build.sh ohne Manifest: unklare Meldung: ${text}"
+  [[ ! -e "${out_dir}/sb-direkt.pdf" ]] || die "build.sh ohne Manifest erzeugt ein PDF"
+  ok "build.sh ohne MDO_MANIFEST: Exit 1 mit Hinweis auf markdown-office"
+
+  # din5008a: Profil in einem gemeinsamen profiles/-Ordner neben einem anderen Profil. Nur das
+  # eigene Profil und die Unterschrift, die es nennt, liegen im Staging-Ordner (/profile/…).
+  local vorl="${MDO_TEMPLATES}"
+  if [[ -n "${MDO_DIN5008A_DIR:-}" ]]; then
+    vorl="${out_dir}/sb-vorlagen"
+    mkdir -p "${vorl}"
+    ln -s "$(cd "${MDO_DIN5008A_DIR}" && pwd)" "${vorl}/din5008a"
+  elif [[ ! -f "${MDO_SETS_DIR}/din5008a/din5008a.typ" ]]; then
+    printf 'skip sandbox din5008a (kein Set din5008a; MDO_DIN5008A_DIR setzen)\n'
+    vorl=""
+  fi
+  if [[ -n "${vorl}" ]]; then
+    local user="${sb}/user"
+    mkdir -p "${user}/profiles"
+    { printf '# KANZLEI-MARKE\n'; cat "${fixtures}/profiles/din-ohne-qr.yaml"; printf 'signature: kanzlei-sig.svg\n'; } \
+      >"${user}/profiles/kanzlei.yaml"
+    cp "${fixtures}/profiles/din-unterschrift.svg" "${user}/profiles/kanzlei-sig.svg"
+    printf '# OTHER-MARKE\nname: Other\nsignature: other-sig.svg\n' >"${user}/profiles/other.yaml"
+    printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text>OTHER-SIG</text></svg>\n' \
+      >"${user}/profiles/other-sig.svg"
+    din_note() {
+      printf -- '---\ntemplate: din5008a\nprofile: kanzlei\nx-to:\n  - Empfänger\n---\n\nText %s\n' "$2" \
+        >"${user}/$1.md"
+      code=0
+      (cd "${user}" && MDO_TEMPLATES="${vorl}" "${mdo[@]}" "$1.md" "${out_dir}/sb-$1.pdf" \
+        >/dev/null 2>"${out_dir}/sb-$1.err") || code=$?
+    }
+    # Gegenprobe: das eigene Profil liegt unter /profile/ und ist lesbar.
+    din_note eigen '$\text{\label{#read("/profile/kanzlei.yaml")}}$'
+    [[ "${code}" -eq 0 ]] || die "sandbox din5008a: Export fehlgeschlagen: $(cat "${out_dir}/sb-eigen.err")"
+    expect "sandbox din5008a eigen" "$(pdf_text "${out_dir}/sb-eigen.pdf")" "KANZLEI-MARKE" "Thomas Kirchner"
+    local f
+    for f in other.yaml other-sig.svg; do
+      din_note fremd "\$\\text{\\label{#read(\"/profile/${f}\")}}\$"
+      if [[ "${code}" -eq 0 ]]; then
+        reject "sandbox din5008a ${f}" "$(pdf_text "${out_dir}/sb-fremd.pdf")" "OTHER-MARKE" "OTHER-SIG"
+      fi
+    done
+    ok "sandbox din5008a: nur das eigene Profil und seine Unterschrift aus profiles/"
+  fi
+
+  # Kein Staging-Ordner bleibt zurück, weder nach Erfolg noch nach gescheitertem Export.
+  local left
+  left="$(find "${TMPDIR}" -maxdepth 1 -name 'mdo-stage-*')"
+  [[ -z "${left}" ]] || die "Staging-Ordner zurückgeblieben: ${left}"
+  ok "sandbox: keine mdo-stage-* nach Erfolg und Fehlschlag"
+}
+
+test_sandbox
 test_fixtures
 test_interface
 test_templates
 test_profiles
 test_din5008a
+# Kein Export (Erfolg wie Fehlschlag) hinterlässt einen Staging-Ordner.
+left="$(find "${TMPDIR}" -maxdepth 1 -name 'mdo-stage-*')"
+[[ -z "${left}" ]] || die "Staging-Ordner zurückgeblieben: ${left}"
 printf 'Alle Tests bestanden.\n'

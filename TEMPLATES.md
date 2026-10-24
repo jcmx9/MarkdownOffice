@@ -111,6 +111,7 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `docdir` | Base folder for relative image paths: `MDO_BASE_DIR` or the source's folder | absolute path | always set |
 | `mdo` | Pipeline folder containing `lib/` and `vendor/` | absolute path | always set |
 | `version` | Markdown Office version (`MDO_VERSION`) | e.g. `26.10.0` | `dev` |
+| `pagebreak` | Form of the page break `preprocess` emits: `html` only for a set whose `.typ` mentions `mdo-pagebreak` (see §5) | `html` | absent (= raw-typst form) |
 | `probe` | Set only in the probe run (§5.1) | `true` | absent |
 | `images` | Set only in the real build: JSON file mapping each raw image source to a resolved absolute path, `""` when the file is missing | path to a JSON object | absent |
 
@@ -159,7 +160,7 @@ The template must render the body as:
 
 | Markdown | Becomes | The set must |
 |----------|---------|--------------|
-| `<!-- pagebreak -->`, `\newpage`, `\pagebreak`, `\clearpage` alone on a line | `<!--raw-typst #pagebreak(weak: true) -->` | nothing (cmarker runs it; keep `raw-typst` enabled, the default) |
+| `<!-- pagebreak -->`, `\newpage`, `\pagebreak`, `\clearpage` alone on a line | with input `pagebreak=html`: `<mdo-pagebreak></mdo-pagebreak>`; otherwise `<!--raw-typst #pagebreak(weak: true) -->` | `html: (mdo-pagebreak: (attrs, body) => pagebreak(weak: true))` with `raw-typst: false`; a set that never names `mdo-pagebreak` gets the raw-typst form (cmarker runs it while `raw-typst` is enabled, the default) |
 | `"…"`, `'…'`, `geht's`, `--`, `---`, `...` | `„…“`/`‚…‘` (lang `de*`) or `“…”`/`‘…’`, `’`, `–`, `—`, `…` | pass `smart-punctuation: false` (otherwise cmarker re-quotes) |
 | `> [!NOTE]` … (also `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`, German `INFO`, `TIPP`, `WICHTIG`, `HINWEIS`, `ACHTUNG`) | `<mdo-alert kind="note\|tip\|important\|warning\|caution">` + Markdown body + `</mdo-alert>` | handle `mdo-alert` |
 | A list made **only** of tasks `- [ ] Task – Owner, bis Date` | `<mdo-tasks>` with one `<mdo-task done="true\|false" owner="…" due="…">` + Markdown body per item | handle `mdo-tasks` and `mdo-task` |

@@ -50,7 +50,8 @@ out_dir="$(mktemp -d)"
 cleanup() { rm -rf "${out_dir}"; }
 trap cleanup EXIT
 
-# Root / like build.sh: math.typ imports cmarker and mitex by absolute path from the pipeline root.
+# Root /: math.typ imports cmarker and mitex by absolute path from the pipeline root (only the export
+# itself runs in a staging root).
 "${typst}" eval 'query(metadata).map(m => m.value)' --in "${test_dir}/math.typ" --root / \
   --input "mdo=${MDO_PIPELINE_ROOT}" --input "note=${note}" >"${out_dir}/typst.json"
 # build.sh's font flags (`--font-path <root>/fonts --ignore-system-fonts`).
@@ -78,8 +79,9 @@ node "${node_flags[@]}" "${test_dir}/math-core.mts" "${MDO_PIPELINE_ROOT}" "${no
 if command -v pdffonts >/dev/null 2>&1; then
   mkdir -p "${out_dir}/templates"
   cp "${note}" "${out_dir}/math.md"
+  # Through markdown-office like a user (cli.js writes the manifest build.sh needs).
   MDO_NO_OPEN=1 MDO_TEMPLATES="${out_dir}/templates" \
-    bash "${MDO_PIPELINE_ROOT}/build.sh" "${out_dir}/math.md" "${out_dir}/math.pdf" >/dev/null
+    node "${MDO_PIPELINE_ROOT}/cli.js" "${out_dir}/math.md" "${out_dir}/math.pdf" >/dev/null
   fonts="$(pdffonts "${out_dir}/math.pdf")"
   if ! grep -q 'NewCMMath' <<<"${fonts}"; then
     printf 'FEHLER: das PDF setzt Formeln nicht in New Computer Modern Math:\n%s\n' "${fonts}" >&2
