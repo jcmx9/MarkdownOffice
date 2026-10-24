@@ -187,7 +187,8 @@ export function breakPoints(text: string, opts: BreakOptions): BreakPoint[] {
     // Hyphenate the alphabetic word segments between the last and this break (fn `hyphenations`).
     // Typst also drops hyphen points after a GL/WJ/ZWJ char; none of those is alphabetic, so that
     // filter never fires here. Typst's special case for a combining mark before U+FFFC (inline
-    // objects) is not ported either: the display string has no object replacement chars.
+    // objects) is not ported either: U+FFFC stands only for an inline formula here
+    // (paragraphs.ts), and a combining mark directly before a formula is not worth the port.
     if (hyph && last < point) {
       for (const { segment, index } of words.segment(text.slice(last, point))) {
         if (!ALPHABETIC.test(segment)) continue

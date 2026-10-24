@@ -130,6 +130,13 @@ jobs:
         if: runner.os != 'Windows'
         run: bash pipeline/tests/test-mermaid.sh
 
+      # The preview's formulas: the editor finds the formulas cmarker finds, the app's batch
+      # program (MathRenderer) sets them exactly as the PDF's toolchain does, against committed
+      # hashes, and set memo's PDF uses New Computer Modern Math (pdffonts, installed above).
+      - name: Formula parity (preview against the PDF)
+        if: runner.os != 'Windows'
+        run: bash pipeline/tests/test-math.sh
+
       # The reference PDFs were extracted with Homebrew's poppler on macOS; other poppler builds
       # lay text out slightly differently.
       - name: Pipeline equivalence (set memo against the references)

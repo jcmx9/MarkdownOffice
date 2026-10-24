@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import type { Line } from '@codemirror/state'
-import { Compartment, EditorState } from '@codemirror/state'
+import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ParagraphInput, SetLine } from '../../../src/core/paragraph/linebreak'
 import { setParagraph } from '../../../src/core/paragraph/linebreak'
 import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
 import { requestTrie } from '../../../src/renderer/editor/hyphenation-tries'
+import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
+import { createMath } from '../../../src/renderer/editor/math'
 import { presentMode } from '../../../src/renderer/editor/mode'
 import type { ParagraphSettings } from '../../../src/renderer/editor/paragraph-settings'
 import {
@@ -24,6 +26,7 @@ import { previewPlugin } from '../../../src/renderer/editor/preview'
 import { previewView } from '../../../src/renderer/editor/rendered'
 import { typoMask } from '../../../src/renderer/editor/typo-mask'
 import { SET_ATTR, SetStyles } from '../../../src/renderer/ui/set-styles'
+import { okEntry, stubService } from './math-stub'
 import { parsed } from './parsed'
 
 /** Every display character (widget text too) is 10 px wide in the fake layout. */
@@ -95,6 +98,9 @@ function make(
     settings?: ParagraphSettings
     measurer?: LineMeasurer
     extra?: ParagraphsOptions
+    /** The Markdown language (default: lang-markdown with front matter) and more extensions. */
+    lang?: Extension
+    extensions?: Extension[]
   } = {},
 ): Made {
   let calls = 0
@@ -116,10 +122,11 @@ function make(
       doc,
       selection: { anchor: o.anchor ?? head, head },
       extensions: [
-        markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+        o.lang ?? markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
         previewView.of(true),
         typoMask,
         previewPlugin,
+        ...(o.extensions ?? []),
         plugin,
         EditorView.lineWrapping,
       ],
@@ -696,6 +703,142 @@ describe('paragraphs set like Typst', () => {
     await settle(m.view)
     const quote = '- [ ] aaa bbb ccc ddd\n\n'.length
     expect(breaks(m.decos())).toEqual(['break@14', `break@${quote + 10}`])
+  })
+})
+
+describe('inline formulas in set paragraphs', () => {
+  /** A 3 em formula at the fake layout's 10 px em: 30 px, as wide as three display chars. */
+  const FORMULA = okEntry('mdo-mxT', 3, 0.8, 0.1)
+  const OBJ = '￼'
+
+  function makeMath(
+    doc: string,
+    service = stubService({ 'I:x': FORMULA }),
+    measurer?: LineMeasurer,
+  ) {
+    return make(doc, {
+      lang: mdoMarkdown(),
+      extensions: [createMath({ service }).extension],
+      measurer: measurer ?? fakeMeasurer({ first: 75 }),
+    })
+  }
+
+  it('walks a formula widget as one object char outside the note', async () => {
+    const doc = 'aaa $x$ bbb\n\nende'
+    const m = makeMath(doc)
+    await settle(m.view)
+    const el = lineElement(m.view, m.view.state.doc.line(1))
+    expect(el?.querySelector('.mdo-math-inline svg')).not.toBeNull()
+    const walk = walkLine(m.view, el as HTMLElement)
+    expect(walk.text).toBe(`aaa ${OBJ} bbb`)
+    expect(walk.docPos[4]).toBe(-1)
+    expect(walk.docPos[5]).toBe(doc.indexOf(' bbb'))
+  })
+
+  it('never breaks inside a formula; a break before it falls at its start', async () => {
+    // 'aaa bbb' fills the 75 px line (the fake layout gives the object char one advance).
+    const doc = 'aaa bbb $x$ ccc\n\nende'
+    const inputs: ParagraphInput[] = []
+    const m = make(doc, {
+      lang: mdoMarkdown(),
+      extensions: [createMath({ service: stubService({ 'I:x': FORMULA }) }).extension],
+      extra: {
+        setParagraph: (p) => {
+          inputs.push(p)
+          return setParagraph(p)
+        },
+      },
+    })
+    await settle(m.view)
+    const input = inputs.at(-1)
+    const obj = input?.text.indexOf(OBJ) ?? -1
+    expect(obj).toBeGreaterThan(0)
+    // The engine's break opportunities (display index where the next line starts): before the
+    // object char (after the space), never right after it (glued to the formula's end), and
+    // the formula is one char, so nothing in its source can be one.
+    const at = input?.breaks.map((b) => b.index) ?? []
+    expect(at).toContain(obj)
+    expect(at).not.toContain(obj + 1)
+    // The break taken lands at the formula's start in the doc.
+    const from = doc.indexOf('$x$')
+    expect(breaks(m.decos()).map((s) => Number(s.split('@')[1]))).toContain(from)
+  })
+
+  it('a formula settling (pending -> shown) sets its line again', async () => {
+    const service = stubService()
+    const doc = 'aaa $x$ bbb ccc ddd\n\nende'
+    const m = makeMath(doc, service)
+    await settle(m.view)
+    const before = m.calls()
+    expect(m.decos()).toContain('line@0')
+    service.entries.set('I:x', FORMULA)
+    service.emit()
+    await settle(m.view)
+    // The pending source was set with its own widths; the widget has others.
+    expect(m.calls()).toBe(before + 1)
+    expect(m.decos()).toContain('line@0')
+  })
+
+  it('domMeasurer advances x by the formula widget’s rendered width', async () => {
+    const doc = 'aa $x$ bb\n\nende'
+    const m = makeMath(doc)
+    await settle(m.view)
+    const line = m.view.state.doc.line(1)
+    const W = 30
+    /** x of a DOM position in its line: ADV per char, W per formula widget. */
+    function xAt(node: Node, offset: number): number {
+      const el = (node.nodeType === 1 ? (node as Element) : node.parentElement)?.closest('.cm-line')
+      if (!el) return 0
+      let x = 0
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (n === node) return x + offset * ADV
+        if (n.nodeType === 1 && (n as Element).classList.contains('mdo-math-inline')) {
+          if ((n as Element).contains(node)) return x
+          x += W
+        } else if (n.nodeType === 3 && !n.parentElement?.closest('.mdo-math-inline')) {
+          x += (n as Text).data.length * ADV
+        }
+      }
+      return x
+    }
+    const rect = (left: number, width: number) =>
+      ({
+        left,
+        right: left + width,
+        width,
+        top: 0,
+        bottom: 10,
+        height: 10,
+        x: left,
+        y: 0,
+      }) as DOMRect
+    const ranges = vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Range,
+    ) {
+      const a = xAt(this.startContainer, this.startOffset)
+      const b = xAt(this.endContainer, this.endOffset)
+      return rect(a, b - a)
+    })
+    const els = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this.classList.contains('mdo-math-inline')) return rect(xAt(this, 0), W)
+      return rect(0, this.textContent === '-' ? 4 : 800)
+    })
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
+    try {
+      const measured = domMeasurer().measure(m.view, line)
+      expect(measured).not.toBeNull()
+      if (!measured) return
+      expect(measured.text).toBe(`aa ${OBJ} bb`)
+      expect(measured.docPos[3]).toBe(-1)
+      expect([...measured.x]).toEqual([0, 10, 20, 30, 30 + W, 40 + W, 50 + W, 60 + W])
+    } finally {
+      ranges.mockRestore()
+      els.mockRestore()
+      width.mockRestore()
+    }
   })
 })
 

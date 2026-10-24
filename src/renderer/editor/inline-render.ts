@@ -1,6 +1,13 @@
 import { markdownLanguage } from '@codemirror/lang-markdown'
 import type { SyntaxNode } from '@lezer/common'
+import type { MarkdownParser } from '@lezer/markdown'
+import type { MathItem } from '../../core/math'
 import { isRealLink } from './link-refs'
+import { MathSyntax } from './math-syntax'
+
+// The editor's own inline rules for a cell parsed on its own, formulas included: `$a*b*c$` in a
+// cell is a formula as in the PDF, never emphasis.
+const cellParser = (markdownLanguage.parser as MarkdownParser).configure([MathSyntax])
 
 const ELEMENTS: Record<string, [tag: string, cls: string]> = {
   StrongEmphasis: ['strong', 'mdo-strong'],
@@ -45,14 +52,18 @@ function appendArrow(into: HTMLElement): void {
  * `labels` are the normalised reference labels of the whole document (`referenceLabels`):
  * a cell is parsed on its own and cannot see the definitions. A `[…]` that is no real link
  * (the citation `[21]`) keeps its brackets as text, as in the PDF.
+ *
+ * `formula` draws a `$…$` / `$$…$$` (the table widget passes the formula service's element);
+ * without it the formula stays its source text.
  */
 export function renderInline(
   text: string,
   parent: HTMLElement,
   labels: ReadonlySet<string> = new Set(),
+  formula?: (item: MathItem, source: string) => Node,
 ): void {
   const doc = parent.ownerDocument
-  const tree = markdownLanguage.parser.parse(text)
+  const tree = cellParser.parse(text)
   const slice = (from: number, to: number) => text.slice(from, to)
   // `literal`: node is a `Link` that is no real link, so its brackets and label stay text.
   const walk = (
@@ -70,6 +81,21 @@ export function renderInline(
         walk(c, c.from, c.to, into, true)
         pos = c.to
         continue
+      }
+      // A cell that is only `$$…$$` parses as a BlockMath on its own; in a table it is an
+      // inline formula in display style like any other (Typst keeps it in the cell).
+      if ((c.name === 'InlineMath' || c.name === 'BlockMath') && formula) {
+        const marks = c.getChildren('MathMark')
+        const open = marks[0]
+        const close = marks[1]
+        if (open && close) {
+          // The cell text comes from splitRow, which already turned every `\|` into `|` as
+          // GFM does (the table field asks with unescapeCellPipes over the raw source: same tex).
+          const item = { tex: text.slice(open.to, close.from), display: open.to - open.from === 2 }
+          into.append(formula(item, text.slice(c.from, c.to)))
+          pos = c.to
+          continue
+        }
       }
       if (literal && (c.name === 'LinkMark' || c.name === 'LinkLabel')) {
         into.append(text.slice(c.from, c.to))
