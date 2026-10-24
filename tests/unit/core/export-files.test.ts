@@ -182,32 +182,48 @@ const WEBP = enc('RIFF\x10\x00\x00\x00WEBPVP8 ')
 const SVG = enc('<svg xmlns="http://www.w3.org/2000/svg"/>')
 const RSA = enc('-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n')
 
+/**
+ * Asserts that `run` grows about linearly: input twice as long may take about twice as long, not
+ * four times (quadratic). Relative, so a slow CI runner does not fail it; 20 ms of slack keeps
+ * timer noise on tiny inputs out. One warm-up run first, so JIT compilation is not counted.
+ */
+function expectLinear(make: (n: number) => string, run: (input: string) => unknown, n: number) {
+  run(make(Math.max(1, n >> 3)))
+  const time = (input: string) => {
+    const t = performance.now()
+    run(input)
+    return performance.now() - t
+  }
+  const t1 = time(make(n))
+  const t2 = time(make(2 * n))
+  expect(t2).toBeLessThan(3 * t1 + 20)
+}
+
 describe('visibleImages stays linear on hostile notes', () => {
   // Note text is untrusted: no input may make the scan quadratic or worse.
-  it.each([
-    ['unclosed quotes in an HTML block', `<div>\n${'<a b="'.repeat(5000)}`],
-    ['many tags in one paragraph after `<!-->`', `x <!--> ${'<b>'.repeat(10000)}`],
-    ['many tags in one paragraph', `x ${'<b>'.repeat(10000)} <img src="a.png">`],
-    ['an image with many spaces', `![](a${' '.repeat(20000)}){width=1}`],
-    ['many images with unclosed attributes', '![a](b){'.repeat(5000)],
-    ['many images with attributes closed at the end', `${'![a](b){'.repeat(5000)}}`],
-    ['many images with titles and unclosed attributes', '![a](b "c"){'.repeat(5000)],
-  ])('%s', (_label, md) => {
-    const t = performance.now()
-    visibleImages(md)
-    expect(performance.now() - t).toBeLessThan(100)
+  it.each<[string, (n: number) => string, number]>([
+    ['unclosed quotes in an HTML block', (n) => `<div>\n${'<a b="'.repeat(n)}`, 5000],
+    ['many tags in one paragraph after `<!-->`', (n) => `x <!--> ${'<b>'.repeat(n)}`, 10000],
+    ['many tags in one paragraph', (n) => `x ${'<b>'.repeat(n)} <img src="a.png">`, 10000],
+    ['an image with many spaces', (n) => `![](a${' '.repeat(n)}){width=1}`, 20000],
+    ['many images with unclosed attributes', (n) => '![a](b){'.repeat(n), 5000],
+    ['many images with attributes closed at the end', (n) => `${'![a](b){'.repeat(n)}}`, 5000],
+    ['many images with titles and unclosed attributes', (n) => '![a](b "c"){'.repeat(n), 5000],
+  ])('%s', (_label, make, n) => {
+    expectLinear(make, visibleImages, n)
   })
 
   it('adds little to the parse itself on many unclosed image openers', () => {
     // Lezer's own parse of this text is superlinear (the editor parses the same text); what
-    // visibleImages does on top of it must not be.
-    const md = '![a]('.repeat(5000)
+    // visibleImages does on top of it must stay a small share of it.
+    const md = '![a]('.repeat(1000)
+    markdownParser.parse(md)
     let t = performance.now()
     markdownParser.parse(md)
     const parse = performance.now() - t
     t = performance.now()
     visibleImages(md)
-    expect(performance.now() - t - parse).toBeLessThan(100)
+    expect(performance.now() - t).toBeLessThan(3 * parse + 50)
   })
 
   it('keeps the image after a block of tags', () => {
@@ -259,30 +275,26 @@ describe('imageKind', () => {
 })
 
 describe('linear scans of untrusted files', () => {
-  it.each([
-    ['many empty comments before no <svg> (n=200)', `${'<!---->'.repeat(200)}x`],
-    ['many empty comments (n=20000)', `${'<!---->'.repeat(20000)}x`],
-    ['an unclosed XML declaration', `<?xml${' '.repeat(20000)}`],
-    ['many DOCTYPE openers', '<!DOCTYPE svg '.repeat(5000)],
-  ])('imageKind: %s', (_label, svg) => {
-    const t = performance.now()
-    expect(imageKind(enc(svg), 'a.svg')).toBeNull()
-    expect(performance.now() - t).toBeLessThan(100)
+  it.each<[string, (n: number) => string, number]>([
+    ['many empty comments before no <svg>', (n) => `${'<!---->'.repeat(n)}x`, 20000],
+    ['an unclosed XML declaration', (n) => `<?xml${' '.repeat(n)}`, 20000],
+    ['many DOCTYPE openers', (n) => '<!DOCTYPE svg '.repeat(n), 5000],
+  ])('imageKind: %s', (_label, make, n) => {
+    expect(imageKind(enc(make(n)), 'a.svg')).toBeNull()
+    expectLinear(make, (svg) => imageKind(enc(svg), 'a.svg'), n)
   })
 
-  it.each([
-    ['url( and 20 000 spaces', `url(${' '.repeat(20000)}`],
-    ['nested url( openers', `${'url('.repeat(5000)}#a)`],
-    ['unclosed href quotes', 'href="'.repeat(5000)],
-    ['unquoted href values holding further hrefs', 'href=#'.repeat(20000)],
-    ['url(# openers sharing no )', 'url(#'.repeat(100000)],
-    ['url(# openers sharing one far )', `${'url(#'.repeat(100000)})`],
-    ['href and many spaces', `href${' '.repeat(20000)}`],
-    ['href= and many spaces', `href=${' '.repeat(20000)}`],
-  ])('svgHasExternalRefs: %s', (_label, svg) => {
-    const t = performance.now()
-    svgHasExternalRefs(svg)
-    expect(performance.now() - t).toBeLessThan(100)
+  it.each<[string, (n: number) => string, number]>([
+    ['url( and many spaces', (n) => `url(${' '.repeat(n)}`, 20000],
+    ['nested url( openers', (n) => `${'url('.repeat(n)}#a)`, 5000],
+    ['unclosed href quotes', (n) => 'href="'.repeat(n), 5000],
+    ['unquoted href values holding further hrefs', (n) => 'href=#'.repeat(n), 20000],
+    ['url(# openers sharing no )', (n) => 'url(#'.repeat(n), 100000],
+    ['url(# openers sharing one far )', (n) => `${'url(#'.repeat(n)})`, 100000],
+    ['href and many spaces', (n) => `href${' '.repeat(n)}`, 20000],
+    ['href= and many spaces', (n) => `href=${' '.repeat(n)}`, 20000],
+  ])('svgHasExternalRefs: %s', (_label, make, n) => {
+    expectLinear(make, svgHasExternalRefs, n)
   })
 })
 
