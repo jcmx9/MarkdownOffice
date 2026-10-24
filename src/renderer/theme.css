@@ -631,6 +631,43 @@
   padding: 0.3em 0 0.6em;
 }
 
+/* Formulas (math.ts), set by the bundled Typst + mitex as in the PDF. The SVG's glyphs fill with
+   currentColor, so a formula takes the colour of its context; its size is em of that context.
+   Inline: on the text baseline (math.ts lowers the SVG by the formula's depth); Typst never
+   breaks inside it in the preview. */
+.mdo-preview .mdo-math-inline svg {
+  display: inline;
+  overflow: visible;
+}
+/* Display formula (cursor elsewhere): centred like Typst's block equation. Typst puts
+   par.spacing above and below it, the same gap as between two paragraphs (measured in memo's
+   PDF and with par(spacing: 2em): the gap follows par.spacing). Here the blank lines around the
+   $$ block already carry that gap (--mdo-par-gap), as between paragraphs; what the widget lacks
+   against a text line is the line box around the glyphs: half the leading above and below,
+   (line pitch - cap height) / 2 = (15.08pt - 6.58pt) / 2 = 0.425em at memo's 10pt. Side insets
+   as a .cm-line; a formula wider than the text scrolls instead of shrinking (Typst overflows). */
+.mdo-preview .mdo-math {
+  padding: 0.425em calc(2px + var(--mdo-space-advance, 0.2em)) 0.425em 6px;
+  text-align: center;
+  overflow-x: auto;
+  cursor: text;
+}
+.mdo-preview .mdo-math svg {
+  display: inline-block;
+  vertical-align: top;
+  overflow: visible;
+}
+/* Until the formula is set (first sight): its source in the muted mark colour, no placeholder */
+.mdo-preview .mdo-math-pending {
+  color: var(--mdo-faint);
+}
+/* A formula the PDF cannot build: source kept, wavy underline, the reason as tooltip */
+.mdo-preview .mdo-math-error {
+  text-decoration: underline wavy var(--danger, #a4262c);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2pt;
+}
+
 /* Code blocks: 9pt code font on light grey, Typst syntax colours */
 .mdo-preview .cm-line:is(.mdo-codeblock, .mdo-codefence) {
   font-family: var(--mdo-font-code);

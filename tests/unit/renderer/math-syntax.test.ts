@@ -5,7 +5,7 @@ import type { SyntaxNode, Tree } from '@lezer/common'
 import { describe, expect, it } from 'vitest'
 import { renderInline } from '../../../src/renderer/editor/inline-render'
 import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
-import { mathTex } from '../../../src/renderer/editor/math-syntax'
+import { mathTex, unescapeCellPipes } from '../../../src/renderer/editor/math-syntax'
 import { buildPreview } from '../../../src/renderer/editor/preview'
 import { createState } from '../../../src/renderer/editor/setup'
 import {
@@ -121,6 +121,14 @@ describe('table cells (renderInline)', () => {
   it('the editor tree sees formulas in table cells too', () => {
     const names = nodes(parser.parse('| a |\n|---|\n| $x$ |'), ['InlineMath'])
     expect(names).toEqual(['InlineMath 14-17'])
+  })
+  it.each([
+    ['|x|', '|x|'],
+    ['\\|x\\|', '|x|'],
+    ['a \\\\\\| b', 'a \\\\| b'],
+    ['\\{x\\}', '\\{x\\}'],
+  ])('a cell formula’s \\| is GFM’s escaped pipe: %s → %s', (cell, tex) => {
+    expect(unescapeCellPipes(cell)).toBe(tex)
   })
 })
 

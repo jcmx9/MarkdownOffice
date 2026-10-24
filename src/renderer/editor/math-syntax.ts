@@ -119,3 +119,12 @@ export function mathTex(state: EditorState, node: SyntaxNode): string {
   }
   return tex + state.doc.sliceString(pos, close.from)
 }
+
+/**
+ * A formula's TeX as the PDF gets it from a GFM table cell: the table splits the row first and
+ * every `\|` in a cell is an escaped pipe, inside formulas too (cmark-gfm's unescape_pipes:
+ * the backslash before a `|` goes, every other backslash stays). For table cells only.
+ */
+export function unescapeCellPipes(tex: string): string {
+  return tex.replace(/\\\|/g, '|')
+}
