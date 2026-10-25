@@ -245,8 +245,11 @@ export class Toolbar {
     this.syncTablePopupKind()
   }
 
+  // In a table the button opens a real menu. The size picker is a labelled group, which no
+  // aria-haspopup value names (`grid` would promise a grid role), so it only has aria-expanded.
   private syncTablePopupKind(): void {
-    this.tableButton.setAttribute('aria-haspopup', this.state.table.inTable ? 'menu' : 'grid')
+    if (this.state.table.inTable) this.tableButton.setAttribute('aria-haspopup', 'menu')
+    else this.tableButton.removeAttribute('aria-haspopup')
   }
 
   private toggleTable(): void {
@@ -355,9 +358,12 @@ export class Toolbar {
     this.close()
     const restore = document.activeElement
     el.classList.add('mdo-fmt-popup')
-    // Under its button; #toolbar is the positioned parent (styles.css).
-    el.style.left = `${opener.offsetLeft}px`
     this.el.append(el)
+    // Under its button; #toolbar is the positioned parent (styles.css). The row does not wrap,
+    // so on a narrow window a button near the right edge would push its popup out of view:
+    // the left edge is clamped so the popup ends inside the window, but never left of the bar.
+    const room = window.innerWidth - this.el.getBoundingClientRect().left - el.offsetWidth - 4
+    el.style.left = `${Math.max(0, Math.min(opener.offsetLeft, room))}px`
     opener.setAttribute('aria-expanded', 'true')
     this.popup = { el, opener, restore }
     document.addEventListener('mousedown', this.outside, true)
@@ -372,7 +378,10 @@ export class Toolbar {
     const hadFocus = p.el.contains(document.activeElement)
     p.el.remove()
     p.opener.setAttribute('aria-expanded', 'false')
-    // Only when the popup held focus: an outside click already put focus where the user clicked.
+    // Only when the popup held focus (Esc, Tab, an entry chosen, or an outside press: `outside`
+    // runs in the capture phase, before the browser moves focus). Focus goes back to what held
+    // it before; for an outside press the browser then moves it on to the pressed element, if
+    // that takes focus, so a click into a text field still lands there.
     if (hadFocus && p.restore instanceof HTMLElement && p.restore.isConnected) p.restore.focus()
   }
 

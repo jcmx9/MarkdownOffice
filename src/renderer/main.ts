@@ -13,6 +13,7 @@ registerFonts(document)
 
 const app = new App({
   tabbar: byId('tabbar'),
+  toolbar: byId('toolbar'),
   editor: byId('editor'),
   empty: byId('empty'),
   status: byId('status'),

@@ -8,6 +8,7 @@ const actions = () => ({
   setView: vi.fn(),
   toggleOutline: vi.fn(),
   toggleYaml: vi.fn(),
+  toggleToolbar: vi.fn(),
   validateYaml: vi.fn(),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
@@ -79,6 +80,7 @@ describe('status line', () => {
     const a = actions()
     const status = new StatusLine(el, a)
     status.render('a.md', 'saved', null, 'preview', {
+      toolbar: true,
       outline: true,
       hasHeader: true,
       yamlOn: false,
@@ -96,7 +98,7 @@ describe('status line', () => {
   it('disables YAML without front matter, in Code and without a note; Gliederung without a note', () => {
     const el = document.createElement('footer')
     const status = new StatusLine(el, actions())
-    const on = { outline: true, hasHeader: true, yamlOn: true }
+    const on = { toolbar: true, outline: true, hasHeader: true, yamlOn: true }
     status.render('a.md', 'saved', null, 'preview', { ...on, hasHeader: false })
     expect(q(el, 'status-yaml').disabled).toBe(true)
     expect(q(el, 'status-yaml').classList.contains('active')).toBe(false)
@@ -110,6 +112,39 @@ describe('status line', () => {
     status.render('a.md', 'saved', null, 'preview', on)
     expect(q(el, 'status-yaml').disabled).toBe(false)
     expect(q(el, 'status-outline').disabled).toBe(false)
+    status.stop()
+  })
+
+  it('„Leiste“ sits left of „Gliederung“, lifted by state; a click toggles the toolbar', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const status = new StatusLine(el, a)
+    const on = { outline: false, hasHeader: true, yamlOn: true, toolbar: true }
+    status.render('a.md', 'saved', null, 'preview', on)
+    const leiste = q(el, 'status-toolbar')
+    expect(leiste.textContent).toBe('Leiste')
+    expect(leiste.title).toBe('Formatierungsleiste ein/aus (Mod+Shift+T)')
+    expect(leiste.nextElementSibling).toBe(q(el, 'status-outline'))
+    expect(leiste.getAttribute('aria-pressed')).toBe('true')
+    leiste.click()
+    expect(a.toggleToolbar).toHaveBeenCalledOnce()
+    status.render('a.md', 'saved', null, 'code', { ...on, toolbar: false })
+    expect(leiste.getAttribute('aria-pressed')).toBe('false')
+    expect(leiste.disabled).toBe(false)
+    status.stop()
+  })
+
+  it('disables „Leiste“ without a note, like the other switches', () => {
+    const el = document.createElement('footer')
+    const status = new StatusLine(el, actions())
+    status.render(null, 'saved', null, 'preview', {
+      outline: false,
+      hasHeader: false,
+      yamlOn: false,
+      toolbar: true,
+    })
+    expect(q(el, 'status-toolbar').disabled).toBe(true)
+    expect(q(el, 'status-toolbar').classList.contains('active')).toBe(false)
     status.stop()
   })
 
@@ -132,6 +167,7 @@ describe('status line', () => {
       'status-present',
       'status-code',
       'status-preview',
+      'status-toolbar',
       'status-outline',
       'status-yaml',
     ]) {

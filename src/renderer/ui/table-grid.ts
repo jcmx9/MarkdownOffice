@@ -29,7 +29,9 @@ export class TableGrid {
   ) {
     this.el.className = 'mdo-fmt-grid'
     this.el.dataset.testid = 'fmt-grid'
-    this.el.setAttribute('role', 'grid')
+    // group, not grid: a grid role needs row/gridcell children, and the cells are decoration
+    // here; the live label below announces the size.
+    this.el.setAttribute('role', 'group')
     this.el.setAttribute('aria-label', 'Tabellengröße')
     this.el.tabIndex = -1
 

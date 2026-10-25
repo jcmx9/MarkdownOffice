@@ -68,11 +68,16 @@ export interface Session {
   outline: { edit: boolean; present: boolean }
   /** Outline width in em set by dragging (Edit mode); null = default width. */
   outlineWidth: number | null
+  /** Formatting toolbar on/off in Edit mode (Present never shows it); default on. */
+  toolbar: { edit: boolean }
   recent: string[]
 }
 
 export type SessionPatch = Partial<
-  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'outlineWidth'>
+  Pick<
+    Session,
+    'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'outlineWidth' | 'toolbar'
+  >
 >
 
 export interface StartupState {
@@ -110,6 +115,31 @@ export type MenuCommand =
   | 'select-all'
   | 'insert-pagebreak'
   | 'insert-template'
+  // Formatting toolbar commands (renderer/editor/format.ts, table-edit.ts); editor-only.
+  | 'format-bold'
+  | 'format-italic'
+  | 'format-strike'
+  | 'format-mark'
+  | 'format-code'
+  | 'format-h1'
+  | 'format-h2'
+  | 'format-h3'
+  | 'format-bullet'
+  | 'format-numbered'
+  | 'format-task'
+  | 'format-quote'
+  | 'format-link'
+  | 'insert-alert-note'
+  | 'insert-alert-tip'
+  | 'insert-alert-important'
+  | 'insert-alert-warning'
+  | 'insert-alert-caution'
+  | 'insert-table'
+  | 'table-row-below'
+  | 'table-col-right'
+  | 'table-row-delete'
+  | 'table-col-delete'
+  | 'toggle-toolbar'
   | 'toggle-present'
   | 'toggle-view'
   | 'toggle-header'

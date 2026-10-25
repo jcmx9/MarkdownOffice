@@ -270,4 +270,46 @@ describe('formatting toolbar', () => {
       expect(onAction).toHaveBeenCalledWith({ kind: 'alert', type: 'tip' })
     })
   })
+
+  describe('popup placement', () => {
+    it('sits under its button, clamped so it stays inside a narrow window', () => {
+      const { el, click, q } = setup()
+      const box = q('fmt-box')
+      Object.defineProperty(box, 'offsetLeft', { configurable: true, value: 300 })
+      // The toolbar starts at x = 0; the popup is 200px wide in a 320px window.
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({ left: 0 } as DOMRect)
+      vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(200)
+      vi.stubGlobal('innerWidth', 320)
+      click('fmt-box')
+      const menu = el.querySelector('[data-testid=fmt-box-menu]') as HTMLElement
+      expect(menu.style.left).toBe('116px')
+      vi.stubGlobal('innerWidth', 2000)
+      click('fmt-box')
+      click('fmt-box')
+      expect((el.querySelector('[data-testid=fmt-box-menu]') as HTMLElement).style.left).toBe(
+        '300px',
+      )
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+    })
+
+    it('never goes left of the toolbar when the window is narrower than the popup', () => {
+      const { el, click, q } = setup()
+      Object.defineProperty(q('fmt-box'), 'offsetLeft', { configurable: true, value: 50 })
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({ left: 0 } as DOMRect)
+      vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(400)
+      vi.stubGlobal('innerWidth', 300)
+      click('fmt-box')
+      expect((el.querySelector('[data-testid=fmt-box-menu]') as HTMLElement).style.left).toBe('0px')
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+    })
+
+    it('the table button announces a menu in a table and no popup type for the grid', () => {
+      const { bar, q } = setup()
+      expect(q('fmt-table').hasAttribute('aria-haspopup')).toBe(false)
+      bar.render(base({ table: { inTable: true, rowDelete: true, colDelete: true } }))
+      expect(q('fmt-table').getAttribute('aria-haspopup')).toBe('menu')
+    })
+  })
 })

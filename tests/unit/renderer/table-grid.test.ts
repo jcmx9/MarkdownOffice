@@ -19,7 +19,9 @@ describe('table grid', () => {
   it('has 8 columns × 10 rows of cells and starts at 1 × 1', () => {
     const { grid, label } = setup()
     expect(grid.el.querySelectorAll('[data-col]')).toHaveLength(80)
-    expect(grid.el.getAttribute('role')).toBe('grid')
+    // A grid role needs row/gridcell children; the cells are decoration, the label speaks.
+    expect(grid.el.getAttribute('role')).toBe('group')
+    expect(grid.el.getAttribute('aria-label')).toBe('Tabellengröße')
     expect(label()).toBe('1 × 1')
   })
 

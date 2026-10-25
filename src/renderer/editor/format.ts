@@ -47,7 +47,9 @@ type InlineId = 'bold' | 'italic' | 'strike' | 'mark' | 'code'
  * read-only (the header toggle and the outline still edit), so the commands check it themselves.
  */
 export const formatMode = Facet.define<'edit' | 'present', 'edit' | 'present'>({
-  combine: (values) => values[0] ?? 'edit',
+  // Any 'present' wins (like presentMode): the mode compartment always provides a value, and
+  // an extra provider must never be able to switch a Present state back to editable.
+  combine: (values) => (values.includes('present') ? 'present' : 'edit'),
 })
 
 /** Blocks where a marker would print literally or corrupt the block (spec „Refused contexts“). */

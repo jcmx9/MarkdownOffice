@@ -168,6 +168,17 @@ describe('session', () => {
     })
     expect(sanitizeSession({ outline: true }).outline).toEqual({ edit: false, present: false })
   })
+  // Formatting toolbar: on by default, so old sessions (written before the toolbar existed) and
+  // anything hand-edited show it; only an explicit false hides it.
+  it('toolbar: missing or old session → on, false kept, anything else → on', () => {
+    expect(DEFAULT_SESSION.toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({}).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ outline: { edit: true } }).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ toolbar: { edit: false } }).toolbar).toEqual({ edit: false })
+    expect(sanitizeSession({ toolbar: { edit: true } }).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ toolbar: { edit: 'no' } }).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ toolbar: false }).toolbar).toEqual({ edit: true })
+  })
 })
 
 describe('loadJson / saveJson', () => {
