@@ -125,16 +125,47 @@
 
 // Code-Blöcke UND abgesetzte Formeln ($$ … $$ über mehrere Zeilen): dort darf
 // keine Umformung greifen (kein \ für harte Umbrüche, kein <mark>).
+// Eingerückter Code (CommonMark: ab 4 Leerzeichen oder Tab nach einer Leerzeile,
+// nicht in einer Liste, wo die Einrückung den Listenpunkt fortsetzt) bleibt wie
+// Code-Zäune unberührt. Listen-Zustand: ein Listenmarker öffnet ihn, eine
+// uneingerückte Zeile ohne Marker nach einer Leerzeile oder eine Überschrift
+// schließt ihn.
+#let indented-re = regex("^( {4}| {0,3}\t)")
+#let list-item-re = regex("^ {0,3}([-+*]|[0-9]{1,9}[.)])([ \t]|$)")
+#let atx-re = regex("^ {0,3}#{1,6}([ \t]|$)")
 #let skip-mask(lines) = {
   let mask = code-mask(lines)
   let in-math = false
+  let prev-blank = true
+  let in-list = false
+  let in-code = false
   for (i, l) in lines.enumerate() {
-    if mask.at(i) { continue }
+    if mask.at(i) {
+      prev-blank = false
+      in-code = false
+      continue
+    }
     let t = l.trim()
+    let blank = t == ""
     if in-math {
       mask.at(i) = true
       if t.ends-with("$$") { in-math = false }
-    } else if t.starts-with("$$") {
+      prev-blank = false
+      continue
+    }
+    let indented = l.match(indented-re) != none
+    if in-code and not blank and not indented { in-code = false }
+    if not in-code and indented and not blank and prev-blank and not in-list { in-code = true }
+    if in-code {
+      mask.at(i) = true
+      prev-blank = blank
+      continue
+    }
+    if not blank and not indented {
+      if l.match(list-item-re) != none { in-list = true } else if prev-blank or l.match(atx-re) != none { in-list = false }
+    }
+    prev-blank = blank
+    if t.starts-with("$$") {
       mask.at(i) = true
       // "$$ x $$" in einer Zeile schließt sofort wieder
       if t == "$$" or not t.slice(2).trim().ends-with("$$") { in-math = true }
@@ -422,7 +453,7 @@
 //   "x"  -> „x“ (lang de) bzw. “x” (sonst)   'x' -> ‚x‘ bzw. ‘x’
 //   geht's -> geht’s (Apostroph zwischen Buchstaben)
 // Getippte typografische Zeichen bleiben unverändert. Nicht angefasst werden
-// Code (Zäune, Inline-Code), Formeln ($$-Blöcke, $…$), HTML-Zeilen/-Tags,
+// Code (Zäune, eingerückter Code, Inline-Code), Formeln ($$-Blöcke, $…$), HTML-Zeilen/-Tags,
 // HTML-Kommentare und Trennzeilen (Tabellen, Linien, Setext).
 #let rule-line-re = regex("^\s*\|?[\s:|*_=-]+\|?\s*$")
 #let opener-re = regex("^[\s(\[{„“‚‘»«–—/-]?$")

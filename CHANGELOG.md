@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- PDF: indented code blocks (4 spaces or a tab after a blank line, outside lists) keep their straight quotes, `--` and `...`; the pipeline's typography only skipped fenced code. A list item's indented continuation, a lazy paragraph line and a list closed by a heading behave as in CommonMark. The preview's port (`src/core/typography.ts`) mirrors the rule, checked by `pipeline/tests/test-typography.sh`
+
 ### Changed
 - Outline: the list sits in the optical centre of the bar (two parts of the free height above, three below) instead of at the top; a list taller than the bar starts at the top and scrolls as before. Expanding or collapsing keeps the clicked entry exactly where it was (also when a collapse at the scroll end shortens the list); the list is placed again only on showing, a note switch, a new bar height or a zoom change, never after a fold or an edit
 
