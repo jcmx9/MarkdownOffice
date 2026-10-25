@@ -9,6 +9,8 @@ const actions = () => ({
   toggleOutline: vi.fn(),
   toggleYaml: vi.fn(),
   validateYaml: vi.fn(),
+  zoomIn: vi.fn(),
+  zoomOut: vi.fn(),
 })
 const q = (el: HTMLElement, id: string) =>
   el.querySelector(`[data-testid=${id}]`) as HTMLButtonElement
@@ -214,5 +216,19 @@ describe('status line set name', () => {
     setEl(el).click()
     expect(a.validateYaml).toHaveBeenCalledOnce()
     status.stop()
+  })
+
+  it('shows the zoom on the right; − and + call the actions', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const status = new StatusLine(el, a)
+    status.render('a.md', 'saved', null, 'preview')
+    status.renderZoom(1.25)
+    expect(q(el, 'status-zoom').textContent).toBe('125 %')
+    expect(el.lastElementChild?.className).toBe('right')
+    q(el, 'status-zoom-in').click()
+    q(el, 'status-zoom-out').click()
+    expect(a.zoomIn).toHaveBeenCalledTimes(1)
+    expect(a.zoomOut).toHaveBeenCalledTimes(1)
   })
 })

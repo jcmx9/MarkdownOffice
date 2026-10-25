@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Edit: the status line shows the zoom on the right with − and +, like Present's info line
+
 ## [26.10.4] - 2026-10-25
 
 ### Changed
