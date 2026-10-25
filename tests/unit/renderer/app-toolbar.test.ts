@@ -27,7 +27,6 @@ function fakeMdo(session: Partial<Session>, files: Record<string, string>) {
         view: 'code',
         zoom: { edit: 1, present: 1 },
         outline: { edit: false, present: false },
-        outlineWidth: null,
         toolbar: { edit: true },
         recent: [],
         ...session,

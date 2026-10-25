@@ -125,16 +125,47 @@
 
 // Code-Blöcke UND abgesetzte Formeln ($$ … $$ über mehrere Zeilen): dort darf
 // keine Umformung greifen (kein \ für harte Umbrüche, kein <mark>).
+// Eingerückter Code (CommonMark: ab 4 Leerzeichen oder Tab nach einer Leerzeile,
+// nicht in einer Liste, wo die Einrückung den Listenpunkt fortsetzt) bleibt wie
+// Code-Zäune unberührt. Listen-Zustand: ein Listenmarker öffnet ihn, eine
+// uneingerückte Zeile ohne Marker nach einer Leerzeile oder eine Überschrift
+// schließt ihn.
+#let indented-re = regex("^( {4}| {0,3}\t)")
+#let list-item-re = regex("^ {0,3}([-+*]|[0-9]{1,9}[.)])([ \t]|$)")
+#let atx-re = regex("^ {0,3}#{1,6}([ \t]|$)")
 #let skip-mask(lines) = {
   let mask = code-mask(lines)
   let in-math = false
+  let prev-blank = true
+  let in-list = false
+  let in-code = false
   for (i, l) in lines.enumerate() {
-    if mask.at(i) { continue }
+    if mask.at(i) {
+      prev-blank = false
+      in-code = false
+      continue
+    }
     let t = l.trim()
+    let blank = t == ""
     if in-math {
       mask.at(i) = true
       if t.ends-with("$$") { in-math = false }
-    } else if t.starts-with("$$") {
+      prev-blank = false
+      continue
+    }
+    let indented = l.match(indented-re) != none
+    if in-code and not blank and not indented { in-code = false }
+    if not in-code and indented and not blank and prev-blank and not in-list { in-code = true }
+    if in-code {
+      mask.at(i) = true
+      prev-blank = blank
+      continue
+    }
+    if not blank and not indented {
+      if l.match(list-item-re) != none { in-list = true } else if prev-blank or l.match(atx-re) != none { in-list = false }
+    }
+    prev-blank = blank
+    if t.starts-with("$$") {
       mask.at(i) = true
       // "$$ x $$" in einer Zeile schließt sofort wieder
       if t == "$$" or not t.slice(2).trim().ends-with("$$") { in-math = true }
@@ -338,6 +369,9 @@
 // einem neuen Block (Liste, Überschrift, Zitat, Tabelle, Zaun …) wäre "\" ein
 // sichtbarer Backslash. Code und Formeln bleiben unberührt.
 #let block-start-re = regex("^ {0,3}(#{1,6}([ \t]|$)|[-*+]([ \t]|$)|\d+[.)]([ \t]|$)|>|\||`{3,}|~{3,}|\$\$|<|:[ \t]|\[\^[^\]]+\]:|(=+|-+|\*+|_+)[ \t]*$)")
+// Linkdefinition `[a]: ziel "Titel"` (keine Fußnote `[^1]:`). Ein "\" am Ende machte
+// aus ihr und jeder folgenden Definition Fließtext: der Verweis [x][a] bliebe Quelltext.
+#let link-def-re = regex("^ {0,3}\\[[^\\]^][^\\]]*\\]:")
 #let keep-line-breaks(lines) = {
   let mask = skip-mask(lines)
   let n = lines.len()
@@ -359,7 +393,7 @@
     }
     let ends-break = cur.ends-with("\\") or cur.ends-with("  ")
     let is-heading = cur.match(regex("^ {0,3}#{1,6}([ \t]|$)")) != none
-    let is-other = cur.match(regex("^ {0,3}(\||<|`{3,}|~{3,}|\$\$)")) != none
+    let is-other = cur.match(regex("^ {0,3}(\||<|`{3,}|~{3,}|\$\$)")) != none or cur.match(link-def-re) != none
     if ends-break or is-heading or is-other or nxt.match(block-start-re) != none {
       out.push(l)
     } else {
@@ -430,7 +464,7 @@
 //   "x"  -> „x“ (lang de) bzw. “x” (sonst)   'x' -> ‚x‘ bzw. ‘x’
 //   geht's -> geht’s (Apostroph zwischen Buchstaben)
 // Getippte typografische Zeichen bleiben unverändert. Nicht angefasst werden
-// Code (Zäune, Inline-Code), Formeln ($$-Blöcke, $…$), HTML-Zeilen/-Tags,
+// Code (Zäune, eingerückter Code, Inline-Code), Formeln ($$-Blöcke, $…$), HTML-Zeilen/-Tags,
 // HTML-Kommentare und Trennzeilen (Tabellen, Linien, Setext).
 #let rule-line-re = regex("^\s*\|?[\s:|*_=-]+\|?\s*$")
 #let opener-re = regex("^[\s(\[{„“‚‘»«–—/-]?$")
@@ -451,12 +485,28 @@
   let t = if dashes { t.replace("---", "—").replace("--", "–") } else { t }
   smart-quotes(t.replace("...", "…"), de)
 }
+// Ziel und Titel von Links und Bildern (`](ziel "Titel")`) bleiben wie getippt:
+// aus "Titel" würde sonst „Titel“, das cmarker nicht mehr als Titel liest – das
+// Bild fiele als Quelltext ins PDF; ebenso `--` in einer URL. Linkdefinitionen
+// (`[a]: ziel "Titel"`) erscheinen nicht im PDF und bleiben ganz unberührt;
+// Fußnoten (`[^1]: Text`) sind Fließtext. (link-def-re steht bei keep-line-breaks.)
+#let link-dest-re = regex("\\]\\([^)]*\\)")
+#let smart-outside-links(p, de) = {
+  let out = ""
+  let at = 0
+  for m in p.matches(link-dest-re) {
+    out += smart-text(p.slice(at, m.start), de, true) + m.text
+    at = m.end
+  }
+  out + smart-text(p.slice(at), de, true)
+}
 #let smart-typography(lines, lang) = {
   let mask = skip-mask(lines)
   let de = lang.starts-with("de")
   lines.enumerate().map(((i, l)) => {
     let t = l.trim()
     if mask.at(i) or t.starts-with("<") or t.match(rule-line-re) != none { return l }
+    if l.match(link-def-re) != none { return l }
     if not (l.contains("\"") or l.contains("'") or l.contains("--") or l.contains("...")) { return l }
     // HTML im Satz (<span …>, <!-- … -->): Zeile nicht anfassen
     if l.match(regex("<[A-Za-z!/]")) != none { return l }
@@ -465,9 +515,9 @@
       if calc.odd(k) { return p }
       let dollars = p.split("$")
       if dollars.len() >= 3 and calc.odd(dollars.len()) {
-        dollars.enumerate().map(((j, q)) => if calc.odd(j) { q } else { smart-text(q, de, true) }).join("$")
+        dollars.enumerate().map(((j, q)) => if calc.odd(j) { q } else { smart-outside-links(q, de) }).join("$")
       } else {
-        smart-text(p, de, true)
+        smart-outside-links(p, de)
       }
     }).join("`")
   })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { platformFromUserAgent, revealLabel } from '../../../src/shared/reveal'
+import { platformFromUserAgent, revealAccelerator, revealLabel } from '../../../src/shared/reveal'
 
 describe('revealLabel', () => {
   it.each([
@@ -19,5 +19,15 @@ describe('platformFromUserAgent', () => {
     ['Mozilla/5.0 (X11; Linux x86_64) Electron/39.0.0', 'linux'],
   ])('%s → %s', (ua, platform) => {
     expect(platformFromUserAgent(ua)).toBe(platform)
+  })
+})
+
+describe('revealAccelerator', () => {
+  it.each([
+    ['darwin', 'Alt+Cmd+R'],
+    ['win32', 'Shift+Alt+R'],
+    ['linux', 'Shift+Alt+R'],
+  ])('%s: %s (never Ctrl+Alt, which is AltGr)', (platform, key) => {
+    expect(revealAccelerator(platform)).toBe(key)
   })
 })
