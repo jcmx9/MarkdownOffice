@@ -5,8 +5,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Edit: the status line shows the zoom on the right with − and +, like Present's info line
+- Shortcut for showing the note in the file manager: Cmd+Alt+R on macOS, Shift+Alt+R on Windows and Linux (not Ctrl+Alt, which is AltGr on German layouts); the README names the entry neutrally (the label already follows the system: Finder, Explorer, Dateimanager)
+
+### Changed
+- Outline: its width fits the longest title when it is shown and on a switch to or from Present, at most a fifth of the workspace; longer titles end in „…“ with the full title on hover, right-aligned. While shown, the width never follows typing or a tab switch. A dragged width lasts until the outline is shown again (double-click fits it again); the remembered Edit width (`outlineWidth` in the session) is gone
+
 ### Fixed
+- Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size; a click on a heading no longer shifts the outline sideways (the active entry is scrolled into view vertically only, so titles are never cut on the left)
+- PDF: indented code blocks (4 spaces or a tab after a blank line, outside lists) keep their straight quotes, `--` and `...`; the pipeline's typography only skipped fenced code. A list item's indented continuation, a lazy paragraph line and a list closed by a heading behave as in CommonMark. The preview's port (`src/core/typography.ts`) mirrors the rule, checked by `pipeline/tests/test-typography.sh`
 - Preview: table cells show the PDF's quotes, dashes and ellipses (per `lang`); like the pipeline, the row line is substituted before it is split into cells, so code spans, formulas and rows with HTML stay as typed
+
+## [26.10.4] - 2026-10-25
 
 ### Changed
 - Outline: the list sits in the optical centre of the bar (two parts of the free height above, three below) instead of at the top; a list taller than the bar starts at the top and scrolls as before. Expanding or collapsing keeps the clicked entry exactly where it was (also when a collapse at the scroll end shortens the list); the list is placed again only on showing, a note switch, a new bar height or a zoom change, never after a fold or an edit
