@@ -255,25 +255,17 @@ function insertRefused(state: EditorState): boolean {
 const isBlank = (text: string): boolean => /^\s*$/.test(text)
 
 /**
- * Inserts an empty GFM table of `cols` columns and `rows` rows (the header counts as a row) at
- * the start of the next empty line after the cursor's block, with one blank line before and
- * after where there is none. The cursor lands in the first header cell. 1 ≤ cols ≤ 8 and
- * 1 ≤ rows ≤ 10 (the toolbar grid); refuses other sizes, Present, front matter, code, HTML,
- * tables, lists and quotes.
+ * Where a new block (`text`, without a trailing line break) goes: at the start of the next empty
+ * line after the cursor's top-level block, with one blank line before and after where there is
+ * none. `start` is the offset of `text` inside `insert`. Shared by the table insert and the
+ * alert boxes (format.ts), so both place a block the same way.
  */
-export function insertTable(view: EditorView, cols: number, rows: number): boolean {
-  const { state } = view
-  const size = (v: number, max: number) => Number.isInteger(v) && v >= 1 && v <= max
-  if (!size(cols, 8) || !size(rows, 10) || !editable(state) || insertRefused(state)) return false
+export function blockInsertion(
+  state: EditorState,
+  text: string,
+): { from: number; insert: string; start: number } {
   const nl = state.lineBreak
   const doc = state.doc
-  const lines = [
-    emptyRow(cols),
-    `|${' --- |'.repeat(cols)}`,
-    ...Array.from({ length: rows - 1 }, () => emptyRow(cols)),
-  ]
-  const table = lines.join(nl)
-
   const line = doc.lineAt(state.selection.main.head)
   // The cursor's block ends on line `end`; on a blank line the cursor has no block.
   let end = line
@@ -285,19 +277,41 @@ export function insertTable(view: EditorView, cols: number, rows: number): boole
   let from: number
   let insert: string
   if (next && isBlank(next.text)) {
-    // Into the empty line: it stays behind the table as the blank line after it (or as the
+    // Into the empty line: it stays behind the text as the blank line after it (or as the
     // note's end); a blank line before is added unless the line above is blank already.
     const above = next.number > 1 ? doc.line(next.number - 1) : null
     from = next.from
-    insert = (above && !isBlank(above.text) ? nl : '') + table + nl
+    insert = (above && !isBlank(above.text) ? nl : '') + text + nl
   } else {
     // No empty line after the block (end of note or a following line): open one, so the
-    // table gets a blank line before and, through the block end's line break, one after.
+    // text gets a blank line before and, through the block end's line break, one after.
     from = end.to
-    insert = nl + nl + table + nl
+    insert = nl + nl + text + nl
   }
-  const prefix = insert.length - table.length - nl.length
-  dispatch(view, 'insert', { from, insert }, () => from + prefix + 2)
+  return { from, insert, start: insert.length - text.length - nl.length }
+}
+
+/**
+ * Inserts an empty GFM table of `cols` columns and `rows` rows (the header counts as a row) at
+ * the start of the next empty line after the cursor's block, with one blank line before and
+ * after where there is none. The cursor lands in the first header cell. 1 ≤ cols ≤ 8 and
+ * 1 ≤ rows ≤ 10 (the toolbar grid); refuses other sizes, Present, front matter, code, HTML,
+ * tables, lists and quotes.
+ */
+export function insertTable(view: EditorView, cols: number, rows: number): boolean {
+  const { state } = view
+  const size = (v: number, max: number) => Number.isInteger(v) && v >= 1 && v <= max
+  if (!size(cols, 8) || !size(rows, 10) || !editable(state) || insertRefused(state)) return false
+  const nl = state.lineBreak
+  const lines = [
+    emptyRow(cols),
+    `|${' --- |'.repeat(cols)}`,
+    ...Array.from({ length: rows - 1 }, () => emptyRow(cols)),
+  ]
+  const table = lines.join(nl)
+
+  const { from, insert, start } = blockInsertion(state, table)
+  dispatch(view, 'insert', { from, insert }, () => from + start + 2)
   return true
 }
 

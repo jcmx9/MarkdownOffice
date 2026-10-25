@@ -1,17 +1,20 @@
 import { isolateHistory } from '@codemirror/commands'
-import { syntaxTree } from '@codemirror/language'
+import { foldedRanges, syntaxTree, unfoldEffect } from '@codemirror/language'
 import {
+  type ChangeSet,
   CharCategory,
   EditorSelection,
   type EditorState,
   Facet,
+  type Line,
   type SelectionRange,
+  type StateEffect,
 } from '@codemirror/state'
 import type { Command, EditorView } from '@codemirror/view'
 import type { SyntaxNode, Tree } from '@lezer/common'
 import { frontmatterRange } from './frontmatter'
 import { presentMode } from './mode'
-import { cellAt, cellsOfTable, tableAt } from './table-edit'
+import { blockInsertion, cellAt, cellsOfTable, tableAt } from './table-edit'
 
 /**
  * Format commands for the toolbar and the „Format“ menu (spec „Formatting toolbar“, section 1).
@@ -59,6 +62,16 @@ const REFUSED_BLOCKS = new Set([
   'BlockMath',
 ])
 
+/** Present, a read-only (frozen) editor or a YAML profile tab: no format command acts at all. */
+function blocked(state: EditorState): boolean {
+  // presentMode as well: it comes from the same compartment and keeps Present refused even in a
+  // state built without formatMode.
+  if (state.facet(formatMode) === 'present' || state.facet(presentMode) || state.readOnly) {
+    return true
+  }
+  return syntaxTree(state).type.name !== 'Document'
+}
+
 /**
  * Whether format commands of `kind` must refuse: Present, a read-only (frozen) editor, a YAML
  * profile tab, or any selection range touching the front matter, a code block, an HTML block or
@@ -66,13 +79,8 @@ const REFUSED_BLOCKS = new Set([
  * (a row prefix would break it); inline formats work in table cells, limited to each cell.
  */
 export function refused(state: EditorState, kind: 'inline' | 'line'): boolean {
-  // presentMode as well: it comes from the same compartment and keeps Present refused even in a
-  // state built without formatMode.
-  if (state.facet(formatMode) === 'present' || state.facet(presentMode) || state.readOnly) {
-    return true
-  }
+  if (blocked(state)) return true
   const tree = syntaxTree(state)
-  if (tree.type.name !== 'Document') return true
   const fm = frontmatterRange(state.doc)
   return state.selection.ranges.some((r) => {
     // A range ending at column 0 of a line does not touch that line (the rule of segments()), so
@@ -459,4 +467,672 @@ export function toggleInline(id: InlineId): Command {
     })
     return true
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Line formats (spec „Line formats“)
+
+type LineId = 'h1' | 'h2' | 'h3' | 'bullet' | 'numbered' | 'task' | 'quote'
+type ListKind = 'bullet' | 'numbered' | 'task'
+
+const isBlank = (text: string): boolean => /^\s*$/.test(text)
+
+/** The containers whose markers sit in front of a line: quotes and list items. */
+const CONTAINERS = new Set(['Blockquote', 'ListItem'])
+
+const HEADING = /^(ATX|Setext)Heading(\d)$/
+
+/**
+ * Whether a line lies in the front matter or in a block no line prefix may enter (code, HTML,
+ * display formula, table). Such lines are skipped inside a selection (spec „Line formats“), not a
+ * reason to refuse the whole command.
+ */
+function lineRefused(tree: Tree, fm: Span | null, line: Line): boolean {
+  if (fm && line.from <= fm.to && line.to >= fm.from) return true
+  let hit = false
+  tree.iterate({
+    from: line.from,
+    to: line.to,
+    enter: (n) => {
+      if (hit) return false
+      if (
+        (REFUSED_BLOCKS.has(n.name) || n.name === 'Table') &&
+        n.from <= line.to &&
+        n.to >= line.from
+      ) {
+        hit = true
+      }
+      return !hit
+    },
+  })
+  return hit
+}
+
+/** The last non-space position of a line: nodes there belong to the line, not to a neighbour. */
+const contentEnd = (line: Line): number => line.from + line.text.trimEnd().length
+
+/**
+ * The quotes and list items the line belongs to, outermost first. A lazy continuation line
+ * counts as part of its quote or item, as in the rendered document.
+ */
+function chainAt(tree: Tree, line: Line): SyntaxNode[] {
+  const out: SyntaxNode[] = []
+  for (let n: SyntaxNode | null = tree.resolveInner(contentEnd(line), -1); n; n = n.parent) {
+    if (CONTAINERS.has(n.name)) out.unshift(n)
+  }
+  return out
+}
+
+/** The quotes and list items around `node`, outermost first. */
+function ancestorsOf(node: SyntaxNode): SyntaxNode[] {
+  const out: SyntaxNode[] = []
+  for (let n = node.parent; n; n = n.parent) if (CONTAINERS.has(n.name)) out.unshift(n)
+  return out
+}
+
+/** The line's own list item: the innermost container when it is a list item (not a quote). */
+function itemOf(chain: SyntaxNode[]): SyntaxNode | null {
+  const last = chain[chain.length - 1]
+  return last?.name === 'ListItem' ? last : null
+}
+
+function kindOf(item: SyntaxNode): ListKind {
+  if (item.getChild('Task')) return 'task'
+  return item.parent?.name === 'OrderedList' ? 'numbered' : 'bullet'
+}
+
+/** Where a list item's content starts: after its marker, a task box and their spaces. */
+function itemContent(state: EditorState, item: SyntaxNode): number {
+  const line = state.doc.lineAt(item.from)
+  const at = (p: number) => state.doc.sliceString(p, p + 1)
+  let pos = item.firstChild?.name === 'ListMark' ? item.firstChild.to : item.from
+  const skip = () => {
+    while (pos < line.to && isSpace(at(pos))) pos++
+  }
+  skip()
+  const task = item.getChild('Task')?.getChild('TaskMarker')
+  if (task && task.from === pos) {
+    pos = task.to
+    skip()
+  }
+  return pos
+}
+
+/**
+ * The position after the markers of `chain` on `line` (a quote's `> `, a list item's marker or
+ * its continuation indent), null when a quote marker is missing (a lazy line).
+ */
+function afterContainers(state: EditorState, line: Line, chain: SyntaxNode[]): number | null {
+  const at = (p: number) => (p < line.to ? state.doc.sliceString(p, p + 1) : '')
+  let pos = line.from
+  for (const c of chain) {
+    if (c.name === 'Blockquote') {
+      for (let k = 0; k < 3 && at(pos) === ' '; k++) pos++
+      if (at(pos) !== '>') return null
+      pos++
+      if (isSpace(at(pos))) pos++
+      continue
+    }
+    const first = state.doc.lineAt(c.from)
+    const content = itemContent(state, c)
+    if (first.number === line.number) {
+      pos = content
+      continue
+    }
+    const col = content - first.from
+    while (pos - line.from < col && isSpace(at(pos))) pos++
+  }
+  return pos
+}
+
+/** After the line's quote, list and task markers and their spaces (before a heading mark). */
+function prefixEnd(state: EditorState, tree: Tree, line: Line): number {
+  let pos = line.from
+  for (;;) {
+    while (pos < line.to && isSpace(state.doc.sliceString(pos, pos + 1))) pos++
+    const n = tree.resolveInner(pos, 1)
+    if (n.from !== pos || n.to <= pos || n.name === 'HeaderMark' || !PREFIX_MARKS.has(n.name)) {
+      return pos
+    }
+    pos = n.to
+  }
+}
+
+/** The heading the line belongs to, unless a quote or list item lies in between. */
+function headingOf(tree: Tree, line: Line): SyntaxNode | null {
+  for (let n: SyntaxNode | null = tree.resolveInner(contentEnd(line), -1); n; n = n.parent) {
+    if (HEADING.test(n.name)) return n
+    if (CONTAINERS.has(n.name)) return null
+  }
+  return null
+}
+
+const levelOf = (heading: SyntaxNode | null): number =>
+  heading ? Number(HEADING.exec(heading.name)?.[2]) : 0
+
+/** Whether the line is a thematic break or link definition: no text a heading could take. */
+function textless(tree: Tree, line: Line): boolean {
+  for (let n: SyntaxNode | null = tree.resolveInner(contentEnd(line), -1); n; n = n.parent) {
+    if (n.name === 'HorizontalRule' || n.name === 'LinkReference') return true
+  }
+  return false
+}
+
+/** An alert's `[!TYPE]` line: a prefix there would end the alert. */
+function alertLine(state: EditorState, tree: Tree, line: Line, chain: SyntaxNode[]): boolean {
+  if (!chain.some((c) => c.name === 'Blockquote')) return false
+  return ALERT_LINE.test(state.doc.sliceString(prefixEnd(state, tree, line), line.to))
+}
+
+/** The line where a Setext heading's underline sits. */
+function underlineOf(state: EditorState, heading: SyntaxNode): Line | null {
+  const mark = heading.lastChild
+  return mark?.name === 'HeaderMark' ? state.doc.lineAt(mark.from) : null
+}
+
+/** Deletes a Setext underline line together with the line break before it. */
+function dropUnderline(state: EditorState, heading: SyntaxNode): Change | null {
+  const u = underlineOf(state, heading)
+  if (!u || u.number < 2) return null
+  return { from: state.doc.line(u.number - 1).to, to: u.to, insert: '' }
+}
+
+/**
+ * Removes the markers of a whole list (spec: toggle off works on the whole block): the item
+ * markers, task boxes included, and the continuation indent up to the item's content column, so
+ * a deeper line (`    b` after `10. a`) does not turn into indented code. Indentation in front
+ * of a marker stays.
+ */
+function removeList(state: EditorState, list: SyntaxNode, out: Change[]): void {
+  const doc = state.doc
+  const outer = ancestorsOf(list)
+  for (let n = doc.lineAt(list.from).number; n <= doc.lineAt(list.to).number; n++) {
+    const line = doc.line(n)
+    if (isBlank(line.text)) continue
+    let item: SyntaxNode | null = null
+    for (let c = list.firstChild; c; c = c.nextSibling) {
+      if (c.name === 'ListItem' && c.from <= line.to && c.to >= line.from) item = c
+    }
+    const base = afterContainers(state, line, outer)
+    if (!item || base === null) continue
+    const markLine = doc.lineAt(item.from)
+    const content = itemContent(state, item)
+    if (markLine.number === n) {
+      out.push({ from: item.from, to: content, insert: '' })
+      continue
+    }
+    const contentCol = content - markLine.from
+    const from = Math.max(base, line.from + (item.from - markLine.from))
+    let to = from
+    while (to - line.from < contentCol && to < line.to && isSpace(doc.sliceString(to, to + 1))) {
+      to++
+    }
+    if (to > from) out.push({ from, to, insert: '' })
+  }
+}
+
+/** Removes one quote's `> ` from each of its lines; lazy lines have none and stay. */
+function removeQuote(state: EditorState, quote: SyntaxNode, out: Change[]): void {
+  const doc = state.doc
+  const outer = ancestorsOf(quote)
+  for (let n = doc.lineAt(quote.from).number; n <= doc.lineAt(quote.to).number; n++) {
+    const line = doc.line(n)
+    const base = afterContainers(state, line, outer)
+    if (base === null) continue
+    let p = base
+    for (let k = 0; k < 3 && doc.sliceString(p, p + 1) === ' '; k++) p++
+    if (p >= line.to || doc.sliceString(p, p + 1) !== '>') continue
+    const space = p + 1 < line.to && isSpace(doc.sliceString(p + 1, p + 2)) ? 1 : 0
+    out.push({ from: p, to: p + 1 + space, insert: '' })
+  }
+}
+
+/** Sorted, de-duplicated changes; one overlapping an earlier change is dropped. */
+function normalize(changes: Change[]): Change[] {
+  const sorted = [...changes].sort((a, b) => a.from - b.from || a.to - b.to)
+  const out: Change[] = []
+  for (const c of sorted) {
+    const prev = out[out.length - 1]
+    if (prev && prev.from === c.from && prev.to === c.to && prev.insert === c.insert) continue
+    if (prev && c.from < prev.to) continue
+    out.push(c)
+  }
+  return out
+}
+
+/**
+ * Folds a change touches out of sight: a fold fully inside one of the user's selection ranges
+ * stays (the user selected it as a whole), any other is unfolded in the same transaction, so
+ * nothing changes unseen (spec „Line formats“, folded sections).
+ */
+function unfoldTouched(
+  state: EditorState,
+  changes: Change[],
+  set: ChangeSet,
+): StateEffect<{ from: number; to: number }>[] {
+  const effects: StateEffect<{ from: number; to: number }>[] = []
+  foldedRanges(state).between(0, state.doc.length, (from, to) => {
+    const touched = changes.some((c) =>
+      c.from === c.to ? c.from > from && c.from <= to : c.from < to && c.to > from,
+    )
+    const selected = state.selection.ranges.some((r) => r.from <= from && to <= r.to)
+    // The fold field maps its ranges before it reads the effects: the effect must name the
+    // range in the new document (StateEffect.map does what the field does).
+    const effect = touched && !selected ? unfoldEffect.of({ from, to }).map(set) : undefined
+    if (effect) effects.push(effect)
+  })
+  return effects
+}
+
+/** The lines the selection touches (a range ending at column 0 does not touch that line). */
+function touchedLines(state: EditorState): { lines: number[]; cursors: Set<number> } {
+  const doc = state.doc
+  const set = new Set<number>()
+  const cursors = new Set<number>()
+  for (const r of state.selection.ranges) {
+    const first = doc.lineAt(r.from).number
+    let last = doc.lineAt(r.to).number
+    if (last > first && doc.line(last).from === r.to) last--
+    for (let n = first; n <= last; n++) set.add(n)
+    if (r.empty) cursors.add(first)
+  }
+  return { lines: [...set].sort((a, b) => a - b), cursors }
+}
+
+const LIST_MARKER: Record<ListKind, (n: number) => string> = {
+  bullet: () => '- ',
+  numbered: (n) => `${n}. `,
+  task: () => '- [ ] ',
+}
+
+/**
+ * Sets or removes a line format on every line the selection touches (spec „Line formats“):
+ * - H1–H3 replace an ATX prefix or convert a Setext heading; the same level again (on every
+ *   line) makes body text.
+ * - Bullet `- `, numbered `1. ` … (counted from 1 over the changed lines per indentation),
+ *   task `- [ ] `: one kind replaces the other; a line inside a list item stands for its item.
+ * - Quote `> ` at the line start.
+ * When every line already is in a list of the same kind (or a quote), the prefix is removed from
+ * the whole innermost list or quote instead, so lazy continuation cannot re-attach a single
+ * freed line. The prefix edited is the one after container markers, so formats work inside
+ * quotes and alerts. Blank lines and lines of refused blocks (front matter, code, HTML, tables)
+ * are skipped; refuses (false, no change) when nothing is left, in Present and when frozen.
+ */
+export function setLinePrefix(id: LineId): Command {
+  return (view: EditorView): boolean => {
+    const { state } = view
+    if (blocked(state)) return false
+    const tree = syntaxTree(state)
+    const doc = state.doc
+    const fm = frontmatterRange(doc)
+    const level = id === 'h1' ? 1 : id === 'h2' ? 2 : id === 'h3' ? 3 : 0
+    const kind: ListKind | null = id === 'bullet' || id === 'numbered' || id === 'task' ? id : null
+
+    // Target lines: `line` gets the format, `pad` (a Setext underline under a new list item)
+    // gets the marker's width in spaces so it stays the item's heading underline.
+    const targets = new Map<number, 'line' | 'pad'>()
+    const blanks: Line[] = []
+    const add = (n: number, role: 'line' | 'pad') => {
+      if (targets.get(n) !== 'line') targets.set(n, role)
+    }
+    const { lines, cursors } = touchedLines(state)
+    for (const n of lines) {
+      const line = doc.line(n)
+      if (lineRefused(tree, fm, line)) continue
+      if (isBlank(line.text)) {
+        // A cursor on an empty line starts the format there; in a selection blank lines are
+        // skipped and not counted.
+        if (cursors.has(n)) blanks.push(line)
+        continue
+      }
+      const chain = chainAt(tree, line)
+      const heading = headingOf(tree, line)
+      const setext = heading?.name.startsWith('Setext') ? heading : null
+      if (level) {
+        if (textless(tree, line) || alertLine(state, tree, line, chain)) continue
+        // The underline stands for its heading's text line.
+        add(setext ? doc.lineAt(setext.from).number : n, 'line')
+        continue
+      }
+      if (kind) {
+        if (alertLine(state, tree, line, chain)) continue
+        const item = itemOf(chain)
+        if (item) {
+          add(doc.lineAt(item.from).number, 'line')
+          continue
+        }
+      }
+      if (setext) {
+        // A Setext heading is one unit: prefixing only its text or its underline would break it.
+        const u = underlineOf(state, setext)
+        for (let k = doc.lineAt(setext.from).number; u && k <= u.number; k++) {
+          add(k, kind && k === u.number ? 'pad' : 'line')
+        }
+        continue
+      }
+      add(n, 'line')
+    }
+    const order = [...targets.keys()].sort((a, b) => a - b)
+    const formatted = order.filter((n) => targets.get(n) === 'line').map((n) => doc.line(n))
+    if (formatted.length === 0 && blanks.length === 0) return false
+
+    const chains = new Map(formatted.map((l) => [l.number, chainAt(tree, l)]))
+    const chainOf = (l: Line) => chains.get(l.number) ?? []
+    const changes: Change[] = []
+    const some = formatted.length > 0
+    if (level) {
+      const off = some && formatted.every((l) => levelOf(headingOf(tree, l)) === level)
+      for (const line of formatted) {
+        const h = headingOf(tree, line)
+        if (h?.name.startsWith('ATX')) {
+          const open = h.firstChild
+          if (open?.name !== 'HeaderMark') continue
+          if (!off) {
+            changes.push({ from: open.from, to: open.to, insert: '#'.repeat(level) })
+            continue
+          }
+          let to = open.to
+          while (to < line.to && isSpace(doc.sliceString(to, to + 1))) to++
+          changes.push({ from: open.from, to, insert: '' })
+          // The closing sequence (`## title ##`) would print literally in body text.
+          const close = h.lastChild
+          if (close && close !== open && close.name === 'HeaderMark' && close.to === h.to) {
+            let from = close.from
+            while (from > to && isSpace(doc.sliceString(from - 1, from))) from--
+            changes.push({ from, to: close.to, insert: '' })
+          }
+        } else if (h) {
+          // Setext: converted (underline removed, ATX prefix set) or, same level, body text.
+          const drop = dropUnderline(state, h)
+          if (drop) changes.push(drop)
+          if (!off) {
+            changes.push({
+              from: prefixEnd(state, tree, line),
+              to: prefixEnd(state, tree, line),
+              insert: `${'#'.repeat(level)} `,
+            })
+          }
+        } else if (!off) {
+          const at = prefixEnd(state, tree, line)
+          changes.push({ from: at, to: at, insert: `${'#'.repeat(level)} ` })
+        }
+      }
+      if (!off) {
+        for (const b of blanks) {
+          changes.push({ from: b.to, to: b.to, insert: `${'#'.repeat(level)} ` })
+        }
+      }
+    } else if (kind) {
+      const items = formatted.map((l) => itemOf(chainOf(l)))
+      const off = some && items.every((it) => it !== null && kindOf(it) === kind)
+      if (off) {
+        const lists = new Map<number, SyntaxNode>()
+        for (const it of items) if (it?.parent) lists.set(it.parent.from, it.parent)
+        for (const list of lists.values()) removeList(state, list, changes)
+      } else {
+        // Numbering counts per indentation column, so a nested level starts at 1 again.
+        const counters = new Map<number, number>()
+        let width = 0
+        const all = [...order.map((n) => doc.line(n)), ...blanks].sort((a, b) => a.from - b.from)
+        for (const line of all) {
+          if (targets.get(line.number) === 'pad') {
+            const at = prefixEnd(state, tree, line)
+            if (width) changes.push({ from: at, to: at, insert: ' '.repeat(width) })
+            continue
+          }
+          const item = isBlank(line.text) ? null : itemOf(chainOf(line))
+          const own = item && doc.lineAt(item.from).number === line.number ? item : null
+          const from = own ? own.from : isBlank(line.text) ? line.to : prefixEnd(state, tree, line)
+          const to = own ? itemContent(state, own) : from
+          const col = from - line.from
+          for (const k of [...counters.keys()]) if (k > col) counters.delete(k)
+          const count = (counters.get(col) ?? 0) + 1
+          counters.set(col, count)
+          const marker = LIST_MARKER[kind](count)
+          width = marker.length
+          if (doc.sliceString(from, to) !== marker) changes.push({ from, to, insert: marker })
+        }
+      }
+    } else {
+      const quotes = formatted.map((l) =>
+        chainOf(l)
+          .filter((c) => c.name === 'Blockquote')
+          .pop(),
+      )
+      const off = some && quotes.every((q) => q !== undefined)
+      if (off) {
+        const unique = new Map<number, SyntaxNode>()
+        for (const q of quotes) if (q) unique.set(q.from, q)
+        for (const q of unique.values()) removeQuote(state, q, changes)
+      } else {
+        // Lines already in a quote keep their single `> ` (no nested quote from a mixed range).
+        formatted.forEach((line, i) => {
+          if (!quotes[i]) changes.push({ from: line.from, to: line.from, insert: '> ' })
+        })
+        for (const b of blanks) changes.push({ from: b.to, to: b.to, insert: '> ' })
+      }
+    }
+
+    const list = normalize(changes)
+    if (list.length === 0) return false
+    const set = state.changes(list)
+    const ranges = state.selection.ranges.map((r) =>
+      r.empty
+        ? EditorSelection.cursor(set.mapPos(r.head, 1))
+        : EditorSelection.range(
+            set.mapPos(r.anchor, r.anchor <= r.head ? 1 : -1),
+            set.mapPos(r.head, r.anchor <= r.head ? -1 : 1),
+          ),
+    )
+    view.dispatch({
+      changes: set,
+      selection: EditorSelection.create(ranges, state.selection.mainIndex),
+      effects: unfoldTouched(state, list, set),
+      scrollIntoView: true,
+      userEvent: `input.format.${id}`,
+      annotations: isolateHistory.of('full'),
+    })
+    return true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Link (spec „Link“)
+
+/** Nodes a link must not enter: markers would print literally or nest a link in a link. */
+const NO_LINK = new Set(['InlineCode', 'InlineMath', 'Link', 'Image', 'Autolink', 'URL'])
+
+/** Whether `pos` lies strictly inside a node named in `names`. */
+function strictlyIn(tree: Tree, pos: number, names: Set<string>): boolean {
+  for (const side of [1, -1] as const) {
+    for (let n: SyntaxNode | null = tree.resolveInner(pos, side); n; n = n.parent) {
+      if (names.has(n.name) && n.from < pos && pos < n.to) return true
+    }
+  }
+  return false
+}
+
+/**
+ * The clipboard text as a link destination: one `http(s)://` URL, trimmed, without whitespace
+ * inside (spec: „a single http(s):// URL“); anything else counts as no URL. Unbalanced
+ * parentheses would end the destination early, so such a URL goes into `<…>`.
+ */
+function linkDestination(raw: string | null): string | null {
+  const url = raw?.trim() ?? ''
+  if (!/^https?:\/\/\S+$/i.test(url) || /[<>]/.test(url)) return null
+  let depth = 0
+  for (const ch of url) {
+    if (ch === '(') depth++
+    else if (ch === ')' && --depth < 0) break
+  }
+  return depth === 0 ? url : `<${url}>`
+}
+
+/**
+ * Inserts a link (spec „Link“): a selection becomes `[Selection](|)` with the cursor in the URL;
+ * with a clipboard URL it is filled in and the cursor goes after the link. No selection inserts
+ * `[|]()` (or `[|](url)`). Works in table cells; refuses in code, formulas, an existing link, a
+ * selection over more than one line or cell, and the contexts of `refused(state, 'inline')`.
+ * The clipboard is read by the caller (App), only on this click.
+ */
+export function insertLink(view: EditorView, clipboardUrl: string | null): boolean {
+  const { state } = view
+  if (refused(state, 'inline')) return false
+  const tree = syntaxTree(state)
+  const dest = linkDestination(clipboardUrl) ?? ''
+  const tail = `](${dest})`
+  const changes: Change[] = []
+  const places: Point[] = []
+  for (const r of state.selection.ranges) {
+    if (strictlyIn(tree, r.from, NO_LINK) || strictlyIn(tree, r.to, NO_LINK)) return false
+    if (r.empty) {
+      const cell = cellAt(state, r.head)
+      if (cell?.row === 1) return false
+      const bound = cell ?? lineContent(state, tree, state.doc.lineAt(r.head))
+      if (!bound) return false
+      const pos = Math.min(Math.max(r.head, bound.from), bound.to)
+      changes.push({ from: pos, to: pos, insert: `[${tail}` })
+      places.push({ pos, assoc: -1, offset: 1 })
+      continue
+    }
+    // Link text is inline content of one line (or cell): a selection over several would need
+    // one link per piece, which is not what a single click means.
+    const segs = segments(state, tree, r)
+    const seg = segs[0]
+    if (segs.length !== 1 || !seg) return false
+    const cell = cellAt(state, seg.from)
+    const line = state.doc.lineAt(seg.from)
+    const span = widen(tree, seg, cell ?? { from: line.from, to: line.to })
+    let nested = false
+    tree.iterate({
+      from: span.from,
+      to: span.to,
+      enter: (n) => {
+        if (NO_LINK.has(n.name) && n.name !== 'InlineCode' && n.name !== 'InlineMath') {
+          if (n.from < span.to && n.to > span.from) nested = true
+        }
+        return !nested
+      },
+    })
+    if (nested) return false
+    changes.push({ from: span.from, to: span.from, insert: '[' })
+    changes.push({ from: span.to, to: span.to, insert: tail })
+    places.push({ pos: span.to, assoc: -1, offset: dest ? tail.length : 2 })
+  }
+  const set = state.changes(normalize(changes))
+  const ranges = places.map((p) =>
+    EditorSelection.cursor(set.mapPos(p.pos, p.assoc) + (p.offset ?? 0)),
+  )
+  view.dispatch({
+    changes: set,
+    selection: EditorSelection.create(ranges, state.selection.mainIndex),
+    scrollIntoView: true,
+    userEvent: 'input.format.link',
+    annotations: isolateHistory.of('full'),
+  })
+  return true
+}
+
+// ---------------------------------------------------------------------------------------------
+// Alert boxes (spec „Box ▾“)
+
+export type AlertType = 'note' | 'tip' | 'important' | 'warning' | 'caution'
+
+/**
+ * The Box menu's entries. Labels are the German keyword aliases the pipeline accepts
+ * (pipeline/lib/markdown.typ `alert-kinds`, TEMPLATES.md §3), not a set's box titles: the title
+ * a box gets in the PDF is the set's business. alerts-sync.test.ts keeps them in sync.
+ */
+export const ALERT_ENTRIES: ReadonlyArray<{
+  type: AlertType
+  label: 'Info' | 'Tipp' | 'Wichtig' | 'Hinweis' | 'Achtung'
+  keyword: 'NOTE' | 'TIP' | 'IMPORTANT' | 'WARNING' | 'CAUTION'
+}> = [
+  { type: 'note', label: 'Info', keyword: 'NOTE' },
+  { type: 'tip', label: 'Tipp', keyword: 'TIP' },
+  { type: 'important', label: 'Wichtig', keyword: 'IMPORTANT' },
+  { type: 'warning', label: 'Hinweis', keyword: 'WARNING' },
+  { type: 'caution', label: 'Achtung', keyword: 'CAUTION' },
+]
+
+/**
+ * Inserts an alert box with the English GFM keyword (`> [!WARNING]`, portable to GitHub and
+ * every set). Without a selection the box goes after the cursor's block, like a table, with a
+ * `> ` line holding the cursor; with one, the touched lines (main selection) become the quoted
+ * content, blank lines as `>`. One blank line before and after where there is none, so no
+ * neighbouring paragraph joins the box lazily. Refused like line formats, tables included.
+ */
+export function insertAlert(type: AlertType): Command {
+  return (view: EditorView): boolean => {
+    const { state } = view
+    const entry = ALERT_ENTRIES.find((e) => e.type === type)
+    if (!entry || refused(state, 'line')) return false
+    const nl = state.lineBreak
+    const doc = state.doc
+    const head = `> [!${entry.keyword}]`
+    const r = state.selection.main
+    let change: Change
+    let cursor: number
+    if (r.empty) {
+      const text = `${head}${nl}> `
+      const { from, insert, start } = blockInsertion(state, text)
+      change = { from, to: from, insert }
+      cursor = from + start + text.length
+    } else {
+      const first = doc.lineAt(r.from)
+      let last = doc.lineAt(r.to)
+      if (last.number > first.number && last.from === r.to) last = doc.line(last.number - 1)
+      const body: string[] = []
+      for (let n = first.number; n <= last.number; n++) {
+        const t = doc.line(n).text
+        body.push(isBlank(t) ? '>' : `> ${t}`)
+      }
+      const blankAt = (n: number) => n < 1 || n > doc.lines || isBlank(doc.line(n).text)
+      const before = blankAt(first.number - 1) ? '' : nl
+      const after = blankAt(last.number + 1) ? '' : nl
+      const content = `${head}${nl}${body.join(nl)}`
+      change = { from: first.from, to: last.to, insert: before + content + after }
+      cursor = first.from + before.length + content.length
+    }
+    view.dispatch({
+      changes: change,
+      selection: { anchor: cursor },
+      scrollIntoView: true,
+      userEvent: `input.format.alert-${type}`,
+      annotations: isolateHistory.of('full'),
+    })
+    return true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Active state (spec „Active state“)
+
+/**
+ * The formats the main cursor sits in, for the toolbar's `aria-pressed`: inline runs (bounds
+ * included, as toggle off sees them), headings H1–H3 (ATX and Setext), a quote or alert, the
+ * innermost list item (a task → only task, otherwise bullet or numbered by its parent list) and
+ * a top-level table. Read only.
+ */
+export function activeFormats(state: EditorState): ReadonlySet<FormatId | 'table'> {
+  const out = new Set<FormatId | 'table'>()
+  const tree = syntaxTree(state)
+  if (tree.type.name !== 'Document') return out
+  const head = state.selection.main.head
+  const at = { from: head, to: head }
+  for (const [id, spec] of Object.entries(INLINE) as [InlineId, InlineSpec][]) {
+    if (runsAt(tree, at, spec.node).length > 0) out.add(id)
+  }
+  let item: SyntaxNode | null = null
+  for (const side of [1, -1] as const) {
+    for (let n: SyntaxNode | null = tree.resolveInner(head, side); n; n = n.parent) {
+      const level = levelOf(HEADING.test(n.name) ? n : null)
+      if (level >= 1 && level <= 3) out.add(`h${level}` as FormatId)
+      if (n.name === 'Blockquote') out.add('quote')
+      if (n.name === 'ListItem' && (!item || n.to - n.from < item.to - item.from)) item = n
+    }
+  }
+  if (item) out.add(kindOf(item))
+  if (tableAt(state, head)) out.add('table')
+  return out
 }

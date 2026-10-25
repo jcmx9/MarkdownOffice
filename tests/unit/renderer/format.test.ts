@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { undo } from '@codemirror/commands'
+import { foldEffect, foldedRanges, syntaxTree } from '@codemirror/language'
 import { EditorSelection, EditorState, StateEffect } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -303,5 +304,357 @@ describe('undo and events', () => {
 
   it('exports no keymap', () => {
     expect(Object.keys(format).filter((k) => /keymap/i.test(k))).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Line formats, link, alerts and active state (Task 5)
+
+type LineId = 'h1' | 'h2' | 'h3' | 'bullet' | 'numbered' | 'task' | 'quote'
+
+/** Runs any command, checks one undo restores the exact bytes, returns the marked result. */
+function runCmd(text: string, cmd: (v: EditorView) => boolean, opts: MakeOptions = {}): string {
+  const v = make(text, opts)
+  const before = v.state.doc.toString()
+  expect(cmd(v)).toBe(true)
+  const after = marked(v)
+  const afterState = v.state
+  undo(v)
+  expect(v.state.doc.toString()).toBe(before)
+  v.setState(afterState)
+  return after
+}
+
+function refusesCmd(text: string, cmd: (v: EditorView) => boolean, opts: MakeOptions = {}): void {
+  const v = make(text, opts)
+  const before = v.state.doc.toString()
+  expect(cmd(v)).toBe(false)
+  expect(v.state.doc.toString()).toBe(before)
+}
+
+/** The names of every node in a fresh parse of `text`. */
+function nodeNames(text: string): Set<string> {
+  const state = parsed(createState(text, '\n', 'code', false, 'edit'))
+  const names = new Set<string>()
+  syntaxTree(state).iterate({ enter: (n) => void names.add(n.name) })
+  return names
+}
+
+describe('setLinePrefix: headings', () => {
+  it.each([
+    ['sets a heading on body text', 'para‸', 'h1', '# para‸'],
+    ['changes the level', '## ti‸tle', 'h1', '# ti‸tle'],
+    ['the same level again makes body text', '## ti‸tle', 'h2', 'ti‸tle'],
+    ['removes an ATX closing sequence with the heading', '## ti‸tle ##', 'h2', 'ti‸tle'],
+    ['keeps the closing sequence on a level change', '## ti‸tle ##', 'h3', '### ti‸tle ##'],
+    ['converts a Setext heading', 'Ti‸tle\n===', 'h2', '## Ti‸tle'],
+    ['converts a Setext H2 to H1', 'Ti‸tle\n---', 'h1', '# Ti‸tle'],
+    ['a Setext heading of the same level becomes body text', 'Ti‸tle\n===', 'h1', 'Ti‸tle'],
+    ['a cursor on the Setext underline converts its heading', 'Title\n==‸=', 'h3', '### Title‸'],
+    ['every touched line', '«a\nb»', 'h3', '### «a\n### b»'],
+    ['mixed lines are all set', '«# a\nb»', 'h1', '«# a\n# b»'],
+    ['inside a quote', '> qu‸ote', 'h2', '> ## qu‸ote'],
+    ['inside a list item', '- it‸em', 'h2', '- ## it‸em'],
+    ['inside an alert', '> [!NOTE]\n> te‸xt', 'h2', '> [!NOTE]\n> ## te‸xt'],
+    ['on an empty line', '‸', 'h1', '# ‸'],
+    ['skips the alert type line', '> «[!NOTE]\n> a»', 'h1', '> «[!NOTE]\n> # a»'],
+    ['skips a thematic break', '«a\n\n---\n\nb»', 'h2', '## «a\n\n---\n\n## b»'],
+  ] as [string, string, LineId, string][])('%s', (_name, before, id, after) => {
+    expect(runCmd(before, format.setLinePrefix(id))).toBe(after)
+  })
+
+  it('a range ending at column 0 does not touch that line', () => {
+    expect(runCmd('«a\n»b', format.setLinePrefix('h1'))).toBe('# «a\n»b')
+  })
+})
+
+describe('setLinePrefix: lists and quotes', () => {
+  it.each([
+    ['bullets every line', '«a\nb»', 'bullet', '- «a\n- b»'],
+    [
+      'numbers from 1 over the changed lines, blank lines skipped',
+      '«a\n\nb\nc»',
+      'numbered',
+      '1. «a\n\n2. b\n3. c»',
+    ],
+    ['does not continue a preceding list', '1. x\n\n«a\nb»', 'numbered', '1. x\n\n1. «a\n2. b»'],
+    ['swaps bullets for numbers', '«- a\n- b»', 'numbered', '«1. a\n2. b»'],
+    ['swaps numbers for tasks', '1. «a\n2. b»', 'task', '- [ ] «a\n- [ ] b»'],
+    ['swaps tasks for bullets', '- [ ] «a\n- [x] b»', 'bullet', '- «a\n- b»'],
+    ['keeps the indentation', '«  a\n  b»', 'bullet', '«  - a\n  - b»'],
+    ['works inside a quote', '> «a\n> b»', 'bullet', '> - «a\n> - b»'],
+    [
+      'works inside an alert, not on its type line',
+      '> «[!NOTE]\n> a\n> b»',
+      'numbered',
+      '> «[!NOTE]\n> 1. a\n> 2. b»',
+    ],
+    ['starts a list on an empty line', '‸', 'bullet', '- ‸'],
+    ['starts a task on an empty line', '‸', 'task', '- [ ] ‸'],
+    ['a continuation line stands for its item', '- a\n  b‸', 'numbered', '1. a\n  b‸'],
+    ['a list item in a quote keeps the quote', '> - a‸', 'numbered', '> 1. a‸'],
+    ['quotes every line', '«a\nb»', 'quote', '> «a\n> b»'],
+    ['quotes a list at the line start', '«- a\n- b»', 'quote', '> «- a\n> - b»'],
+    ['quotes a heading', '## a‸', 'quote', '> ## a‸'],
+  ] as [string, string, LineId, string][])('%s', (_name, before, id, after) => {
+    expect(runCmd(before, format.setLinePrefix(id))).toBe(after)
+  })
+
+  it.each([
+    [
+      'a bullet list from a middle line',
+      'x\n\n- a\n- b‸\n- c\n\ny',
+      'bullet',
+      'x\n\na\nb‸\nc\n\ny',
+      'BulletList',
+    ],
+    [
+      'a numbered list from a middle line',
+      '1. a\n2. b‸\n3. c',
+      'numbered',
+      'a\nb‸\nc',
+      'OrderedList',
+    ],
+    ['a task list', '- [ ] a\n- [x] b‸', 'task', 'a\nb‸', 'Task'],
+    [
+      'a quote from a middle line',
+      'x\n\n> a\n> b‸\n> c\n\ny',
+      'quote',
+      'x\n\na\nb‸\nc\n\ny',
+      'Blockquote',
+    ],
+    ['an alert', '> [!NOTE]\n> a‸', 'quote', '[!NOTE]\na‸', 'Blockquote'],
+    ['a list with continuation lines', '10. a‸\n\n    b', 'numbered', 'a‸\n\nb', 'OrderedList'],
+  ] as [string, string, LineId, string, string][])(
+    'toggles off the whole block: %s',
+    (_name, before, id, after, gone) => {
+      const result = runCmd(before, format.setLinePrefix(id))
+      expect(result).toBe(after)
+      const names = nodeNames(result.replace(CURSOR, ''))
+      expect(names.has(gone)).toBe(false)
+      expect(names.has('CodeBlock')).toBe(false)
+    },
+  )
+
+  it('toggles off a list inside a quote, the quote stays', () => {
+    expect(runCmd('> - a\n> - b‸', format.setLinePrefix('bullet'))).toBe('> a\n> b‸')
+  })
+
+  it('numbers a nested level from 1 again', () => {
+    expect(runCmd('«a\n  b\n  c\nd»', format.setLinePrefix('numbered'))).toBe(
+      '1. «a\n  1. b\n  2. c\n2. d»',
+    )
+  })
+
+  it('toggles off only the innermost list', () => {
+    const result = runCmd('- a\n  - b‸\n  - c\n- d', format.setLinePrefix('bullet'))
+    expect(result).toBe('- a\n  b‸\n  c\n- d')
+    const state = parsed(createState(result.replace(CURSOR, ''), '\n', 'code', false, 'edit'))
+    const items: string[] = []
+    syntaxTree(state).iterate({
+      enter: (n) => void (n.name === 'ListItem' && items.push(state.sliceDoc(n.from, n.to))),
+    })
+    expect(items).toEqual(['- a\n  b\n  c', '- d'])
+  })
+
+  it('toggles off a quote nested in a quote: the inner one only', () => {
+    expect(runCmd('> a\n>\n> > b‸\n> > c', format.setLinePrefix('quote'))).toBe('> a\n>\n> b‸\n> c')
+  })
+
+  it('quoting a mix adds the prefix only where it is missing', () => {
+    expect(runCmd('> «a\n\nb»', format.setLinePrefix('quote'))).toBe('> «a\n\n> b»')
+  })
+
+  it('a Setext heading becomes a list item with its underline indented', () => {
+    expect(runCmd('Ti‸tle\n---', format.setLinePrefix('bullet'))).toBe('- Ti‸tle\n  ---')
+  })
+})
+
+describe('setLinePrefix: refused blocks and folds', () => {
+  it('skips a table inside the selection', () => {
+    expect(runCmd('«a\n\n| x |\n|---|\n\nb»', format.setLinePrefix('bullet'))).toBe(
+      '- «a\n\n| x |\n|---|\n\n- b»',
+    )
+  })
+
+  it('skips a code fence inside the selection', () => {
+    expect(runCmd('«a\n\n```\ncode\n```\n\nb»', format.setLinePrefix('quote'))).toBe(
+      '> «a\n\n```\ncode\n```\n\n> b»',
+    )
+  })
+
+  it('skips the front matter inside the selection', () => {
+    expect(runCmd('«---\ntitle: x\n---\n\nText»', format.setLinePrefix('h1'))).toBe(
+      '«---\ntitle: x\n---\n\n# Text»',
+    )
+  })
+
+  it.each(['h1', 'h2', 'h3', 'bullet', 'numbered', 'task', 'quote'] as LineId[])(
+    'refuses %s in a table, code, front matter, HTML and Present',
+    (id) => {
+      const cmd = format.setLinePrefix(id)
+      refusesCmd('| a‸ |\n|---|', cmd)
+      refusesCmd('```\nco‸de\n```', cmd)
+      refusesCmd('---\nti‸tle: x\n---\n\nText', cmd)
+      refusesCmd('<!-- page‸break -->', cmd)
+      refusesCmd('«| a |\n|---|»', cmd)
+      refusesCmd('a fo‸o', cmd, { present: true })
+      refusesCmd('a fo‸o', cmd, { mode: 'present' })
+    },
+  )
+
+  it('changes a fold fully inside the selection and keeps it folded', () => {
+    const v = make('«# A\nx\ny\n# B»')
+    v.dispatch({ effects: foldEffect.of({ from: 3, to: 7 }) })
+    expect(format.setLinePrefix('quote')(v)).toBe(true)
+    expect(v.state.doc.toString()).toBe('> # A\n> x\n> y\n> # B')
+    expect(foldedRanges(v.state).size).toBe(1)
+  })
+
+  it('unfolds a fold the selection only partly covers', () => {
+    const v = make('# A\nx\ny\n# B\n\nz')
+    v.dispatch({ effects: foldEffect.of({ from: 3, to: 7 }) })
+    // Anchor inside the fold (line x), head on line z.
+    v.dispatch({ selection: EditorSelection.single(4, 14) })
+    expect(foldedRanges(v.state).size).toBe(1)
+    expect(format.setLinePrefix('quote')(v)).toBe(true)
+    expect(v.state.doc.toString()).toBe('# A\n> x\n> y\n> # B\n\n> z')
+    expect(foldedRanges(v.state).size).toBe(0)
+  })
+
+  it('tags the transaction input.format.<id> and is one undo step', () => {
+    const v = make('a‸')
+    let event = ''
+    const orig = v.dispatch.bind(v)
+    v.dispatch = ((...args: Parameters<EditorView['dispatch']>) => {
+      event = (args[0] as { userEvent?: string }).userEvent ?? ''
+      orig(...args)
+    }) as EditorView['dispatch']
+    format.setLinePrefix('numbered')(v)
+    expect(event).toBe('input.format.numbered')
+    v.dispatch({ changes: { from: v.state.doc.length, insert: 'x' }, userEvent: 'input.type' })
+    undo(v)
+    expect(v.state.doc.toString()).toBe('1. a')
+    undo(v)
+    expect(v.state.doc.toString()).toBe('a')
+  })
+
+  it('keeps CRLF on save', () => {
+    const v = make('«a\r\nb»', { eol: '\r\n' })
+    expect(format.setLinePrefix('bullet')(v)).toBe(true)
+    expect(serializeDoc(v.state.doc, '\r\n')).toBe('- a\r\n- b')
+  })
+})
+
+describe('insertLink', () => {
+  const URL = 'https://example.org/a'
+  const link = (url: string | null) => (v: EditorView) => format.insertLink(v, url)
+
+  it.each([
+    ['a selection without URL puts the cursor in the URL', 'a «foo» b', null, 'a [foo](‸) b'],
+    ['a selection with URL puts the cursor after the link', 'a «foo» b', URL, `a [foo](${URL})‸ b`],
+    ['no selection without URL', 'a ‸ b', null, 'a [‸]() b'],
+    ['no selection with URL keeps the cursor in the text', 'a ‸ b', URL, `a [‸](${URL}) b`],
+    ['trims the clipboard text', 'a «foo» b', `  ${URL}\n`, `a [foo](${URL})‸ b`],
+    ['ignores text that is no URL', 'a «foo» b', 'not a url', 'a [foo](‸) b'],
+    ['ignores a URL with whitespace inside', 'a «foo» b', 'https://a b', 'a [foo](‸) b'],
+    ['ignores other schemes', 'a «foo» b', 'ftp://x.org', 'a [foo](‸) b'],
+    ['ignores several URLs', 'a «foo» b', `${URL}\n${URL}`, 'a [foo](‸) b'],
+    [
+      'wraps a URL with unbalanced parentheses',
+      'a «foo» b',
+      'https://x.org/a_(b',
+      'a [foo](<https://x.org/a_(b>)‸ b',
+    ],
+    ['keeps the line prefix outside', '«## Head»', null, '## [Head](‸)'],
+    ['widens over a partly covered run', '**a «b** c»', null, '[**a b** c](‸)'],
+    ['works in a table cell', '| «a» | b |\n|---|---|', URL, `| [a](${URL})‸ | b |\n|---|---|`],
+  ] as [string, string, string | null, string][])('%s', (_name, before, url, after) => {
+    expect(runCmd(before, link(url))).toBe(after)
+  })
+
+  it.each([
+    ['a code span', 'a `co‸de` b'],
+    ['an existing link', 'a [te‸xt](u) b'],
+    ['the front matter', '---\nti‸tle: x\n---\n\nText'],
+    ['a code block', '```\nco‸de\n```'],
+    ['a selection over two lines', '«a\nb»'],
+    ['a selection over two cells', '| «a | b» |\n|---|---|'],
+  ])('refuses in %s', (_name, text) => {
+    refusesCmd(text, link(URL))
+  })
+
+  it('refuses in Present', () => {
+    refusesCmd('a «foo» b', link(URL), { present: true })
+  })
+})
+
+describe('insertAlert', () => {
+  it.each([
+    // Like a table, the box gets a blank line after it, at the note end too.
+    ['on an empty note', '‸', 'warning', '> [!WARNING]\n> ‸\n'],
+    ['after the cursor block at the note end', 'para‸', 'note', 'para\n\n> [!NOTE]\n> ‸\n'],
+    ['into the next empty line', 'pa‸ra\n\nnext', 'note', 'para\n\n> [!NOTE]\n> ‸\n\nnext'],
+    ['after a whole list', '- a‸\n- b\n\nx', 'tip', '- a\n- b\n\n> [!TIP]\n> ‸\n\nx'],
+    ['a selection becomes the content', '«a\nb»', 'caution', '> [!CAUTION]\n> a\n> b‸'],
+    ['blank lines stay in the box', '«a\n\nb»', 'important', '> [!IMPORTANT]\n> a\n>\n> b‸'],
+    ['blank lines around the box', 'x\n«a»\ny', 'tip', 'x\n\n> [!TIP]\n> a‸\n\ny'],
+  ] as [string, string, format.AlertType, string][])('%s', (_name, before, type, after) => {
+    expect(runCmd(before, format.insertAlert(type))).toBe(after)
+  })
+
+  it.each([
+    ['a table', '| a‸ |\n|---|'],
+    ['a code block', '```\nco‸de\n```'],
+    ['the front matter', '---\nti‸tle: x\n---\n\nText'],
+    ['a selection touching a table', '«a\n\n| x |»\n|---|'],
+  ])('refuses in %s', (_name, text) => {
+    refusesCmd(text, format.insertAlert('note'))
+  })
+
+  it('refuses in Present', () => {
+    refusesCmd('a‸', format.insertAlert('note'), { present: true })
+  })
+
+  it('lists the five GFM types with the pipeline labels', () => {
+    expect(format.ALERT_ENTRIES.map((e) => [e.type, e.label, e.keyword])).toEqual([
+      ['note', 'Info', 'NOTE'],
+      ['tip', 'Tipp', 'TIP'],
+      ['important', 'Wichtig', 'IMPORTANT'],
+      ['warning', 'Hinweis', 'WARNING'],
+      ['caution', 'Achtung', 'CAUTION'],
+    ])
+  })
+})
+
+describe('activeFormats', () => {
+  it.each([
+    ['plain‸', []],
+    ['**a‸b**', ['bold']],
+    ['*a‸*', ['italic']],
+    ['***a‸***', ['bold', 'italic']],
+    ['~~a‸~~', ['strike']],
+    ['==a‸==', ['mark']],
+    ['`a‸`', ['code']],
+    ['# a‸', ['h1']],
+    ['## a‸', ['h2']],
+    ['### a‸', ['h3']],
+    ['#### a‸', []],
+    ['a‸\n===', ['h1']],
+    ['a‸\n---', ['h2']],
+    ['> a‸', ['quote']],
+    ['> [!NOTE]\n> a‸', ['quote']],
+    ['- a‸', ['bullet']],
+    ['1. a‸', ['numbered']],
+    ['- [ ] a‸', ['task']],
+    ['1. [ ] a‸', ['task']],
+    ['- a\n  1. b‸', ['numbered']],
+    ['1. a\n   - b‸', ['bullet']],
+    ['- **a‸**', ['bullet', 'bold']],
+    ['| a‸ |\n|---|', ['table']],
+    ['| ==a‸== |\n|---|', ['table', 'mark']],
+  ] as [string, string[]][])('%s', (text, expected) => {
+    const v = make(text)
+    expect([...format.activeFormats(v.state)].sort()).toEqual([...expected].sort())
   })
 })
