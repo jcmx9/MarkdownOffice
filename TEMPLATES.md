@@ -60,7 +60,7 @@ typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-f
 | Staged path | Content |
 |---|---|
 | `/note/<name>.md` | the note (`source`, and the attachment) |
-| `/img/<n><ext>` | the images the note visibly includes, numbered from 1 with the source's extension (`/img/1.png`; the original name is not kept); SVG, PNG, JPEG, GIF, WebP by content; SVGs without external references |
+| `/img/<n><ext>` | the images the note visibly includes from its own folder or a subfolder (links resolved, no hidden folders), numbered from 1 with the source's extension (`/img/1.png`; the original name is not kept); SVG, PNG, JPEG, GIF, WebP by content; SVGs without external references |
 | `/logo/<name>` | the logo |
 | `/profile/<name>` | the profile YAML and the files next to it that the profile names as values |
 | `/set/…` | a set folder without top-level `profiles` and `.git` (any letter case); for a single `.typ` found by name its folder, filtered (no `profiles` at any depth or letter case, no hidden entries, no links leading out); for a `.typ` named in the note only that file |
@@ -78,7 +78,7 @@ typst compile <set>.typ <out.pdf> --font-path <pipeline>/fonts --ignore-system-f
 
 ### Logo lookup (decided by the script)
 
-Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote values (`http(s)://`, `//`, `data:`) are refused. Absolute (after `~`/variable expansion) → exactly that file. Relative → first existing of `<note folder or MDO_BASE_DIR>/`, `~/` (Windows `%USERPROFILE%`), the templates folder (`MDO_TEMPLATES`, default `~/Documents/Markdown Office/Vorlagen/`), `<pipeline>/`. Nothing found → `logo` input is empty, with a notice. The template never searches.
+Only when `logo:` is set and ends in `.svg`, `.png`, `.jpg` or `.jpeg`; remote values (`http(s)://`, `//`, `data:`) are refused. Relative paths only: `~`, `$VAR`, `%VAR%`, absolute paths and `..` out are refused with a notice. Looked up as the first existing of `<note folder or MDO_BASE_DIR>/`, the profile's folder, the template's folder (the set folder or the `.typ` file's folder); the hit must stay, links resolved, inside the folder it was found in (no hidden folders in the note's). Nothing found → `logo` input is empty, with a notice. The template never searches.
 
 ### Profiles (decided by the script)
 

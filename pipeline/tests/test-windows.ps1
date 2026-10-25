@@ -177,8 +177,9 @@ function New-DriveNote([string]$Dir) {
   New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'bilder') | Out-Null
   Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $Dir 'bilder')
   Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination $Dir
-  $absImg = (Join-Path $Fixtures 'bilder\screenshot.png')
-  $noteText = "---`ntitle: `"Andere Platte`"`nlogo: logo.png`n---`n`n# Kapitel`n`n![Relativ](bilder/screenshot.png)`n`n![Absolut auf dem Repo-Laufwerk]($absImg)`n`nText nach den Bildern.`n"
+  # Absolut, aber im Notizordner: Bilder von ausserhalb des Notizordners kommen nicht ins PDF.
+  $absImg = (Join-Path $Dir 'bilder\screenshot.png')
+  $noteText = "---`ntitle: `"Andere Platte`"`nlogo: logo.png`n---`n`n# Kapitel`n`n![Relativ](bilder/screenshot.png)`n`n![Absolut mit Laufwerksbuchstabe](<$absImg>)`n`nText nach den Bildern.`n"
   $n = Join-Path $Dir 'notiz.md'
   [IO.File]::WriteAllText($n, $noteText, (New-Object Text.UTF8Encoding $false))
   return $n
@@ -236,13 +237,15 @@ if ($OtherTemp) {
   Skip 'anderes Laufwerk (kein Temp-Ordner auf einem anderen Laufwerk als das Repo)'
 }
 
-# 3b) Logo nur mit logo:; relativ gesucht im Notizordner, dann im Benutzerordner
-#     (%USERPROFILE%), dann im Vorlagen-Ordner (MDO_TEMPLATES), dann im
-#     Pipeline-Ordner. Nicht gefunden: Hinweis, Exit 0.
+# 3b) Logo nur mit logo: und nur als relativer Pfad: gesucht im Notizordner, dann im
+#     Ordner des Profils, dann im Ordner der Vorlage (spiegelt test-pdf.sh, das die
+#     Reihenfolge prueft). Benutzer-, Vorlagen- und Pipeline-Ordner werden nicht mehr
+#     durchsucht; %VAR% und absolute Pfade bleiben draussen. Immer Exit 0.
 $logoDir  = Join-Path $Work 'logo notiz'
 $logoHome = Join-Path $Work 'logo home'
 $logoVorl = Join-Path $Work 'logo vorlagen'
 New-Item -ItemType Directory -Force -Path $logoDir, $logoHome, $logoVorl | Out-Null
+Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoDir 'notiz-logo.png')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoHome 'mein-logo.png')
 Copy-Item -LiteralPath (Join-Path $Fixtures 'logo.png') -Destination (Join-Path $logoVorl 'vorlagen-logo.png')
 $logoPdf = Join-Path $outDir 'logo.pdf'
@@ -251,11 +254,14 @@ $savedTemplates = $env:MDO_TEMPLATES
 $env:USERPROFILE = $logoHome
 $env:MDO_TEMPLATES = $logoVorl
 foreach ($case in @(
-    @{ Logo = 'mein-logo.png'; Hint = $false; Name = 'logo: aus dem Benutzerordner' },
-    @{ Logo = 'vorlagen-logo.png'; Hint = $false; Name = 'logo: aus dem Vorlagen-Ordner' },
+    @{ Logo = 'notiz-logo.png'; Hint = $false; Name = 'logo: aus dem Notizordner' },
+    @{ Logo = 'mein-logo.png'; Hint = $true; Name = 'logo: Benutzerordner wird nicht durchsucht' },
+    @{ Logo = 'vorlagen-logo.png'; Hint = $true; Name = 'logo: Vorlagen-Ordner wird nicht durchsucht' },
+    @{ Logo = '%USERPROFILE%\mein-logo.png'; Hint = $true; Name = 'logo: %VAR% -> ohne Logo' },
+    @{ Logo = (Join-Path $logoHome 'mein-logo.png'); Hint = $true; Name = 'logo: absoluter Pfad -> ohne Logo' },
     @{ Logo = 'fehlt.png';     Hint = $true;  Name = 'logo: nicht gefunden -> ohne Logo' },
     @{ Logo = 'mein-logo.txt'; Hint = $true;  Name = 'logo: falsche Endung -> ohne Logo' })) {
-  $noteText = "---`nlogo: $($case.Logo)`n---`n`nText.`n"
+  $noteText = "---`nlogo: `"$($case.Logo)`"`n---`n`nText.`n"
   [IO.File]::WriteAllText((Join-Path $logoDir 'notiz.md'), $noteText, (New-Object Text.UTF8Encoding $false))
   $r = Invoke-Convert @((Join-Path $logoDir 'notiz.md'), $logoPdf)
   $hinted = $r.Text -match 'Hinweis: Logo'
@@ -774,16 +780,26 @@ if ($rr.Code -ne 1 -or $rr.Text -notmatch 'Vorlage nicht gefunden: //nonexistent
   Fail "sandbox UNC-Vorlage: $([int]$watch.Elapsed.TotalSeconds) s (Server gefragt?)"
 } else { Ok "sandbox: UNC-Vorlage aus der Notiz sofort abgelehnt ($([int]$watch.Elapsed.TotalSeconds) s)" }
 
-# Legitim: ein sichtbar verlinktes Bild ausserhalb des Notizordners kommt ins PDF.
+# Bilder nur aus dem Notizordner und seinen Unterordnern (spiegelt test-pdf.sh): ein sichtbar
+# verlinktes Bild ausserhalb fehlt im PDF (mit Hinweis), eines im Unterordner erscheint.
 Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $sb 'bilder\aussen.png')
 [IO.File]::WriteAllText((Join-Path $sbNote 'aussen.md'), "# Aussen`n`n![](../bilder/aussen.png)`n`nENDE.`n", $utf8)
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $sbNote 'innen')
+Copy-Item -LiteralPath (Join-Path $Fixtures 'bilder\screenshot.png') -Destination (Join-Path $sbNote 'innen\bild.png')
+[IO.File]::WriteAllText((Join-Path $sbNote 'innen.md'), "# Innen`n`n![](innen/bild.png)`n`nENDE.`n", $utf8)
 Push-Location $sbNote
 $rr = Invoke-Convert @('aussen.md', (Join-Path $outDir 'sb-aussen.pdf'))
+$ri = Invoke-Convert @('innen.md', (Join-Path $outDir 'sb-innen.pdf'))
 Pop-Location
 if ($rr.Code -ne 0) { Fail "sandbox aussen: Exit $($rr.Code)`n$($rr.Text)" }
-elseif ($rr.Text -match 'nicht gefunden') { Fail "sandbox aussen: Bild nicht gefunden`n$($rr.Text)" }
-elseif ((Get-PdfRaw (Join-Path $outDir 'sb-aussen.pdf')) -notmatch '/Subtype\s*/Image') { Fail 'sandbox aussen: Bild fehlt im PDF' }
-else { Ok 'sandbox: Bild ausserhalb des Notizordners, sichtbar verlinkt, erscheint' }
+elseif ($rr.Text -notmatch 'Bild liegt au.erhalb des Notizordners, kommt nicht ins PDF: \.\./bilder/aussen\.png') {
+  Fail "sandbox aussen: kein Hinweis`n$($rr.Text)"
+}
+elseif ((Get-PdfRaw (Join-Path $outDir 'sb-aussen.pdf')) -match '/Subtype\s*/Image') { Fail 'sandbox aussen: Bild von ausserhalb im PDF' }
+elseif ($ri.Code -ne 0) { Fail "sandbox innen: Exit $($ri.Code)`n$($ri.Text)" }
+elseif ($ri.Text -match 'nicht gefunden') { Fail "sandbox innen: Bild nicht gefunden`n$($ri.Text)" }
+elseif ((Get-PdfRaw (Join-Path $outDir 'sb-innen.pdf')) -notmatch '/Subtype\s*/Image') { Fail 'sandbox innen: Bild fehlt im PDF' }
+else { Ok 'sandbox: Bild ausserhalb des Notizordners bleibt draussen, Bild im Unterordner erscheint' }
 
 # Seitenumbruch alter Form: ein Set ohne mdo-pagebreak (probe, raw-typst an) bricht weiter um.
 [IO.File]::WriteAllText((Join-Path $sbNote 'umbruch.md'), "# Eins`n`n\newpage`n`n# Zwei`n", $utf8)

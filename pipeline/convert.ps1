@@ -874,8 +874,8 @@ function Convert-One {
       }
     }
 
-    # Logo (logo: im Frontmatter; gesucht hat der Wrapper: Ordner der Notiz bzw. MDO_BASE_DIR,
-    # Benutzerordner, Vorlagen-Ordner, Pipeline-Ordner). Ohne Logo nur ein Hinweis, nie ein Fehler.
+    # Logo (logo: im Frontmatter, nur relativ; gesucht hat der Wrapper: Ordner der Notiz bzw.
+    # MDO_BASE_DIR, Ordner des Profils, Ordner der Vorlage). Ohne Logo nur ein Hinweis, nie ein Fehler.
     $logoIn = ''
     if ($manifest.Logo) {
       $logoName = [IO.Path]::GetFileName($manifest.Logo)

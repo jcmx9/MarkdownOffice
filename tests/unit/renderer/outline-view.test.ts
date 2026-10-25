@@ -280,3 +280,121 @@ describe('Outline in-place updates', () => {
     expect(el.querySelector('.active')).toBeNull()
   })
 })
+
+describe('Outline placement', () => {
+  /** happy-dom has no layout: bar height, list height and row tops come from these stubs. */
+  function layout(bar: number, list: () => number, rowTop: (label: HTMLElement) => number) {
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => bar })
+    const ul = el.querySelector(':scope > ul') as HTMLElement
+    Object.defineProperty(ul, 'offsetHeight', { configurable: true, get: list })
+    for (const l of labels()) {
+      l.getBoundingClientRect = () => ({ top: rowTop(l) }) as DOMRect
+    }
+  }
+  const margin = () => (el.querySelector(':scope > ul') as HTMLElement).style.marginTop
+
+  it('puts two parts of the free height above the list and three below', () => {
+    outline.render(tree(), null)
+    layout(
+      500,
+      () => 100,
+      () => 0,
+    )
+    outline.recentre()
+    outline.render(tree(), null)
+    expect(margin()).toBe('160px')
+  })
+  it('a list taller than the bar starts at the top', () => {
+    outline.render(tree(), null)
+    layout(
+      200,
+      () => 900,
+      () => 0,
+    )
+    outline.recentre()
+    outline.render(tree(), null)
+    expect(margin()).toBe('0px')
+  })
+  it('keeps its place after a fold or an edit; only recentre measures again', () => {
+    let height = 100
+    outline.render(tree(), null)
+    layout(
+      500,
+      () => height,
+      () => 0,
+    )
+    outline.recentre()
+    outline.render(tree(), null)
+    height = 40
+    outline.render(tree(true), null)
+    expect(margin()).toBe('160px')
+    outline.recentre()
+    outline.render(tree(true), null)
+    expect(margin()).toBe('184px')
+  })
+  it('showing the bar or changing the zoom centres again', () => {
+    let height = 100
+    outline.render(tree(), null)
+    layout(
+      500,
+      () => height,
+      () => 0,
+    )
+    outline.recentre()
+    outline.render(tree(), null)
+    height = 200
+    outline.setVisible(false)
+    outline.setVisible(true)
+    outline.render(tree(), null)
+    expect(margin()).toBe('120px')
+    height = 100
+    el.style.setProperty('--mdo-ol-zoom', '1.2')
+    outline.render(tree(), null)
+    expect(margin()).toBe('160px')
+  })
+  it('holds the clicked row when a collapse at the scroll end pulls the list down', () => {
+    outline.render(tree(), null)
+    let top = 300
+    layout(
+      200,
+      () => 900,
+      () => top,
+    )
+    outline.recentre()
+    outline.render(tree(), null)
+    el.scrollTop = 0
+    ;(el.querySelector('.mdo-ol-chevron') as HTMLElement).click()
+    expect(handlers.toggle).toHaveBeenCalled()
+    // The browser clamped the scroll position: the row now shows 50px lower.
+    top = 350
+    let scrolled = 0
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => scrolled,
+      set: (v: number) => {
+        scrolled = v
+      },
+    })
+    outline.render(tree(true), null)
+    const ul = el.querySelector(':scope > ul') as HTMLElement
+    expect(ul.style.marginBottom).toBe('50px')
+    expect(scrolled).toBe(50)
+  })
+  it('uses the room above first when the clicked row moved down', () => {
+    let height = 100
+    outline.render(tree(), null)
+    let top = 200
+    layout(
+      500,
+      () => height,
+      () => top,
+    )
+    outline.recentre()
+    outline.render(tree(), null)
+    ;(el.querySelector('.mdo-ol-chevron') as HTMLElement).click()
+    height = 40
+    top = 230
+    outline.render(tree(true), null)
+    expect(margin()).toBe('130px')
+  })
+})

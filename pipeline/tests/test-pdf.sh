@@ -357,14 +357,17 @@ test_fixtures() {
   fi
   ok images.md
 
-  # Absolute Pfade über Umgebungsvariablen ($VAR, ${VAR} fürs Logo); ein
-  # fehlendes Bild hinterlässt einen Hinweis statt den Export abzubrechen.
+  # Absolute Pfade über Umgebungsvariablen ($VAR) für ein Bild im Notizordner; ein
+  # fehlendes Bild hinterlässt einen Hinweis statt den Export abzubrechen. Das Logo
+  # mit ${VAR} bleibt draußen: logo: nimmt nur relative Pfade.
   text="$(MDO_PIPELINE_ROOT="${mroot}" TEST_ASSETS="${fixtures}" render absolute-paths.md)"
   expect absolute-paths.md "${text}" "Abbildung 1: Absolut über Variable" \
     "[Bild fehlt: bilder/gibt-es-nicht.png]" "Text nach den Bildern."
   grep -q "Bild nicht gefunden: bilder/gibt-es-nicht.png" "${out_dir}/absolute-paths.md.err" ||
     die "absolute-paths.md: keine Warnung auf stderr"
-  reject absolute-paths.md "${text}" "PIPELOGO"   # Notiz-Logo statt Pipeline-Logo
+  reject absolute-paths.md "${text}" "PIPELOGO"
+  grep -q 'Logo muss ein relativer Pfad zur Notiz, zum Profil oder zur Vorlage sein' \
+    "${out_dir}/absolute-paths.md.err" || die "absolute-paths.md: kein Hinweis zum absoluten Logo"
   ok absolute-paths.md
 
   # Logo nur mit logo: im Frontmatter; ohne Schlüssel nie, auch wenn im
@@ -373,52 +376,59 @@ test_fixtures() {
   reject tasks.md "${text}" "PIPELOGO"
   ok "ohne logo: kein Logo"
 
-  # Suchreihenfolge für einen relativen logo:-Wert: Ordner der Notiz, dann
-  # Benutzerordner, dann Vorlagen-Ordner, dann Pipeline-Ordner. Nicht
-  # gefunden: ohne Logo, Exit 0.
+  # Suchreihenfolge für logo: (nur relative Pfade): Ordner der Notiz, dann Ordner
+  # des Profils, dann Ordner der Vorlage. Benutzer-, Vorlagen- und Pipeline-Ordner
+  # werden nicht durchsucht. Nicht gefunden: ohne Logo, Exit 0.
   local ldir="${out_dir}/logo-suche" lhome="${out_dir}/logo-home" lvorl="${out_dir}/logo-vorlagen" lout
-  mkdir -p "${ldir}" "${lhome}" "${lvorl}"
+  mkdir -p "${ldir}" "${lhome}" "${lvorl}/lset/profiles"
+  # Ein Benutzer-Set „lset“ (das memo-Set unter anderem Namen) mit einem Profil p.
+  cp "${MDO_SETS_DIR}/memo/memo.typ" "${lvorl}/lset/lset.typ"
+  printf 'name: P\n' >"${lvorl}/lset/profiles/p.yaml"
   svg_text() {
     printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60"><text x="5" y="40" font-family="SourceSans3VF" font-size="30">%s</text></svg>\n' "$1"
   }
   logo_build() {
-    printf -- '---\nlogo: %s\n---\n\nText.\n' "$1" >"${ldir}/n.md"
+    printf -- '---\ntemplate: lset\nprofile: p\nlogo: %s\n---\n\nText.\n' "$1" >"${ldir}/n.md"
     (cd "${ldir}" && HOME="${lhome}" MDO_TEMPLATES="${lvorl}" MDO_PIPELINE_ROOT="${mroot}" "${mdo[@]}" n.md "${out_dir}/logo.pdf" \
       >/dev/null 2>"${out_dir}/logo.err") || die "logo: ${1}: Export fehlgeschlagen: $(cat "${out_dir}/logo.err")"
     pdf_text "${out_dir}/logo.pdf"
   }
   svg_text NOTIZLOGO >"${ldir}/mein-logo.svg"
+  svg_text PROFILLOGO >"${lvorl}/lset/profiles/mein-logo.svg"
+  svg_text VORLAGENLOGO >"${lvorl}/lset/mein-logo.svg"
   svg_text HOMELOGO >"${lhome}/mein-logo.svg"
-  svg_text VORLAGENLOGO >"${lvorl}/mein-logo.svg"
+  svg_text WURZELLOGO >"${lvorl}/mein-logo.svg"
   lout="$(logo_build mein-logo.svg)"
   expect "logo: Notizordner" "${lout}" "NOTIZLOGO"
-  reject "logo: Notizordner" "${lout}" "HOMELOGO"
+  reject "logo: Notizordner" "${lout}" "PROFILLOGO"
   rm "${ldir}/mein-logo.svg"
   lout="$(logo_build mein-logo.svg)"
-  expect "logo: Benutzerordner" "${lout}" "HOMELOGO"
-  reject "logo: Benutzerordner" "${lout}" "VORLAGENLOGO"
+  expect "logo: Profilordner" "${lout}" "PROFILLOGO"
+  reject "logo: Profilordner" "${lout}" "VORLAGENLOGO"
+  rm "${lvorl}/lset/profiles/mein-logo.svg"
+  lout="$(logo_build mein-logo.svg)"
+  expect "logo: Vorlagenordner" "${lout}" "VORLAGENLOGO"
+  rm "${lvorl}/lset/mein-logo.svg"
+  lout="$(logo_build mein-logo.svg)"
+  reject "logo: nicht mehr gesucht" "${lout}" "HOMELOGO" "WURZELLOGO" "PIPELOGO"
   # shellcheck disable=SC2088  # ~ soll wörtlich ins Frontmatter
   lout="$(logo_build '~/mein-logo.svg')"
-  expect "logo: ~/" "${lout}" "HOMELOGO"
-  rm "${lhome}/mein-logo.svg"
-  lout="$(logo_build mein-logo.svg)"
-  expect "logo: Vorlagen-Ordner" "${lout}" "VORLAGENLOGO"
-  svg_text VORLAGENLOGO >"${lvorl}/logo.svg"
-  lout="$(logo_build logo.svg)"
-  expect "logo: Vorlagen vor Pipeline" "${lout}" "VORLAGENLOGO"
-  reject "logo: Vorlagen vor Pipeline" "${lout}" "PIPELOGO"
-  rm "${lvorl}/logo.svg"
-  lout="$(logo_build logo.svg)"
-  expect "logo: Pipeline-Ordner" "${lout}" "PIPELOGO"
+  reject "logo: ~/" "${lout}" "HOMELOGO"
+  grep -q "Logo muss ein relativer Pfad" "${out_dir}/logo.err" || die "logo: ~/: kein Hinweis"
+  lout="$(logo_build "${lhome}/mein-logo.svg")"
+  reject "logo: absolut" "${lout}" "HOMELOGO"
+  grep -q "Logo muss ein relativer Pfad" "${out_dir}/logo.err" || die "logo: absolut: kein Hinweis"
+  lout="$(logo_build ../logo-home/mein-logo.svg)"
+  reject "logo: ../" "${lout}" "HOMELOGO"
+  grep -q "Logo liegt außerhalb" "${out_dir}/logo.err" || die "logo: ../: kein Hinweis"
   lout="$(logo_build fehlt.svg)"
-  reject "logo: fehlt" "${lout}" "PIPELOGO" "HOMELOGO" "VORLAGENLOGO"
   grep -q "Logo nicht gefunden: fehlt.svg" "${out_dir}/logo.err" || die "logo: fehlt: kein Hinweis"
   lout="$(logo_build mein-logo.txt)"
-  reject "logo: falsche Endung" "${lout}" "VORLAGENLOGO"
   grep -q "Logo muss .svg" "${out_dir}/logo.err" || die "logo: falsche Endung: kein Hinweis"
-  ok "logo: Suchreihenfolge Notiz → Benutzer → Vorlagen → Pipeline"
+  ok "logo: Suchreihenfolge Notiz → Profil → Vorlage, nur relative Pfade"
 
-  # Das ausgelieferte pipeline/logo.svg (ohne Text) lässt sich einbinden.
+  # Das ausgelieferte pipeline/logo.svg (ohne Text) lässt sich einbinden (neben der Notiz).
+  cp "${MDO_PIPELINE_ROOT}/logo.svg" "${ldir}/logo.svg"
   printf -- '---\nlogo: logo.svg\n---\n\nText.\n' >"${ldir}/n.md"
   (cd "${ldir}" && HOME="${lhome}" "${mdo[@]}" n.md "${out_dir}/logo.pdf" \
     >/dev/null 2>"${out_dir}/logo.err") || die "ausgeliefertes Logo: Export fehlgeschlagen: $(cat "${out_dir}/logo.err")"
@@ -1063,15 +1073,24 @@ test_sandbox() {
   done
   ok "sandbox: Profiles/, PROFILES/ und .GIT/ bleiben draußen wie profiles/ und .git/"
 
-  # Legitim: ein sichtbar verlinktes Bild außerhalb des Notizordners kommt ins PDF.
+  # Bilder nur aus dem Notizordner und seinen Unterordnern: ein sichtbar verlinktes Bild außerhalb
+  # fehlt im PDF (mit Hinweis), eines im Unterordner erscheint.
   cp "${fixtures}/bilder/screenshot.png" "${sb}/bilder/aussen.png"
   printf '# Außen\n\n![](../bilder/aussen.png)\n\nENDE.\n' >"${sb}/notiz/aussen.md"
   (cd "${sb}/notiz" && "${mdo[@]}" aussen.md "${out_dir}/sb-aussen.pdf" >/dev/null 2>"${out_dir}/sb-aussen.err") ||
     die "sandbox aussen: Export fehlgeschlagen: $(cat "${out_dir}/sb-aussen.err")"
-  text="$(pdf_text "${out_dir}/sb-aussen.pdf")"
-  reject "sandbox aussen" "${text}" "Bild fehlt"
-  [[ "$(image_count "${out_dir}/sb-aussen.pdf")" != 0 ]] || die "sandbox aussen: Bild fehlt im PDF"
-  ok "sandbox: Bild außerhalb des Notizordners, sichtbar verlinkt, erscheint"
+  expect "sandbox aussen" "$(pdf_text "${out_dir}/sb-aussen.pdf")" "[Bild fehlt: ../bilder/aussen.png]" "ENDE."
+  [[ "$(image_count "${out_dir}/sb-aussen.pdf")" == 0 ]] || die "sandbox aussen: Bild von außerhalb im PDF"
+  grep -q "Bild liegt außerhalb des Notizordners, kommt nicht ins PDF: ../bilder/aussen.png" \
+    "${out_dir}/sb-aussen.err" || die "sandbox aussen: kein Hinweis auf stderr"
+  mkdir -p "${sb}/notiz/innen"
+  cp "${fixtures}/bilder/screenshot.png" "${sb}/notiz/innen/bild.png"
+  printf '# Innen\n\n![](innen/bild.png)\n\nENDE.\n' >"${sb}/notiz/innen.md"
+  (cd "${sb}/notiz" && "${mdo[@]}" innen.md "${out_dir}/sb-innen.pdf" >/dev/null 2>"${out_dir}/sb-innen.err") ||
+    die "sandbox innen: Export fehlgeschlagen: $(cat "${out_dir}/sb-innen.err")"
+  reject "sandbox innen" "$(pdf_text "${out_dir}/sb-innen.pdf")" "Bild fehlt"
+  [[ "$(image_count "${out_dir}/sb-innen.pdf")" != 0 ]] || die "sandbox innen: Bild fehlt im PDF"
+  ok "sandbox: Bild außerhalb des Notizordners bleibt draußen, Bild im Unterordner erscheint"
 
   # Seitenumbruch alter Form: ein Set ohne mdo-pagebreak (probe, raw-typst an) bricht weiter um.
   printf '# Eins\n\n\\newpage\n\n# Zwei\n' >"${sb}/notiz/umbruch.md"

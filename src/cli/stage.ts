@@ -342,28 +342,61 @@ async function noteTemplateAllowed(c: Ctx, p: string): Promise<boolean> {
   return false
 }
 
-/** The logo the header names, as the scripts search it; null with a hint when not usable. */
-async function findLogo(c: Ctx, value: string, hints: string[]): Promise<string | null> {
+/**
+ * The logo the header names; null with a hint when not usable.
+ *
+ * Why: `logo:` comes from note text, and a note someone sent could name `~/Ausweis.png` or an
+ * absolute path and put a private file into a PDF that gets passed on (the same reason images
+ * stay in the note's folder, see insideImageRoots). So the value must be relative (no `~`,
+ * `$VAR`, `%VAR%`, drive or root) and is looked up, in this order, in the note's folder
+ * (MDO_BASE_DIR for the app's temporary copy), the profile YAML's folder and the template's
+ * folder; the hit must stay (symlinks resolved) inside the folder it was found in, the note's
+ * folder without hidden folders. HOME, the templates folder and the pipeline are no longer
+ * searched.
+ */
+async function findLogo(
+  c: Ctx,
+  value: string,
+  roots: string[],
+  hints: string[],
+): Promise<string | null> {
   if (!value) return null
   // Remote and non-image values: the scripts print their own hint and build without a logo.
   if (/^(https?:)?\/\/|^data:/i.test(value) || !/\.(svg|png|jpe?g)$/i.test(value)) return null
+  if (
+    /^~|\$|%[A-Za-z_][A-Za-z0-9_]*%/.test(value) ||
+    rooted(c, value) ||
+    remoteWinPath(value, c.win)
+  ) {
+    hints.push(
+      `Hinweis: Logo muss ein relativer Pfad zur Notiz, zum Profil oder zur Vorlage sein, kommt nicht ins PDF: ${value}`,
+    )
+    return null
+  }
+  // %XX only (the forms above are refused); a decoded byte that forms a root is refused too.
   const p = expandNotePath(value, c.env, c.win)
-  // Treated as not found (the script's hint follows).
-  if (uncPath(c, p)) return null
+  if (rooted(c, p) || uncPath(c, p)) return null
+  // `..` leading out of every place: refused before any lookup (also keeps /net automounts away).
+  const norm = c.P.normalize(p)
+  if (norm === '..' || norm.startsWith(`..${c.P.sep}`) || (c.win && norm.startsWith('../'))) {
+    hints.push(
+      `Hinweis: Logo liegt außerhalb von Notiz-, Profil- und Vorlagenordner, kommt nicht ins PDF: ${value}`,
+    )
+    return null
+  }
   let found: string | null = null
-  if (rooted(c, p)) {
-    // Treated as not found, like a UNC path (see automountPath).
-    if (!automount(c, c.P.resolve(p)) && (await isFile(p))) found = c.P.resolve(p)
-  } else {
-    // build.sh takes $HOME as is; convert.ps1 USERPROFILE with the HOME fallback.
-    const home = c.win ? envLookup(c.env, 'USERPROFILE', true) : (c.env.HOME ?? '')
-    for (const dir of [c.baseDir, home, c.templatesDir, c.pipelineRoot]) {
-      if (!dir || automount(c, c.P.resolve(dir, p))) continue
-      if (await isFile(c.P.join(dir, p))) {
-        found = c.P.resolve(dir, p)
-        break
-      }
+  for (const [i, dir] of roots.entries()) {
+    if (!dir || automount(c, c.P.resolve(dir, p)) || !(await isFile(c.P.join(dir, p)))) continue
+    const hit = c.P.resolve(dir, p)
+    // The first hit wins; one that leads out of its folder is refused, not skipped.
+    if (!(await realUnder(c, hit, dir, i === 0))) {
+      hints.push(
+        `Hinweis: Logo liegt außerhalb von Notiz-, Profil- und Vorlagenordner, kommt nicht ins PDF: ${value}`,
+      )
+      return null
     }
+    found = hit
+    break
   }
   if (found === null) return null
   if (await isSafeImage(found)) return found
@@ -486,12 +519,15 @@ export async function buildManifest(
     if (automount(c, p)) continue
     // Missing: the script warns „Bild nicht gefunden“ for a probe source without an entry.
     if (!(await isFile(p))) continue
+    if (!(await insideImageRoots(c, p))) {
+      hints.push(`Hinweis: Bild liegt außerhalb des Notizordners, kommt nicht ins PDF: ${ref}`)
+      continue
+    }
     if (await isSafeImage(p)) images.push({ ref, path: p })
     else hints.push(`Hinweis: kein gültiges Bild, kommt nicht ins PDF: ${ref}`)
   }
 
   const fm = frontmatterRefs(text, win)
-  const logo = await findLogo(c, fm.logo, hints)
 
   // The CLI's --template wins; its relative .typ resolves from the caller's folder.
   const tplValue = opts.template || fm.template
@@ -514,6 +550,13 @@ export async function buildManifest(
     }
     profile = { yaml, files }
   }
+  // After the template and the profile: their folders are the logo's second and third place.
+  const logo = await findLogo(
+    c,
+    fm.logo,
+    [baseDir, yaml === null ? '' : P.dirname(yaml), tpl === null ? '' : P.dirname(tpl)],
+    hints,
+  )
   return { manifest: { note, images, logo, profile }, hints }
 }
 
@@ -550,6 +593,20 @@ async function realUnder(c: Ctx, p: string, root: string, noDot: boolean): Promi
  */
 async function insideProfileRoots(c: Ctx, p: string): Promise<boolean> {
   for (const root of [c.noteDir, c.baseDir, c.templatesDir]) {
+    if (await realUnder(c, p, root, true)) return true
+  }
+  return false
+}
+
+/**
+ * Why: a visible `![](../../Steuer/scan.png)` or `![](~/Ausweis.jpg)` in a note someone sent
+ * would put a private file into a PDF that gets passed on; the path is visible, where it leads
+ * mostly is not. An image must lie (symlinks resolved) under the note's folder or MDO_BASE_DIR
+ * (the real note folder when the app exports a temporary copy), with no dot segment below.
+ * The editor copies dropped images into such a subfolder, so its own notes are unaffected.
+ */
+async function insideImageRoots(c: Ctx, p: string): Promise<boolean> {
+  for (const root of [c.noteDir, c.baseDir]) {
     if (await realUnder(c, p, root, true)) return true
   }
   return false
