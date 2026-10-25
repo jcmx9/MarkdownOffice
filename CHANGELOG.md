@@ -5,6 +5,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.4] - 2026-10-25
+
+### Changed
+- Outline: the list sits in the optical centre of the bar (two parts of the free height above, three below) instead of at the top; a list taller than the bar starts at the top and scrolls as before. Expanding or collapsing keeps the clicked entry exactly where it was (also when a collapse at the scroll end shortens the list); the list is placed again only on showing, a note switch, a new bar height or a zoom change, never after a fold or an edit
+
+### Security
+- Export: `logo:` takes relative paths only and is looked up in the note's folder (or `MDO_BASE_DIR`), then the profile's folder, then the template's folder; absolute paths, `~`, `$VAR`/`%VAR%` and `..` out are refused with a hint, and the home folder, the templates folder and the pipeline folder are no longer searched. A logo for all documents now lives next to a profile or in a set folder
+- Export: images come only from the note's folder and its subfolders (links resolved, no hidden folders); a visibly linked image from elsewhere (`../Steuer/scan.png`, `~/Ausweis.jpg`, an absolute path, a link leading out) is left out with the hint „Bild liegt außerhalb des Notizordners, kommt nicht ins PDF“, so a note someone sent cannot put a private file into a PDF that is passed on. With `MDO_BASE_DIR` (the app's temporary copy) that folder counts as the note's
+
 ## [26.10.3] - 2026-10-24
 
 ### Added

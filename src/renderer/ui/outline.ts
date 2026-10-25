@@ -49,6 +49,17 @@ export class Outline {
   private topLevel: 1 | 2 = 1
   /** Full text of a cut-off label on hover, right-aligned to it (created on first use). */
   private tip: HTMLDivElement | null = null
+  /**
+   * Room above the list (px) that puts it in the optical centre; null = measure on the next
+   * render. Measured only on showing, a tab switch, a resize or a zoom change, never after a
+   * fold or an edit, so the list does not move under the pointer.
+   */
+  private offset: number | null = null
+  /** Room below the list (px) that keeps a collapse at the scroll end from pulling it down. */
+  private tail = 0
+  private zoom = ''
+  /** Row whose chevron was clicked and its viewport top then; the next render holds it there. */
+  private anchor: { row: Row; top: number } | null = null
 
   constructor(
     private readonly el: HTMLElement,
@@ -57,15 +68,32 @@ export class Outline {
     this.empty.className = 'mdo-ol-empty'
     this.empty.textContent = 'Keine Überschriften'
     el.addEventListener('scroll', () => this.hideTip(), { passive: true })
+    if (typeof ResizeObserver !== 'undefined') {
+      let height = -1
+      new ResizeObserver(() => {
+        if (el.clientHeight === height) return
+        height = el.clientHeight
+        this.recentre()
+        this.place()
+      }).observe(el)
+    }
   }
 
   setVisible(on: boolean): void {
+    if (on && this.el.hidden) this.recentre()
     this.el.hidden = !on
+  }
+
+  /** The next render places the list in the optical centre again (tab switch, reload). */
+  recentre(): void {
+    this.offset = null
+    this.anchor = null
   }
 
   render(entries: OutlineEntry[], active: OutlineEntry | null): void {
     this.hideTip()
     if (entries.length === 0) {
+      this.recentre()
       this.rows.clear()
       this.list = null
       this.activeRow = null
@@ -85,6 +113,8 @@ export class Outline {
     this.reconcile(this.list, entries, seen)
     for (const k of this.rows.keys()) if (!seen.has(k)) this.rows.delete(k)
 
+    this.place()
+
     const key = active ? (this.keys.get(active) ?? null) : null
     const row = key ? (this.rows.get(key) ?? null) : null
     this.activeRow?.label.classList.remove('active')
@@ -92,6 +122,58 @@ export class Outline {
     if (row && key !== this.activeKey) row.label.scrollIntoView({ block: 'nearest' })
     this.activeRow = row
     this.activeKey = row ? key : null
+  }
+
+  /**
+   * Places the list: two parts of the free height above it, three below, so it sits a little
+   * above the middle, where a centred block looks centred; a list taller than the bar starts
+   * at the top and scrolls. After a fold the clicked row stays exactly where it was.
+   */
+  private place(): void {
+    const list = this.list
+    if (!list) return
+    const zoom = this.el.style.getPropertyValue('--mdo-ol-zoom')
+    if (zoom !== this.zoom) {
+      this.zoom = zoom
+      this.recentre()
+    }
+    const anchor = this.anchor
+    this.anchor = null
+    if (this.offset === null) {
+      this.tail = 0
+      const pad = getComputedStyle(this.el)
+      const inner =
+        this.el.clientHeight -
+        (Number.parseFloat(pad.paddingTop) || 0) -
+        (Number.parseFloat(pad.paddingBottom) || 0)
+      this.offset = Math.max(0, Math.round((inner - list.offsetHeight) * 0.4))
+      this.apply(list)
+      return
+    }
+    if (!anchor || !this.el.contains(anchor.row.li)) return
+    // Expanding or collapsing changes only what follows the row; the browser may still pull
+    // the list down when a collapse shortens it below the scroll position.
+    const delta = anchor.row.label.getBoundingClientRect().top - anchor.top
+    if (delta > 0) {
+      const less = Math.min(this.offset, delta)
+      this.offset -= less
+      const rest = delta - less
+      if (rest > 0) {
+        this.tail += rest
+        this.apply(list)
+        this.el.scrollTop += rest
+      }
+    } else if (delta < 0) {
+      const up = Math.min(this.el.scrollTop, -delta)
+      this.el.scrollTop -= up
+      this.offset += -delta - up
+    }
+    this.apply(list)
+  }
+
+  private apply(list: HTMLUListElement): void {
+    list.style.marginTop = `${this.offset ?? 0}px`
+    list.style.marginBottom = this.tail > 0 ? `${this.tail}px` : ''
   }
 
   private reconcile(ul: HTMLUListElement, entries: OutlineEntry[], seen: Set<string>): void {
@@ -160,7 +242,9 @@ export class Outline {
     const label = this.button('mdo-ol-label', e.text)
     const row: Row = { li, chevron, spacer, label, sub: null, entry: e }
     chevron.addEventListener('click', (ev) => {
-      if (ev.button === 0) this.handlers.toggle(row.entry)
+      if (ev.button !== 0) return
+      this.anchor = { row, top: row.label.getBoundingClientRect().top }
+      this.handlers.toggle(row.entry)
     })
     label.addEventListener('click', (ev) => {
       if (ev.button === 0) this.handlers.jump(row.entry)
