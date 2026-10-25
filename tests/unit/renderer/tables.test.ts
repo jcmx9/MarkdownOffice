@@ -208,7 +208,9 @@ describe('tableField', () => {
 describe('typography in table cells', () => {
   const cellsOf = (doc: string) => {
     const s = make(doc, doc.length)
-    const dom = (tables(s)[0]?.widget as WidgetType).toDOM({} as EditorView)
+    const widget = tables(s)[0]?.widget
+    if (!widget) throw new Error('no table widget')
+    const dom = widget.toDOM({} as EditorView)
     return [...dom.querySelectorAll('th, td')].map((c) => c.textContent)
   }
   it('shows the quotes, dashes and ellipses the PDF prints, per lang', () => {
