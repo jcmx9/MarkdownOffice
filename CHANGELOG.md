@@ -16,6 +16,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size; a click on a heading no longer shifts the outline sideways (the active entry is scrolled into view vertically only, so titles are never cut on the left)
 - PDF: indented code blocks (4 spaces or a tab after a blank line, outside lists) keep their straight quotes, `--` and `...`; the pipeline's typography only skipped fenced code. A list item's indented continuation, a lazy paragraph line and a list closed by a heading behave as in CommonMark. The preview's port (`src/core/typography.ts`) mirrors the rule, checked by `pipeline/tests/test-typography.sh`
 - Preview: table cells show the PDF's quotes, dashes and ellipses (per `lang`); like the pipeline, the row line is substituted before it is split into cells, so code spans, formulas and rows with HTML stay as typed
+- PDF: an image with a title (`![a](bild.svg "Titel")`) is drawn again instead of printed as source: the typography no longer touches link and image destinations with their titles (it made `"Titel"` into `„Titel“`, which is no title), nor `--` in a URL; link reference definitions stay untouched
+- PDF: link reference definitions in a row (`[a]: …`, `[b]: … "Titel"`) all work with hard line breaks (the default): the `\` the hard breaks appended turned every definition after the first into text, so `[x][b]` stayed source
 
 ## [26.10.4] - 2026-10-25
 

@@ -280,6 +280,21 @@ test_fixtures() {
   expect "hard_breaks: false" "$(pdf_text "${out_dir}/weich.pdf")" "Zeile eins Zeile zwei"
   ok "soft-breaks.md (Standard hart, --hard-breaks, --soft-breaks, hard_breaks: false)"
 
+  # Bildtitel und Linkdefinitionen: die Typografie ließ "Titel" zu „Titel“ werden (kein
+  # Titel mehr: das Bild kam als Quelltext ins PDF), und der harte Umbruch hängte an jede
+  # Definition ein "\" (Fließtext statt Definition, der Verweis blieb Quelltext).
+  mkdir -p "${out_dir}/refs"
+  cp "${fixtures}/logo.svg" "${out_dir}/refs/bild.svg"
+  printf -- '%s\n' '# Verweise' '' '![Mit Titel](bild.svg "Ein Titel")' '' \
+    'Siehe [eins][a] und [zwei][b] und [drei][c].' '' '[a]: https://example.com/a' \
+    '[b]: https://example.com/b "B-Titel"' '[c]: <https://example.com/c>' '' 'Ende.' >"${out_dir}/refs/refs.md"
+  (cd "${out_dir}/refs" && "${mdo[@]}" refs.md refs.pdf >/dev/null 2>"${out_dir}/refs.err") ||
+    die "refs.md: Export fehlgeschlagen: $(cat "${out_dir}/refs.err")"
+  text="$(pdf_text "${out_dir}/refs/refs.pdf")"
+  expect refs.md "${text}" "Abbildung 1: Mit Titel"
+  reject refs.md "${text}" "](bild.svg" "[zwei]" "[drei]" "[b]:" "[c]:"
+  ok "refs.md (Bild mit Titel, Linkdefinitionen hintereinander)"
+
   # Notiz ohne Leerzeilen, harte Umbrüche per Front Matter.
   text="$(render no-blank-lines.md)"
   expect no-blank-lines.md "${text}" "Agenda" "Mitschrift" "Das ist zu tun" "Markierung" "Abschluss"

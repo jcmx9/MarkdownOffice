@@ -80,3 +80,9 @@ text "t"
     "still list" -- l
 
 end "e"
+
+![Bild](a.svg "Titel") und "x"
+[a](https://x.de/a--b "T") "y" -- z
+[a]: https://x.de "Def"
+[^1]: "Fußnote" -- f
+[a](x)"b"

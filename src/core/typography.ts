@@ -37,6 +37,9 @@ const INLINE_CODE_RE = /`[^`]*`/g
 const INDENTED_RE = /^( {4}| {0,3}\t)/
 const LIST_ITEM_RE = /^ {0,3}([-+*]|[0-9]{1,9}[.)])([ \t]|$)/
 const ATX_RE = /^ {0,3}#{1,6}([ \t]|$)/
+// markdown.typ: link-dest-re, link-def-re (keep-line-breaks and smart-typography)
+const LINK_DEST_RE = /\]\([^)]*\)/g
+const LINK_DEF_RE = /^ {0,3}\[[^\]^][^\]]*\]:/
 
 const text = (units: readonly Unit[]): string => units.map((u) => u.text).join('')
 
@@ -102,14 +105,30 @@ function smartText(piece: string, offset: number, de: boolean, out: Substitution
 }
 
 /**
+ * markdown.typ smart-outside-links: smart-text on the parts of a piece outside link and image
+ * destinations (`](dest "title")` stays as typed, or the title would not parse as one).
+ */
+function smartOutsideLinks(piece: string, offset: number, de: boolean, out: Substitution[]): void {
+  let at = 0
+  for (const m of piece.matchAll(LINK_DEST_RE)) {
+    smartText(piece.slice(at, m.index), offset + at, de, out)
+    at = m.index + m[0].length
+  }
+  smartText(piece.slice(at), offset + at, de, out)
+}
+
+/**
  * The substitutions markdown.typ's smart-typography makes in one line that `skip-mask` does
  * not cover; sorted, non-overlapping, offsets into `line`. Empty for HTML lines, lines with an
- * HTML tag or comment, and separator lines (tables, rules, setext underlines).
+ * HTML tag or comment, separator lines (tables, rules, setext underlines) and link reference
+ * definitions; link and image destinations with their titles are left alone.
  */
 export function smartTypography(line: string, lang: string): Substitution[] {
   const out: Substitution[] = []
   const t = line.trim()
   if (t.startsWith('<') || RULE_LINE_RE.test(t)) return out
+  // A link reference definition does not show in the PDF; a footnote (`[^1]:`) does.
+  if (LINK_DEF_RE.test(line)) return out
   if (!(line.includes('"') || line.includes("'") || line.includes('--') || line.includes('...'))) {
     return out
   }
@@ -123,11 +142,11 @@ export function smartTypography(line: string, lang: string): Substitution[] {
       if (dollars.length >= 3 && dollars.length % 2 === 1) {
         let at = offset
         dollars.forEach((q, j) => {
-          if (j % 2 === 0) smartText(q, at, de, out)
+          if (j % 2 === 0) smartOutsideLinks(q, at, de, out)
           at += q.length + 1
         })
       } else {
-        smartText(p, offset, de, out)
+        smartOutsideLinks(p, offset, de, out)
       }
     }
     offset += p.length + 1
