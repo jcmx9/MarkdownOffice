@@ -227,6 +227,10 @@ body.mdo-ol-resizing {
 }
 #outline .mdo-ol-item > .mdo-ol-list {
   flex-basis: 100%;
+  /* As a flex item the children list would never shrink below its longest label (min-width:
+     auto = the nowrap text): H2 labels kept their width, were cut at the bar's edge without
+     "…", and did not follow a dragged width. */
+  min-width: 0;
 }
 #outline button {
   appearance: none;

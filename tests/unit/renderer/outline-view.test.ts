@@ -261,21 +261,40 @@ describe('Outline in-place updates', () => {
     expect(labels().map((l) => l.textContent)).toEqual(['Delta'])
     expect(el.querySelectorAll('li').length).toBe(1)
   })
-  it('moves .active and scrolls into view only when it changed', () => {
-    const scroll = vi.fn()
-    Element.prototype.scrollIntoView = scroll
+  it('moves .active and scrolls it into view only when it changed, vertically only', () => {
     const t = tree()
+    outline.render(t, null)
+    // A bar from 0 to 100 px, every row 20 px high, the second row at 150 px (below the bar).
+    el.getBoundingClientRect = () => ({ top: 0, bottom: 100 }) as DOMRect
+    labels().forEach((l, i) => {
+      l.getBoundingClientRect = () => ({ top: i * 75, bottom: i * 75 + 20 }) as DOMRect
+    })
+    let scrolled = 0
+    let sideways = 0
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => scrolled,
+      set: (v: number) => {
+        scrolled = v
+      },
+    })
+    Object.defineProperty(el, 'scrollLeft', {
+      configurable: true,
+      get: () => sideways,
+      set: (v: number) => {
+        sideways = v
+      },
+    })
     outline.render(t, t[0] ?? null)
     expect(labels()[0]?.classList.contains('active')).toBe(true)
-    expect(scroll).toHaveBeenCalledTimes(1)
-    // The label, not the H1 item with its whole child list.
-    expect(scroll.mock.contexts[0]).toBe(labels()[0])
-    outline.render(t, t[0] ?? null)
-    expect(scroll).toHaveBeenCalledTimes(1)
-    outline.render(t, t[0]?.children[0] ?? null)
-    expect(labels().map((l) => l.classList.contains('active'))).toEqual([false, true, false, false])
-    expect(scroll).toHaveBeenCalledTimes(2)
-    expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' })
+    expect(scrolled).toBe(0)
+    outline.render(t, t[0]?.children[1] ?? null)
+    expect(labels().map((l) => l.classList.contains('active'))).toEqual([false, false, true, false])
+    // Row 2 spans 150–170: scrolled by 70 so it ends at the bar's bottom, never sideways.
+    expect(scrolled).toBe(70)
+    expect(sideways).toBe(0)
+    outline.render(t, t[0]?.children[1] ?? null)
+    expect(scrolled).toBe(70)
     outline.render(t, null)
     expect(el.querySelector('.active')).toBeNull()
   })
