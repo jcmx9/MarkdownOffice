@@ -220,7 +220,10 @@ export class App {
         this.toolbarSync.schedule()
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
-          this.refresh()
+          // The toolbar update is already scheduled for the next frame above: a burst of typing
+          // must not read the syntax tree per keystroke (spec: active state at most once per
+          // frame), so this refresh leaves the toolbar to that frame.
+          this.refresh('frame')
           this.setCheck.schedule(tab.id)
           this.setPreview.schedule(tab.id)
           // lang: may have been edited; report it once typing pauses.
@@ -589,16 +592,22 @@ export class App {
     if (action) return this.runFormat(action, 'menu')
   }
 
-  /** A toolbar click: the same commands as the menu; the page break is its own menu command. */
+  /**
+   * A toolbar click: the same commands as the menu. The page break runs here too, not through
+   * command('insert-pagebreak'): that path is editCommand, which ignores the command while a
+   * text field (e.g. the search input) has focus. A toolbar button is aimed at the document
+   * whatever had focus, like its sibling buttons; Mod+Enter and the menu keep editCommand.
+   */
   private toolbarAction(a: ToolbarAction): void {
-    if (a.kind === 'pagebreak') {
-      void this.command('insert-pagebreak')
-      return
-    }
     // A modal dialog makes the bar unclickable; checked anyway, like command() does.
     if (this.closing || document.querySelector('dialog[open]')) return
     if (!this.formatAllowed('toolbar')) {
       if (this.shownId !== null) this.editor.focus()
+      return
+    }
+    if (a.kind === 'pagebreak') {
+      insertPageBreak(this.editor)
+      this.editor.focus()
       return
     }
     void this.runFormat(a, 'toolbar')
@@ -1889,7 +1898,12 @@ export class App {
     )
   }
 
-  private refresh(): void {
+  /**
+   * Re-renders tab bar, status line and toolbar. `toolbar: 'now'` (show(), mode switches, the
+   * toggle, setState paths) renders the toolbar at once; `'frame'` (edits from
+   * dispatchTransactions) leaves it to the frame already scheduled there.
+   */
+  private refresh(toolbar: 'now' | 'frame' = 'now'): void {
     const tab = this.store.active
     this.tabBar.render(this.store.all, this.store.activeIndex, (t) => this.unsaved(t))
     const hold = tab ? (this.holdWarnings.get(tab.id) ?? null) : null
@@ -1910,7 +1924,8 @@ export class App {
     this.status.renderZoom(this.zoom.edit)
     // show(), mode switches, the toggle and setState paths all end here (spec: refresh in show()
     // and after every setState/reconfigure, besides the per-frame update on transactions).
-    this.toolbarSync.now()
+    if (toolbar === 'now') this.toolbarSync.now()
+    else this.toolbarSync.schedule()
     document.title = tab
       ? `${fileName(tab.path)}${state === 'dirty' ? ' •' : ''} – Markdown Office`
       : 'Markdown Office'

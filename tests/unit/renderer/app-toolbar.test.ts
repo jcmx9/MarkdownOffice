@@ -244,6 +244,25 @@ describe('App: formatting toolbar wiring', () => {
     expect(q('fmt-bold').getAttribute('aria-pressed')).toBe('false')
   })
 
+  it('typing re-renders it once per frame, not per keystroke', async () => {
+    const { view, q, flush } = await start(
+      { tabs: [{ path: NOTE, headerHidden: false }] },
+      {
+        [NOTE]: 'normal',
+      },
+    )
+    flush()
+    const render = vi.spyOn(Toolbar.prototype, 'render')
+    // Doc changes run App.refresh() (tab bar, status line); the toolbar waits for the frame.
+    view.dispatch({ changes: { from: 0, insert: '**fett** ' }, selection: { anchor: 3 } })
+    view.dispatch({ changes: { from: 3, insert: 'x' } })
+    expect(render).not.toHaveBeenCalled()
+    flush()
+    expect(render).toHaveBeenCalledOnce()
+    expect(q('fmt-bold').getAttribute('aria-pressed')).toBe('true')
+    render.mockRestore()
+  })
+
   it('a reconfigure (view switch) refreshes it at once, without waiting for a frame', async () => {
     const { view, q } = await start(
       { tabs: [{ path: NOTE, headerHidden: false }] },
@@ -298,6 +317,31 @@ describe('App: formatting toolbar wiring', () => {
     answer('https://example.org')
     await new Promise((r) => setTimeout(r, 0))
     expect(view.state.doc.toString()).toBe('Neu')
+  })
+
+  it('the page-break button acts on the editor even with a text field focused', async () => {
+    const { view, q } = await start(
+      { tabs: [{ path: NOTE, headerHidden: false }] },
+      {
+        [NOTE]: 'Wort',
+      },
+    )
+    view.dispatch({ selection: { anchor: 4 } })
+    // E.g. the editor's search input: Mod+Enter would be ignored there (editCommand's field
+    // branch), the toolbar button is aimed at the document like its siblings.
+    const input = document.createElement('input')
+    document.body.append(input)
+    input.focus()
+    q('fmt-pagebreak').click()
+    expect(view.state.doc.toString()).toBe('Wort\n\n<!-- pagebreak -->\n\n')
+    input.remove()
+    // The menu command keeps its editCommand route: ignored while a field has focus.
+    const field = document.createElement('input')
+    document.body.append(field)
+    field.focus()
+    menu('insert-pagebreak')
+    expect(view.state.doc.toString()).toBe('Wort\n\n<!-- pagebreak -->\n\n')
+    field.remove()
   })
 
   it('Einfügen → Tabelle … asks for the size, then inserts the table', async () => {
