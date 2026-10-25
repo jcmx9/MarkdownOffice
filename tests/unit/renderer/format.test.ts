@@ -157,6 +157,19 @@ describe('nested and alternative markers', () => {
     ],
     ['toggles off at the closing marker', '**a**‸ b', 'bold', 'a‸ b'],
     ['highlight off in a table cell', '| ==a‸== | b |\n|---|---|', 'mark', '| a‸ | b |\n|---|---|'],
+    [
+      'code off strips the padding space of a padded span',
+      'a `` x‸ ` y `` b',
+      'code',
+      'a x‸ ` y b',
+    ],
+    ['code off keeps a span of spaces only', 'a `‸  ` b', 'code', 'a ‸   b'],
+    [
+      'wraps above a fence when the range ends at column 0',
+      '«a\n»```\nx\n```',
+      'bold',
+      '**«a**\n»```\nx\n```',
+    ],
     ['code fences a selection holding a backtick', '«a`b»', 'code', '``«a`b»``'],
   ] as [string, string, Inline, string][])('%s', (_name, before, id, after) => {
     expect(run(before, id)).toBe(after)
@@ -169,6 +182,23 @@ describe('nested and alternative markers', () => {
       refuses('a `«co»de` b', id)
     },
   )
+
+  it.each([
+    ['a thematic break', 'a\n\n--‸-'],
+    ['a Setext underline', 'Title\n==‸='],
+    ['an alert type line', '> [!NO‸TE]\n> text'],
+    ['a link reference definition', '[a]: http://x.d‸e'],
+    ['a table row in a quote', '> | a‸ | b |\n> |---|---|'],
+    ['a table row in a list', '- | a‸ | b |\n  |---|---|'],
+  ])('refuses a cursor on %s', (_name, text) => {
+    refuses(text, 'bold')
+  })
+
+  it('leaves a selected table row in a quote alone', () => {
+    expect(run('«x\n\n> | a | b |\n> |---|---|»', 'bold')).toBe(
+      '**«x**\n\n> | a | b |\n> |---|---|»',
+    )
+  })
 
   it('refuses inside an inline formula', () => {
     refuses('a $x‸ + y$ b', 'bold')

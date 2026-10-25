@@ -75,11 +75,14 @@ export function refused(state: EditorState, kind: 'inline' | 'line'): boolean {
   if (tree.type.name !== 'Document') return true
   const fm = frontmatterRange(state.doc)
   return state.selection.ranges.some((r) => {
-    if (fm && r.from <= fm.to && r.to >= fm.from) return true
+    // A range ending at column 0 of a line does not touch that line (the rule of segments()), so
+    // a selection of whole lines right above a fence or table is not refused.
+    const to = !r.empty && state.doc.lineAt(r.to).from === r.to ? r.to - 1 : r.to
+    if (fm && r.from <= fm.to && to >= fm.from) return true
     let hit = false
     tree.iterate({
       from: r.from,
-      to: r.to,
+      to,
       enter: (n) => {
         if (REFUSED_BLOCKS.has(n.name) || (kind === 'line' && n.name === 'Table')) hit = true
         return !hit
@@ -141,6 +144,9 @@ function lineContent(
   }
   for (let n: SyntaxNode | null = tree.resolveInner(pos, 1); n; n = n.parent) {
     if (n.name === 'HorizontalRule' || n.name === 'LinkReference') return null
+    // A table inside a quote or list is no top-level table, so it has no cell model
+    // (table-edit.ts); wrapping its whole row (`> **| a | b |**`) would break it.
+    if (n.name === 'Table') return null
   }
   // An alert's type line (`> [!NOTE]`): wrapped, the pipeline would no longer see an alert.
   if (inQuote && ALERT_LINE.test(text.slice(pos - line.from))) return null
@@ -355,8 +361,24 @@ function planRange(state: EditorState, tree: Tree, r: SelectionRange, id: Inline
   if (runs.length > 0) {
     const changes: Change[] = []
     for (const run of runs) {
-      for (let c = run.firstChild; c; c = c.nextSibling) {
-        if (c.name === spec.mark) changes.push({ from: c.from, to: c.to, insert: '' })
+      const marks: SyntaxNode[] = []
+      for (let c = run.firstChild; c; c = c.nextSibling) if (c.name === spec.mark) marks.push(c)
+      const [open, close] = [marks[0], marks[marks.length - 1]]
+      let pad = 0
+      if (id === 'code' && open && close && open !== close) {
+        // CommonMark strips exactly one space on each side of a padded code span (when both
+        // sides have one and the text is not all spaces); keeping it would leave double spaces.
+        const inner = state.doc.sliceString(open.to, close.from)
+        if (inner.length > 1 && /^ .* $/s.test(inner) && /[^ ]/.test(inner)) pad = 1
+      }
+      for (const [i, c] of marks.entries()) {
+        const first = i === 0
+        const last = i === marks.length - 1
+        changes.push({
+          from: c.from - (last && !first ? pad : 0),
+          to: c.to + (first && !last ? pad : 0),
+          insert: '',
+        })
       }
     }
     return { changes, ...keep() }
@@ -376,7 +398,10 @@ function planRange(state: EditorState, tree: Tree, r: SelectionRange, id: Inline
     // The delimiter row has no text: markers there would break the table.
     if (cell?.row === 1) return null
     const line = state.doc.lineAt(r.head)
-    const bound = cell ?? lineContent(state, tree, line) ?? { from: line.to, to: line.to }
+    // A line without inline text (thematic break, Setext underline, link definition, alert type
+    // line, a nested table's row): an empty pair there would break the block, so refuse.
+    const bound = cell ?? lineContent(state, tree, line)
+    if (!bound) return null
     const pos = Math.min(Math.max(r.head, bound.from), bound.to)
     const word = wordAt(state, pos, bound)
     if (word.from === word.to) {
