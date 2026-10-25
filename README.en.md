@@ -2,7 +2,7 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.4-dev.0 · [Deutsch](README.md)
+**Version:** 26.10.5-dev.0 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -112,6 +112,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Mod+Shift+N | Neu aus Vorlage …: pick a template set (`memo` first and preselected, with a profile if any), new note with its YAML header |
 | Mod+O | Open |
 | Mod+Shift+R | Rename |
+| macOS Cmd+Alt+R, otherwise Shift+Alt+R | Show in the file manager (macOS: „Im Finder zeigen“, Windows: „Im Explorer zeigen“) |
 | Mod+W | Close tab |
 | Mod+E | Export PDF |
 | Mod+Shift+M | Toggle code view (Preview is the default); in Present it ends Present and shows the Code view |
@@ -127,7 +128,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
 
-Right-clicking a tab or the file name in the status line opens a menu with rename, „Im Finder zeigen“ (Windows: „Im Explorer zeigen“, Linux: „Im Dateimanager zeigen“), export PDF and close tab. „Im Finder zeigen“ is also in the „Datei“ menu and shows the active note in the system's file manager (a new note is saved first; not while presenting). The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view. Next to the file name stands the note's set (`template:`), red when the YAML header has errors (see [Check YAML](#front-matter)).
+Right-clicking a tab or the file name in the status line opens a menu with rename, „Im Dateimanager zeigen“ (the entry names the system's file manager: macOS „Im Finder zeigen“, Windows „Im Explorer zeigen“), export PDF and close tab. The entry is also in the „Datei“ menu (macOS Cmd+Alt+R, otherwise Shift+Alt+R) and shows the active note in the system's file manager (a new note is saved first; not while presenting). The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view. Next to the file name stands the note's set (`template:`), red when the YAML header has errors (see [Check YAML](#front-matter)). On the right the status line shows the zoom; − and + beside it zoom out and in (like Mod+- and Mod+Plus), as in the info line while presenting.
 
 ### Settings
 
@@ -135,7 +136,7 @@ Right-clicking a tab or the file name in the status line opens a menu with renam
 
 ### Outline
 
-A sidebar on the right lists the note's H1 and H2 headings. Entries read as a list: a chapter with sub-chapters shows an arrow, an entry without sub-chapters sits flush, with nothing in front. The highest heading level in the note gets the top-level look, so a note with only H2 headings shows them as top-level entries. The arrow folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. The outline sits a little above the middle of the bar (two parts of the free space above it, three below); when it is taller than the bar, it starts at the top and scrolls. Expanding or collapsing keeps the clicked entry exactly in place; it is placed again only when the outline is shown, another note is shown, the window size changes or on zoom. The width can be dragged with the mouse at the outline's left edge (double-click: default width). In the editor it is remembered; in Present the outline starts at the default width every time and a dragged width lasts only until Present ends. Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
+A sidebar on the right lists the note's H1 and H2 headings. Entries read as a list: a chapter with sub-chapters shows an arrow, an entry without sub-chapters sits flush, with nothing in front. The highest heading level in the note gets the top-level look, so a note with only H2 headings shows them as top-level entries. The arrow folds or unfolds the section in the text and in the outline at the same time; „fold/unfold all“ acts on both as well. A page break or comment at the end of a section belongs to the next heading. Clicking an entry jumps to the heading in the text; the focus stays in the editor. Long headings end in „…“; hovering shows the full text. The outline sits a little above the middle of the bar (two parts of the free space above it, three below); when it is taller than the bar, it starts at the top and scrolls. Expanding or collapsing keeps the clicked entry exactly in place; it is placed again only when the outline is shown, another note is shown, the window size changes or on zoom. When the outline is shown and on a switch to or from Present, its width fits the longest title, at most a fifth of the window's content; longer titles end in „…“. While the outline stays shown, the width stays put, also while typing and on a tab switch. It can be dragged with the mouse at its left edge; a dragged width lasts until the outline is shown again (double-click: fit to the titles again). Mod+Shift+O shows or hides the outline; the setting is remembered separately for the editor and Present.
 
 ### Snippets
 

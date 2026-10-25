@@ -146,14 +146,8 @@ describe('session', () => {
     expect(s.recent).toHaveLength(10)
   })
 
-  it('outlineWidth: missing or invalid → null (default width), numbers clamped to 10–40em', () => {
-    expect(DEFAULT_SESSION.outlineWidth).toBeNull()
-    expect(sanitizeSession({}).outlineWidth).toBeNull()
-    expect(sanitizeSession({ outlineWidth: 22.5 }).outlineWidth).toBe(22.5)
-    expect(sanitizeSession({ outlineWidth: 3 }).outlineWidth).toBe(10)
-    expect(sanitizeSession({ outlineWidth: 99 }).outlineWidth).toBe(40)
-    expect(sanitizeSession({ outlineWidth: '20' }).outlineWidth).toBeNull()
-    expect(sanitizeSession({ outlineWidth: Number.NaN }).outlineWidth).toBeNull()
+  it('drops the outline width of older sessions (the width fits itself on showing)', () => {
+    expect(sanitizeSession({ outlineWidth: 22.5 })).not.toHaveProperty('outlineWidth')
   })
   it('outline: missing → both off, booleans kept, anything else → off', () => {
     expect(DEFAULT_SESSION.outline).toEqual({ edit: false, present: false })

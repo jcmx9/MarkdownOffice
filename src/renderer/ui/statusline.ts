@@ -21,6 +21,7 @@ import {
   type ToggleActions,
   type ToggleState,
 } from './switches'
+import { zoomLabel } from './zoom'
 
 export interface StatusActions extends ToggleActions {
   /** Right click on the file name: the note's context menu (rename, reveal, export, close). */
@@ -29,13 +30,15 @@ export interface StatusActions extends ToggleActions {
   setView(view: View): void
   /** Click on the set name: „YAML prüfen …“, through the menu command's guards. */
   validateYaml(): void
+  zoomIn(): void
+  zoomOut(): void
 }
 
 const DEFAULT_TOGGLES = { outline: false, hasHeader: false, yamlOn: false }
 
 /**
  * Edit's bottom line: clock, mode and view switches, file name, the note's set, save state,
- * export progress.
+ * export progress and, on the right, the zoom like Present's info line.
  */
 export class StatusLine {
   private readonly clock: Clock
@@ -46,6 +49,7 @@ export class StatusLine {
   private readonly set: HTMLButtonElement
   private readonly state = document.createElement('span')
   private readonly exportState = document.createElement('span')
+  private readonly zoom = document.createElement('span')
   private busy = false
 
   constructor(el: HTMLElement, actions: StatusActions, now: () => Date = () => new Date()) {
@@ -70,6 +74,17 @@ export class StatusLine {
     this.exportState.dataset.testid = 'status-export'
     this.exportState.textContent = 'PDF wird erstellt …'
     this.setExporting(false)
+    this.zoom.className = 'zoom'
+    this.zoom.dataset.testid = 'status-zoom'
+    // Right-aligned as one group, so the export note sits just before the zoom.
+    const right = document.createElement('span')
+    right.className = 'right'
+    right.append(
+      this.exportState,
+      chromeButton('status-zoom-out', '−', 'Verkleinern', () => actions.zoomOut()),
+      this.zoom,
+      chromeButton('status-zoom-in', '+', 'Vergrößern', () => actions.zoomIn()),
+    )
     el.append(
       this.clock.el,
       this.switches.el,
@@ -77,7 +92,7 @@ export class StatusLine {
       this.name,
       this.set,
       this.state,
-      this.exportState,
+      right,
     )
     this.clock.start()
   }
@@ -104,6 +119,11 @@ export class StatusLine {
     this.state.textContent = saveText(state, error)
     // A hold is as prominent as a failed save.
     this.state.classList.toggle('error', state === 'error' || state === 'held')
+  }
+
+  /** Edit's zoom factor, as the info line shows Present's. */
+  renderZoom(zoom: number): void {
+    this.zoom.textContent = zoomLabel(zoom)
   }
 
   /** The set name and its check result; null hides it (no note, or no `template:`). */
