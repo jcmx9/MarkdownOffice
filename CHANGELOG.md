@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Edit: the status line shows the zoom on the right with − and +, like Present's info line
+- Shortcut for showing the note in the file manager: Cmd+Alt+R on macOS, Shift+Alt+R on Windows and Linux (not Ctrl+Alt, which is AltGr on German layouts); the README names the entry neutrally (the label already follows the system: Finder, Explorer, Dateimanager)
 
 ## [26.10.4] - 2026-10-25
 
