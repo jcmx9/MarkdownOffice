@@ -60,3 +60,23 @@ $$
 ```
 $$
 "out"
+
+    "indented code" -- x
+	"tab code" 'y'
+
+- item
+
+    "list para" -- z
+
+after "list"
+
+    "code again" ...
+text "t"
+    "lazy" -- not code
+
+1. "n"
+   "cont" -- c
+
+    "still list" -- l
+
+end "e"

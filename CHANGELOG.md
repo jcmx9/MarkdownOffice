@@ -14,6 +14,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size; a click on a heading no longer shifts the outline sideways (the active entry is scrolled into view vertically only, so titles are never cut on the left)
+- PDF: indented code blocks (4 spaces or a tab after a blank line, outside lists) keep their straight quotes, `--` and `...`; the pipeline's typography only skipped fenced code. A list item's indented continuation, a lazy paragraph line and a list closed by a heading behave as in CommonMark. The preview's port (`src/core/typography.ts`) mirrors the rule, checked by `pipeline/tests/test-typography.sh`
 
 ## [26.10.4] - 2026-10-25
 
