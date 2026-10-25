@@ -17,6 +17,12 @@ describe('sanitizeSetCss', () => {
       },
     ])
   })
+  it('keeps the highlight token --mdo-mark-bg and a .mdo-hl rule', () => {
+    const { rules } = sanitizeSetCss(
+      '.mdo-preview { --mdo-mark-bg: #fbeab0 } .mdo-hl { background: #fbeab0 }',
+    )
+    expect(rules.map((r) => r.declarations[0]?.[0])).toEqual(['--mdo-mark-bg', 'background'])
+  })
   it.each([
     ['@import url(http://x/a.css); .mdo-a{color:red}', 1],
     ['@media print { .mdo-a{color:red} } .mdo-b{color:red}', 1],

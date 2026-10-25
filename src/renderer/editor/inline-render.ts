@@ -18,12 +18,15 @@ const ELEMENTS: Record<string, [tag: string, cls: string]> = {
   Emphasis: ['em', 'mdo-em'],
   InlineCode: ['code', 'mdo-code-inline'],
   Strikethrough: ['s', 'mdo-strike'],
+  // <mark> like the PDF's `==x==`; the class carries the set's --mdo-mark-bg
+  Highlight: ['mark', 'mdo-hl'],
   Link: ['span', 'mdo-link'],
 }
 const MARKS = new Set([
   'EmphasisMark',
   'CodeMark',
   'StrikethroughMark',
+  'HighlightMark',
   'LinkMark',
   'LinkTitle',
   'LinkLabel',

@@ -195,6 +195,15 @@ describe('tableField', () => {
     expect(cells[0]?.querySelector('.mdo-link')).toBeNull()
     expect(cells[1]?.querySelector('.mdo-link')?.textContent).toBe('def')
   })
+  it('renders ==x== in a cell as <mark class="mdo-hl">, not in a cell formula', () => {
+    const doc = '| a | b |\n|---|---|\n| ==x== | $p == q == r$ |\n\nende'
+    const [first] = tables(make(doc, doc.length))
+    const dom = first?.widget.toDOM({} as EditorView) as HTMLElement
+    const cells = [...dom.querySelectorAll('tbody td')]
+    expect(cells[0]?.querySelector('mark.mdo-hl')?.textContent).toBe('x')
+    expect(cells[0]?.textContent).toBe('x')
+    expect(cells[1]?.querySelector('.mdo-hl')).toBeNull()
+  })
   it('redraws the table when a reference definition changes', () => {
     const doc = '| a |\n|---|\n| [21] |\n\nende'
     const before = make(doc, doc.length)
