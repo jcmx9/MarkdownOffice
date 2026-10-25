@@ -16,7 +16,7 @@ import {
   tableRowDelete,
 } from '../../../src/renderer/editor/table-edit'
 import { splitRow } from '../../../src/renderer/editor/tables'
-import type { Mode } from '../../../src/shared/types'
+import type { Eol, Mode } from '../../../src/shared/types'
 import { parsed } from './parsed'
 
 // Tables are full of `|`, so the cursor marker here is `‸` (U+2038) instead of the `|` the
@@ -28,7 +28,7 @@ afterEach(() => {
   for (const v of views.splice(0)) v.destroy()
 })
 
-function make(marked: string, mode: Mode = 'edit', eol: '\n' | '\r\n' = '\n'): EditorView {
+function make(marked: string, mode: Mode = 'edit', eol: Eol = '\n'): EditorView {
   const at = marked.indexOf(CURSOR)
   const text = marked.replace(CURSOR, '')
   const state = parsed(createState(text, eol, 'code', false, mode))
@@ -128,6 +128,17 @@ describe('cell model', () => {
       for (let p = 0; p <= doc.length; p++) expect(tableAt(v.state, p)).toBeNull()
       expect(cellAt(v.state, 3)).toBeNull()
     }
+  })
+})
+
+describe('cell model with mixed line endings', () => {
+  it('reads a CRLF row of a mixed note without a `\\r` cell', () => {
+    const v = make('| a | b |\n|---|---|\n| 1 | 2 |\r\n', 'edit', 'mixed')
+    expect(reparsedCells(v)).toEqual([
+      ['a', 'b'],
+      ['---', '---'],
+      ['1', '2'],
+    ])
   })
 })
 
@@ -358,6 +369,17 @@ describe('tableColRight', () => {
     const v = make('| A‸ |\r\n|---|\r\n| 1 |', 'edit', '\r\n')
     expect(tableColRight(v)).toBe(true)
     expect(serializeDoc(v.state.doc, '\r\n')).toBe('| A |   |\r\n|---| --- |\r\n| 1 |   |')
+  })
+
+  // Mixed EOL: CRLF rows keep their `\r` in the document (lines split on `\n` only). It is
+  // trailing whitespace, so the trailing pipe stays an outer pipe and no `\r` cell appears.
+  // (Lezer reads a table only while its header and delimiter rows end in `\n`.)
+  it('keeps mixed line endings and adds no stray cell', () => {
+    const v = make('| A |\n|---|\n| 1‸ |\r\n| 2 |\r\n', 'edit', 'mixed')
+    expect(tableColRight(v)).toBe(true)
+    expect(serializeDoc(v.state.doc, 'mixed')).toBe(
+      '| A |   |\n|---| --- |\n| 1 |   |\r\n| 2 |   |\r\n',
+    )
   })
 })
 

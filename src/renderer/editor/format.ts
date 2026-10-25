@@ -12,9 +12,10 @@ import {
 } from '@codemirror/state'
 import type { Command, EditorView } from '@codemirror/view'
 import type { SyntaxNode, Tree } from '@lezer/common'
+import { highlightSpans } from '../../core/highlight'
 import { frontmatterRange } from './frontmatter'
 import { presentMode } from './mode'
-import { blockInsertion, cellAt, cellsOfTable, tableAt } from './table-edit'
+import { blockInsertion, type CellPos, cellAt, cellsOfTable, tableAt } from './table-edit'
 
 /**
  * Format commands for the toolbar and the „Format“ menu (spec „Formatting toolbar“, section 1).
@@ -128,6 +129,13 @@ const PREFIX_MARKS = new Set(['QuoteMark', 'ListMark', 'TaskMarker', 'HeaderMark
 
 const isSpace = (ch: string): boolean => ch === ' ' || ch === '\t'
 
+/**
+ * Whitespace at the end of a line or piece: a space, a tab, or the `\r` a CRLF line keeps in a
+ * mixed-EOL note (that document splits lines on `\n` only, setup.ts), which must never end up
+ * inside the markers (`**eins\r**`).
+ */
+const isTrailing = (ch: string): boolean => isSpace(ch) || ch === '\r'
+
 /** A GFM alert's type marker as the only text of a quote line (`[!WARNING]`). */
 const ALERT_LINE = /^\[![A-Za-z]+\]\s*$/
 
@@ -160,10 +168,16 @@ function lineContent(
   }
   // An alert's type line (`> [!NOTE]`): wrapped, the pipeline would no longer see an alert.
   if (inQuote && ALERT_LINE.test(text.slice(pos - line.from))) return null
-  let end = line.to
+  // Trailing whitespace first, so an ATX closing sequence before it (or before a mixed-EOL `\r`)
+  // is still found, then the whitespace before that sequence.
+  const trim = (at: number): number => {
+    let e = at
+    while (e > pos && isTrailing(state.doc.sliceString(e - 1, e))) e--
+    return e
+  }
+  let end = trim(line.to)
   const close = tree.resolveInner(end, -1)
-  if (close.name === 'HeaderMark' && close.from > pos && close.to === end) end = close.from
-  while (end > pos && isSpace(state.doc.sliceString(end - 1, end))) end--
+  if (close.name === 'HeaderMark' && close.from > pos && close.to === end) end = trim(close.from)
   return { from: pos, to: Math.max(pos, end) }
 }
 
@@ -204,7 +218,7 @@ function segments(state: EditorState, tree: Tree, r: SelectionRange): Span[] {
       let to = Math.min(r.to, p.to)
       // A closing marker after whitespace is no closing marker: wrap the text, not its spaces.
       while (from < to && isSpace(state.doc.sliceString(from, from + 1))) from++
-      while (to > from && isSpace(state.doc.sliceString(to - 1, to))) to--
+      while (to > from && isTrailing(state.doc.sliceString(to - 1, to))) to--
       if (from < to) out.push({ from, to })
     }
   }
@@ -331,6 +345,25 @@ function markersFor(spec: InlineSpec, text: string): [string, string] {
   return [fence + pad, pad + fence]
 }
 
+/**
+ * Whether `==…==` around `span` would render as a highlight, by the PDF's own rule
+ * (core/highlight, markdown.typ `marks()`, which the editor's parser follows): the text holds no
+ * `=`, has no space at its ends and is not cut by a backtick or a formula. Checked on the line
+ * with the markers in, or on the cell in a table (the editor parses each cell on its own).
+ */
+function highlightRenders(state: EditorState, span: Span): boolean {
+  const scope = cellAt(state, span.from) ?? state.doc.lineAt(span.from)
+  const text =
+    state.doc.sliceString(scope.from, span.from) +
+    '==' +
+    state.doc.sliceString(span.from, span.to) +
+    '==' +
+    state.doc.sliceString(span.to, scope.to)
+  const from = span.from - scope.from
+  const to = span.to - scope.from + 4
+  return highlightSpans(text).some((h) => h.from === from && h.to === to)
+}
+
 interface Change {
   from: number
   to: number
@@ -396,6 +429,8 @@ function planRange(state: EditorState, tree: Tree, r: SelectionRange, id: Inline
 
   const wrap = (w: Span, bound: Span): Change[] => {
     const span = widen(tree, w, bound)
+    // `==` the PDF would not mark stays literal and piles up on the next click (`====x = y====`).
+    if (id === 'mark' && !highlightRenders(state, span)) return []
     const [open, close] = markersFor(spec, state.doc.sliceString(span.from, span.to))
     return [
       { from: span.from, to: span.from, insert: open },
@@ -438,8 +473,9 @@ function planRange(state: EditorState, tree: Tree, r: SelectionRange, id: Inline
  * Toggles an inline format on every selection range (spec „Inline formats“): a selection is
  * wrapped (split per line and per table cell), no selection takes the word at the cursor, no
  * word gets an empty marker pair with the cursor inside. A range that touches runs of the format
- * removes their marks instead. The selection stays on the same text. Refuses (false, no change)
- * in the contexts of `refused(state, 'inline')` and when no range could act.
+ * removes their marks instead. The selection stays on the same text. „Markieren“ skips every
+ * piece whose `==…==` would not render (a `=` in it, cut by code or a formula). Refuses (false,
+ * no change) in the contexts of `refused(state, 'inline')` and when no range could act.
  */
 export function toggleInline(id: InlineId): Command {
   return (view: EditorView): boolean => {
@@ -987,11 +1023,12 @@ function strictlyIn(tree: Tree, pos: number, names: Set<string>): boolean {
 /**
  * The clipboard text as a link destination: one `http(s)://` URL, trimmed, without whitespace
  * inside (spec: „a single http(s):// URL“); anything else counts as no URL. Unbalanced
- * parentheses would end the destination early, so such a URL goes into `<…>`.
+ * parentheses would end the destination early, so such a URL goes into `<…>`. A trailing `\`
+ * would escape the closing `)` (and inside `<…>` the closing `>`), so such text counts as no URL.
  */
 function linkDestination(raw: string | null): string | null {
   const url = raw?.trim() ?? ''
-  if (!/^https?:\/\/\S+$/i.test(url) || /[<>]/.test(url)) return null
+  if (!/^https?:\/\/\S+$/i.test(url) || /[<>]/.test(url) || url.endsWith('\\')) return null
   let depth = 0
   for (const ch of url) {
     if (ch === '(') depth++
@@ -1012,7 +1049,9 @@ export function insertLink(view: EditorView, clipboardUrl: string | null): boole
   if (refused(state, 'inline')) return false
   const tree = syntaxTree(state)
   const dest = linkDestination(clipboardUrl) ?? ''
-  const tail = `](${dest})`
+  // In a table cell a `|` of the URL would end the cell mid-link (even inside `<…>`); %7C is
+  // the same URL to every browser.
+  const tailIn = (cell: CellPos | null): string => `](${cell ? dest.replaceAll('|', '%7C') : dest})`
   const changes: Change[] = []
   const places: Point[] = []
   for (const r of state.selection.ranges) {
@@ -1020,6 +1059,7 @@ export function insertLink(view: EditorView, clipboardUrl: string | null): boole
     if (r.empty) {
       const cell = cellAt(state, r.head)
       if (cell?.row === 1) return false
+      const tail = tailIn(cell)
       const bound = cell ?? lineContent(state, tree, state.doc.lineAt(r.head))
       if (!bound) return false
       const pos = Math.min(Math.max(r.head, bound.from), bound.to)
@@ -1033,6 +1073,7 @@ export function insertLink(view: EditorView, clipboardUrl: string | null): boole
     const seg = segs[0]
     if (segs.length !== 1 || !seg) return false
     const cell = cellAt(state, seg.from)
+    const tail = tailIn(cell)
     const line = state.doc.lineAt(seg.from)
     const span = widen(tree, seg, cell ?? { from: line.from, to: line.to })
     let nested = false

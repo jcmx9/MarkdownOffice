@@ -1,13 +1,22 @@
 // @vitest-environment happy-dom
 
-import { undo } from '@codemirror/commands'
+import { completionKeymap } from '@codemirror/autocomplete'
+import {
+  defaultKeymap,
+  deleteLine,
+  historyKeymap,
+  indentWithTab,
+  selectParentSyntax,
+  undo,
+} from '@codemirror/commands'
+import { markdownKeymap } from '@codemirror/lang-markdown'
 import { foldEffect, foldedRanges, syntaxTree } from '@codemirror/language'
 import { EditorSelection, EditorState, StateEffect } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { EditorView, keymap } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as format from '../../../src/renderer/editor/format'
 import { formatMode, refused, toggleInline } from '../../../src/renderer/editor/format'
-import { createState, serializeDoc } from '../../../src/renderer/editor/setup'
+import { createState, foldBindings, serializeDoc } from '../../../src/renderer/editor/setup'
 import type { Mode } from '../../../src/shared/types'
 import { parsed } from './parsed'
 
@@ -26,7 +35,7 @@ afterEach(() => {
 
 interface MakeOptions {
   mode?: Mode
-  eol?: '\n' | '\r\n'
+  eol?: '\n' | '\r\n' | 'mixed'
   present?: boolean
 }
 
@@ -38,8 +47,9 @@ function make(text: string, opts: MakeOptions = {}): EditorView {
     if (ch === CURSOR) ranges.push({ anchor: doc.length, head: doc.length })
     else if (ch === OPEN) open = doc.length
     else if (ch === CLOSE) ranges.push({ anchor: open, head: doc.length })
-    // CodeMirror stores CRLF as one line break: count offsets the way the document does.
-    else if (ch === '\r') continue
+    // CodeMirror stores CRLF as one line break: count offsets the way the document does. A
+    // mixed-EOL note splits on `\n` only, so its lines keep their `\r` (setup.ts).
+    else if (ch === '\r' && opts.eol !== 'mixed') continue
     else doc += ch
   }
   let state = createState(doc, opts.eol ?? '\n', 'code', false, opts.mode ?? 'edit')
@@ -210,6 +220,50 @@ describe('nested and alternative markers', () => {
     expect(toggleInline('bold')(v)).toBe(true)
     expect(serializeDoc(v.state.doc, '\r\n')).toBe('a\r\n**b**\r\n**c**')
   })
+
+  const T = '| a | b |\n|---|---|\n'
+  // A mixed-EOL note splits lines on `\n` only, so a CRLF line keeps its `\r` in the document:
+  // it is trailing whitespace like a space, never part of the wrapped text (`**eins\r**`).
+  it.each([
+    ['a whole selected line', '«eins zwei\r»\ndrei', '**eins zwei**\r\ndrei'],
+    ['a selection over a CRLF break', '«eins\r\nzwei»\ndrei', '**eins**\r\n**zwei**\ndrei'],
+    ['a line with its line break', '«eins\r\n»zwei\n', '**eins**\r\nzwei\n'],
+    ['a heading with a closing sequence', '«# a #\r»\nb', '# **a** #\r\nb'],
+    // Lezer reads a table only while its header and delimiter rows end in `\n`; body rows may
+    // be CRLF.
+    ['a whole table body row', `${T}«| x | y |\r»\n`, `${T}| **x** | **y** |\r\n`],
+    ['a table body row over its break', `${T}| x | «y |\r\n»`, `${T}| x | **y** |\r\n`],
+  ])('keeps mixed line endings: %s', (_name, before, after) => {
+    const v = make(before, { eol: 'mixed' })
+    expect(toggleInline('bold')(v)).toBe(true)
+    expect(serializeDoc(v.state.doc, 'mixed')).toBe(after)
+  })
+})
+
+// The PDF marks only `==…==` whose text holds no `=` and is not cut by a backtick or a formula
+// (core/highlight, markdown.typ `marks()`); markers it would not render must not be written,
+// and pressing again must not pile them up (`====x = y====`).
+describe('Markieren only where the highlight renders', () => {
+  it.each([
+    ['a selection with `=`', 'a «x = y» b'],
+    ['a selection of `=` only', 'a «==» b'],
+    ['a selection cut by a code span', 'a «b `c` d» e'],
+    ['a cell with `=`', '| «x=y» | b |\n|---|---|'],
+  ])('refuses %s', (_name, text) => {
+    refuses(text, 'mark')
+  })
+
+  it('wraps the other lines of a selection', () => {
+    expect(run('«a\nx = y\nb»', 'mark')).toBe('==«a==\nx = y\n==b»==')
+  })
+
+  it('wraps the other cells of a row', () => {
+    expect(run('| «a | x=y» |\n|---|---|', 'mark')).toBe('| ==«a== | x=y» |\n|---|---|')
+  })
+
+  it('still wraps the word at the cursor next to `=`', () => {
+    expect(run('a = wo‸rt', 'mark')).toBe('a = ==wo‸rt==')
+  })
 })
 
 describe('inline formats in table cells', () => {
@@ -304,6 +358,44 @@ describe('undo and events', () => {
 
   it('exports no keymap', () => {
     expect(Object.keys(format).filter((k) => /keymap/i.test(k))).toEqual([])
+  })
+})
+
+describe('the editor keymaps (spec section 3: no keymap)', () => {
+  /** Every binding of a state's keymap facet, as comparable key strings. */
+  const keys = (state: EditorState): string[] =>
+    state
+      .facet(keymap)
+      .flat()
+      .map((b) => [b.key, b.mac, b.win, b.linux].map((k) => k ?? '').join(' '))
+      .sort()
+
+  // What createState wires up itself: its own keymap line, lang-markdown's and autocompletion's
+  // default keymaps, the snippet Tab and the page-break Mod-Enter. Anything beyond these would
+  // be a new key.
+  const expected = [
+    ...foldBindings(),
+    ...markdownKeymap,
+    ...defaultKeymap,
+    ...historyKeymap,
+    indentWithTab,
+    ...completionKeymap,
+    { key: 'Tab' },
+    { key: 'Mod-Enter' },
+  ]
+    .map((b) => [b.key, b.mac, b.win, b.linux].map((k) => k ?? '').join(' '))
+    .sort()
+
+  it.each(['edit', 'present'] as Mode[])('are exactly the CodeMirror and app ones (%s)', (mode) => {
+    expect(keys(createState('x', '\n', 'code', false, mode))).toEqual(expected)
+  })
+
+  it('keep Mod-i, Mod-Shift-k and leave Mod-1 unbound', () => {
+    const all = createState('x', '\n', 'code').facet(keymap).flat()
+    const run = (key: string) => all.filter((b) => b.key === key).map((b) => b.run)
+    expect(run('Mod-i')).toEqual([selectParentSyntax])
+    expect(run('Shift-Mod-k')).toEqual([deleteLine])
+    expect(run('Mod-1')).toEqual([])
   })
 })
 
@@ -574,6 +666,27 @@ describe('insertLink', () => {
     ['keeps the line prefix outside', '«## Head»', null, '## [Head](‸)'],
     ['widens over a partly covered run', '**a «b** c»', null, '[**a b** c](‸)'],
     ['works in a table cell', '| «a» | b |\n|---|---|', URL, `| [a](${URL})‸ | b |\n|---|---|`],
+    // A `|` would end the cell in the middle of the URL; %7C is the same URL.
+    [
+      'escapes a `|` of the URL in a table cell',
+      '| «a» | b |\n|---|---|',
+      'https://x.org/?q=a|b',
+      '| [a](https://x.org/?q=a%7Cb)‸ | b |\n|---|---|',
+    ],
+    [
+      'escapes a `|` of the URL at a cursor in a table cell',
+      '| ‸ | b |\n|---|---|',
+      'https://x.org/?q=a|b',
+      '| [‸](https://x.org/?q=a%7Cb) | b |\n|---|---|',
+    ],
+    [
+      'keeps a `|` of the URL outside a table',
+      'a «foo» b',
+      'https://x.org/?q=a|b',
+      'a [foo](https://x.org/?q=a|b)‸ b',
+    ],
+    // `\)` would escape the closing parenthesis (and `\>` the closing bracket of `<…>`).
+    ['ignores a URL ending in a backslash', 'a «foo» b', 'https://x.org/a\\', 'a [foo](‸) b'],
     ['makes a selected bare URL the link text', '«https://x.de»', null, '[https://x.de](‸)'],
     [
       'a selected bare URL with a clipboard URL',

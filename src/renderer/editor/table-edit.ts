@@ -43,7 +43,12 @@ interface RowLayout {
   end: number
 }
 
-const isSpace = (ch: string | undefined): boolean => ch === ' ' || ch === '\t'
+/**
+ * Padding and trailing whitespace of a row. `\r` counts too: a CRLF row of a mixed-EOL note keeps
+ * it in the document (lines split on `\n` only, setup.ts); as text it would turn the trailing
+ * pipe into a separator and add a stray `\r` cell. It only ever stands at the line end.
+ */
+const isSpace = (ch: string | undefined): boolean => ch === ' ' || ch === '\t' || ch === '\r'
 
 /**
  * Splits one row line exactly like `splitRow` in tables.ts (the preview's split), but keeps
