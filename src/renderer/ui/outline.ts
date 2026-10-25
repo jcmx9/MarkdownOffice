@@ -121,9 +121,25 @@ export class Outline {
     const row = key ? (this.rows.get(key) ?? null) : null
     this.activeRow?.label.classList.remove('active')
     row?.label.classList.add('active')
-    if (row && key !== this.activeKey) row.label.scrollIntoView({ block: 'nearest' })
+    if (row && key !== this.activeKey) this.reveal(row.label)
     this.activeRow = row
     this.activeKey = row ? key : null
+  }
+
+  /**
+   * Scrolls the bar vertically just enough to show `label`. Not scrollIntoView: that also
+   * scrolls sideways when a row is wider than the bar, and the whole list then sat shifted left
+   * with its titles cut (owner, 2026-10-25: the outline must stay stable). Also scrolls no
+   * other container (the editor).
+   */
+  private reveal(label: HTMLElement): void {
+    const bar = this.el.getBoundingClientRect()
+    const pad = getComputedStyle(this.el)
+    const top = bar.top + (Number.parseFloat(pad.paddingTop) || 0)
+    const bottom = bar.bottom - (Number.parseFloat(pad.paddingBottom) || 0)
+    const r = label.getBoundingClientRect()
+    if (r.top < top) this.el.scrollTop -= top - r.top
+    else if (r.bottom > bottom) this.el.scrollTop += Math.min(r.bottom - bottom, r.top - top)
   }
 
   /**

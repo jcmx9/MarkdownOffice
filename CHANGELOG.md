@@ -6,7 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
-- Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size
+- Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size; a click on a heading no longer shifts the outline sideways (the active entry is scrolled into view vertically only, so titles are never cut on the left)
 
 ### Changed
 - Outline: the list sits in the optical centre of the bar (two parts of the free height above, three below) instead of at the top; a list taller than the bar starts at the top and scrolls as before. Expanding or collapsing keeps the clicked entry exactly where it was (also when a collapse at the scroll end shortens the list); the list is placed again only on showing, a note switch, a new bar height or a zoom change, never after a fold or an edit
