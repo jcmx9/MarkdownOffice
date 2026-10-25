@@ -428,6 +428,120 @@ body.mdo-ol-resizing {
 #status .set.error:hover {
   color: var(--danger);
 }
+/* Formatting toolbar (ui/toolbar.ts): one narrow row below the tab bar. Positioned so the
+   popups (grid, menus) sit under their button; overflow stays visible or they would be clipped. */
+#toolbar {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--chrome-fg);
+  white-space: nowrap;
+}
+.mdo-fmt-group {
+  display: inline-flex;
+  gap: 1px;
+}
+.mdo-fmt-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--line);
+}
+#toolbar button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  border: 0;
+  background: transparent;
+  color: var(--chrome-fg);
+  font: inherit;
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#toolbar button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--chrome-fg) 8%, transparent);
+}
+/* Active format (aria-pressed via lift()): accent tint, like a lifted switch. */
+#toolbar button.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+#toolbar button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+#toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
+/* The ▾ of the menu buttons: half the size of the icon it belongs to. */
+#toolbar button > svg + svg {
+  width: 10px;
+  height: 10px;
+  color: var(--chrome-muted);
+}
+.mdo-fmt-popup {
+  position: absolute;
+  top: 100%;
+  margin-top: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  padding: 4px;
+}
+.mdo-fmt-popup:focus {
+  outline: none;
+}
+.mdo-fmt-menu {
+  display: grid;
+  min-width: 12em;
+}
+#toolbar .mdo-fmt-menu button {
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 8px;
+  text-align: left;
+}
+#toolbar .mdo-fmt-menu button:focus {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.mdo-fmt-keyword {
+  color: var(--chrome-muted);
+  font-family: var(--mdo-font-code, monospace);
+  font-size: 11px;
+}
+.mdo-fmt-grid-cells {
+  display: grid;
+  grid-template-columns: repeat(8, 14px);
+  gap: 2px;
+}
+.mdo-fmt-grid-cell {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+.mdo-fmt-grid-cell.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.mdo-fmt-grid-label {
+  margin-top: 4px;
+  text-align: center;
+  color: var(--chrome-muted);
+  font-variant-numeric: tabular-nums;
+}
 /* Mode and view switches: flat like info text, the active side lifted, no frame. */
 .mdo-switches {
   display: inline-flex;
