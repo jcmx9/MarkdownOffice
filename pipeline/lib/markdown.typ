@@ -338,6 +338,9 @@
 // einem neuen Block (Liste, Überschrift, Zitat, Tabelle, Zaun …) wäre "\" ein
 // sichtbarer Backslash. Code und Formeln bleiben unberührt.
 #let block-start-re = regex("^ {0,3}(#{1,6}([ \t]|$)|[-*+]([ \t]|$)|\d+[.)]([ \t]|$)|>|\||`{3,}|~{3,}|\$\$|<|:[ \t]|\[\^[^\]]+\]:|(=+|-+|\*+|_+)[ \t]*$)")
+// Linkdefinition `[a]: ziel "Titel"` (keine Fußnote `[^1]:`). Ein "\" am Ende machte
+// aus ihr und jeder folgenden Definition Fließtext: der Verweis [x][a] bliebe Quelltext.
+#let link-def-re = regex("^ {0,3}\\[[^\\]^][^\\]]*\\]:")
 #let keep-line-breaks(lines) = {
   let mask = skip-mask(lines)
   let n = lines.len()
@@ -359,7 +362,7 @@
     }
     let ends-break = cur.ends-with("\\") or cur.ends-with("  ")
     let is-heading = cur.match(regex("^ {0,3}#{1,6}([ \t]|$)")) != none
-    let is-other = cur.match(regex("^ {0,3}(\||<|`{3,}|~{3,}|\$\$)")) != none
+    let is-other = cur.match(regex("^ {0,3}(\||<|`{3,}|~{3,}|\$\$)")) != none or cur.match(link-def-re) != none
     if ends-break or is-heading or is-other or nxt.match(block-start-re) != none {
       out.push(l)
     } else {
@@ -443,12 +446,28 @@
   let t = if dashes { t.replace("---", "—").replace("--", "–") } else { t }
   smart-quotes(t.replace("...", "…"), de)
 }
+// Ziel und Titel von Links und Bildern (`](ziel "Titel")`) bleiben wie getippt:
+// aus "Titel" würde sonst „Titel“, das cmarker nicht mehr als Titel liest – das
+// Bild fiele als Quelltext ins PDF; ebenso `--` in einer URL. Linkdefinitionen
+// (`[a]: ziel "Titel"`) erscheinen nicht im PDF und bleiben ganz unberührt;
+// Fußnoten (`[^1]: Text`) sind Fließtext. (link-def-re steht bei keep-line-breaks.)
+#let link-dest-re = regex("\\]\\([^)]*\\)")
+#let smart-outside-links(p, de) = {
+  let out = ""
+  let at = 0
+  for m in p.matches(link-dest-re) {
+    out += smart-text(p.slice(at, m.start), de, true) + m.text
+    at = m.end
+  }
+  out + smart-text(p.slice(at), de, true)
+}
 #let smart-typography(lines, lang) = {
   let mask = skip-mask(lines)
   let de = lang.starts-with("de")
   lines.enumerate().map(((i, l)) => {
     let t = l.trim()
     if mask.at(i) or t.starts-with("<") or t.match(rule-line-re) != none { return l }
+    if l.match(link-def-re) != none { return l }
     if not (l.contains("\"") or l.contains("'") or l.contains("--") or l.contains("...")) { return l }
     // HTML im Satz (<span …>, <!-- … -->): Zeile nicht anfassen
     if l.match(regex("<[A-Za-z!/]")) != none { return l }
@@ -457,9 +476,9 @@
       if calc.odd(k) { return p }
       let dollars = p.split("$")
       if dollars.len() >= 3 and calc.odd(dollars.len()) {
-        dollars.enumerate().map(((j, q)) => if calc.odd(j) { q } else { smart-text(q, de, true) }).join("$")
+        dollars.enumerate().map(((j, q)) => if calc.odd(j) { q } else { smart-outside-links(q, de) }).join("$")
       } else {
-        smart-text(p, de, true)
+        smart-outside-links(p, de)
       }
     }).join("`")
   })

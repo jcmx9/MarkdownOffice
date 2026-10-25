@@ -5,6 +5,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- PDF: an image with a title (`![a](bild.svg "Titel")`) is drawn again instead of printed as source: the typography no longer touches link and image destinations with their titles (it made `"Titel"` into `„Titel“`, which is no title), nor `--` in a URL; link reference definitions stay untouched
+- PDF: link reference definitions in a row (`[a]: …`, `[b]: … "Titel"`) all work with hard line breaks (the default): the `\` the hard breaks appended turned every definition after the first into text, so `[x][b]` stayed source
+
 ### Changed
 - Outline: the list sits in the optical centre of the bar (two parts of the free height above, three below) instead of at the top; a list taller than the bar starts at the top and scrolls as before. Expanding or collapsing keeps the clicked entry exactly where it was (also when a collapse at the scroll end shortens the list); the list is placed again only on showing, a note switch, a new bar height or a zoom change, never after a fold or an edit
 
