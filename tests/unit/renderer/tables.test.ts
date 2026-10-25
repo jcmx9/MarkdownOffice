@@ -205,6 +205,32 @@ describe('tableField', () => {
   })
 })
 
+describe('typography in table cells', () => {
+  const cellsOf = (doc: string) => {
+    const s = make(doc, doc.length)
+    const widget = tables(s)[0]?.widget
+    if (!widget) throw new Error('no table widget')
+    const dom = widget.toDOM({} as EditorView)
+    return [...dom.querySelectorAll('th, td')].map((c) => c.textContent)
+  }
+  it('shows the quotes, dashes and ellipses the PDF prints, per lang', () => {
+    const table = '| "a" | b -- c |\n|---|---|\n| it\'s ... | `"code" --` |\n\nEnde'
+    expect(cellsOf(table)).toEqual(['„a“', 'b – c', 'it’s …', '"code" --'])
+    expect(cellsOf(`---\nlang: en\n---\n\n${table}`)).toEqual([
+      '“a”',
+      'b – c',
+      'it’s …',
+      '"code" --',
+    ])
+  })
+  it('leaves a row with HTML alone, as the PDF does', () => {
+    expect(cellsOf('| <b>x</b> "a" | -- |\n|---|---|\n\nEnde').slice(0, 2)).toEqual([
+      '<b>x</b> "a"',
+      '--',
+    ])
+  })
+})
+
 describe('formulas in table cells', () => {
   const views: EditorView[] = []
   afterEach(() => {
