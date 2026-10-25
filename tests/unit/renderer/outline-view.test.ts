@@ -417,3 +417,43 @@ describe('Outline placement', () => {
     expect(margin()).toBe('130px')
   })
 })
+
+describe('Outline width fit', () => {
+  /** A workspace of `host` px holding the bar; the titles need `natural` px. */
+  function stage(host: number, natural: number, fitted = vi.fn<(em: number) => void>()) {
+    const parent = document.createElement('main')
+    Object.defineProperty(parent, 'clientWidth', { configurable: true, get: () => host })
+    parent.append(el)
+    el.style.fontSize = '15px'
+    outline = new Outline(el, { ...handlers, fitted }, () => natural)
+    return fitted
+  }
+  it('fits the longest title once, on request, and reports it', () => {
+    const fitted = stage(1500, 150)
+    outline.fitWidth()
+    outline.render(tree(), null)
+    expect(el.style.width).toBe('10em')
+    expect(el.classList.contains('mdo-ol-custom')).toBe(true)
+    expect(fitted).toHaveBeenCalledWith(10)
+    // Later renders (typing, folding, tab switch) keep the width.
+    outline.render(tree(true), null)
+    expect(fitted).toHaveBeenCalledTimes(1)
+  })
+  it('takes at most a fifth of the workspace; longer titles end in …', () => {
+    stage(1000, 450)
+    outline.fitWidth()
+    outline.render(tree(), null)
+    // 200 px of 15 px = 13.34em (rounded up).
+    expect(el.style.width).toBe('13.34em')
+  })
+  it('waits while hidden and fits when shown', () => {
+    stage(1500, 150)
+    outline.setVisible(false)
+    outline.fitWidth()
+    outline.render(tree(), null)
+    expect(el.style.width).toBe('')
+    outline.setVisible(true)
+    outline.render(tree(), null)
+    expect(el.style.width).toBe('10em')
+  })
+})

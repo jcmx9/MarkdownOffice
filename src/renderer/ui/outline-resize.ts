@@ -1,13 +1,14 @@
 /**
- * Width of the outline, set by dragging the grip on its left edge (Edit and Present; Present starts
- * at the default width each time). Widths are in em of the outline's own font size, so a
- * chosen width keeps its proportion when the zoom changes.
+ * Width of the outline, set by dragging the grip on its left edge (Edit and Present). A dragged
+ * width lasts until the outline is shown again; showing fits it to the titles (Outline.fitWidth).
+ * Widths are in em of the outline's own font size, so a chosen width keeps its proportion when
+ * the zoom changes.
  */
 export const OUTLINE_MIN_EM = 10
 export const OUTLINE_MAX_EM = 40
 
 export interface OutlineResizeHandlers {
-  /** A new width in em, or null for the default width; called once per drag, key or reset. */
+  /** A new width in em, or null on double-click (the app fits it to the titles again). */
   commit(em: number | null): void
 }
 

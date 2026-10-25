@@ -3,6 +3,36 @@ import type { OutlineEntry } from '../editor/outline'
 export interface OutlineHandlers {
   jump(entry: OutlineEntry): void
   toggle(entry: OutlineEntry): void
+  /** The width a fit chose, in em of the bar's font size. */
+  fitted?(em: number): void
+}
+
+/** Largest share of the workspace (editor + outline) a fitted outline may take. */
+export const OUTLINE_FIT_SHARE = 0.2
+
+/**
+ * The bar width at which the widest title fits without "…": per label its left offset in the
+ * bar, its padding and its text width (a Range: the label itself stretches to the bar), plus
+ * the bar's right padding, scrollbar gutter and border. Not `width: max-content`: a heading
+ * row holds its children list beside the label in that measure (flex-wrap), which made it
+ * about twice too wide.
+ */
+export function naturalWidth(el: HTMLElement): number {
+  const bar = el.getBoundingClientRect()
+  const style = getComputedStyle(el)
+  const right =
+    (Number.parseFloat(style.paddingRight) || 0) + (bar.width - el.clientLeft - el.clientWidth)
+  let widest = 0
+  const range = document.createRange()
+  for (const label of el.querySelectorAll<HTMLElement>('.mdo-ol-label, .mdo-ol-empty')) {
+    range.selectNodeContents(label)
+    const text = range.getBoundingClientRect().width
+    const ls = getComputedStyle(label)
+    const pad = (Number.parseFloat(ls.paddingLeft) || 0) + (Number.parseFloat(ls.paddingRight) || 0)
+    const left = label.getBoundingClientRect().left - bar.left
+    widest = Math.max(widest, left + pad + text)
+  }
+  return widest + right
 }
 
 interface Row {
@@ -58,12 +88,16 @@ export class Outline {
   /** Room below the list (px) that keeps a collapse at the scroll end from pulling it down. */
   private tail = 0
   private zoom = ''
+  /** Fit the width to the longest title on the next render (set by fitWidth). */
+  private fitPending = false
   /** Row whose chevron was clicked and its viewport top then; the next render holds it there. */
   private anchor: { row: Row; top: number } | null = null
 
   constructor(
     private readonly el: HTMLElement,
     private readonly handlers: OutlineHandlers,
+    /** The bar's width at which no title is cut (tests stub it: happy-dom has no layout). */
+    private readonly measure: (el: HTMLElement) => number = naturalWidth,
   ) {
     this.empty.className = 'mdo-ol-empty'
     this.empty.textContent = 'Keine Überschriften'
@@ -86,6 +120,16 @@ export class Outline {
     this.el.hidden = !on
   }
 
+  /**
+   * The next render sets the width to the longest title, at most OUTLINE_FIT_SHARE of the
+   * workspace; longer titles end in "…" with the hover tip. Asked for on showing and on a switch
+   * to or from Present only: while the outline stays shown its width never follows the
+   * headings (owner, 2026-10-25: stable, non-intrusive).
+   */
+  fitWidth(): void {
+    this.fitPending = true
+  }
+
   /** The next render places the list in the optical centre again (tab switch, reload). */
   recentre(): void {
     this.offset = null
@@ -101,6 +145,7 @@ export class Outline {
       this.activeRow = null
       this.activeKey = null
       this.el.replaceChildren(this.empty)
+      this.fit()
       return
     }
     if (!this.list) {
@@ -115,6 +160,7 @@ export class Outline {
     this.reconcile(this.list, entries, seen)
     for (const k of this.rows.keys()) if (!seen.has(k)) this.rows.delete(k)
 
+    this.fit()
     this.place()
 
     const key = active ? (this.keys.get(active) ?? null) : null
@@ -124,6 +170,20 @@ export class Outline {
     if (row && key !== this.activeKey) this.reveal(row.label)
     this.activeRow = row
     this.activeKey = row ? key : null
+  }
+
+  /** Sets the width from the titles' natural width (see naturalWidth), then fixes it in em. */
+  private fit(): void {
+    if (!this.fitPending || this.el.hidden) return
+    this.fitPending = false
+    const host = this.el.parentElement?.clientWidth || window.innerWidth
+    const px = Math.min(this.measure(this.el), host * OUTLINE_FIT_SHARE)
+    const fontPx = Number.parseFloat(getComputedStyle(this.el).fontSize) || 15
+    // Rounded up: a title exactly as wide as the bar must not get its "…".
+    const em = Math.ceil((px / fontPx) * 100) / 100
+    this.el.style.width = `${em}em`
+    this.el.classList.add('mdo-ol-custom')
+    this.handlers.fitted?.(em)
   }
 
   /**

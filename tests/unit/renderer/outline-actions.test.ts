@@ -162,10 +162,11 @@ describe('OutlineSync', () => {
     const render = vi.fn<(entries: OutlineEntry[], active: OutlineEntry | null) => void>()
     const setVisible = vi.fn<(on: boolean) => void>()
     const recentre = vi.fn<() => void>()
+    const fitWidth = vi.fn<() => void>()
     const frames: (() => void)[] = []
     const compute = vi.fn(outlineEntries)
     const sync = new OutlineSync(
-      { render, setVisible, recentre },
+      { render, setVisible, recentre, fitWidth },
       () => view.state,
       {
         request: (cb) => {
