@@ -6,7 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Edit: the status line shows the zoom on the right with − and +, like Present's info line
 - Shortcut for showing the note in the file manager: Cmd+Alt+R on macOS, Shift+Alt+R on Windows and Linux (not Ctrl+Alt, which is AltGr on German layouts); the README names the entry neutrally (the label already follows the system: Finder, Explorer, Dateimanager)
+
+## [26.10.4] - 2026-10-25
 
 ### Changed
 - Outline: the list sits in the optical centre of the bar (two parts of the free height above, three below) instead of at the top; a list taller than the bar starts at the top and scrolls as before. Expanding or collapsing keeps the clicked entry exactly where it was (also when a collapse at the scroll end shortens the list); the list is placed again only on showing, a note switch, a new bar height or a zoom change, never after a fold or an edit
