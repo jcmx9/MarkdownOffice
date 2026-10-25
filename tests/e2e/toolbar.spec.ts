@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { expect, type Page } from '@playwright/test'
+import { type ElectronApplication, expect, type Page } from '@playwright/test'
 import { clickMenu, type Dirs, launch, MOD, makeDirs, shot, test, waitForFile } from './helpers'
 
 /**
@@ -16,6 +16,21 @@ async function openNote(content: string, dirs?: Dirs) {
   const launched = await launch({ dirs: d, args: [note] })
   await launched.page.locator('.cm-editor.mdo-preview').waitFor()
   return { ...launched, note, dirs: d }
+}
+
+const linux = process.platform === 'linux'
+
+/** Leaves Present the way present.spec does: toggled off, then out of the real fullscreen. */
+async function leavePresent(app: ElectronApplication, page: Page): Promise<void> {
+  if ((await page.locator('body.mdo-mode-present').count()) > 0) {
+    await clickMenu(app, 'toggle-present')
+  }
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  if (!linux) {
+    const full = () =>
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false)
+    await expect.poll(full, { timeout: 10_000 }).toBe(false)
+  }
 }
 
 const bar = (page: Page) => page.locator('#toolbar')
@@ -98,9 +113,9 @@ test('hidden in Present and without a note', async () => {
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await expect(bar(page)).toBeHidden()
-  // Leave Present before closing (a close in Present has preceded launch hangs on macOS CI).
-  await clickMenu(app, 'toggle-present')
-  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  // Leave Present, fullscreen included, before closing the tab or the app (a close in a real
+  // fullscreen Space has preceded launch hangs on macOS CI).
+  await leavePresent(app, page)
   await expect(bar(page)).toBeVisible()
   await clickMenu(app, 'close-tab')
   await expect(page.locator('[data-testid=tab]')).toHaveCount(0)
@@ -141,8 +156,14 @@ test('with the rename dialog open, format commands do nothing', async () => {
   }
   await page.keyboard.press('Escape')
   await expect(page.locator('dialog.prompt')).toHaveCount(0)
-  await expect(page.locator('.cm-content')).toContainText('Wort')
-  expect(await readFile(note, 'utf8')).toBe('Wort')
+  // Exact text: `**Wort**`, `# Wort`, an alert or a table row would all still contain „Wort“.
+  await expect(page.locator('.cm-content')).toHaveText('Wort')
+  // A read right away could come before an autosave of a wrongly applied command. Typing one
+  // character forces a save after the commands; the file must hold exactly that character more.
+  await cursorAtEnd(page)
+  await page.keyboard.type('X')
+  await waitForFile(note, text('WortX'))
+  await expect(page.locator('.cm-content')).toHaveText('WortX')
   await app.close()
 })
 
