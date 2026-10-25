@@ -71,6 +71,8 @@ export class Outline {
     if (typeof ResizeObserver !== 'undefined') {
       let height = -1
       new ResizeObserver(() => {
+        // An open tip was measured for the old width (dragged bar, zoom).
+        this.hideTip()
         if (el.clientHeight === height) return
         height = el.clientHeight
         this.recentre()

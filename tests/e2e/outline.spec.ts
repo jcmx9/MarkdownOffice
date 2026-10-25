@@ -219,6 +219,32 @@ test('a long heading stays one line; hover shows it in full, right-aligned', asy
   await app.close()
 })
 
+test('long child headings end in … inside the bar, also after dragging it narrower', async () => {
+  const long = `Unterkapitel ${'y'.repeat(80)}`
+  const { app, page } = await openNote(`# Kapitel\n\n## ${long}\n\nText.\n`)
+  await clickMenu(app, 'toggle-outline')
+  await expect(labels(page)).toHaveCount(2)
+  const fits = () =>
+    labels(page)
+      .nth(1)
+      .evaluate((el) => {
+        const bar = (document.querySelector('#outline') as HTMLElement).getBoundingClientRect()
+        const r = el.getBoundingClientRect()
+        // Cut with "…" (scrollWidth > clientWidth) and ending inside the bar.
+        return el.scrollWidth > el.clientWidth && r.right <= bar.right + 1
+      })
+  expect(await fits()).toBe(true)
+  const grip = page.locator('#outline-grip')
+  const box = await grip.boundingBox()
+  if (!box) throw new Error('no grip')
+  await page.mouse.move(box.x + box.width / 2, box.y + 100)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + 100, { steps: 5 })
+  await page.mouse.up()
+  await expect.poll(fits).toBe(true)
+  await app.close()
+})
+
 test('the outline keeps one width (18em), whatever the headings', async () => {
   const { app, page } = await openNote('# A\n\nText.\n\n# B\n\nText.\n')
   await clickMenu(app, 'toggle-outline')
