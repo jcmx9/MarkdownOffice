@@ -1,13 +1,17 @@
 import { markdownLanguage } from '@codemirror/lang-markdown'
 import type { SyntaxNode } from '@lezer/common'
 import type { MarkdownParser } from '@lezer/markdown'
+import { HighlightSyntax } from '../../core/markdown-syntax'
 import type { MathItem } from '../../core/math'
 import { isRealLink } from './link-refs'
 import { MathSyntax } from './math-syntax'
 
-// The editor's own inline rules for a cell parsed on its own, formulas included: `$a*b*c$` in a
-// cell is a formula as in the PDF, never emphasis.
-const cellParser = (markdownLanguage.parser as MarkdownParser).configure([MathSyntax])
+// The editor's own inline rules for a cell parsed on its own, formulas and highlights included:
+// `$a*b*c$` in a cell is a formula as in the PDF, never emphasis, and `==x==` is highlighted.
+const cellParser = (markdownLanguage.parser as MarkdownParser).configure([
+  MathSyntax,
+  HighlightSyntax,
+])
 
 const ELEMENTS: Record<string, [tag: string, cls: string]> = {
   StrongEmphasis: ['strong', 'mdo-strong'],

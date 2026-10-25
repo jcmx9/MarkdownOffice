@@ -6,7 +6,8 @@
  * source line) instead of a new string.
  *
  * No imports on purpose: pipeline/tests/typography-core.mts runs this file directly under
- * Node's type stripping to compare it with Typst (pipeline/tests/test-typography.sh). Every
+ * Node's type stripping to compare it with Typst (pipeline/tests/test-typography.sh; marks-core.mts
+ * borrows its skipMask for test-marks.sh). Every
  * regex mirrors the Typst one character for character; change both or the parity test fails.
  */
 

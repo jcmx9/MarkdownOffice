@@ -1,0 +1,35 @@
+a ==b c== d
+==x==
+== x==
+==x ==
+==a=b==
+====
+`==x==` ==y==
+$a ==b== c$ ==d==
+$a == b == c$
+costs $5 ==x==
+==a== ==b==
+x==y==z
+**==b==**
+==*c*== and ==`code`==
+``a `==b==` c`` ==d==
+`unclosed ==x==
+===x===
+> quoted ==text== here
+- item ==one== and ==two==
+| ==cell== | `==no==` |
+😀 ==ä ö== «x»
+```
+==fenced==
+```
+~~~md
+==tilde fenced==
+~~~
+$$
+==display==
+$$
+$$ ==one line== $$
+<!--
+==masked comment==
+-->
+after ==all==
