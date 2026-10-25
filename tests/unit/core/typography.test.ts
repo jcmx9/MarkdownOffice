@@ -74,4 +74,34 @@ describe('smartTypographyLines (skip-mask)', () => {
   it('masks a one-line $$ block only on its own line', () => {
     expect(skipMask(['$$ x $$', 'a'])).toEqual([true, false])
   })
+  it('masks indented code after a blank line, not list continuations or lazy lines', () => {
+    expect(skipMask(['a', '', '    code', '\tcode', '', '    code', 'b'])).toEqual([
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+    ])
+    // In a list the indentation continues the item; a blank line and plain text close it.
+    expect(skipMask(['- x', '', '    para', '', 'text', '', '    code'])).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ])
+    // A heading closes the list too; a paragraph line is continued lazily, never code.
+    expect(skipMask(['1. x', '# H', '', '    code', 'p', '    lazy'])).toEqual([
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+    ])
+  })
 })

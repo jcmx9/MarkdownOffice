@@ -60,6 +60,27 @@ $$
 ```
 $$
 "out"
+
+    "indented code" -- x
+	"tab code" 'y'
+
+- item
+
+    "list para" -- z
+
+after "list"
+
+    "code again" ...
+text "t"
+    "lazy" -- not code
+
+1. "n"
+   "cont" -- c
+
+    "still list" -- l
+
+end "e"
+
 ![Bild](a.svg "Titel") und "x"
 [a](https://x.de/a--b "T") "y" -- z
 [a]: https://x.de "Def"

@@ -3,11 +3,13 @@ import { type EditorState, type Range, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
 import type { MathItem } from '../../core/math'
+import { applySubstitutions, smartTypography } from '../../core/typography'
 import { renderInline } from './inline-render'
 import { referenceLabels } from './link-refs'
 import { formulaElement } from './math'
 import { type MathEntry, type MathService, mathRefresh, mathService } from './math-render'
 import { unescapeCellPipes } from './math-syntax'
+import { typoMaskOf } from './typo-mask'
 
 export type Align = 'left' | 'center' | 'right'
 export interface TableModel {
@@ -199,12 +201,15 @@ class TableWidget extends WidgetType {
     readonly service: MathService,
     /** The cell formulas' entries when built: a settled formula draws the table anew. */
     readonly formulas: readonly MathEntry[],
+    /** The note's `lang`: the cells' quotes follow it (the model already holds them). */
+    readonly lang: string,
   ) {
     super()
   }
   override eq(other: TableWidget): boolean {
     return (
       other.source === this.source &&
+      other.lang === this.lang &&
       sameLabels(other.labels, this.labels) &&
       sameEntries(other.formulas, this.formulas)
     )
@@ -299,6 +304,15 @@ function build(state: EditorState, service: MathService): DecorationSet {
       const touched = state.selection.ranges.some((r) => r.from <= to && r.to >= from)
       if (!touched) {
         const source = doc.sliceString(from, to)
+        // The PDF's typography runs over the raw row lines before cmarker splits them
+        // (markdown.typ smart-typography; it never adds or removes a `|` or `\`), so the
+        // cells show the same quotes, dashes and ellipses as the PDF's table.
+        const tm = typoMaskOf(state)
+        const lang = tm.lang
+        const first = doc.lineAt(from).number - 1
+        const rows = source
+          .split('\n')
+          .map((l, i) => (tm.mask[first + i] ? l : applySubstitutions(l, smartTypography(l, lang))))
         labels ??= referenceLabels(tree, (a, b) => doc.sliceString(a, b))
         // Only a shown table asks for its formulas; one being edited shows its source.
         const items = cellFormulas(state, n.node)
@@ -308,13 +322,7 @@ function build(state: EditorState, service: MathService): DecorationSet {
         })
         out.push(
           Decoration.replace({
-            widget: new TableWidget(
-              tableModel(source.split('\n')),
-              source,
-              labels,
-              service,
-              formulas,
-            ),
+            widget: new TableWidget(tableModel(rows), source, labels, service, formulas, lang),
             block: true,
             rf: 'table',
           }).range(from, to),

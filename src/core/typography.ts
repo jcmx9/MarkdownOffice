@@ -33,7 +33,11 @@ const SINGLE_RE = /(^|.)'/gsu
 const APOSTROPHE_RE = /([\p{L}\p{N}])'(\p{L})/gu
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/
 const INLINE_CODE_RE = /`[^`]*`/g
-// markdown.typ: link-dest-re, link-def-re
+// markdown.typ: indented-re, list-item-re, atx-re
+const INDENTED_RE = /^( {4}| {0,3}\t)/
+const LIST_ITEM_RE = /^ {0,3}([-+*]|[0-9]{1,9}[.)])([ \t]|$)/
+const ATX_RE = /^ {0,3}#{1,6}([ \t]|$)/
+// markdown.typ: link-dest-re, link-def-re (keep-line-breaks and smart-typography)
 const LINK_DEST_RE = /\]\([^)]*\)/g
 const LINK_DEF_RE = /^ {0,3}\[[^\]^][^\]]*\]:/
 
@@ -152,7 +156,8 @@ export function smartTypography(line: string, lang: string): Substitution[] {
 
 /**
  * What markdown.typ's skip-mask knows at the start of a line: an open fence, an open multi-line
- * HTML comment, an open `$$` block. The mask of a line depends only on this and the line, so the
+ * HTML comment, an open `$$` block, and for indented code whether the line before was blank,
+ * whether a list is open and whether an indented code block runs. The mask of a line depends only on this and the line, so the
  * preview can rescan from an edit on and stop where the carry meets the old one again.
  * Treated as immutable: maskLine returns the same object when nothing changes.
  */
@@ -160,12 +165,28 @@ export interface MaskCarry {
   readonly fence: string | null
   readonly comment: boolean
   readonly math: boolean
+  readonly prevBlank: boolean
+  readonly list: boolean
+  readonly icode: boolean
 }
 
-export const MASK_START: MaskCarry = { fence: null, comment: false, math: false }
+export const MASK_START: MaskCarry = {
+  fence: null,
+  comment: false,
+  math: false,
+  prevBlank: true,
+  list: false,
+  icode: false,
+}
 
 export const sameCarry = (a: MaskCarry, b: MaskCarry): boolean =>
-  a === b || (a.fence === b.fence && a.comment === b.comment && a.math === b.math)
+  a === b ||
+  (a.fence === b.fence &&
+    a.comment === b.comment &&
+    a.math === b.math &&
+    a.prevBlank === b.prevBlank &&
+    a.list === b.list &&
+    a.icode === b.icode)
 
 const carry = (c: MaskCarry, change: Partial<MaskCarry>): MaskCarry => {
   const next = { ...c, ...change }
@@ -174,49 +195,56 @@ const carry = (c: MaskCarry, change: Partial<MaskCarry>): MaskCarry => {
 
 /**
  * One line of markdown.typ skip-mask: code-mask (fenced code with its fences, HTML comments
- * over several lines) and then display formulas (`$$ … $$` over lines) on the lines code-mask
+ * over several lines), then indented code and display formulas (`$$ … $$` over lines) on the lines code-mask
  * left free. Both passes of the Typst version run per line here; the math pass only reads the
  * code mask of the same line, so one pass gives the same result.
  */
 export function maskLine(c: MaskCarry, l: string): [boolean, MaskCarry] {
-  let next = c
-  let masked: boolean
+  // A line code-mask takes: not blank, ends an indented block.
+  const codeMasked = (next: MaskCarry): [boolean, MaskCarry] => [
+    true,
+    carry(next, { prevBlank: false, icode: false }),
+  ]
   // code-mask
   if (c.comment) {
-    if (l.includes('-->')) next = carry(next, { comment: false })
-    return [true, next]
+    return codeMasked(l.includes('-->') ? carry(c, { comment: false }) : c)
   }
   const m = FENCE_RE.exec(l)
   if (c.fence === null) {
-    if (m) {
-      return [true, carry(next, { fence: m[1] ?? null })]
-    }
+    if (m) return codeMasked(carry(c, { fence: m[1] ?? null }))
     // A comment still open at the end of the line (inline code does not count).
     const t = l.replace(INLINE_CODE_RE, '')
     const comment = t.includes('<!--') && !(t.split('<!--').pop() ?? '').includes('-->')
-    if (comment) next = carry(next, { comment: true })
-    masked = comment
+    if (comment) return codeMasked(carry(c, { comment: true }))
   } else {
     const f = m?.[1]
     const ch = c.fence.charAt(0)
-    if (f && f.charAt(0) === ch && f.length >= c.fence.length && trimChar(l.trim(), ch) === '') {
-      next = carry(next, { fence: null })
-    }
-    return [true, next]
+    const closes =
+      f && f.charAt(0) === ch && f.length >= c.fence.length && trimChar(l.trim(), ch) === ''
+    return codeMasked(closes ? carry(c, { fence: null }) : c)
   }
-  if (masked) return [true, next]
-  // skip-mask's $$ pass
+  // skip-mask's pass over the lines code-mask left free
   const t = l.trim()
-  if (next.math) {
-    if (t.endsWith('$$')) next = carry(next, { math: false })
-    return [true, next]
+  const blank = t === ''
+  if (c.math) {
+    return [true, carry(c, { math: !t.endsWith('$$'), prevBlank: false })]
+  }
+  const indented = INDENTED_RE.test(l)
+  let icode = c.icode
+  if (icode && !blank && !indented) icode = false
+  if (!icode && indented && !blank && c.prevBlank && !c.list) icode = true
+  if (icode) return [true, carry(c, { icode: true, prevBlank: blank })]
+  let list = c.list
+  if (!blank && !indented) {
+    if (LIST_ITEM_RE.test(l)) list = true
+    else if (c.prevBlank || ATX_RE.test(l)) list = false
   }
   if (t.startsWith('$$')) {
     // "$$ x $$" on one line closes right away
-    if (t === '$$' || !t.slice(2).trim().endsWith('$$')) next = carry(next, { math: true })
-    return [true, next]
+    const math = t === '$$' || !t.slice(2).trim().endsWith('$$')
+    return [true, carry(c, { icode: false, list, prevBlank: blank, math })]
   }
-  return [false, next]
+  return [false, carry(c, { icode: false, list, prevBlank: blank })]
 }
 
 /** Typst's `str.trim(pattern)`: repeated `pattern` removed at both ends. */
