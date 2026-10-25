@@ -12,7 +12,6 @@ export const DEFAULT_SESSION: Session = {
   view: 'preview',
   zoom: { edit: 1, present: 1 },
   outline: { edit: false, present: false },
-  outlineWidth: null,
   recent: [],
 }
 
@@ -106,11 +105,6 @@ export function sanitizeSession(raw: unknown): Session {
     view: o.view === 'code' ? 'code' : 'preview',
     zoom: { edit: clamp(zoom.edit, 0.5, 3, 1), present: clamp(zoom.present, 0.5, 3, 1) },
     outline: { edit: outline.edit === true, present: outline.present === true },
-    // Same range as the drag handle (renderer/ui/outline-resize.ts); anything else: default.
-    outlineWidth:
-      typeof o.outlineWidth === 'number' && Number.isFinite(o.outlineWidth)
-        ? clamp(o.outlineWidth, 10, 40, 18)
-        : null,
     recent: Array.isArray(o.recent)
       ? o.recent
           .map(absPath)

@@ -129,10 +129,8 @@ export class App {
   private readonly outline: OutlineSync
   /** Outline sidebar on/off per mode (persisted in the session). */
   private outlineOn = { edit: false, present: false }
-  /** Dragged outline width in em (Edit mode, persisted); null = default. */
-  private outlineWidth: number | null = null
-  /** Width dragged during the current Present; never persisted, reset on every entry. */
-  private presentOutlineWidth: number | null = null
+  /** The mode the outline was last shown in; null while hidden. A change fits its width. */
+  private outlineShownIn: Mode | null = null
   private view: View = 'preview'
   private mode: Mode = 'edit'
   private zoom = { edit: 1, present: 1 }
@@ -275,21 +273,16 @@ export class App {
       new Outline(root.outline, {
         jump: (e) => jumpToEntry(this.editor, e),
         toggle: (e) => toggleEntryFold(this.editor, e),
+        fitted: (em) => root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em))),
       }),
       () => (this.shownId === null ? null : this.editor.state),
     )
     attachOutlineResize(root.outlineGrip, root.outline, {
+      // A dragged width lasts until the outline is shown again (or Present starts or ends);
+      // a double-click (null) fits it to the titles at once.
       commit: (em) => {
-        root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em ?? 18)))
-        // A width dragged in Present lasts only until Present ends.
-        if (this.mode === 'present') {
-          this.presentOutlineWidth = em
-          return
-        }
-        this.outlineWidth = em
-        this.mdo
-          .saveSession({ outlineWidth: em })
-          .catch((e: unknown) => console.error('saveSession(outlineWidth) failed', e))
+        if (em === null) this.outline.fit()
+        else root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em)))
       },
     })
     this.mdo.onFullScreenLeft(() => {
@@ -359,7 +352,6 @@ export class App {
     this.view = startup.session.view
     this.zoom = { ...startup.session.zoom }
     this.outlineOn = { ...startup.session.outline }
-    this.outlineWidth = startup.session.outlineWidth
     this.settings = startup.settings
     this.spellcheckOn = startup.settings.spellcheck
     this.presentFactor = startup.settings.presentFontFactor
@@ -898,7 +890,6 @@ export class App {
   private async enterPresent(): Promise<void> {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
-    this.presentOutlineWidth = null
     this.reconfigureAll()
     // Clients watch Present: no dictionary notice may stay on the shared screen.
     this.dismissDictNotices()
@@ -1219,16 +1210,19 @@ export class App {
   }
 
   /**
-   * Shown when enabled for the current mode and a tab is shown. The width can be dragged in
-   * Edit mode only; Present always switches to the default width (the grip is hidden there).
+   * Shown when enabled for the current mode and a tab is shown. On showing and on a switch to
+   * or from Present the width fits the titles (Outline.fitWidth); a tab switch keeps it, so the
+   * bar never jumps while it stays shown.
    */
   private applyOutline(): void {
     const visible = this.outlineOn[this.mode] && this.shownId !== null
     this.outline.setVisible(visible)
     this.root.outlineGrip.hidden = !visible
-    const width = this.mode === 'edit' ? this.outlineWidth : this.presentOutlineWidth
-    applyOutlineWidth(this.root.outline, width)
-    this.root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(width ?? 18)))
+    if (visible && this.outlineShownIn !== this.mode) {
+      applyOutlineWidth(this.root.outline, null)
+      this.outline.fit()
+    }
+    this.outlineShownIn = visible ? this.mode : null
     this.outline.refresh()
   }
 

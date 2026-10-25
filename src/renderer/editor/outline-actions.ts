@@ -48,6 +48,8 @@ export interface OutlineTarget {
   setVisible(on: boolean): void
   /** Centre the list again on the next render (another note is shown). */
   recentre(): void
+  /** Fit the width to the titles on the next render (outline shown, Present switch). */
+  fitWidth(): void
 }
 
 export interface FrameScheduler {
@@ -97,6 +99,12 @@ export class OutlineSync {
   invalidate(): void {
     this.entries = null
     this.target.recentre()
+    if (this.visible) this.schedule()
+  }
+
+  /** The width follows the titles once, on the next render. */
+  fit(): void {
+    this.target.fitWidth()
     if (this.visible) this.schedule()
   }
 
