@@ -391,8 +391,20 @@ body.mdo-ol-resizing {
   color: var(--danger);
   font-weight: 600;
 }
-#status .exporting {
+#status .right {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Fixed width: the buttons do not move between 90 % and 100 %. */
+#status .zoom {
+  min-width: 3.2em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+#status .exporting {
+  margin-right: 8px;
   color: var(--accent);
 }
 #status .file {

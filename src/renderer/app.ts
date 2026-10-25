@@ -226,6 +226,8 @@ export class App {
       toggleYaml: () => void this.command('toggle-header'),
       // The menu command, so Present refuses it with the same toast.
       validateYaml: () => void this.command('validate-yaml'),
+      zoomIn: () => this.setZoom(zoomIn(this.zoom[this.mode])),
+      zoomOut: () => this.setZoom(zoomOut(this.zoom[this.mode])),
     })
     this.setCheck = new SetCheck({
       snapshot: (id) => {
@@ -1764,6 +1766,7 @@ export class App {
       hasHeader: md && doc !== null && frontmatterRange(doc.doc) !== null,
       yamlOn: doc !== null && !doc.field(headerHidden),
     })
+    this.status.renderZoom(this.zoom.edit)
     document.title = tab
       ? `${fileName(tab.path)}${state === 'dirty' ? ' •' : ''} – Markdown Office`
       : 'Markdown Office'
