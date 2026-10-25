@@ -56,6 +56,10 @@ describe('HighlightSyntax', () => {
     expect(found(markdownParser.parse('x ==y== z'), 'Highlight')).toEqual(['2-7 [2-4 5-7]'])
   })
 
+  it('===x=== highlights 1-6 (the content may not hold `=`, the outer ones stay text)', () => {
+    expect(found(markdownParser.parse('===x==='), 'Highlight')).toEqual(['1-6 [1-3 4-6]'])
+  })
+
   it('never spans a line break', () => {
     expect(found(markdownParser.parse('==a\nb=='), 'Highlight')).toEqual([])
   })

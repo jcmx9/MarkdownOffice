@@ -4,7 +4,15 @@
  * masks (that is the caller's job: the editor's parser never sees fenced code, the parity test
  * uses typography.ts skipMask). Inside a line it splits at backticks and then at `$` exactly as
  * `marks()` does, which is cruder than CommonMark on purpose: the PDF decides, and the editor
- * shows what the PDF prints (pipeline/tests/test-marks.sh compares both line by line).
+ * follows it (pipeline/tests/test-marks.sh compares both line by line).
+ *
+ * Known differences, where the editor does not show exactly what the PDF prints (the PDF side
+ * is the broken one in most of them):
+ * - an escaped `\==`: the pipeline marks it anyway;
+ * - link destinations and HTML attributes: the pipeline marks inside them, the editor does not;
+ * - an even number of `$` on a line or a mid-line `$$…$$`: the pipeline's `$` split differs
+ *   from the editor's formula parser;
+ * - table rows: the editor parses each cell alone, the pipeline splits the whole row at `$`.
  *
  * Import-free, so pipeline/tests/marks-core.mts can run it by Node's type stripping.
  */

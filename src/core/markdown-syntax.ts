@@ -150,7 +150,10 @@ export const MathSyntax: MarkdownConfig = {
 const EQUALS = 61
 const HighlightDelim = { resolve: 'Highlight', mark: 'HighlightMark' }
 
-/** The last line asked about, as an inline section asks once per `=` on the same line. */
+/**
+ * The last line asked about, as an inline section asks once per `=` on the same line. A pure
+ * memo of `highlightSpans(line)`: no other state, the result depends on the line text alone.
+ */
 let lastLine = ''
 let lastSpans: HighlightSpan[] = []
 
