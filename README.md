@@ -122,7 +122,7 @@ Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Abs
 | macOS Cmd+Alt+[ / ], sonst Ctrl+Shift+[ / ] | Abschnitt ein-/ausklappen |
 | macOS Ctrl+Alt+[ / ], sonst Alt+0 / Alt+Shift+0 | Alle Abschnitte ein-/ausklappen |
 | Mod+Shift+P, Esc | Präsentieren ein/aus (Vollbild, nur Text und Infozeile, auf Wunsch mit Gliederung) |
-| Mod+Enter | Seitenumbruch einfügen (`<!-- pagebreak -->`) |
+| Mod+Enter | Seitenumbruch einfügen (`<!-- pagebreak -->`) – nicht beim Präsentieren, in Tabellen, Code- und HTML-Blöcken |
 | Mod+Plus / Mod+- / Mod+0 | Vergrößern / Verkleinern / Originalgröße (je Modus gespeichert) |
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Tabs wechseln |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Widerrufen/Wiederholen, Ausschneiden/Kopieren/Einfügen, Alles auswählen |

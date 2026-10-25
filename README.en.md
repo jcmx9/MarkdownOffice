@@ -122,7 +122,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | macOS Cmd+Alt+[ / ], otherwise Ctrl+Shift+[ / ] | Fold/unfold section |
 | macOS Ctrl+Alt+[ / ], otherwise Alt+0 / Alt+Shift+0 | Fold/unfold all sections |
 | Mod+Shift+P, Esc | Toggle Present (fullscreen, only text and info line, optionally with outline) |
-| Mod+Enter | Insert a page break (`<!-- pagebreak -->`) |
+| Mod+Enter | Insert a page break (`<!-- pagebreak -->`) – not while presenting, in tables, code or HTML blocks |
 | Mod+Plus / Mod+- / Mod+0 | Zoom in / zoom out / actual size (saved per mode) |
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Switch tabs |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Undo/redo, cut/copy/paste, select all |

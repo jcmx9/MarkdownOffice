@@ -15,6 +15,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Outline: its width fits the longest title when it is shown and on a switch to or from Present, at most a fifth of the workspace; longer titles end in „…“ with the full title on hover, right-aligned. While shown, the width never follows typing or a tab switch. A dragged width lasts until the outline is shown again (double-click fits it again); the remembered Edit width (`outlineWidth` in the session) is gone
+- Editor: the page break (Mod+Enter, Einfügen → Seitenumbruch, toolbar) is no longer inserted in Present, in tables, in fenced or indented code, in HTML blocks or comments, or inside a formula; there it would break the block or land in the code
 
 ### Fixed
 - Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size; a click on a heading no longer shifts the outline sideways (the active entry is scrolled into view vertically only, so titles are never cut on the left)
