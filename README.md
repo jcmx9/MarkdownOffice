@@ -2,7 +2,7 @@
 
 > Ruhiger Markdown-Editor mit eingebauter PDF/A-Pipeline: Die Notiz sieht schon beim Tippen aus wie das PDF.
 
-**Version:** 26.10.4-dev.0 · [English](README.en.md)
+**Version:** 26.10.5-dev.0 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -112,6 +112,7 @@ Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Abs
 | Mod+Shift+N | Neu aus Vorlage …: Vorlagen-Set (`memo` vorne und vorausgewählt, ggf. mit Profil) wählen, neue Notiz mit dessen YAML-Header |
 | Mod+O | Öffnen |
 | Mod+Shift+R | Umbenennen |
+| macOS Cmd+Alt+R, sonst Shift+Alt+R | Im Dateimanager zeigen (macOS: Im Finder zeigen, Windows: Im Explorer zeigen) |
 | Mod+W | Tab schließen |
 | Mod+E | PDF exportieren |
 | Mod+Shift+M | Code-Ansicht ein/aus (Vorschau ist Standard); beim Präsentieren beendet es die Präsentation und zeigt die Code-Ansicht |
@@ -127,7 +128,7 @@ Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Abs
 
 `Mod` = Cmd unter macOS, sonst Ctrl. Die Auswahl mit Shift bzw. Mod+Shift und den Pfeiltasten übernimmt CodeMirror.
 
-Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, Im Finder zeigen (Windows: Im Explorer zeigen, Linux: Im Dateimanager zeigen), PDF exportieren und Tab schließen. „Im Finder zeigen“ steht auch im Menü „Datei“ und zeigt die aktive Notiz im Dateimanager des Systems (eine neue Notiz wird dafür zuerst gespeichert; nicht beim Präsentieren). Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Rechts daneben schalten `Gliederung` und `YAML` die Gliederung (Mod+Shift+O) und den YAML-Header der Vorschau (Mod+Shift+H) ein oder aus; ist ein Schalter hervorgehoben, ist er an. `YAML` ist ausgegraut, wenn die Notiz keinen Header hat oder die Code-Ansicht (dort ist der Header immer sichtbar) aktiv ist. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht. Neben dem Dateinamen steht das Set der Notiz (`template:`), rot bei Fehlern im YAML-Header (siehe [YAML prüfen](#frontmatter)).
+Ein Rechtsklick auf einen Tab oder auf den Dateinamen in der Statuszeile öffnet ein Menü mit Umbenennen, „Im Dateimanager zeigen“ (der Eintrag nennt den Dateimanager des Systems: macOS „Im Finder zeigen“, Windows „Im Explorer zeigen“), PDF exportieren und Tab schließen. Der Eintrag steht auch im Menü „Datei“ (macOS Cmd+Alt+R, sonst Shift+Alt+R) und zeigt die aktive Notiz im Dateimanager des Systems (eine neue Notiz wird dafür zuerst gespeichert; nicht beim Präsentieren). Die Statuszeile zeigt links die Uhrzeit und die Umschalter `Editor | Präsentation` und `Code | Vorschau`; ein Klick auf die andere Seite schaltet um. Rechts daneben schalten `Gliederung` und `YAML` die Gliederung (Mod+Shift+O) und den YAML-Header der Vorschau (Mod+Shift+H) ein oder aus; ist ein Schalter hervorgehoben, ist er an. `YAML` ist ausgegraut, wenn die Notiz keinen Header hat oder die Code-Ansicht (dort ist der Header immer sichtbar) aktiv ist. Beim Präsentieren beendet ein Klick auf „Code“ (wie Mod+Shift+M) die Präsentation und zeigt die Code-Ansicht. Neben dem Dateinamen steht das Set der Notiz (`template:`), rot bei Fehlern im YAML-Header (siehe [YAML prüfen](#frontmatter)). Rechts zeigt die Statuszeile den Zoom; − und + daneben verkleinern und vergrößern (wie Mod+- und Mod+Plus), wie in der Infozeile beim Präsentieren.
 
 ### Einstellungen
 

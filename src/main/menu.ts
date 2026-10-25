@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { MenuItemConstructorOptions } from 'electron'
-import { revealLabel } from '../shared/reveal'
+import { revealAccelerator, revealLabel } from '../shared/reveal'
 import type { MenuCommand } from '../shared/types'
 
 export interface MenuDeps {
@@ -155,8 +155,8 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       { label: 'Zuletzt geöffnet', submenu: recent },
       sep,
       item('rename', 'Umbenennen …', 'CmdOrCtrl+Shift+R'),
-      // No accelerator: a rare action; the label names the platform's own file manager.
-      item('reveal', revealLabel(d.platform)),
+      // The label names the platform's own file manager.
+      item('reveal', revealLabel(d.platform), revealAccelerator(d.platform)),
       item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),
       sep,
       item('export', 'PDF exportieren', 'CmdOrCtrl+E'),
@@ -270,7 +270,7 @@ export function noteMenuTemplate(
   })
   return [
     item('rename', 'Umbenennen …', 'CmdOrCtrl+Shift+R'),
-    item('reveal', revealLabel(platform)),
+    item('reveal', revealLabel(platform), revealAccelerator(platform)),
     item('export', 'PDF exportieren', 'CmdOrCtrl+E'),
     { type: 'separator' },
     item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),

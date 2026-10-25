@@ -2,7 +2,7 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.4-dev.0 · [Deutsch](README.md)
+**Version:** 26.10.5-dev.0 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -112,6 +112,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Mod+Shift+N | Neu aus Vorlage …: pick a template set (`memo` first and preselected, with a profile if any), new note with its YAML header |
 | Mod+O | Open |
 | Mod+Shift+R | Rename |
+| macOS Cmd+Alt+R, otherwise Shift+Alt+R | Show in the file manager (macOS: „Im Finder zeigen“, Windows: „Im Explorer zeigen“) |
 | Mod+W | Close tab |
 | Mod+E | Export PDF |
 | Mod+Shift+M | Toggle code view (Preview is the default); in Present it ends Present and shows the Code view |
@@ -127,7 +128,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
 
-Right-clicking a tab or the file name in the status line opens a menu with rename, „Im Finder zeigen“ (Windows: „Im Explorer zeigen“, Linux: „Im Dateimanager zeigen“), export PDF and close tab. „Im Finder zeigen“ is also in the „Datei“ menu and shows the active note in the system's file manager (a new note is saved first; not while presenting). The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view. Next to the file name stands the note's set (`template:`), red when the YAML header has errors (see [Check YAML](#front-matter)).
+Right-clicking a tab or the file name in the status line opens a menu with rename, „Im Dateimanager zeigen“ (the entry names the system's file manager: macOS „Im Finder zeigen“, Windows „Im Explorer zeigen“), export PDF and close tab. The entry is also in the „Datei“ menu (macOS Cmd+Alt+R, otherwise Shift+Alt+R) and shows the active note in the system's file manager (a new note is saved first; not while presenting). The status line shows the clock on the left and the switches `Editor | Präsentation` and `Code | Vorschau`; clicking the other side switches. Next to them, `Gliederung` and `YAML` turn the outline (Mod+Shift+O) and the Preview's YAML header (Mod+Shift+H) on or off; a highlighted toggle is on. `YAML` is greyed out when the note has no header or the Code view is active (the header is always visible there). In Present, clicking „Code“ (like Mod+Shift+M) ends Present and shows the Code view. Next to the file name stands the note's set (`template:`), red when the YAML header has errors (see [Check YAML](#front-matter)). On the right the status line shows the zoom; − and + beside it zoom out and in (like Mod+- and Mod+Plus), as in the info line while presenting.
 
 ### Settings
 
