@@ -113,12 +113,21 @@ function rowsOf(state: EditorState, table: SyntaxNode): RowLayout[] {
   return out
 }
 
-/** The top-level `Table` node (a direct child of `Document`) containing `pos`, or null. */
+/**
+ * The top-level `Table` node (a direct child of `Document`) containing `pos`, or null. A
+ * position in a row's leading whitespace counts too: the node starts after the indentation
+ * of its first row (` b | c` after a column delete), but the line is the table's.
+ */
 export function tableAt(state: EditorState, pos: number): SyntaxNode | null {
   const tree = syntaxTree(state)
-  for (const side of [1, -1] as const) {
-    for (let n: SyntaxNode | null = tree.resolveInner(pos, side); n; n = n.parent) {
-      if (n.name === 'Table' && n.parent?.name === 'Document') return n
+  const line = state.doc.lineAt(pos)
+  const indent = line.text.length - line.text.trimStart().length
+  const tries = [pos, Math.max(pos, line.from + indent)]
+  for (const p of tries) {
+    for (const side of [1, -1] as const) {
+      for (let n: SyntaxNode | null = tree.resolveInner(p, side); n; n = n.parent) {
+        if (n.name === 'Table' && n.parent?.name === 'Document') return n
+      }
     }
   }
   return null
@@ -358,46 +367,33 @@ export const tableRowDelete: Command = (view) => {
 }
 
 /**
- * The text to delete for cell `c` of a row: the cell and one neighbouring pipe. A cell with a
- * pipe on its left takes that pipe; the first cell of a row without leading pipe takes the
- * pipe on its right and the space after it, the last cell of a row without trailing pipe the
- * space before its pipe, so the row keeps its style (`a | b | c` → `b | c`, `a | b`). A row
- * without outer pipes that drops to one cell keeps a pipe as trailing pipe (`a |`, `b |`): with
- * no pipe it would no longer be a table row, and Lezer does not take a one-cell `| b` / `|--`
- * pair for a table. A row's only cell is emptied instead (`|  |`, the same as no cells).
+ * The text to delete for cell `c` of a row: the cell's span (its padding included) and one of
+ * its own pipes, nothing of a neighbour, so every other cell keeps its text and padding byte for
+ * byte (spec „Tables“): `a | b | c` → ` b | c`, `a | c`, `a | b `. A cell with a pipe on its left
+ * takes that pipe; the first cell of a row without leading pipe takes the pipe on its right.
+ *
+ * Exception, only where the row would otherwise stop being a table row: a row without trailing
+ * pipe that drops to one cell needs a pipe after it, since `| A` / `|---` (and a lone `a`)
+ * re-parse as a paragraph. Deleting its last cell then keeps the separator as trailing pipe
+ * (`| A | B` → `| A |`); deleting its first cell appends ` |` (`| A | B` → `| B |`). A row's
+ * only cell is emptied instead (`|  |`, the same as no cells).
  */
-function cellDeletion(state: EditorState, row: RowLayout, c: number): ChangeSpec[] {
+function cellDeletion(row: RowLayout, c: number): ChangeSpec[] {
   const k = row.cells.length
   const cell = row.cells[c]
   if (!cell) return []
-  const space = (pos: number) => isSpace(state.doc.sliceString(pos, pos + 1))
   if (k === 1) {
     if (cell.from === cell.to) return []
     // A lazy row without any pipe (`x`) would turn blank and end the table: an empty row.
     return [{ from: cell.from, to: cell.to, insert: row.pipes.length > 0 ? '' : '|   |' }]
   }
-  if (!row.leading && !row.trailing && k === 2) {
-    if (c === 1) return [{ from: cell.span.from, to: cell.span.to }]
-    // `a | b` → `b |`: the second cell's text and padding after it stay as they are.
-    const rest = row.cells[1] as RowLayout['cells'][number]
-    return [
-      { from: cell.span.from, to: rest.from },
-      { from: row.end, insert: ' |' },
-    ]
-  }
-  if (c === 0 && !row.leading) {
-    // First cell without leading pipe: through its pipe and the space after it.
-    let to = cell.span.to + 1
-    while (to < row.end && space(to)) to++
-    return [{ from: cell.span.from, to }]
-  }
-  if (c === k - 1 && !row.trailing) {
-    // Last cell without trailing pipe: from the space before its pipe.
-    let from = cell.span.from - 1
-    while (from > row.line.from && space(from - 1)) from--
-    return [{ from, to: cell.span.to }]
-  }
-  return [{ from: cell.span.from - 1, to: cell.span.to }]
+  const needsPipe = k === 2 && !row.trailing
+  if (needsPipe && c === 1) return [{ from: cell.span.from, to: cell.span.to }]
+  const own =
+    c === 0 && !row.leading
+      ? { from: cell.span.from, to: cell.span.to + 1 }
+      : { from: cell.span.from - 1, to: cell.span.to }
+  return needsPipe ? [own, { from: row.end, insert: ' |' }] : [own]
 }
 
 /** Deletes the cursor's column in every row, the delimiter cell included; not the last one. */
@@ -407,7 +403,7 @@ export const tableColDelete: Command = (view) => {
   if (!ctx || ctx.n <= 1) return false
   const changes: ChangeSpec[] = []
   for (const row of ctx.rows) {
-    changes.push(...cellDeletion(state, row, ctx.c))
+    changes.push(...cellDeletion(row, ctx.c))
   }
   // The cursor goes to the cell that takes the column's place, else to the one on its left.
   const own = ctx.rows[ctx.r] as RowLayout

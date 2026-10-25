@@ -112,6 +112,11 @@ describe('cell model', () => {
     expect(at(T.length)).toEqual([3, 0])
   })
 
+  it("counts a position in the first row's indentation as in the table", () => {
+    const v = make(' b | c\n--|--\n 2 | 3')
+    expect(cellAt(v.state, 0)).toEqual({ row: 0, col: 0, from: 1, to: 2 })
+  })
+
   it('places an empty cell after one padding space', () => {
     const v = make(`${E}\n${D}`)
     expect(cellAt(v.state, 0)).toEqual({ row: 0, col: 0, from: 2, to: 2 })
@@ -358,22 +363,28 @@ describe('tableColRight', () => {
 
 describe('tableRowDelete', () => {
   it.each([
-    ['first body row', '2', '| A | B | C |\n|---|:-:|---|\n| 4 | ‸5 | 6 |'],
-    ['last body row', '5', '| A | B | C |\n|---|:-:|---|\n| 1 | ‸2 | 3 |'],
-  ])('removes the %s', (_name, needle, after) => {
+    ['first body row', '2', '| A | B | C |\n|---|:-:|---|\n| 4 | ‸5 | 6 |', ['4', '5', '6']],
+    ['last body row', '5', '| A | B | C |\n|---|:-:|---|\n| 1 | ‸2 | 3 |', ['1', '2', '3']],
+  ])('removes the %s', (_name, needle, after, left) => {
     const v = make(at(TABLE, needle))
     expect(runUndoable(v, tableRowDelete)).toBe(after)
-    expect(reparsedCells(v).length).toBe(3)
+    expect(reparsedCells(v)).toEqual([['A', 'B', 'C'], ['---', ':-:', '---'], left])
   })
 
   it('removes the only body row, cursor into the header', () => {
     const v = make('| A |\n|---|\n| 1‸ |\n\nText')
     expect(runUndoable(v, tableRowDelete)).toBe('| ‸A |\n|---|\n\nText')
+    expect(reparsedCells(v)).toEqual([['A'], ['---']])
   })
 
   it('removes a middle row of a table without outer pipes', () => {
     const v = make('a | b\n--|--\n1 | 2‸\n3 | 4')
     expect(runUndoable(v, tableRowDelete)).toBe('a | b\n--|--\n3 | ‸4')
+    expect(reparsedCells(v)).toEqual([
+      ['a', 'b'],
+      ['--', '--'],
+      ['3', '4'],
+    ])
   })
 
   it.each(['A', ':-:'])('refuses on the header and delimiter row (%s)', (needle) => {
@@ -405,14 +416,31 @@ describe('tableColDelete', () => {
   })
 
   it.each([
-    ['first', 'a | b | c\n--|--|--\n1 | 2 | 3', 'a', '‸b | c\n--|--\n2 | 3'],
-    ['middle', 'a | b | c\n--|--|--\n1 | 2 | 3', 'b', 'a | ‸c\n--|--\n1 | 3'],
-    ['last', 'a | b | c\n--|--|--\n1 | 2 | 3', 'c', 'a | ‸b\n--|--\n1 | 2'],
-  ])('keeps rows without outer pipes in that style (%s)', (_name, src, needle, after) => {
-    const v = make(at(src, needle))
-    expect(runUndoable(v, tableColDelete)).toBe(after)
-    expect(reparsedCells(v).every((r) => r.length === 2)).toBe(true)
-  })
+    ['first', 'a', ' ‸b | c\n--|--\n 2 | 3', ['b', 'c'], ['2', '3']],
+    ['middle', 'b', 'a | ‸c\n--|--\n1 | 3', ['a', 'c'], ['1', '3']],
+    ['last', 'c', 'a | ‸b \n--|--\n1 | 2 ', ['a', 'b'], ['1', '2']],
+  ])(
+    "keeps rows without outer pipes and the neighbours' padding (%s)",
+    (_n, needle, after, head, body) => {
+      // Only the removed cell and its own pipe go; the padding next to it stays byte for byte.
+      const v = make(at('a | b | c\n--|--|--\n1 | 2 | 3', needle))
+      expect(runUndoable(v, tableColDelete)).toBe(after)
+      expect(reparsedCells(v)).toEqual([head, ['--', '--'], body])
+    },
+  )
+
+  it.each([
+    ['first', 'A', '| ‸B |\n|--- |\n| 2 |', ['B'], ['---'], ['2']],
+    ['last', 'B', '| ‸A |\n|---|\n| 1 |', ['A'], ['---'], ['1']],
+  ])(
+    'keeps a trailing pipe when a row with only a leading pipe drops to one cell (%s)',
+    (_n, needle, after, head, delim, body) => {
+      // `| A` / `|---` would re-parse as a paragraph: the table needs a pipe after the cell.
+      const v = make(at('| A | B\n|---|---\n| 1 | 2', needle))
+      expect(runUndoable(v, tableColDelete)).toBe(after)
+      expect(reparsedCells(v)).toEqual([head, delim, body])
+    },
+  )
 
   it('keeps a pipe when a row without outer pipes drops to one cell', () => {
     const v = make('a | b‸\n--|--\n1 | 2')
@@ -430,7 +458,7 @@ describe('tableColDelete', () => {
 
   it('turns a lazy row without pipes into an empty row instead of a blank line', () => {
     const v = make('‸a | b\n--|--\nx')
-    expect(runUndoable(v, tableColDelete)).toBe('‸b |\n-- |\n|   |')
+    expect(runUndoable(v, tableColDelete)).toBe(' ‸b |\n-- |\n|   |')
     expect(reparsedCells(v)).toEqual([['b'], ['--'], ['']])
   })
 
