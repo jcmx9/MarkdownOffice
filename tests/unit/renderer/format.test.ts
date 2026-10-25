@@ -359,6 +359,7 @@ describe('setLinePrefix: headings', () => {
     ['on an empty line', '‸', 'h1', '# ‸'],
     ['skips the alert type line', '> «[!NOTE]\n> a»', 'h1', '> «[!NOTE]\n> # a»'],
     ['skips a thematic break', '«a\n\n---\n\nb»', 'h2', '## «a\n\n---\n\n## b»'],
+    ['keeps a lazy quote line in the quote', '> a\nb‸', 'h1', '> a\n> # b‸'],
   ] as [string, string, LineId, string][])('%s', (_name, before, id, after) => {
     expect(runCmd(before, format.setLinePrefix(id))).toBe(after)
   })
@@ -396,6 +397,10 @@ describe('setLinePrefix: lists and quotes', () => {
     ['quotes every line', '«a\nb»', 'quote', '> «a\n> b»'],
     ['quotes a list at the line start', '«- a\n- b»', 'quote', '> «- a\n> - b»'],
     ['quotes a heading', '## a‸', 'quote', '> ## a‸'],
+    ['quotes a continuation line inside its item', '- a\n  b‸', 'quote', '- a\n  > b‸'],
+    ['quotes a nested item inside its parent item', '- a\n  - b‸', 'quote', '- a\n  > - b‸'],
+    ['skips a thematic break', '«a\n\n***\n\nb»', 'bullet', '- «a\n\n***\n\n- b»'],
+    ['keeps a new item on a lazy quote line in the quote', '> a\nb‸', 'bullet', '> a\n> - b‸'],
   ] as [string, string, LineId, string][])('%s', (_name, before, id, after) => {
     expect(runCmd(before, format.setLinePrefix(id))).toBe(after)
   })
@@ -569,6 +574,13 @@ describe('insertLink', () => {
     ['keeps the line prefix outside', '«## Head»', null, '## [Head](‸)'],
     ['widens over a partly covered run', '**a «b** c»', null, '[**a b** c](‸)'],
     ['works in a table cell', '| «a» | b |\n|---|---|', URL, `| [a](${URL})‸ | b |\n|---|---|`],
+    ['makes a selected bare URL the link text', '«https://x.de»', null, '[https://x.de](‸)'],
+    [
+      'a selected bare URL with a clipboard URL',
+      'a «https://x.de» b',
+      URL,
+      `a [https://x.de](${URL})‸ b`,
+    ],
   ] as [string, string, string | null, string][])('%s', (_name, before, url, after) => {
     expect(runCmd(before, link(url))).toBe(after)
   })
@@ -580,6 +592,8 @@ describe('insertLink', () => {
     ['a code block', '```\nco‸de\n```'],
     ['a selection over two lines', '«a\nb»'],
     ['a selection over two cells', '| «a | b» |\n|---|---|'],
+    ['the table delimiter row', '| a | b |\n|--‸-|---|'],
+    ['a cursor inside a bare URL', 'see https://x.d‸e now'],
   ])('refuses in %s', (_name, text) => {
     refusesCmd(text, link(URL))
   })

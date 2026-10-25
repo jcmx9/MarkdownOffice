@@ -598,6 +598,19 @@ function prefixEnd(state: EditorState, tree: Tree, line: Line): number {
   }
 }
 
+/**
+ * The quote markers a lazy line lacks: `chainAt` counts a lazy continuation line as part of its
+ * quote, so a prefix set there must bring the missing `> ` along, or the line would leave the
+ * quote (`> a` / `b` + H1 → `> a` / `> # b`, not `# b` outside the quote).
+ */
+function missingQuotes(state: EditorState, tree: Tree, line: Line, chain: SyntaxNode[]): string {
+  if (afterContainers(state, line, chain) !== null) return ''
+  const want = chain.filter((c) => c.name === 'Blockquote').length
+  const have = (state.doc.sliceString(line.from, prefixEnd(state, tree, line)).match(/>/g) ?? [])
+    .length
+  return '> '.repeat(Math.max(0, want - have))
+}
+
 /** The heading the line belongs to, unless a quote or list item lies in between. */
 function headingOf(tree: Tree, line: Line): SyntaxNode | null {
   for (let n: SyntaxNode | null = tree.resolveInner(contentEnd(line), -1); n; n = n.parent) {
@@ -795,7 +808,8 @@ export function setLinePrefix(id: LineId): Command {
         continue
       }
       if (kind) {
-        if (alertLine(state, tree, line, chain)) continue
+        // A thematic break or link definition has no text an item could hold (`- ***`).
+        if (textless(tree, line) || alertLine(state, tree, line, chain)) continue
         const item = itemOf(chain)
         if (item) {
           add(doc.lineAt(item.from).number, 'line')
@@ -854,7 +868,8 @@ export function setLinePrefix(id: LineId): Command {
           }
         } else if (!off) {
           const at = prefixEnd(state, tree, line)
-          changes.push({ from: at, to: at, insert: `${'#'.repeat(level)} ` })
+          const quote = missingQuotes(state, tree, line, chainOf(line))
+          changes.push({ from: at, to: at, insert: `${quote}${'#'.repeat(level)} ` })
         }
       }
       if (!off) {
@@ -890,7 +905,12 @@ export function setLinePrefix(id: LineId): Command {
           counters.set(col, count)
           const marker = LIST_MARKER[kind](count)
           width = marker.length
-          if (doc.sliceString(from, to) !== marker) changes.push({ from, to, insert: marker })
+          // A new item on a lazy quote line stays in the quote, as a heading does.
+          const quote =
+            own || isBlank(line.text) ? '' : missingQuotes(state, tree, line, chainOf(line))
+          if (doc.sliceString(from, to) !== quote + marker) {
+            changes.push({ from, to, insert: quote + marker })
+          }
         }
       }
     } else {
@@ -906,8 +926,18 @@ export function setLinePrefix(id: LineId): Command {
         for (const q of unique.values()) removeQuote(state, q, changes)
       } else {
         // Lines already in a quote keep their single `> ` (no nested quote from a mixed range).
+        // The `> ` goes after the markers of enclosing list items (spec: the edited prefix is
+        // the one after container markers), so `- a` / `  b` gives `  > b` inside the item; the
+        // line's own item marker is quoted with it (`- a` → `> - a`, a nested `  - b` →
+        // `  > - b`).
         formatted.forEach((line, i) => {
-          if (!quotes[i]) changes.push({ from: line.from, to: line.from, insert: '> ' })
+          if (quotes[i]) return
+          const chain = chainOf(line)
+          const own = itemOf(chain)
+          const outer =
+            own && doc.lineAt(own.from).number === line.number ? chain.slice(0, -1) : chain
+          const at = outer.length ? (afterContainers(state, line, outer) ?? line.from) : line.from
+          changes.push({ from: at, to: at, insert: '> ' })
         })
         for (const b of blanks) changes.push({ from: b.to, to: b.to, insert: '> ' })
       }
@@ -1008,7 +1038,9 @@ export function insertLink(view: EditorView, clipboardUrl: string | null): boole
       from: span.from,
       to: span.to,
       enter: (n) => {
-        if (NO_LINK.has(n.name) && n.name !== 'InlineCode' && n.name !== 'InlineMath') {
+        // A bare URL may become the link text (`[https://x.de](…)`); a link, image or
+        // autolink inside the text would nest links.
+        if (n.name === 'Link' || n.name === 'Image' || n.name === 'Autolink') {
           if (n.from < span.to && n.to > span.from) nested = true
         }
         return !nested
