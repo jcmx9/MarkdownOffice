@@ -269,9 +269,14 @@ test('the outline fits its titles when shown and keeps that width while typing',
   // Shown again: fitted to the new, longer title, at most a fifth of the workspace.
   await clickMenu(app, 'toggle-outline')
   await clickMenu(app, 'toggle-outline')
-  await expect.poll(async () => (await measure()).bar).toBeGreaterThan(short.bar)
-  const long = await measure()
-  expect(long.bar).toBeLessThanOrEqual(long.workspace * 0.2 + 1)
+  // Showing first restores the CSS default (18em) and fits on the next frame; that default is
+  // already wider than `short`, so wait for the fitted width itself, not just for "wider".
+  await expect
+    .poll(async () => {
+      const m = await measure()
+      return m.bar > short.bar && m.bar <= m.workspace * 0.2 + 1
+    })
+    .toBe(true)
   await app.close()
 })
 
