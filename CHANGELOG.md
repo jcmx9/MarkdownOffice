@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Links open with Cmd+click (macOS) or Ctrl+click (Windows, Linux) in the system's browser or mail program, in Code, Preview, Present and in rendered table cells; inline, reference and `<auto>` links and bare URLs. Only `http`, `https` and `mailto` (checked again in main); a plain click still places the cursor. While the key is held the pointer turns into a hand over a link
+
 ### Changed
 - The app folder for new notes, own template sets (`Vorlagen/`) and snippets is now `~/Markdown Office` (Windows `%USERPROFILE%\Markdown Office`) instead of the documents folder, in the app, the CLI, build.sh and convert.ps1 alike. An existing `<Documents>/Markdown Office` stays in use while the home one does not exist; nothing is moved. Reason: Windows' controlled folder access silently refused the unsigned app in the (often OneDrive-redirected) documents folder
 

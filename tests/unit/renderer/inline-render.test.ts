@@ -29,6 +29,13 @@ describe('renderInline', () => {
     expect(el.textContent).toBe('siehe https://x.de *kein*')
     expect(el.querySelector('span.mdo-link')?.textContent).toBe('https://x.de')
   })
+  it('carries the openable target as data-mdo-href (Cmd/Ctrl+click in table cells)', () => {
+    const el = render('[Ext](https://x.de) [Int](#k) <mailto:a@b.de> https://y.de')
+    const hrefs = [...el.querySelectorAll<HTMLElement>('[data-mdo-href]')].map(
+      (e) => e.dataset.mdoHref,
+    )
+    expect(hrefs).toEqual(['https://x.de', 'mailto:a@b.de', 'https://y.de'])
+  })
   it('never interprets HTML', () => {
     const el = render('<img src=x onerror=alert(1)> & <b>x</b>')
     expect(el.querySelector('img, b')).toBeNull()

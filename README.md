@@ -125,6 +125,7 @@ Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Abs
 | Mod+Enter | Seitenumbruch einfügen (`<!-- pagebreak -->`) – nicht beim Präsentieren, in Tabellen, Code- und HTML-Blöcken |
 | Mod+Plus / Mod+- / Mod+0 | Vergrößern / Verkleinern / Originalgröße (je Modus gespeichert) |
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Tabs wechseln |
+| Mod+Klick auf einen Link | Link im Browser bzw. Mailprogramm öffnen (nur `http`, `https`, `mailto`); mit gedrückter Taste zeigt der Mauszeiger über einem Link eine Hand. Ein einfacher Klick setzt nur den Cursor |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Widerrufen/Wiederholen, Ausschneiden/Kopieren/Einfügen, Alles auswählen |
 
 `Mod` = Cmd unter macOS, sonst Ctrl. Die Auswahl mit Shift bzw. Mod+Shift und den Pfeiltasten übernimmt CodeMirror.
