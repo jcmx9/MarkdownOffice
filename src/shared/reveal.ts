@@ -10,6 +10,14 @@ export function revealLabel(platform: string): string {
 }
 
 /**
+ * Shortcut of the same entry, as other editors have it (VS Code: ⌥⌘R, Shift+Alt+R). Not
+ * Ctrl+Alt+R on Windows/Linux: on German and other layouts Ctrl+Alt is AltGr.
+ */
+export function revealAccelerator(platform: string): string {
+  return platform === 'darwin' ? 'Alt+Cmd+R' : 'Shift+Alt+R'
+}
+
+/**
  * The sandboxed renderer has no `process.platform`; its user agent names the OS ("Macintosh",
  * "Windows NT", else Linux and others). Returns the matching `process.platform` value.
  */

@@ -9,11 +9,12 @@ import type {
   MarkdownConfig,
 } from '@lezer/markdown'
 import { Emoji, GFM, parser, Subscript, Superscript } from '@lezer/markdown'
+import { type HighlightSpan, highlightSpans } from './highlight'
 import { scanInlineMath } from './math-delims'
 
 // The Markdown syntax of the editor, here so the CLI (export-files.ts) parses a note with the very
 // same rules: the editor builds its language from lang-markdown's `markdownLanguage` (CommonMark +
-// GFM, Subscript, Superscript, Emoji) plus these two extensions, `markdownParser` below is that
+// GFM, Subscript, Superscript, Emoji) plus these three extensions, `markdownParser` below is that
 // parser without CodeMirror (markdown-syntax.test.ts compares both trees).
 
 /** A front matter's opening line and its closing line (`---` or `...`), for every reader of it. */
@@ -146,11 +147,75 @@ export const MathSyntax: MarkdownConfig = {
   ],
 }
 
+const EQUALS = 61
+const HighlightDelim = { resolve: 'Highlight', mark: 'HighlightMark' }
+
+/**
+ * The last line asked about, as an inline section asks once per `=` on the same line. A pure
+ * memo of `highlightSpans(line)`: no other state, the result depends on the line text alone.
+ */
+let lastLine = ''
+let lastSpans: HighlightSpan[] = []
+
+/** The `==…==` spans of the line holding `pos` in this inline section, offsets in the line. */
+function lineSpans(cx: InlineContext, pos: number): [lineStart: number, HighlightSpan[]] {
+  const rel = pos - cx.offset
+  const start = cx.text.lastIndexOf('\n', rel - 1) + 1
+  const nl = cx.text.indexOf('\n', rel)
+  const line = cx.text.slice(start, nl < 0 ? cx.text.length : nl)
+  if (line !== lastLine) {
+    lastLine = line
+    lastSpans = highlightSpans(line)
+  }
+  return [cx.offset + start, lastSpans]
+}
+
+/** Closing `==` positions promised by an opening one, per inline section. */
+const pendingClose = new WeakMap<InlineContext, Set<number>>()
+
+/**
+ * `==text==` highlights by the PDF's rules (core/highlight, markdown.typ `marks()`): only the
+ * spans `highlightSpans` reports for the current line, so never across a line break and never
+ * where the pipeline leaves the text alone. Opening and closing `==` are delimiters (like
+ * GFM's `~~`), so emphasis, links and code inside are still parsed (`==**b**==`); code spans
+ * and formulas are consumed by their own parsers first and never reach the `=` inside them.
+ */
+export const HighlightSyntax: MarkdownConfig = {
+  defineNodes: [
+    { name: 'Highlight', style: t.special(t.content) },
+    { name: 'HighlightMark', style: t.processingInstruction },
+  ],
+  parseInline: [
+    {
+      name: 'Highlight',
+      before: 'Emphasis',
+      parse(cx, next, pos) {
+        if (next !== EQUALS || cx.char(pos + 1) !== EQUALS) return -1
+        const closes = pendingClose.get(cx)
+        if (closes?.delete(pos)) return cx.addDelimiter(HighlightDelim, pos, pos + 2, false, true)
+        const [lineStart, spans] = lineSpans(cx, pos)
+        const span = spans.find((s) => lineStart + s.from === pos)
+        if (!span) return -1
+        // The content holds no `=` (mark-re), so the next `=` this parser sees in the span is
+        // its closing pair, unless a link or the like swallows it (the opener then stays text).
+        if (closes) closes.add(lineStart + span.to - 2)
+        else pendingClose.set(cx, new Set([lineStart + span.to - 2]))
+        return cx.addDelimiter(HighlightDelim, pos, pos + 2, true, false)
+      },
+    },
+  ],
+}
+
 /** lang-markdown's `markdownLanguage` extensions, which the editor's language is built on. */
 const BASE = [GFM, Subscript, Superscript, Emoji]
 
 /** The editor's Markdown parser (mdoMarkdown in renderer/editor/markdown.ts) without CodeMirror. */
-export const markdownParser = parser.configure([...BASE, FrontmatterSyntax, MathSyntax])
+export const markdownParser = parser.configure([
+  ...BASE,
+  FrontmatterSyntax,
+  MathSyntax,
+  HighlightSyntax,
+])
 
 /** The same without front matter, for text the PDF reads as all body (see export-files.ts). */
-export const markdownBodyParser = parser.configure([...BASE, MathSyntax])
+export const markdownBodyParser = parser.configure([...BASE, MathSyntax, HighlightSyntax])

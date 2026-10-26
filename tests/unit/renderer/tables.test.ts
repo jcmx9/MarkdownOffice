@@ -195,6 +195,15 @@ describe('tableField', () => {
     expect(cells[0]?.querySelector('.mdo-link')).toBeNull()
     expect(cells[1]?.querySelector('.mdo-link')?.textContent).toBe('def')
   })
+  it('renders ==x== in a cell as <mark class="mdo-hl">, not in a cell formula', () => {
+    const doc = '| a | b |\n|---|---|\n| ==x== | $p == q == r$ |\n\nende'
+    const [first] = tables(make(doc, doc.length))
+    const dom = first?.widget.toDOM({} as EditorView) as HTMLElement
+    const cells = [...dom.querySelectorAll('tbody td')]
+    expect(cells[0]?.querySelector('mark.mdo-hl')?.textContent).toBe('x')
+    expect(cells[0]?.textContent).toBe('x')
+    expect(cells[1]?.querySelector('.mdo-hl')).toBeNull()
+  })
   it('redraws the table when a reference definition changes', () => {
     const doc = '| a |\n|---|\n| [21] |\n\nende'
     const before = make(doc, doc.length)
@@ -202,6 +211,32 @@ describe('tableField', () => {
     const [w1] = tables(before)
     const [w2] = tables(after)
     expect(w2?.widget.eq(w1?.widget as WidgetType)).toBe(false)
+  })
+})
+
+describe('typography in table cells', () => {
+  const cellsOf = (doc: string) => {
+    const s = make(doc, doc.length)
+    const widget = tables(s)[0]?.widget
+    if (!widget) throw new Error('no table widget')
+    const dom = widget.toDOM({} as EditorView)
+    return [...dom.querySelectorAll('th, td')].map((c) => c.textContent)
+  }
+  it('shows the quotes, dashes and ellipses the PDF prints, per lang', () => {
+    const table = '| "a" | b -- c |\n|---|---|\n| it\'s ... | `"code" --` |\n\nEnde'
+    expect(cellsOf(table)).toEqual(['„a“', 'b – c', 'it’s …', '"code" --'])
+    expect(cellsOf(`---\nlang: en\n---\n\n${table}`)).toEqual([
+      '“a”',
+      'b – c',
+      'it’s …',
+      '"code" --',
+    ])
+  })
+  it('leaves a row with HTML alone, as the PDF does', () => {
+    expect(cellsOf('| <b>x</b> "a" | -- |\n|---|---|\n\nEnde').slice(0, 2)).toEqual([
+      '<b>x</b> "a"',
+      '--',
+    ])
   })
 })
 
