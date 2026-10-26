@@ -33,6 +33,7 @@ import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
+import { findAgain, openFind, openReplace } from './editor/search'
 import { foldAllSections } from './editor/sections'
 import {
   createState,
@@ -70,6 +71,7 @@ import {
   toolbarState,
 } from './ui/format-wiring'
 import { InfoLine } from './ui/infoline'
+import { attachLinkOpen } from './ui/link-open'
 import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
 import { applyOutlineWidth, attachOutlineResize } from './ui/outline-resize'
@@ -88,6 +90,7 @@ import { openValidateDialog } from './ui/validate-dialog'
 import { editorScale, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
+import { remoteMessage } from './util/remote-error'
 import { LatestToggle, SerialQueue } from './util/serial'
 
 const CONFLICT_ERROR = 'Externe Änderung – bitte im Hinweis entscheiden'
@@ -304,6 +307,12 @@ export class App {
     )
     this.toolbar = new Toolbar(root.toolbar, (a) => this.toolbarAction(a))
     this.toolbarSync = new FrameThrottle(() => this.renderToolbar())
+    attachLinkOpen(
+      root.editor,
+      () => this.editor,
+      (url) => void this.openLink(url),
+      isMac,
+    )
     attachOutlineResize(root.outlineGrip, root.outline, {
       // A dragged width lasts until the outline is shown again (or Present starts or ends);
       // a double-click (null) fits it to the titles at once.
@@ -413,6 +422,8 @@ export class App {
         cmd === 'create-profile' ||
         // The file manager would come to the front over the shared Present screen.
         cmd === 'reveal' ||
+        // Nothing is rewritten on the shared Present screen; finding still works.
+        cmd === 'replace' ||
         cmd === 'settings')
     ) {
       this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
@@ -452,6 +463,14 @@ export class App {
         return this.editCommand('redo', redo)
       case 'select-all':
         return this.editCommand('selectAll', selectAll)
+      case 'find':
+        return this.searchCommand(openFind)
+      case 'replace':
+        return this.searchCommand(openReplace)
+      case 'find-next':
+        return this.searchCommand((v) => findAgain(v, false))
+      case 'find-previous':
+        return this.searchCommand((v) => findAgain(v, true))
       case 'insert-pagebreak':
         // A page break is Markdown; a profile tab (YAML) ignores the shortcut like its keymap does.
         if (this.store.active && !isMarkdownTab(this.store.active)) return
@@ -693,6 +712,12 @@ export class App {
     this.editor.focus()
   }
 
+  /** Find/replace act on the shown note only (a dialog already blocks them, see command). */
+  private searchCommand(run: (v: EditorView) => boolean): void {
+    if (this.shownId === null) return
+    run(this.editor)
+  }
+
   private globalKeys(e: KeyboardEvent): void {
     if (
       this.mode === 'present' &&
@@ -750,7 +775,22 @@ export class App {
    */
   private async newNote(header?: string): Promise<void> {
     if (this.closing) return
-    const path = await this.mdo.newNotePath()
+    let path: string
+    try {
+      path = await this.mdo.newNotePath()
+    } catch (err) {
+      // Main names the folder and the reason (files.ts newNoteError); a banner, not a toast:
+      // at startup it is the only thing in an empty window and must stay readable.
+      this.notices.banner(
+        remoteMessage(err),
+        [
+          { label: 'Einstellungen …', run: () => void this.command('settings') },
+          { label: 'Schließen', run: () => undefined },
+        ],
+        'new-note',
+      )
+      return
+    }
     // The window may have started closing during the round-trip: no tab, and give the reserved
     // name back so it does not stay blocked.
     if (this.closing) {
@@ -1461,6 +1501,16 @@ export class App {
    * „Im Finder zeigen“ for the active note. A new note has no file until its first save, so it
    * is saved first (like rename and export); otherwise the file manager would have nothing to show.
    */
+  /** Cmd/Ctrl+click on a link: main opens http(s)/mailto in the system's program. */
+  private async openLink(url: string): Promise<void> {
+    try {
+      const error = await this.mdo.openExternal(url)
+      if (error) this.notices.toast(error)
+    } catch (e) {
+      this.notices.toast(`Link konnte nicht geöffnet werden: ${remoteMessage(e)}`)
+    }
+  }
+
   private async reveal(): Promise<void> {
     const tab = this.store.active
     if (!tab) return

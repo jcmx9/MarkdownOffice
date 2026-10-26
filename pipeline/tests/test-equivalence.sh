@@ -110,7 +110,7 @@ export TEST_ASSETS="${fixtures}"
 out_dir="$(mktemp -d)"
 cleanup() { rm -rf "${out_dir}"; }
 trap cleanup EXIT
-# Leerer Vorlagen-Ordner: ein eigenes memo in ~/Documents darf nicht greifen.
+# Leerer Vorlagen-Ordner: ein eigenes memo in ~/Markdown Office darf nicht greifen.
 export MDO_TEMPLATES="${out_dir}/Keine Vorlagen"
 mkdir -p "${MDO_TEMPLATES}"
 

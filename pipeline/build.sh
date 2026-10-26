@@ -113,7 +113,7 @@ Environment:
   MDO_BASE_DIR=ordner     Relative Bild-/Logopfade gelten relativ zu diesem Ordner
                           statt zum Ordner der Quelle (temporäre Kopie)
   MDO_TEMPLATES=ordner    Ordner mit eigenen Vorlagen-Sets, <name>.typ oder <name>/<name>.typ
-                          (Standard: ~/Documents/Markdown Office/Vorlagen)
+                          (Standard: ~/Markdown Office/Vorlagen)
   MDO_PIPELINE_ROOT=ordner  Pipeline-Ordner mit lib/, vendor/, fonts/, bin/typst
                           (Standard: Ordner dieses Skripts)
   MDO_SETS_DIR=ordner     Mitgelieferte Vorlagen-Sets (Standard: ../sets)
@@ -406,9 +406,15 @@ else
 fi
 
 # Vorlagen-Sets: <name>.typ oder <name>/<name>.typ im Benutzerordner (MDO_TEMPLATES, sonst
-# ~/Documents/Markdown Office/Vorlagen) vor den mitgelieferten Sets
+# ~/Markdown Office/Vorlagen) vor den mitgelieferten Sets
 # (MDO_SETS_DIR/<name>/<name>.typ); der Ordner ist auch ein Logo-Suchort.
-user_templates="${MDO_TEMPLATES:-${HOME:-}/Documents/Markdown Office/Vorlagen}"
+# Ein vorhandenes ~/Documents/Markdown Office (Standard bis 26.10.5) gilt weiter, solange es
+# ~/Markdown Office nicht gibt (wie mdoBaseDir in src/main/templates.ts).
+mdo_base="${HOME:-}/Markdown Office"
+if [[ ! -d "${mdo_base}" && -d "${HOME:-}/Documents/Markdown Office" ]]; then
+  mdo_base="${HOME:-}/Documents/Markdown Office"
+fi
+user_templates="${MDO_TEMPLATES:-${mdo_base}/Vorlagen}"
 # Ein relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers (wie unter Windows).
 case "${user_templates}" in /*) ;; *) user_templates="${orig_pwd}/${user_templates}" ;; esac
 

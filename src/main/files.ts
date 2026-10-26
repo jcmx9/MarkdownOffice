@@ -89,6 +89,24 @@ export async function newNotePath(
   }
 }
 
+/**
+ * Why no new note could be created in `dir`, for the user. Before 26.10.6 this failed silently
+ * (an empty window, no tab): Windows' controlled folder access refuses unsigned apps in the
+ * documents folder with EPERM/EACCES and says nothing itself.
+ */
+export function newNoteError(dir: string, err: unknown, platform: string): string {
+  const code = (err as NodeJS.ErrnoException | null)?.code
+  const head = `Neue Notiz nicht möglich: „${dir}“`
+  const choose = 'In den Einstellungen einen anderen Notizordner wählen.'
+  if (code === 'EPERM' || code === 'EACCES') {
+    if (platform === 'win32')
+      return `${head} ist schreibgeschützt. Vermutlich blockiert der Ransomware-Schutz von Windows (überwachter Ordnerzugriff) die App: Markdown Office dort zulassen oder in den Einstellungen einen anderen Notizordner wählen.`
+    return `${head} ist schreibgeschützt. ${choose}`
+  }
+  const why = code ?? (err instanceof Error ? err.message : String(err))
+  return `${head} lässt sich nicht anlegen (${why}). ${choose}`
+}
+
 export function detectEol(text: string): Eol {
   const cr = text.split('\r').length - 1
   if (cr === 0) return '\n'

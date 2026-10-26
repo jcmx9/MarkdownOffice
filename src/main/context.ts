@@ -75,14 +75,14 @@ export class AppContext {
 
   constructor(
     private readonly userData: string,
-    /** The OS documents folder: default note folder and the user's templates folder live there. */
-    readonly documentsDir: string,
+    /** The app's folder (templates.ts mdoBaseDir): default note folder, templates, snippets. */
+    readonly baseDir: string,
     readonly pipeline: PipelineConfig = {
       paths: pipelinePaths(false, '', process.cwd()),
       version: 'dev',
     },
   ) {
-    this.settings = defaultSettings(documentsDir)
+    this.settings = defaultSettings(baseDir)
     this.math = new MathRenderer(pipeline.paths.root)
   }
 
@@ -355,7 +355,7 @@ export class AppContext {
       paths: this.pipeline.paths,
       version: this.pipeline.version,
       // One folder for picker and export: the set a note was created from is the set it exports with.
-      templatesDir: userTemplatesDir(process.env, this.documentsDir),
+      templatesDir: userTemplatesDir(process.env, this.baseDir),
     })
   }
 

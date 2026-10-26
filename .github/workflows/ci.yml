@@ -26,6 +26,15 @@ jobs:
           node-version: 24
           cache: npm
 
+      # A stalled Ubuntu mirror once hung apt for the whole job (2026-10-26, mupdf-tools from
+      # azure.archive.ubuntu.com): every apt call here gives up a stuck download after 30 s and
+      # retries it, so a bad mirror fails fast or recovers instead of eating the job's 30 minutes.
+      - name: Apt timeouts and retries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' |
+            sudo tee /etc/apt/apt.conf.d/99mdo-network >/dev/null
+
       - run: npm ci
       - run: npm run lint
       - name: Lint shell scripts (shellcheck)
@@ -113,6 +122,7 @@ jobs:
 
       - name: Install PDF tools (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 10
         run: sudo apt-get install -y poppler-utils mupdf-tools
 
       - name: Pipeline tests (test-pdf.sh)
@@ -284,6 +294,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      # A stalled Ubuntu mirror once hung apt for the whole job (2026-10-26, mupdf-tools from
+      # azure.archive.ubuntu.com): every apt call here gives up a stuck download after 30 s and
+      # retries it, so a bad mirror fails fast or recovers instead of eating the job's 30 minutes.
+      - name: Apt timeouts and retries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          printf '%s\n' 'Acquire::Retries "5";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' |
+            sudo tee /etc/apt/apt.conf.d/99mdo-network >/dev/null
 
       - run: npm ci
 

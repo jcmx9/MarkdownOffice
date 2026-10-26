@@ -108,6 +108,11 @@ export type MenuCommand =
   | 'undo'
   | 'redo'
   | 'select-all'
+  // Find and replace (renderer/editor/search.ts).
+  | 'find'
+  | 'replace'
+  | 'find-next'
+  | 'find-previous'
   | 'insert-pagebreak'
   | 'insert-template'
   // Formatting toolbar commands (renderer/editor/format.ts, table-edit.ts); editor-only.
@@ -233,6 +238,8 @@ export interface MdoApi {
    * allow. Resolves to null when shown, else the message for the user (e.g. file missing).
    */
   revealPath(path: string): Promise<string | null>
+  /** Opens an http(s)/mailto link in the system's program; an error text or null. */
+  openExternal(url: string): Promise<string | null>
   /**
    * Opens the user templates folder (`Vorlagen`, created when missing) in the file manager.
    * Resolves to null when opened, else the message for the user.

@@ -1,7 +1,7 @@
 {
   "name": "markdown-office",
   "productName": "Markdown Office",
-  "version": "26.10.5",
+  "version": "26.10.6",
   "description": "Calm Markdown editor with a bundled Markdown-to-PDF/A pipeline; the editor looks like the PDF while you type.",
   "license": "AGPL-3.0-or-later",
   "author": "jcmx9",
@@ -36,6 +36,7 @@
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.13.1",
     "@codemirror/language-data": "^6.5.2",
+    "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.14",
     "@electron/osx-sign": "^1.3.3",
