@@ -70,6 +70,7 @@ import {
   toolbarState,
 } from './ui/format-wiring'
 import { InfoLine } from './ui/infoline'
+import { attachLinkOpen } from './ui/link-open'
 import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
 import { applyOutlineWidth, attachOutlineResize } from './ui/outline-resize'
@@ -305,6 +306,12 @@ export class App {
     )
     this.toolbar = new Toolbar(root.toolbar, (a) => this.toolbarAction(a))
     this.toolbarSync = new FrameThrottle(() => this.renderToolbar())
+    attachLinkOpen(
+      root.editor,
+      () => this.editor,
+      (url) => void this.openLink(url),
+      isMac,
+    )
     attachOutlineResize(root.outlineGrip, root.outline, {
       // A dragged width lasts until the outline is shown again (or Present starts or ends);
       // a double-click (null) fits it to the titles at once.
@@ -1477,6 +1484,16 @@ export class App {
    * „Im Finder zeigen“ for the active note. A new note has no file until its first save, so it
    * is saved first (like rename and export); otherwise the file manager would have nothing to show.
    */
+  /** Cmd/Ctrl+click on a link: main opens http(s)/mailto in the system's program. */
+  private async openLink(url: string): Promise<void> {
+    try {
+      const error = await this.mdo.openExternal(url)
+      if (error) this.notices.toast(error)
+    } catch (e) {
+      this.notices.toast(`Link konnte nicht geöffnet werden: ${remoteMessage(e)}`)
+    }
+  }
+
   private async reveal(): Promise<void> {
     const tab = this.store.active
     if (!tab) return

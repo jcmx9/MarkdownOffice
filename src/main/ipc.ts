@@ -12,6 +12,7 @@ import type {
   SessionPatch,
 } from '../shared/types'
 import { type AppContext, logSessionError } from './context'
+import { externalUrl } from './external'
 import {
   canonicalPath,
   canonicalPaths,
@@ -79,6 +80,17 @@ export function registerIpc(ctx: AppContext): void {
       const code = (err as NodeJS.ErrnoException).code
       if (code === 'ENOENT' || code === 'ENOTDIR') return `Datei nicht gefunden: ${str(path)}`
       return message(err)
+    }
+  })
+  // Cmd/Ctrl+click on a link (renderer ui/link-open.ts): only http(s) and mailto reach the OS.
+  ipcMain.handle(Ch.openExternal, async (_e, raw: unknown): Promise<string | null> => {
+    const url = externalUrl(raw)
+    if (!url) return 'Dieser Link lässt sich nicht öffnen (nur http, https und mailto).'
+    try {
+      await shell.openExternal(url)
+      return null
+    } catch (err) {
+      return `Link konnte nicht geöffnet werden: ${message(err)}`
     }
   })
   // Template sets: the renderer only ever names a set (SET_NAME_RE, short), never a path; main

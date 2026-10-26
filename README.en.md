@@ -125,6 +125,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Mod+Enter | Insert a page break (`<!-- pagebreak -->`) – not while presenting, in tables, code or HTML blocks |
 | Mod+Plus / Mod+- / Mod+0 | Zoom in / zoom out / actual size (saved per mode) |
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Switch tabs |
+| Mod+click on a link | Open the link in the browser or mail program (only `http`, `https`, `mailto`); while the key is held, the pointer turns into a hand over a link. A plain click only places the cursor |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Undo/redo, cut/copy/paste, select all |
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
