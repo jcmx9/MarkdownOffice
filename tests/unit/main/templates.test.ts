@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   listProfiles,
   listSets,
+  mdoBaseDir,
   readSetHeader,
   userTemplatesDir,
 } from '../../../src/main/templates'
@@ -46,10 +47,43 @@ describe('userTemplatesDir', () => {
     )
   })
 
-  it('falls back to <documents>/Markdown Office/Vorlagen (also for an empty value)', () => {
-    const expected = join('/docs', 'Markdown Office', 'Vorlagen')
-    expect(userTemplatesDir({}, '/docs')).toBe(expected)
-    expect(userTemplatesDir({ MDO_TEMPLATES: '' }, '/docs')).toBe(expected)
+  it('falls back to <base>/Vorlagen (also for an empty value)', () => {
+    const expected = join('/base', 'Vorlagen')
+    expect(userTemplatesDir({}, '/base')).toBe(expected)
+    expect(userTemplatesDir({ MDO_TEMPLATES: '' }, '/base')).toBe(expected)
+  })
+})
+
+describe('mdoBaseDir', () => {
+  const fresh = join('/h', 'Markdown Office')
+  const legacy = join('/h/Documents', 'Markdown Office')
+  const having =
+    (...dirs: string[]) =>
+    (p: string) =>
+      dirs.includes(p)
+
+  it('is <home>/Markdown Office for a new install', () => {
+    expect(mdoBaseDir('/h', '/h/Documents', having())).toBe(fresh)
+  })
+
+  it('keeps an existing <documents>/Markdown Office while the home one is missing', () => {
+    expect(mdoBaseDir('/h', '/h/Documents', having(legacy))).toBe(legacy)
+  })
+
+  it('the home folder wins once it exists, also next to a kept documents folder', () => {
+    expect(mdoBaseDir('/h', '/h/Documents', having(fresh, legacy))).toBe(fresh)
+    expect(mdoBaseDir('/h', '/h/Documents', having(fresh))).toBe(fresh)
+  })
+
+  it('no documents folder: only the home folder counts', () => {
+    expect(mdoBaseDir('/h', '', having(join('Markdown Office')))).toBe(fresh)
+  })
+
+  it('Windows: a kept OneDrive documents folder, else the profile folder', () => {
+    const docs = 'C:\\Users\\u\\OneDrive - Firma\\Dokumente'
+    const kept = `${docs}\\Markdown Office`
+    expect(mdoBaseDir('C:\\Users\\u', docs, having(kept), win32)).toBe(kept)
+    expect(mdoBaseDir('C:\\Users\\u', docs, having(), win32)).toBe('C:\\Users\\u\\Markdown Office')
   })
 })
 

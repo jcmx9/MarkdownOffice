@@ -88,6 +88,7 @@ import { openValidateDialog } from './ui/validate-dialog'
 import { editorScale, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
 import { fileName } from './util/path'
+import { remoteMessage } from './util/remote-error'
 import { LatestToggle, SerialQueue } from './util/serial'
 
 const CONFLICT_ERROR = 'Externe Änderung – bitte im Hinweis entscheiden'
@@ -750,7 +751,22 @@ export class App {
    */
   private async newNote(header?: string): Promise<void> {
     if (this.closing) return
-    const path = await this.mdo.newNotePath()
+    let path: string
+    try {
+      path = await this.mdo.newNotePath()
+    } catch (err) {
+      // Main names the folder and the reason (files.ts newNoteError); a banner, not a toast:
+      // at startup it is the only thing in an empty window and must stay readable.
+      this.notices.banner(
+        remoteMessage(err),
+        [
+          { label: 'Einstellungen …', run: () => void this.command('settings') },
+          { label: 'Schließen', run: () => undefined },
+        ],
+        'new-note',
+      )
+      return
+    }
     // The window may have started closing during the round-trip: no tab, and give the reserved
     // name back so it does not stay blocked.
     if (this.closing) {

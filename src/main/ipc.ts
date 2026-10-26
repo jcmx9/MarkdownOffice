@@ -18,6 +18,7 @@ import {
   type DiskConflict,
   diskConflict,
   hashBytes,
+  newNoteError,
   newNotePath,
   noteBytes,
   readNote,
@@ -84,7 +85,7 @@ export function registerIpc(ctx: AppContext): void {
   // resolves it like the pipeline. The templates folder is computed per call from MDO_TEMPLATES
   // or the documents folder, exactly as an export would, so both always see the same sets.
   const setsDir = () => ctx.pipeline.paths.sets
-  const userDir = () => userTemplatesDir(process.env, ctx.documentsDir)
+  const userDir = () => userTemplatesDir(process.env, ctx.baseDir)
   ipcMain.handle(Ch.listSets, () => listSets(setsDir(), userDir()))
   // „Vorlagen-Ordner öffnen“ (settings): the same folder the listing and the export use, no
   // argument from the renderer. It is the app's own documented folder, so main creates it when
@@ -250,8 +251,14 @@ export function registerIpc(ctx: AppContext): void {
   ipcMain.handle(Ch.newNotePath, async () => {
     // Canonical folder (also when it does not exist yet), so candidates compare against the
     // canonical reserved set.
-    const dir = await canonicalPath(ctx.settings.defaultFolder)
-    const p = await newNotePath(dir, new Date(), ctx.reserved)
+    let p: string
+    try {
+      const dir = await canonicalPath(ctx.settings.defaultFolder)
+      p = await newNotePath(dir, new Date(), ctx.reserved)
+    } catch (err) {
+      // The renderer shows this text; without it the window stayed empty without a word.
+      throw new Error(newNoteError(ctx.settings.defaultFolder, err, process.platform))
+    }
     ctx.reserved.add(p)
     ctx.allow([p])
     return p

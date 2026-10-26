@@ -2,7 +2,7 @@
 
 > Ruhiger Markdown-Editor mit eingebauter PDF/A-Pipeline: Die Notiz sieht schon beim Tippen aus wie das PDF.
 
-**Version:** 26.10.5 · [English](README.en.md)
+**Version:** 26.10.6 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -100,7 +100,7 @@ markdown-office --app --help
 
 Außerdem startet der Editor über das Startmenü (Windows), den Desktop-Eintrag (Linux) oder `~/Applications/Markdown Office.app` (macOS). Symbolische Links auf einzelne Notizen öffnen die verlinkte Datei (Tab-Name, Umbenennen und Export beziehen sich auf sie); verlinkte Ordner sind davon nicht betroffen.
 
-Neue Notizen landen im Standardordner `~/Documents/Markdown Office/` (Windows: im Ordner „Dokumente“). Die Einstellungen liegen in `settings.json` im App-Datenordner (macOS `~/Library/Application Support/Markdown Office`, Windows `%APPDATA%\Markdown Office`, Linux `~/.config/Markdown Office`).
+Neue Notizen landen im Standardordner `~/Markdown Office/` (Windows: `%USERPROFILE%\Markdown Office`), daneben liegen die Ordner `Vorlagen/` und `Snippets/`. Bewusst nicht unter „Dokumente“: Den schützt unter Windows der Ransomware-Schutz (überwachter Ordnerzugriff) vor unbekannten Programmen, oft ist er in ein Firmen-OneDrive umgeleitet, und macOS fragt eigens um Erlaubnis. Ein vorhandener Ordner `Dokumente/Markdown Office` aus Versionen bis 26.10.5 wird weiter benutzt, solange es `~/Markdown Office` nicht gibt; verschoben wird nichts. Kann keine Notiz angelegt werden, nennt ein Hinweis den Ordner und den Grund. Die Einstellungen liegen in `settings.json` im App-Datenordner (macOS `~/Library/Application Support/Markdown Office`, Windows `%APPDATA%\Markdown Office`, Linux `~/.config/Markdown Office`).
 
 Die Vorschau nutzt die mitgelieferten Schriften des PDFs; fehlt eine Schriftdatei, fällt sie auf Systemschriften zurück. Absätze, in denen der Cursor nicht steht, setzt die Vorschau wie das PDF: mit Typsts Silbentrennung und Zeilenumbruch, im Blocksatz mit denselben Wortabständen und mit den typografischen Zeichen des PDFs. Der Absatz mit dem Cursor zeigt den getippten Text und bricht wie der Browser um. Anführungszeichen nach `lang`, Apostroph, Halbgeviert- und Geviertstrich und Auslassungszeichen zeigt die Vorschau wie das PDF; in Code, Formeln und HTML ersetzt sie keine Zeichen, in Tabellenzellen wie das PDF. Links in `<…>` zeigt die Vorschau ohne die spitzen Klammern; die Zeile mit dem Cursor zeigt die getippten Zeichen, und der Text der Notiz bleibt unverändert. Mermaid-Blöcke auf oberster Ebene (` ```mermaid `) zeichnet die Vorschau (und der Präsentationsmodus) als Diagramm, mit demselben mmdr-Plugin und denselben Werten wie das PDF des Sets; ein Block innerhalb einer Liste oder eines Zitats, der Block mit dem Cursor, die Code-Ansicht und ein Diagramm, das sich nicht zeichnen lässt, zeigen den Quelltext. Ein Set ohne `mermaid:` in `name.preview.yaml` zeichnet keine Diagramme. Formeln (`$…$`, `$$…$$`) zeigen Vorschau und Präsentationsmodus wie das PDF: Typst setzt sie mit demselben mitex in New Computer Modern Math in der Textfarbe. Die Formel mit dem Cursor und die Code-Ansicht zeigen den Quelltext. LaTeX-Befehle, die das PDF nicht kennt (etwa `\ce`), markiert die Vorschau an der Formel: Der Quelltext bleibt stehen, unterstrichen, der Grund steht im Tooltip. Formeln mit einem bekannten Weg zu Typst-Code (die Befehle `\iftypst`, `\includegraphics`, `\hspace`, `\vspace`, `\raisebox`, ein unmaskiertes `#`, ein `\label` mit mehr als einem einfachen Namen, ein Farbmodell aus anderem als Buchstaben) setzt die Vorschau nicht; sie markiert die Formel ebenso. Diese Liste ist nicht vollständig: Die Grenze ist die Sandbox, in der die Vorschau Typst ausführt (sie liest nur mitex und die zu setzenden Formeln, ohne Netz, mit Zeit- und Speichergrenze). Wegen des `#` zeigt die Vorschau auch Makros mit Parametern (`\newcommand{\f}[1]{…#1…}`, `\def\f#1{…}`) nicht, obwohl das PDF sie baut; Makros ohne Parameter zeigt sie. Mod+E speichert die Notiz und exportiert sie mit der Pipeline; das PDF landet neben der Notiz (Name wie beim [Befehl](#befehl-markdown-office)) und öffnet sich im Standardprogramm.
 
@@ -147,7 +147,7 @@ Dieselben Befehle stehen im Menü **Format** (ohne Tastenkürzel) und unter **Ei
 
 ### Einstellungen
 
-„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Der Knopf „Vorlagen-Ordner öffnen“ öffnet den Ordner für eigene Vorlagen-Sets (`~/Documents/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`, siehe [Vorlagen-Sets](#vorlagen-sets)) im Dateimanager und legt ihn an, wenn er fehlt. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
+„Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Der Knopf „Vorlagen-Ordner öffnen“ öffnet den Ordner für eigene Vorlagen-Sets (`~/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`, siehe [Vorlagen-Sets](#vorlagen-sets)) im Dateimanager und legt ihn an, wenn er fehlt. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
 
 ### Gliederung
 
@@ -175,7 +175,7 @@ Das Menü **Einfügen → Vorlage …** macht eine Notiz von anderswo zur Notiz 
 
 Das Zusammenführen ist ein einziger Rückgängig-Schritt, die Datumsänderung ein eigener; Zeilenenden (LF/CRLF) und BOM der Notiz bleiben erhalten. Hat der Header schon alle Schlüssel des Sets, meldet ein kurzer Hinweis, dass nichts zu ergänzen war.
 
-Eigene Snippets sind Dateien `name.tpl.md` im Snippet-Ordner (Standard `~/Documents/Markdown Office/Snippets/`, Einstellung „Snippet-Ordner“). Ein eigenes Snippet mit demselben Namen ersetzt das eingebaute. Neue Dateien werden beim nächsten Fokus des Fensters erkannt. Unterstützte Syntax: `$1`, `${1:Vorgabe}`, `$0` (Endposition) sowie `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (auch in der Form `${CURRENT_YEAR}`). `\$` ergibt ein wörtliches `$`, `\\` einen Backslash, und in einer Vorgabe ergibt `\}` eine wörtliche geschweifte Klammer `}`.
+Eigene Snippets sind Dateien `name.tpl.md` im Snippet-Ordner (Standard `~/Markdown Office/Snippets/`, Einstellung „Snippet-Ordner“). Ein eigenes Snippet mit demselben Namen ersetzt das eingebaute. Neue Dateien werden beim nächsten Fokus des Fensters erkannt. Unterstützte Syntax: `$1`, `${1:Vorgabe}`, `$0` (Endposition) sowie `$CURRENT_YEAR`, `$CURRENT_MONTH`, `$CURRENT_DATE`, `$CURRENT_HOUR`, `$CURRENT_MINUTE`, `$CURRENT_SECOND` (auch in der Form `${CURRENT_YEAR}`). `\$` ergibt ein wörtliches `$`, `\\` einen Backslash, und in einer Vorgabe ergibt `\}` eine wörtliche geschweifte Klammer `}`.
 
 ### Rechtschreibprüfung
 
@@ -218,7 +218,7 @@ Unter Windows gelten dieselben Optionen, zusätzlich `-Version` und `-Help`. Der
 |-------------------|---------|
 | `MDO_NO_OPEN=1` | PDF nach dem Build nicht öffnen (Batch, Cron, andere Programme) |
 | `MDO_BASE_DIR=ordner` | Bild- und Logopfade relativ zu diesem Ordner statt zum Ordner der Quelle |
-| `MDO_TEMPLATES=ordner` | Ordner mit eigenen Vorlagen-Sets statt `~/Documents/Markdown Office/Vorlagen` |
+| `MDO_TEMPLATES=ordner` | Ordner mit eigenen Vorlagen-Sets statt `~/Markdown Office/Vorlagen` |
 | `TYPST=/pfad/typst` | bestimmtes Typst-Binary statt des mitgelieferten verwenden (≥ 0.15) |
 | `SOURCE_DATE_EPOCH` | PDF-Datum festlegen, wenn kein `date:` gesetzt ist |
 
@@ -304,7 +304,7 @@ Ein Logo erscheint **nur**, wenn `logo:` gesetzt ist. Ohne den Schlüssel, mit l
 - Erlaubt sind `.svg`, `.png`, `.jpg` und `.jpeg`.
 - Wird nichts gefunden (oder ist die Endung falsch, oder ist es eine Web-Adresse), entsteht das PDF **ohne Logo**, mit einem Hinweis, nie mit einem Fehler.
 - Warum nur relativ: Eine fremde Notiz könnte sonst mit `logo: ~/Ausweis.png` eine private Datei in ein weitergegebenes PDF holen. Die gefundene Datei muss (Verknüpfungen aufgelöst) in dem Ordner bleiben, in dem sie gefunden wurde; im Notizordner zählen versteckte Ordner nicht.
-- **Eigenes Logo für alle Dokumente:** neben ein Profil legen (z. B. `~/Documents/Markdown Office/Vorlagen/profiles/firma.yaml` und `firma.svg` daneben) und in jeder Notiz `profile: firma` und `logo: firma.svg` schreiben, oder in den Ordner eines eigenen Sets. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
+- **Eigenes Logo für alle Dokumente:** neben ein Profil legen (z. B. `~/Markdown Office/Vorlagen/profiles/firma.yaml` und `firma.svg` daneben) und in jeder Notiz `profile: firma` und `logo: firma.svg` schreiben, oder in den Ordner eines eigenen Sets. Eine gleichnamige Datei neben der Notiz hat Vorrang, etwa für ein Kundenlogo.
 
 ## Markdown im PDF
 
@@ -340,7 +340,7 @@ Ein Vorlagen-Set legt fest, wie ein Dokument aussieht. Es besteht aus bis zu vie
 | `name.css` | Aussehen der Vorschau im Editor (Schrift, Größen, Satzbreite) | nein |
 | `name.preview.yaml` | Blöcke über und unter dem Text in der Vorschau (Kopf und Fuß) | nein |
 
-Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Documents/Markdown Office/Vorlagen/` (Windows: `Dokumente\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
+Mitgeliefert sind das Set `memo` ([MarkdownOffice-set-memo](https://github.com/jcmx9/MarkdownOffice-set-memo)), das Standardlayout, und das Set `din5008a` ([MarkdownOffice-set-din5008a](https://github.com/jcmx9/MarkdownOffice-set-din5008a), Briefe nach DIN 5008 Form A). Eigene Sets liegen als `name.typ` oder als Ordner `name/name.typ` (etwa ein geklontes Set-Repo) im Ordner `~/Markdown Office/Vorlagen/` (Windows: `%USERPROFILE%\Markdown Office\Vorlagen\`) und gehen einem mitgelieferten Set gleichen Namens vor. Namen bestehen aus `a-z`, `0-9`, `_` und `-`.
 
 Neue Notizen beginnen mit dem Header eines Sets: Mod+N mit `memo`, **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit einem Set aus einer Auswahl aller Sets (`memo` vorne und vorausgewählt, dann mitgelieferte und eigene alphabetisch; je Set ein Hinweis aus der ersten `# …`-Kommentarzeile seiner Header-Datei). Der Editor liest dazu `name.header.md` neben der gewählten `name.typ`: bei einem eigenen Set als Datei also `Vorlagen/name.header.md`, als Ordner `Vorlagen/name/name.header.md`. Fehlt die Datei, beginnt die Notiz mit einem Header, der nur `template: name` enthält. **Einfügen → Vorlage …** führt denselben Header in eine vorhandene Notiz zusammen (siehe [Snippets](#snippets)). Enthält der Header einen Schlüssel `profile:`, bietet die Auswahl zusätzlich die vorhandenen Profile an (siehe [Briefe](#briefe-din5008a)).
 
@@ -384,7 +384,7 @@ vielen Dank für Ihr Angebot.
 
 Einen Brief beginnt **Datei → Neu aus Vorlage …** (Mod+Shift+N) mit dem Set `din5008a`: Die Auswahl bietet die gefundenen Absender-Profile an (eigene aus `Vorlagen/din5008a/profiles/` und `Vorlagen/profiles/` sowie die Beispielprofile des Sets, alphabetisch), und das gewählte Profil steht danach unter `profile:` im Header. Ohne gefundenes Profil bleibt der Wert aus der Header-Vorlage stehen.
 
-Eigene Absender-Profile liegen je Set als `~/Documents/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `Dokumente\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); der Ordner `Vorlagen/din5008a/` braucht dafür keine `din5008a.typ` und verdeckt das mitgelieferte Set nicht. Profile in `Vorlagen/profiles/` gelten weiterhin für alle Sets. Beim Export gewinnt das erste gefundene Profil: `profiles/` neben der Notiz, dann `Vorlagen/<set>/profiles/`, dann `Vorlagen/profiles/`, dann die Beispielprofile des Sets. Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
+Eigene Absender-Profile liegen je Set als `~/Markdown Office/Vorlagen/din5008a/profiles/<name>.yaml` (Windows: `%USERPROFILE%\Markdown Office\Vorlagen\din5008a\profiles\<name>.yaml`); der Ordner `Vorlagen/din5008a/` braucht dafür keine `din5008a.typ` und verdeckt das mitgelieferte Set nicht. Profile in `Vorlagen/profiles/` gelten weiterhin für alle Sets. Beim Export gewinnt das erste gefundene Profil: `profiles/` neben der Notiz, dann `Vorlagen/<set>/profiles/`, dann `Vorlagen/profiles/`, dann die Beispielprofile des Sets. Alle Schlüssel, Profilfelder und Optionen beschreibt die README des Set-Repos MarkdownOffice-set-din5008a.
 
 Die Absender-Adresse besteht im Profil aus `street`, `zip` (Postleitzahl, in Anführungszeichen: `zip: "01067"`, sonst liest YAML die Zahl 1067), `city` und optional `country` (leer heißt Germany). Gedruckt wird `<zip> <city>` in einer Zeile, im vCard-QR-Code landen Postleitzahl, Ort und Land in eigenen Adressfeldern. Ältere Profile mit nur `city: 33609 Bielefeld` drucken unverändert; für den QR-Code trennt das Set eine führende vier- oder fünfstellige Postleitzahl ab.
 

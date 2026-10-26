@@ -23,8 +23,9 @@ const absPath = (v: unknown): string | null =>
 const clamp = (v: unknown, min: number, max: number, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
 
-export function defaultSettings(documentsDir: string): Settings {
-  const defaultFolder = join(documentsDir, 'Markdown Office')
+/** baseDir: the app's folder (templates.ts mdoBaseDir); new notes go there directly. */
+export function defaultSettings(baseDir: string): Settings {
+  const defaultFolder = baseDir
   return {
     defaultFolder,
     snippetFolder: join(defaultFolder, 'Snippets'),

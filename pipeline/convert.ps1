@@ -65,8 +65,9 @@ if ($env:TYPST) { $TypstExe = $env:TYPST }
 elseif (Test-Path -LiteralPath (Join-Path $PipelineRoot 'bin\typst.exe') -PathType Leaf) {
   $TypstExe = Join-Path $PipelineRoot 'bin\typst.exe'
 }
-# Eigene Vorlagen-Sets: MDO_TEMPLATES, sonst "Eigene Dokumente"\Markdown Office\Vorlagen
-# (der Windows-Ordner "Dokumente", auch wenn OneDrive ihn umleitet).
+# Eigene Vorlagen-Sets: MDO_TEMPLATES, sonst %USERPROFILE%\Markdown Office\Vorlagen. Ein
+# vorhandenes "Dokumente"\Markdown Office (Standard bis 26.10.5, auch per OneDrive umgeleitet)
+# gilt weiter, solange es den neuen Ordner nicht gibt (wie mdoBaseDir in src/main/templates.ts).
 # GetFolderPath liefert '' (statt Fehler), wenn der Ordner fehlt (Dienstkonten).
 $docsDir = [Environment]::GetFolderPath('MyDocuments')
 $UserTemplates = ''  # unten gesetzt, nach ConvertTo-FullPath
@@ -117,7 +118,7 @@ Environment:
   MDO_BASE_DIR=ordner       Relative Bild-/Logopfade gelten relativ zu diesem Ordner
                             statt zum Ordner der Quelle (temporaere Kopie)
   MDO_TEMPLATES=ordner      Ordner mit eigenen Vorlagen-Sets (Standard:
-                            Dokumente\Markdown Office\Vorlagen)
+                            %USERPROFILE%\Markdown Office\Vorlagen)
   MDO_PIPELINE_ROOT=ordner  Pipeline-Ordner mit lib\, vendor\, fonts\, bin\typst.exe
                             (Standard: Ordner dieses Skripts)
   MDO_SETS_DIR=ordner       Mitgelieferte Vorlagen-Sets (Standard: ..\sets)
@@ -195,7 +196,15 @@ function ConvertTo-FullPath {
 }
 # Relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers (Paritaet zu build.sh).
 if ($env:MDO_TEMPLATES) { $UserTemplates = ConvertTo-FullPath $env:MDO_TEMPLATES }
-elseif ($docsDir) { $UserTemplates = Join-Path $docsDir 'Markdown Office\Vorlagen' }
+else {
+  $mdoBase = if ($env:USERPROFILE) { Join-Path $env:USERPROFILE 'Markdown Office' } else { '' }
+  $legacyBase = if ($docsDir) { Join-Path $docsDir 'Markdown Office' } else { '' }
+  if ((-not $mdoBase -or -not (Test-Path -LiteralPath $mdoBase -PathType Container)) -and
+      $legacyBase -and (Test-Path -LiteralPath $legacyBase -PathType Container)) {
+    $mdoBase = $legacyBase
+  }
+  if ($mdoBase) { $UserTemplates = Join-Path $mdoBase 'Vorlagen' }
+}
 
 # Genau zwei Argumente, das zweite eine .pdf: ausdruecklicher Ausgabepfad
 # (Paritaet zu 'build.sh SOURCE.md OUTPUT.pdf', z. B. fuer den Export aus einem Editor).

@@ -5,6 +5,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.6] - 2026-10-26
+
+### Changed
+- The app folder for new notes, own template sets (`Vorlagen/`) and snippets is now `~/Markdown Office` (Windows `%USERPROFILE%\Markdown Office`) instead of the documents folder, in the app, the CLI, build.sh and convert.ps1 alike. An existing `<Documents>/Markdown Office` stays in use while the home one does not exist; nothing is moved. Reason: Windows' controlled folder access silently refused the unsigned app in the (often OneDrive-redirected) documents folder
+
+### Fixed
+- A note that cannot be created no longer leaves an empty window without a word: a notice names the folder and the reason (on Windows with a hint at the controlled folder access) and offers the settings
+
 ## [26.10.5] - 2026-10-26
 
 ### Added

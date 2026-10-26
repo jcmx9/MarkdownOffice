@@ -30,14 +30,14 @@ const invoke = (ch: string, ...args: unknown[]) => {
 const MEMO = '---\ntemplate: memo  # Vorlage\n---\n'
 let root: string
 let sets: string
-let documents: string
+let base: string
 let app: InstanceType<typeof AppContext>
 const savedTemplates = process.env.MDO_TEMPLATES
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), 'mdo-ipc-tpl-')))
   sets = join(root, 'sets')
-  documents = join(root, 'Dokumente')
+  base = join(root, 'Markdown Office')
   await mkdir(join(sets, 'memo', 'profiles'), { recursive: true })
   await writeFile(join(sets, 'memo', 'memo.typ'), '')
   await writeFile(join(sets, 'memo', 'memo.header.md'), `# Notiz\n${MEMO}`)
@@ -45,7 +45,7 @@ beforeEach(async () => {
   delete process.env.MDO_TEMPLATES
   handlers.clear()
   const paths = { root: join(root, 'p'), sets, cli: '', fonts: '' }
-  app = new AppContext(join(root, 'user-data'), documents, { paths, version: 'dev' })
+  app = new AppContext(join(root, 'user-data'), base, { paths, version: 'dev' })
   registerIpc(app)
 })
 
@@ -63,8 +63,8 @@ describe('template IPC', () => {
     expect(await invoke(Ch.listProfiles, 'memo')).toEqual(['beispiel'])
   })
 
-  it('reads user sets from <documents>/Markdown Office/Vorlagen by default', async () => {
-    const user = join(documents, 'Markdown Office', 'Vorlagen')
+  it('reads user sets from <base>/Vorlagen by default', async () => {
+    const user = join(base, 'Vorlagen')
     await mkdir(user, { recursive: true })
     await writeFile(join(user, 'eigen.typ'), '')
     const list = (await invoke(Ch.listSets)) as { name: string; source: string }[]

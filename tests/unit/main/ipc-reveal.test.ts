@@ -34,20 +34,20 @@ const invoke = (ch: string, ...args: unknown[]) => {
 }
 
 let root: string
-let documents: string
+let base: string
 let ctx: InstanceType<typeof AppContext>
 const savedTemplates = process.env.MDO_TEMPLATES
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), 'mdo-ipc-reveal-')))
-  documents = join(root, 'Dokumente')
+  base = join(root, 'Markdown Office')
   delete process.env.MDO_TEMPLATES
   handlers.clear()
   showItemInFolder.mockClear()
   openPath.mockReset()
   openPath.mockImplementation(async () => '')
   const paths = { root: join(root, 'p'), sets: join(root, 'sets'), cli: '', fonts: '' }
-  ctx = new AppContext(join(root, 'user-data'), documents, { paths, version: 'dev' })
+  ctx = new AppContext(join(root, 'user-data'), base, { paths, version: 'dev' })
   registerIpc(ctx)
 })
 
@@ -87,7 +87,7 @@ describe('reveal in file manager', () => {
 
 describe('open templates folder', () => {
   it('creates the Vorlagen folder when missing and opens it', async () => {
-    const dir = join(documents, 'Markdown Office', 'Vorlagen')
+    const dir = join(base, 'Vorlagen')
     expect(await invoke(Ch.openTemplatesFolder)).toBeNull()
     expect((await stat(dir)).isDirectory()).toBe(true)
     expect(openPath).toHaveBeenCalledWith(dir)

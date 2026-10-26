@@ -21,17 +21,39 @@ function quiet(err: unknown): boolean {
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
+/** Name of the app's folder for notes, templates and snippets. */
+export const MDO_FOLDER = 'Markdown Office'
+
+/**
+ * The app's folder: `<home>/Markdown Office`; an existing `<documents>/Markdown Office` (the
+ * default up to 26.10.5) only while the home one does not exist, so no install loses its
+ * notes, sets or snippets and nothing is ever moved. Not the documents folder by default:
+ * Windows' controlled folder access silently refuses unsigned apps there (the app could not
+ * create a single note), it is often redirected into a company OneDrive, and macOS asks for
+ * permission. build.sh and convert.ps1 apply the same rule. `documents` '' = none.
+ */
+export function mdoBaseDir(
+  home: string,
+  documents: string,
+  exists: (p: string) => boolean,
+  P: Pick<typeof import('node:path'), 'join'> = { join },
+): string {
+  const fresh = P.join(home, MDO_FOLDER)
+  if (exists(fresh) || !documents) return fresh
+  const legacy = P.join(documents, MDO_FOLDER)
+  return exists(legacy) ? legacy : fresh
+}
+
 /**
  * The user's templates folder: MDO_TEMPLATES (a relative value counts from main's working
- * directory) or `<documents>/Markdown Office/Vorlagen` (Electron's documents folder, localised on
- * Linux via XDG). Deliberately not derived from the settings. The export receives this absolute
- * folder as MDO_TEMPLATES (`exportPdf` → `runPipeline`), so the pipeline finds exactly the sets
- * and profiles the editor offered.
+ * directory) or `<base>/Vorlagen` (base: mdoBaseDir). Deliberately not derived from the
+ * settings. The export receives this absolute folder as MDO_TEMPLATES (`exportPdf` →
+ * `runPipeline`), so the pipeline finds exactly the sets and profiles the editor offered.
  */
-export function userTemplatesDir(env: NodeJS.ProcessEnv, documentsDir: string): string {
+export function userTemplatesDir(env: NodeJS.ProcessEnv, baseDir: string): string {
   const v = env.MDO_TEMPLATES
   if (v) return resolve(process.cwd(), v)
-  return join(documentsDir, 'Markdown Office', 'Vorlagen')
+  return join(baseDir, 'Vorlagen')
 }
 
 export async function isFile(p: string): Promise<boolean> {
