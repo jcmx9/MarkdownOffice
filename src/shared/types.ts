@@ -108,6 +108,11 @@ export type MenuCommand =
   | 'undo'
   | 'redo'
   | 'select-all'
+  // Find and replace (renderer/editor/search.ts).
+  | 'find'
+  | 'replace'
+  | 'find-next'
+  | 'find-previous'
   | 'insert-pagebreak'
   | 'insert-template'
   // Formatting toolbar commands (renderer/editor/format.ts, table-edit.ts); editor-only.

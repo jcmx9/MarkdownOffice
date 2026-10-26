@@ -34,6 +34,7 @@ import { paragraphsPlugin } from './paragraphs'
 import { previewPlugin } from './preview'
 import { previewSource } from './preview-source'
 import { previewView } from './rendered'
+import { searchExtensions } from './search'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
@@ -140,6 +141,7 @@ export function createState(
       md ? [snippetExtensions, pageBreakKeymap] : [],
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
+      searchExtensions,
       md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),

@@ -33,6 +33,7 @@ import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
+import { findAgain, openFind, openReplace } from './editor/search'
 import { foldAllSections } from './editor/sections'
 import {
   createState,
@@ -414,6 +415,8 @@ export class App {
         cmd === 'create-profile' ||
         // The file manager would come to the front over the shared Present screen.
         cmd === 'reveal' ||
+        // Nothing is rewritten on the shared Present screen; finding still works.
+        cmd === 'replace' ||
         cmd === 'settings')
     ) {
       this.notices.toast('Im Präsentationsmodus nicht verfügbar – Esc beendet ihn.')
@@ -453,6 +456,14 @@ export class App {
         return this.editCommand('redo', redo)
       case 'select-all':
         return this.editCommand('selectAll', selectAll)
+      case 'find':
+        return this.searchCommand(openFind)
+      case 'replace':
+        return this.searchCommand(openReplace)
+      case 'find-next':
+        return this.searchCommand((v) => findAgain(v, false))
+      case 'find-previous':
+        return this.searchCommand((v) => findAgain(v, true))
       case 'insert-pagebreak':
         // A page break is Markdown; a profile tab (YAML) ignores the shortcut like its keymap does.
         if (this.store.active && !isMarkdownTab(this.store.active)) return
@@ -692,6 +703,12 @@ export class App {
     }
     run(this.editor)
     this.editor.focus()
+  }
+
+  /** Find/replace act on the shown note only (a dialog already blocks them, see command). */
+  private searchCommand(run: (v: EditorView) => boolean): void {
+    if (this.shownId === null) return
+    run(this.editor)
   }
 
   private globalKeys(e: KeyboardEvent): void {

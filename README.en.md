@@ -126,6 +126,9 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Mod+Plus / Mod+- / Mod+0 | Zoom in / zoom out / actual size (saved per mode) |
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Switch tabs |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Undo/redo, cut/copy/paste, select all |
+| Mod+F | Find (bar above the note: match case, whole word, regular expression; Enter/Shift+Enter jump, Esc closes) |
+| macOS Cmd+Alt+F, otherwise Ctrl+H | Replace (one or all; not while presenting) |
+| Mod+G / Mod+Shift+G | Find next / find previous |
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
 

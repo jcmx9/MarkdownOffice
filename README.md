@@ -126,6 +126,9 @@ Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Abs
 | Mod+Plus / Mod+- / Mod+0 | Vergrößern / Verkleinern / Originalgröße (je Modus gespeichert) |
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Tabs wechseln |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Widerrufen/Wiederholen, Ausschneiden/Kopieren/Einfügen, Alles auswählen |
+| Mod+F | Suchen (Leiste über der Notiz: Groß/klein, ganzes Wort, regulärer Ausdruck; Enter/Shift+Enter springen, Esc schließt) |
+| macOS Cmd+Alt+F, sonst Ctrl+H | Ersetzen (einzeln oder alle; nicht beim Präsentieren) |
+| Mod+G / Mod+Shift+G | Weitersuchen / rückwärts suchen |
 
 `Mod` = Cmd unter macOS, sonst Ctrl. Die Auswahl mit Shift bzw. Mod+Shift und den Pfeiltasten übernimmt CodeMirror.
 
