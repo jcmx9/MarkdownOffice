@@ -191,6 +191,12 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       { role: 'paste', label: 'Einfügen' },
       item('select-all', 'Alles auswählen', 'CmdOrCtrl+A'),
       sep,
+      item('find', 'Suchen …', 'CmdOrCtrl+F'),
+      // Cmd+H hides the app on macOS: replace takes Cmd+Alt+F there, as in Apple's apps.
+      item('replace', 'Ersetzen …', mac ? 'Cmd+Alt+F' : 'Ctrl+H'),
+      item('find-next', 'Weitersuchen', 'CmdOrCtrl+G'),
+      item('find-previous', 'Rückwärts suchen', 'CmdOrCtrl+Shift+G'),
+      sep,
       {
         ...item('toggle-spellcheck', 'Rechtschreibprüfung'),
         type: 'checkbox',

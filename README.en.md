@@ -127,6 +127,9 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Ctrl+Tab / Ctrl+Shift+Tab, Mod+1…9 | Switch tabs |
 | Mod+click on a link | Open the link in the browser or mail program (only `http`, `https`, `mailto`); while the key is held, the pointer turns into a hand over a link. A plain click only places the cursor |
 | Mod+Z / Mod+Shift+Z, Mod+X/C/V, Mod+A | Undo/redo, cut/copy/paste, select all |
+| Mod+F | Find (bar above the note: match case, whole word, regular expression; Enter/Shift+Enter jump, Esc closes) |
+| macOS Cmd+Alt+F, otherwise Ctrl+H | Replace (one or all; not while presenting) |
+| Mod+G / Mod+Shift+G | Find next / find previous |
 
 `Mod` = Cmd on macOS, otherwise Ctrl. Selection with Shift or Mod+Shift and the arrow keys is handled by CodeMirror.
 
