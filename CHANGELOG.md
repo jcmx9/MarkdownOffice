@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Links open with Cmd+click (macOS) or Ctrl+click (Windows, Linux) in the system's browser or mail program, in Code, Preview, Present and in rendered table cells; inline, reference and `<auto>` links and bare URLs. Only `http`, `https` and `mailto` (checked again in main); a plain click still places the cursor. While the key is held the pointer turns into a hand over a link
 - Find and replace: Bearbeiten → „Suchen …“ (Mod+F), „Ersetzen …“ (Cmd+Alt+F on macOS, Ctrl+H elsewhere), „Weitersuchen“/„Rückwärts suchen“ (Mod+G, Mod+Shift+G). CodeMirror's search panel (`@codemirror/search` 6.7.2, MIT) above the note, German labels, match case, whole word and regular expressions; in every view and in profile tabs. Present only finds. No further keys: CodeMirror's search keymap (Mod+D, Mod+Shift+L, Mod+Alt+G) stays off
 
 ### Changed

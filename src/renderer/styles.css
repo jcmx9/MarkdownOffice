@@ -155,6 +155,11 @@ dialog.prompt input:focus-visible {
 #editor .cm-editor {
   height: 100%;
 }
+/* Cmd/Ctrl held over a link (ui/link-open.ts): the click will open it. */
+#editor.mdo-link-ready .cm-content,
+#editor.mdo-link-ready .cm-content * {
+  cursor: pointer;
+}
 #editor {
   flex: 1;
   min-width: 0;

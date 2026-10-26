@@ -121,6 +121,9 @@ export function renderInline(
         const el = doc.createElement(spec[0])
         const external = c.name === 'Link' && EXTERNAL_DEST.test(destOf(text, c))
         el.className = external ? `${spec[1]} mdo-link-ext` : spec[1]
+        // The table widget hides its events from the editor: Cmd/Ctrl+click reads the target
+        // here (ui/link-open.ts). Reference links have no URL in a cell and stay unopenable.
+        if (external) el.dataset.mdoHref = destOf(text, c)
         walk(c, c.from, c.to, el)
         into.append(el)
         if (external) appendArrow(into)
@@ -130,6 +133,7 @@ export function renderInline(
         const el = doc.createElement('span')
         el.className = external ? 'mdo-link mdo-link-ext' : 'mdo-link'
         el.textContent = text.slice(c.from, c.to).replace(/^<|>$/g, '')
+        if (EXTERNAL_DEST.test(el.textContent)) el.dataset.mdoHref = el.textContent
         into.append(el)
         if (external) appendArrow(into)
       } else if (c.name === 'Escape') {

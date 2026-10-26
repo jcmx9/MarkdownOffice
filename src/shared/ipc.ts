@@ -27,6 +27,7 @@ export const Ch = {
   previewInputs: 'mdo:preview-inputs',
   noteMenu: 'mdo:note-menu',
   revealPath: 'mdo:reveal-path',
+  openExternal: 'mdo:open-external',
   openTemplatesFolder: 'mdo:open-templates-folder',
   spellReplace: 'mdo:spell-replace',
   spellRecheck: 'mdo:spell-recheck',

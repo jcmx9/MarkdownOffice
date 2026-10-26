@@ -238,6 +238,8 @@ export interface MdoApi {
    * allow. Resolves to null when shown, else the message for the user (e.g. file missing).
    */
   revealPath(path: string): Promise<string | null>
+  /** Opens an http(s)/mailto link in the system's program; an error text or null. */
+  openExternal(url: string): Promise<string | null>
   /**
    * Opens the user templates folder (`Vorlagen`, created when missing) in the file manager.
    * Resolves to null when opened, else the message for the user.
