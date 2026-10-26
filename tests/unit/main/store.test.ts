@@ -12,14 +12,14 @@ import {
   settingsPatch,
 } from '../../../src/main/store'
 
-const docs = resolve('/home/u/Documents')
-const defaults = defaultSettings(docs)
+const base = resolve('/home/u/Markdown Office')
+const defaults = defaultSettings(base)
 
 describe('settings', () => {
-  it('has spec defaults', () => {
+  it('has spec defaults: notes in the app folder itself, snippets below it', () => {
     expect(defaults).toEqual({
-      defaultFolder: join(docs, 'Markdown Office'),
-      snippetFolder: join(docs, 'Markdown Office', 'Snippets'),
+      defaultFolder: base,
+      snippetFolder: join(base, 'Snippets'),
       presentFontFactor: 1.6,
       headerDefault: 'yaml',
       spellcheck: true,

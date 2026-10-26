@@ -73,9 +73,10 @@ export interface RunOptions {
   execPath?: string
   /**
    * The user's templates folder as main resolved it (absolute), passed as MDO_TEMPLATES. Without
-   * it the pipeline derives its own (`$HOME/Documents/…` in build.sh, a relative MDO_TEMPLATES
-   * from the note's folder), which can differ from the folder the set picker listed — e.g. on
-   * Linux with a localised XDG documents folder (`~/Dokumente`).
+   * it the pipeline derives its own (`$HOME/Markdown Office/…` or a kept
+   * `$HOME/Documents/Markdown Office/…` in build.sh, a relative MDO_TEMPLATES from the note's
+   * folder), which can differ from the folder the set picker listed — e.g. on Linux with a kept
+   * folder in a localised XDG documents folder (`~/Dokumente`).
    */
   templatesDir?: string
 }

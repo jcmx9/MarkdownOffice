@@ -461,11 +461,14 @@ pass "--version with bad checksum -> exit 5, install intact"
 # 7. Uninstall removes command, menu entry, install folder, marker and an own leftover .old;
 #    documents (with the user's sets and snippets) stay.
 make_owned_old
-documents="${HOME}/Documents/Markdown Office"
-mkdir -p "${documents}/Vorlagen/eigenes" "${documents}/Snippets"
-echo keep >"${documents}/Notiz.md"
-echo keep >"${documents}/Vorlagen/eigenes/eigenes.typ"
-echo keep >"${documents}/Snippets/eigenes.md"
+# The app folder (~/Markdown Office) and one kept from before 26.10.6 (~/Documents/…).
+app_folders=("${HOME}/Markdown Office" "${HOME}/Documents/Markdown Office")
+for documents in "${app_folders[@]}"; do
+  mkdir -p "${documents}/Vorlagen/eigenes" "${documents}/Snippets"
+  echo keep >"${documents}/Notiz.md"
+  echo keep >"${documents}/Vorlagen/eigenes/eigenes.typ"
+  echo keep >"${documents}/Snippets/eigenes.md"
+done
 out="$(run_bootstrap --uninstall)"
 echo "${out}"
 [[ ! -e "${install_dir}" ]] || fail "install folder still there"
@@ -484,8 +487,10 @@ else
   ! grep -qs '^text/markdown=markdown-office.desktop$' "${HOME}/.config/mimeapps.list" ||
     fail "uninstall left the editor as Markdown default in mimeapps.list"
 fi
-for f in Notiz.md Vorlagen/eigenes/eigenes.typ Snippets/eigenes.md; do
-  [[ -f "${documents}/${f}" ]] || fail "uninstall touched the documents: ${f}"
+for documents in "${app_folders[@]}"; do
+  for f in Notiz.md Vorlagen/eigenes/eigenes.typ Snippets/eigenes.md; do
+    [[ -f "${documents}/${f}" ]] || fail "uninstall touched the documents: ${documents}/${f}"
+  done
 done
 grep -q 'Dokumente' <<<"${out}" || fail "final message does not mention the documents"
 pass "uninstall removed everything (incl. leftover .old and the Markdown-PDF entries), documents kept"

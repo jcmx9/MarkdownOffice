@@ -633,15 +633,25 @@ test_templates() {
   expect "Set probe" "${text}" "SET-PROBE Set-Test" "Kapitel" "„zitiert“"
   ok "eigenes Set aus MDO_TEMPLATES (Bausteine über sys.inputs.mdo)"
 
-  # Standard-Benutzerordner ~/Documents/Markdown Office/Vorlagen (ohne
-  # MDO_TEMPLATES) – mit einem HOME im Testordner, nie im echten ~/Documents.
+  # Standard-Benutzerordner ~/Markdown Office/Vorlagen (ohne MDO_TEMPLATES) – mit einem HOME
+  # im Testordner, nie im echten Home.
   local home="${out_dir}/home"
-  mkdir -p "${home}/Documents/Markdown Office/Vorlagen"
-  cp "${sets}/probe.typ" "${home}/Documents/Markdown Office/Vorlagen/"
+  mkdir -p "${home}/Markdown Office/Vorlagen"
+  cp "${sets}/probe.typ" "${home}/Markdown Office/Vorlagen/"
   (env -u MDO_TEMPLATES HOME="${home}" "${mdo[@]}" "${note}" "${out_dir}/home.pdf" >/dev/null 2>&1) ||
-    die "Set aus ~/Documents/Markdown Office/Vorlagen nicht gefunden"
+    die "Set aus ~/Markdown Office/Vorlagen nicht gefunden"
   expect "Benutzerordner" "$(pdf_text "${out_dir}/home.pdf")" "SET-PROBE"
-  ok "Set aus ~/Documents/Markdown Office/Vorlagen"
+  ok "Set aus ~/Markdown Office/Vorlagen"
+
+  # Ein vorhandenes ~/Documents/Markdown Office (Standard bis 26.10.5) gilt weiter, solange es
+  # ~/Markdown Office nicht gibt.
+  local legacy="${out_dir}/legacy-home"
+  mkdir -p "${legacy}/Documents/Markdown Office/Vorlagen"
+  cp "${sets}/probe.typ" "${legacy}/Documents/Markdown Office/Vorlagen/"
+  (env -u MDO_TEMPLATES HOME="${legacy}" "${mdo[@]}" "${note}" "${out_dir}/legacy.pdf" >/dev/null 2>&1) ||
+    die "Set aus ~/Documents/Markdown Office/Vorlagen (alter Ordner) nicht gefunden"
+  expect "alter Benutzerordner" "$(pdf_text "${out_dir}/legacy.pdf")" "SET-PROBE"
+  ok "Set aus einem vorhandenen ~/Documents/Markdown Office/Vorlagen"
 
   # Relatives MDO_TEMPLATES gilt ab dem Arbeitsordner des Aufrufers.
   mkdir -p "${out_dir}/rel/ordner"
