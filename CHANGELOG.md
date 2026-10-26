@@ -8,9 +8,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Edit: the status line shows the zoom on the right with − and +, like Present's info line
 - Shortcut for showing the note in the file manager: Cmd+Alt+R on macOS, Shift+Alt+R on Windows and Linux (not Ctrl+Alt, which is AltGr on German layouts); the README names the entry neutrally (the label already follows the system: Finder, Explorer, Dateimanager)
+- Editor: formatting toolbar below the tab bar in Edit mode (Code and Preview): H1–H3, bold, italic, strikethrough, highlight, code, bullet/numbered/task list, quote, link (takes a single `http(s)://` URL from the clipboard, read only on that click), table, alert box (Info/Tipp/Wichtig/Hinweis/Achtung, inserting the GFM keyword) and page break. It inserts plain GFM only, nothing set-specific; buttons keep the editor's selection, show the cursor's format as active, and every click is one undo step. Hidden in Present and without a note, greyed out on a profile. Status switch „Leiste“ and Ansicht → „Formatierungsleiste ein/aus“ (Mod+Shift+T), remembered in the session (`toolbar.edit`, default on). Icons: Lucide 1.55.0 (ISC; four derived from Feather, MIT), bundled, listed in THIRD_PARTY_NOTICES.md
+- Menu „Format“ with the same commands (no accelerators: CodeMirror's default keys stay), Einfügen → „Tabelle …“ and „Hinweisbox“. Format commands act only on the editor: ignored while a text field has focus, dropped while a dialog is open
+- Tables: „Tabelle ▾“ inserts an empty GFM table from a size grid (up to 8 × 10, header row counted); with the cursor in a table it offers row below, column right, delete row and delete column, rewriting only the touched cells (padding and escaped `\|` stay byte-identical). Inline formats and links inside a cell stay within that cell
+- Preview: `==highlight==` is shown with the set's background (`--mdo-mark-bg`, default memo's `#fbeab0`, TEMPLATES.md §8), also in table cells; the editor parses it by the pipeline's `marks()` rules
 
 ### Changed
 - Outline: its width fits the longest title when it is shown and on a switch to or from Present, at most a fifth of the workspace; longer titles end in „…“ with the full title on hover, right-aligned. While shown, the width never follows typing or a tab switch. A dragged width lasts until the outline is shown again (double-click fits it again); the remembered Edit width (`outlineWidth` in the session) is gone
+- Editor: the page break (Mod+Enter, Einfügen → Seitenumbruch, toolbar) is no longer inserted in Present, in tables, in fenced or indented code, in HTML blocks or comments, or inside a formula; there it would break the block or land in the code
 
 ### Fixed
 - Outline: long H2 headings end in „…“ inside the bar and follow a dragged width (the children list never shrank below its longest label, so labels were cut at the edge without „…“); an open hover tip closes when the bar changes size; a click on a heading no longer shifts the outline sideways (the active entry is scrolled into view vertically only, so titles are never cut on the left)
@@ -18,6 +23,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preview: table cells show the PDF's quotes, dashes and ellipses (per `lang`); like the pipeline, the row line is substituted before it is split into cells, so code spans, formulas and rows with HTML stay as typed
 - PDF: an image with a title (`![a](bild.svg "Titel")`) is drawn again instead of printed as source: the typography no longer touches link and image destinations with their titles (it made `"Titel"` into `„Titel“`, which is no title), nor `--` in a URL; link reference definitions stay untouched
 - PDF: link reference definitions in a row (`[a]: …`, `[b]: … "Titel"`) all work with hard line breaks (the default): the `\` the hard breaks appended turned every definition after the first into text, so `[x][b]` stayed source
+- PDF: `==…==` inside an inline formula (`$a == b == c$`) no longer gets `<mark>`: the pipeline's `marks()` skips `$…$` like the typography does, as its comment always said; the editor mirrors the rule, checked by `pipeline/tests/test-marks.sh`
 
 ## [26.10.4] - 2026-10-25
 

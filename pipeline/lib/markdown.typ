@@ -404,18 +404,26 @@
 }
 
 // ==Markierung== -> <mark>…</mark> (cmarker -> highlight). Nicht in Code
-// (Zäune, Formeln, `Inline-Code`).
+// (Zäune, Formeln, `Inline-Code`, $Formeln$). Der Editor folgt genau diesen
+// Regeln (src/core/highlight.ts, verglichen von tests/test-marks.sh).
 #let mark-re = regex("==([^=\s](?:[^=]*[^=\s])?)==")
+#let mark-text(t) = t.replace(mark-re, m => "<mark>" + m.captures.at(0) + "</mark>")
 #let marks(lines) = {
   let mask = skip-mask(lines)
   lines.enumerate().map(((i, l)) => {
     if mask.at(i) or not l.contains("==") { return l }
     // Inline-Code-Spannen auslassen: an Backtick-Läufen teilen, nur die
-    // Stücke außerhalb umformen.
-    let parts = l.split("`")
-    parts.enumerate().map(((k, p)) => if calc.even(k) {
-      p.replace(mark-re, m => "<mark>" + m.captures.at(0) + "</mark>")
-    } else { p }).join("`")
+    // Stücke außerhalb umformen. Darin Formeln $…$ auslassen wie bei
+    // smart-typography: sonst bekam $a ==b== c$ ein <mark> mitten in die Formel.
+    l.split("`").enumerate().map(((k, p)) => {
+      if calc.odd(k) { return p }
+      let dollars = p.split("$")
+      if dollars.len() >= 3 and calc.odd(dollars.len()) {
+        dollars.enumerate().map(((j, q)) => if calc.odd(j) { q } else { mark-text(q) }).join("$")
+      } else {
+        mark-text(p)
+      }
+    }).join("`")
   })
 }
 

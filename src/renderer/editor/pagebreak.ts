@@ -1,27 +1,25 @@
-import { type EditorState, Prec } from '@codemirror/state'
+import { isolateHistory } from '@codemirror/commands'
+import { Prec } from '@codemirror/state'
 import { type Command, type EditorView, keymap } from '@codemirror/view'
-import { frontmatterRange } from './frontmatter'
+import { refused } from './format'
 
 /** The pipeline's page break: an HTML comment on its own line. */
 export const PAGEBREAK = '<!-- pagebreak -->'
 
 const isBlank = (text: string): boolean => /^\s*$/.test(text)
 
-/** Whether the selection touches the YAML front matter (a break there would corrupt it). */
-function inFrontmatter(state: EditorState): boolean {
-  const range = frontmatterRange(state.doc)
-  if (!range) return false
-  return state.selection.ranges.some((r) => r.from <= range.to && r.to >= range.from)
-}
-
 /**
  * Inserts `<!-- pagebreak -->` as its own paragraph (blank line before and after, none doubled).
  * A selection is replaced; a cursor inside a line splits it. The cursor ends on the line after
- * the break. One undo step. Refuses (returns false) inside the front matter.
+ * the break. One undo step, and typing right after it is a step of its own. Refuses (returns
+ * false) where the line formats refuse (spec „Refused contexts“): Present, a frozen editor, and
+ * any selection range touching the front matter, a code block, an HTML block or comment, a
+ * display formula or a table (the comment line would break the table or land in the code).
+ * Checked here, not by the callers, so Mod+Enter, the menu and the toolbar refuse alike.
  */
 export const insertPageBreak: Command = (view: EditorView): boolean => {
   const { state } = view
-  if (inFrontmatter(state)) return false
+  if (refused(state, 'line')) return false
   const nl = state.lineBreak
   const { from, to } = state.selection.main
   const startLine = state.doc.lineAt(from)
@@ -46,13 +44,15 @@ export const insertPageBreak: Command = (view: EditorView): boolean => {
     selection: { anchor: cursor },
     scrollIntoView: true,
     userEvent: 'input.pagebreak',
+    // Like every format command: text typed right after the break must not join its undo step.
+    annotations: isolateHistory.of('full'),
   })
   return true
 }
 
 /**
- * Mod+Enter beats CodeMirror's `insertBlankLine`. Always claims the key (even when refused in the
- * front matter) so neither the default binding nor, via preventDefault, the native menu
+ * Mod+Enter beats CodeMirror's `insertBlankLine`. Always claims the key (even when refused, e.g.
+ * in the front matter or a table) so neither the default binding nor, via preventDefault, the native menu
  * accelerator fires a second time.
  */
 export const pageBreakKeymap = Prec.highest(

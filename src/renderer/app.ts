@@ -57,7 +57,18 @@ import {
 } from './editor/spellcheck'
 import { choiceSpec } from './editor/validate'
 import { isMarkdownTab, type Tab, TabStore } from './tabs/tab-store'
-import { allowedWithDialog, editTarget } from './ui/edit-target'
+import { allowedWithDialog, type EditTarget, editTarget } from './ui/edit-target'
+import {
+  FORMAT_COMMANDS,
+  type FormatAction,
+  FrameThrottle,
+  formatAction,
+  formatShown,
+  readClipboardText,
+  runFormatAction,
+  type Shown,
+  toolbarState,
+} from './ui/format-wiring'
 import { InfoLine } from './ui/infoline'
 import { Notices } from './ui/notices'
 import { Outline } from './ui/outline'
@@ -70,7 +81,9 @@ import { droppedFields, openSettings, STATUS_TIMEOUT_MS, withTimeout } from './u
 import { SpaceAdvance } from './ui/space-advance'
 import { type SaveState, StatusLine, saveText } from './ui/statusline'
 import { TabBar } from './ui/tabbar'
+import { askTableSize } from './ui/table-size-dialog'
 import { pickerSets, pickTemplate, type TemplateChoice } from './ui/template-picker'
+import { Toolbar, type ToolbarAction } from './ui/toolbar'
 import { openValidateDialog } from './ui/validate-dialog'
 import { editorScale, handleZoomKey, zoomIn, zoomOut } from './ui/zoom'
 import { closeWindow } from './util/close-guard'
@@ -100,6 +113,7 @@ const isMac = navigator.userAgent.includes('Mac')
 
 export interface AppRoot {
   tabbar: HTMLElement
+  toolbar: HTMLElement
   editor: HTMLElement
   empty: HTMLElement
   status: HTMLElement
@@ -127,6 +141,11 @@ export class App {
   private readonly notices: Notices
   private readonly infoLine: InfoLine
   private readonly outline: OutlineSync
+  private readonly toolbar: Toolbar
+  /** The toolbar's state (active formats) is read at most once per frame while the cursor moves. */
+  private readonly toolbarSync: FrameThrottle
+  /** Formatting toolbar on/off in Edit mode (persisted in the session, default on). */
+  private toolbarOn = true
   /** Outline sidebar on/off per mode (persisted in the session). */
   private outlineOn = { edit: false, present: false }
   /** The mode the outline was last shown in; null while hidden. A change fits its width. */
@@ -197,9 +216,14 @@ export class App {
         if (!tab) return
         this.store.updateState(tab.id, view.state)
         this.outline.update(trs)
+        // Every transaction may move the cursor into or out of a format (active state).
+        this.toolbarSync.schedule()
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
-          this.refresh()
+          // The toolbar update is already scheduled for the next frame above: a burst of typing
+          // must not read the syntax tree per keystroke (spec: active state at most once per
+          // frame), so this refresh leaves the toolbar to that frame.
+          this.refresh('frame')
           this.setCheck.schedule(tab.id)
           this.setPreview.schedule(tab.id)
           // lang: may have been edited; report it once typing pauses.
@@ -220,6 +244,7 @@ export class App {
       },
       setView: (view) => this.setView(view),
       // Through command(): the same guards as the menu (closing window, open dialog).
+      toggleToolbar: () => void this.command('toggle-toolbar'),
       toggleOutline: () => void this.command('toggle-outline'),
       toggleYaml: () => void this.command('toggle-header'),
       // The menu command, so Present refuses it with the same toast.
@@ -277,6 +302,8 @@ export class App {
       }),
       () => (this.shownId === null ? null : this.editor.state),
     )
+    this.toolbar = new Toolbar(root.toolbar, (a) => this.toolbarAction(a))
+    this.toolbarSync = new FrameThrottle(() => this.renderToolbar())
     attachOutlineResize(root.outlineGrip, root.outline, {
       // A dragged width lasts until the outline is shown again (or Present starts or ends);
       // a double-click (null) fits it to the titles at once.
@@ -352,6 +379,7 @@ export class App {
     this.view = startup.session.view
     this.zoom = { ...startup.session.zoom }
     this.outlineOn = { ...startup.session.outline }
+    this.toolbarOn = startup.session.toolbar.edit
     this.settings = startup.settings
     this.spellcheckOn = startup.settings.spellcheck
     this.presentFactor = startup.settings.presentFontFactor
@@ -373,6 +401,9 @@ export class App {
     if (this.closing) return
     // Behind a modal dialog only the edit commands run (they serve its text fields).
     if (!allowedWithDialog(cmd, document.querySelector('dialog[open]') !== null)) return
+    // Before the Present toast list: format commands refuse silently there (no toolbar in
+    // Present, and the menu has no accelerators for them).
+    if (FORMAT_COMMANDS.has(cmd)) return this.formatCommand(cmd)
     if (
       this.mode === 'present' &&
       (cmd === 'export' ||
@@ -436,6 +467,8 @@ export class App {
         return this.toggleHeader()
       case 'toggle-outline':
         return this.toggleOutline()
+      case 'toggle-toolbar':
+        return this.toggleToolbar()
       case 'toggle-spellcheck':
         return this.toggleSpellcheck()
       case 'fold':
@@ -518,6 +551,126 @@ export class App {
   /** Header state of a tab opened without a session entry (Einstellungen → YAML-Header). */
   private headerDefaultHidden(): boolean {
     return this.settings?.headerDefault === 'titleblock'
+  }
+
+  // ── formatting toolbar ──────────────────────────────────────────────────
+
+  /** Which tab is shown, for the format rules: none, a note, or a profile (YAML). */
+  private shownKind(): Shown {
+    const tab = this.shownId === null ? undefined : this.store.get(this.shownId)
+    if (!tab) return 'none'
+    return isMarkdownTab(tab) ? 'markdown' : 'profile'
+  }
+
+  private formatAllowed(target: EditTarget | 'toolbar'): boolean {
+    return formatShown({
+      closing: this.closing !== null,
+      mode: this.mode,
+      shown: this.shownKind(),
+      target,
+    })
+  }
+
+  /** editTarget() of a menu command now (focus and dialogs may change across an await). */
+  private menuTarget(): EditTarget {
+    return editTarget(
+      document.activeElement,
+      this.editor.dom,
+      document.querySelector('dialog[open]') !== null,
+    )
+  }
+
+  /**
+   * A „Format“ menu command (and Einfügen → Tabelle …/Hinweisbox): routed like editCommand, but
+   * editor-only, so a focused text field ignores it instead of getting execCommand; behind a
+   * dialog it never arrives (command() drops it). Profile tabs and Present ignore it silently.
+   */
+  private formatCommand(cmd: MenuCommand): Promise<void> | undefined {
+    if (!this.formatAllowed(this.menuTarget())) return
+    if (cmd === 'insert-table') return this.insertTableAsked()
+    const action = formatAction(cmd)
+    if (action) return this.runFormat(action, 'menu')
+  }
+
+  /**
+   * A toolbar click: the same commands as the menu. The page break runs here too, not through
+   * command('insert-pagebreak'): that path is editCommand, which ignores the command while a
+   * text field (e.g. the search input) has focus. A toolbar button is aimed at the document
+   * whatever had focus, like its sibling buttons; Mod+Enter and the menu keep editCommand.
+   */
+  private toolbarAction(a: ToolbarAction): void {
+    // A modal dialog makes the bar unclickable; checked anyway, like command() does.
+    if (this.closing || document.querySelector('dialog[open]')) return
+    if (!this.formatAllowed('toolbar')) {
+      if (this.shownId !== null) this.editor.focus()
+      return
+    }
+    if (a.kind === 'pagebreak') {
+      insertPageBreak(this.editor)
+      this.editor.focus()
+      return
+    }
+    void this.runFormat(a, 'toolbar')
+  }
+
+  /**
+   * Runs one format action on the shown note and gives focus back to the editor. „Link“ reads
+   * the clipboard first, only on that click (spec „Link“); after the await the same tab must
+   * still be shown in Edit mode, unfrozen, with no dialog or (for a menu command) text field in
+   * the way, and the link applies to the selection as it is then.
+   */
+  private async runFormat(action: FormatAction, from: 'menu' | 'toolbar'): Promise<void> {
+    let clipboard: string | null = null
+    if (action.kind === 'format' && action.id === 'link') {
+      const tabId = this.shownId
+      clipboard = await readClipboardText()
+      const target = this.menuTarget()
+      const still =
+        this.shownId === tabId &&
+        !isFrozen(this.editor.state) &&
+        this.formatAllowed(from === 'toolbar' && target === 'field' ? 'toolbar' : target)
+      if (!still) return
+    }
+    runFormatAction(this.editor, action, clipboard)
+    this.editor.focus()
+  }
+
+  /**
+   * Einfügen → „Tabelle …“: a menu cannot hold the size grid, so a small dialog asks. The tab
+   * may change, the window start closing or Present begin while it is open: checked again.
+   */
+  private async insertTableAsked(): Promise<void> {
+    const tabId = this.shownId
+    const size = await askTableSize()
+    if (size && this.shownId === tabId && this.formatAllowed(this.menuTarget())) {
+      runFormatAction(this.editor, { kind: 'table-insert', cols: size.cols, rows: size.rows })
+    }
+    if (this.shownId !== null) this.editor.focus()
+  }
+
+  /**
+   * Toolbar on/off (status switch „Leiste“, Ansicht → „Formatierungsleiste ein/aus“). Edit mode
+   * only: Present shows no toolbar, so a toggle there would change something invisible.
+   */
+  private toggleToolbar(): void {
+    if (this.mode === 'present') return
+    this.toolbarOn = !this.toolbarOn
+    this.mdo
+      .saveSession({ toolbar: { edit: this.toolbarOn } })
+      .catch((e: unknown) => console.error('saveSession(toolbar) failed', e))
+    this.refresh()
+    if (this.shownId !== null) this.editor.focus()
+  }
+
+  private renderToolbar(): void {
+    this.toolbar.render(
+      toolbarState({
+        mode: this.mode,
+        on: this.toolbarOn,
+        shown: this.shownKind(),
+        state: this.shownId === null ? null : this.editor.state,
+      }),
+    )
   }
 
   /** Edit commands go to CodeMirror unless another text field (dialog, panel) has focus. */
@@ -885,6 +1038,8 @@ export class App {
       if (shown) this.editor.dispatch(spec)
       else this.store.updateState(tab.id, state.update(spec).state)
     }
+    // Mode or view changed: the toolbar shows or hides now, not a frame later.
+    this.toolbarSync.now()
   }
 
   private async enterPresent(): Promise<void> {
@@ -1743,7 +1898,12 @@ export class App {
     )
   }
 
-  private refresh(): void {
+  /**
+   * Re-renders tab bar, status line and toolbar. `toolbar: 'now'` (show(), mode switches, the
+   * toggle, setState paths) renders the toolbar at once; `'frame'` (edits from
+   * dispatchTransactions) leaves it to the frame already scheduled there.
+   */
+  private refresh(toolbar: 'now' | 'frame' = 'now'): void {
     const tab = this.store.active
     this.tabBar.render(this.store.all, this.store.activeIndex, (t) => this.unsaved(t))
     const hold = tab ? (this.holdWarnings.get(tab.id) ?? null) : null
@@ -1756,11 +1916,16 @@ export class App {
     const doc = this.shownId === null ? null : this.editor.state
     const md = tab === null || isMarkdownTab(tab)
     this.status.render(tab ? fileName(tab.path) : null, state, error, md ? this.view : 'code', {
+      toolbar: this.toolbarOn,
       outline: this.outlineOn.edit,
       hasHeader: md && doc !== null && frontmatterRange(doc.doc) !== null,
       yamlOn: doc !== null && !doc.field(headerHidden),
     })
     this.status.renderZoom(this.zoom.edit)
+    // show(), mode switches, the toggle and setState paths all end here (spec: refresh in show()
+    // and after every setState/reconfigure, besides the per-frame update on transactions).
+    if (toolbar === 'now') this.toolbarSync.now()
+    else this.toolbarSync.schedule()
     document.title = tab
       ? `${fileName(tab.path)}${state === 'dirty' ? ' •' : ''} – Markdown Office`
       : 'Markdown Office'

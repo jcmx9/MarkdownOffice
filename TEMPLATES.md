@@ -180,7 +180,7 @@ The template must render the body as:
 | A paragraph of ≤ 4 lines directly before a table | wrapped in `<mdo-keep after="par\|block">` … `</mdo-keep>` | handle `mdo-keep` (memo: `block(sticky: true)`) |
 | `Term` + next line `: Definition` | `<dl><dt>Term</dt><dd>` + Markdown + `</dd></dl>` | optionally override `terms` in `scope` (cmarker calls it with `(term, description)` arrays) |
 | Single line breaks inside a paragraph (only with `hard-breaks: true`) | `\` at line end | nothing |
-| `==text==` | `<mark>text</mark>` | nothing (cmarker → `highlight`; style with `set highlight`) |
+| `==text==` (not applied in inline code or `$…$` formulas) | `<mark>text</mark>` | nothing (cmarker → `highlight`; style with `set highlight`) |
 | `![Alt](path){width=50% height=8cm}` | `<img src="path" alt="Alt" width="50%" height="227">` (absolute units → integer pt, `px` × 0.75) | nothing beyond the `image` override |
 
 Mixed task lists (tasks and plain items) stay lists; cmarker draws the checkbox via `task-list-marker: (checked) => …` (optional).
@@ -382,6 +382,7 @@ Tokens that refer to other tokens (`--mdo-hN-font`, `--mdo-hN-color`, `--mdo-tab
 | `--mdo-list-indent` | `1.12em` | hanging indent of list items: the bullet or task box and the space after it fill it, continuation lines start at it; see *Lists* below |
 | `--mdo-table-tracking` | `-0.02em` | letter spacing in the rendered table |
 | `--mdo-code-size` | `9pt` | size in code blocks (inline code stays `0.9em`) |
+| `--mdo-mark-bg` | `#fbeab0` | background of `==highlight==` (`.mdo-hl`); the default (memo's). A set that changes Typst's `highlight` fill should change this too. Only the background, the text keeps its colour |
 | `--mdo-titleblock-align` | `center` | alignment of the head block |
 
 **Optical size.** Typst sets a variable font's `opsz` axis to the font size in pt, which changes glyph widths and so the line breaks. The preview must do the same, independent of the zoom. You normally write nothing: when a rule sets `--mdo-body-size`, `--mdo-h1-size`, `--mdo-h2-size` or `--mdo-h3-size` to a plain pt length (`11pt`, `10.5pt`), the app adds the matching `--mdo-<role>-opsz` with that number (`11`, `10.5`; not zoomed). Write the opsz token yourself in the same rule to override it (unitless: `--mdo-body-opsz: 11`). If a rule sets a size twice, the last kept declaration counts, as in the browser. Sizes in other units (`em`, `px`, `mm`, `var()`, `calc()`) or no size token derive nothing, and that role keeps the default above.

@@ -80,6 +80,8 @@ const INLINE: Record<string, { cls: string; marks: string[] }> = {
   Emphasis: { cls: 'mdo-em', marks: ['EmphasisMark'] },
   StrongEmphasis: { cls: 'mdo-strong', marks: ['EmphasisMark'] },
   Strikethrough: { cls: 'mdo-strike', marks: ['StrikethroughMark'] },
+  // `==x==` like the PDF's <mark> (Highlight/HighlightMark come from HighlightSyntax)
+  Highlight: { cls: 'mdo-hl', marks: ['HighlightMark'] },
   InlineCode: { cls: 'mdo-code-inline', marks: ['CodeMark'] },
   Link: { cls: 'mdo-link', marks: ['LinkMark', 'URL', 'LinkTitle', 'LinkLabel'] },
 }
