@@ -15,7 +15,7 @@ export interface Dirs {
   root: string
   notes: string
   userData: string
-  /** Empty user template folder (MDO_TEMPLATES): never the real ~/Documents. */
+  /** Empty user template folder (MDO_TEMPLATES): never the real ~/Markdown Office. */
   templates: string
 }
 
@@ -106,7 +106,7 @@ export async function makeDirs(): Promise<Dirs> {
 
 /**
  * Installs a fixture set (tests/fixtures/sets/<name>) as a user set: copied into the test's
- * MDO_TEMPLATES folder, so the real ~/Documents never sees it.
+ * MDO_TEMPLATES folder, so the real ~/Markdown Office never sees it.
  */
 export async function installSet(dirs: Dirs, name: string): Promise<void> {
   await cp(join(__dirname, '..', 'fixtures', 'sets', name), join(dirs.templates, name), {
@@ -259,7 +259,7 @@ export async function launch(
   const dirs = opts.dirs ?? (await makeDirs())
   await writeFile(
     join(dirs.userData, 'settings.json'),
-    // Never the real ~/Documents/Markdown Office/Snippets: a folder in the temp root (not created).
+    // Never the real ~/Markdown Office/Snippets: a folder in the temp root (not created).
     JSON.stringify({
       defaultFolder: dirs.notes,
       snippetFolder: join(dirs.root, 'Snippets'),

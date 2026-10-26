@@ -21,7 +21,7 @@ A set is a Typst template plus optional companion files, all sharing one name:
 
 | Where | Layout | Notes |
 |-------|--------|-------|
-| User folder | `<MDO_TEMPLATES>/<name>.typ` | flat file, no sub-folder; default `~/Documents/Markdown Office/Vorlagen/` (Windows: the *Documents* folder + `\Markdown Office\Vorlagen`) |
+| User folder | `<MDO_TEMPLATES>/<name>.typ` | flat file, no sub-folder; default `~/Markdown Office/Vorlagen/` (Windows: `%USERPROFILE%\Markdown Office\Vorlagen`; an existing `<Documents>/Markdown Office` from versions up to 26.10.5 is used while the home one does not exist) |
 | Bundled sets | `<MDO_SETS_DIR>/<name>/<name>.typ` | default `<pipeline>/../sets`; the app ships `<resources>/sets/memo/` |
 | Set repository | `<name>.typ`, `<name>.css`, `<name>.preview.yaml`, `<name>.header.md` at the repo root | extracted as-is into `sets/<name>/` |
 
@@ -33,8 +33,8 @@ Keep the set in **one self-contained `.typ` file**. Only import from the pipelin
 
 1. Value: `--template VALUE` on the command line wins; otherwise the front-matter key `template:`; otherwise `memo`.
 2. A **name** is looked up in this order, first hit wins:
-   1. `${MDO_TEMPLATES:-~/Documents/Markdown Office/Vorlagen}/<name>.typ`
-   2. `${MDO_TEMPLATES:-~/Documents/Markdown Office/Vorlagen}/<name>/<name>.typ` (a set folder, so that a cloned or catalog-installed set repo works as is)
+   1. `${MDO_TEMPLATES:-~/Markdown Office/Vorlagen}/<name>.typ`
+   2. `${MDO_TEMPLATES:-~/Markdown Office/Vorlagen}/<name>/<name>.typ` (a set folder, so that a cloned or catalog-installed set repo works as is)
    3. `${MDO_SETS_DIR:-<pipeline>/../sets}/<name>/<name>.typ`
 3. A **`.typ` value**: `~`, `$VAR`, `${VAR}`, `%VAR%` and `%XX` are expanded; a relative path counts from the caller's working directory (`--template`) or from the note's folder / `MDO_BASE_DIR` (`template:`).
 4. Not found or invalid: message on stderr, exit 1. No fallback to `memo`.
@@ -86,7 +86,7 @@ A set that needs a sender (a letter) reads a profile: a YAML file plus the files
 
 | Value of `profile:` | Looked up |
 |---|---|
-| a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `<name>.yaml` 1. in `profiles/` in the note's folder (or `MDO_BASE_DIR`), 2. in `<set>/profiles/` in the templates folder (`~/Documents/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`; the set's profiles, also for a bundled set – only when `template:` is a set name, not a `.typ` file), 3. in `profiles/` in the templates folder (shared by all sets), 4. in `profiles/` in the folder of the resolved set (its example profiles) – the first existing file wins |
+| a name (`a-z`, `0-9`, `_`, `-`), e.g. `kanzlei` | `<name>.yaml` 1. in `profiles/` in the note's folder (or `MDO_BASE_DIR`), 2. in `<set>/profiles/` in the templates folder (`~/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`; the set's profiles, also for a bundled set – only when `template:` is a set name, not a `.typ` file), 3. in `profiles/` in the templates folder (shared by all sets), 4. in `profiles/` in the folder of the resolved set (its example profiles) – the first existing file wins |
 | a path ending in `.yaml`/`.yml` | relative to the note, `~`, `$VAR`, `${VAR}` and `%VAR%` expanded; the file must lie in the note's folder (or `MDO_BASE_DIR`) or the templates folder, with no hidden folder (name starting with `.`) on the way; anything else is refused |
 
 **Overriding values per note.** A set that prints profile values may let the note override single ones: `x-profile-<key>` in the front matter replaces the profile's `<key>` (for example `x-profile-phone`). The editor preview follows the same convention for `{profile.<key>}` (section 8). `signature` cannot be overridden: it names a file next to the profile.

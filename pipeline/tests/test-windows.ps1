@@ -60,7 +60,7 @@ $StagesBefore = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directo
 $Work     = Join-Path $Repo 'build\tmp\mdo win test'
 $failed   = 0
 # Leerer Vorlagen-Ordner (mit Leerzeichen) im Temp-Ordner: ein echter Ordner
-# "Dokumente\Markdown Office\Vorlagen" des Runners kann das mitgelieferte Set nicht
+# "Markdown Office\Vorlagen" des Runners (im Profil oder in "Dokumente") kann das mitgelieferte Set nicht
 # ueberschatten. Tests mit eigenem Set setzen MDO_TEMPLATES selbst und stellen zurueck.
 $EmptyTemplates = Join-Path ([IO.Path]::GetTempPath()) ('mdo keine vorlagen ' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $EmptyTemplates | Out-Null

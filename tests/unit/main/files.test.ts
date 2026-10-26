@@ -20,6 +20,7 @@ import {
   diskConflict,
   hashBytes,
   NotUtf8Error,
+  newNoteError,
   newNotePath,
   noteBytes,
   readNote,
@@ -38,6 +39,28 @@ const posixOnly = process.platform === 'win32' ? it.skip : it
 describe('timestampName', () => {
   it('formats local time with zero padding', () => {
     expect(timestampName(new Date(2026, 0, 2, 3, 4, 5))).toBe('2026-01-02_03-04-05.md')
+  })
+})
+
+describe('newNoteError', () => {
+  const err = (code: string) => Object.assign(new Error(code), { code })
+
+  it('Windows, no write access: names the folder and the controlled folder access', () => {
+    const text = newNoteError('C:\\Users\\u\\Dokumente\\Markdown Office', err('EPERM'), 'win32')
+    expect(text).toContain('„C:\\Users\\u\\Dokumente\\Markdown Office“ ist schreibgeschützt')
+    expect(text).toContain('überwachter Ordnerzugriff')
+    expect(newNoteError('C:\\x', err('EACCES'), 'win32')).toContain('Ransomware-Schutz')
+  })
+
+  it('elsewhere: no Windows hint; other errors name their code or message', () => {
+    const denied = newNoteError('/n', err('EACCES'), 'darwin')
+    expect(denied).toBe(
+      'Neue Notiz nicht möglich: „/n“ ist schreibgeschützt. In den Einstellungen einen anderen Notizordner wählen.',
+    )
+    expect(newNoteError('/n', err('ENOSPC'), 'linux')).toContain(
+      'lässt sich nicht anlegen (ENOSPC)',
+    )
+    expect(newNoteError('/n', new Error('kaputt'), 'linux')).toContain('(kaputt)')
   })
 })
 
