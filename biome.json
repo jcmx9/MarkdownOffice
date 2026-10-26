@@ -6,7 +6,8 @@
       "**",
       "!pipeline/tests/fixtures",
       "!tests/fixtures/mermaid",
-      "!tests/fixtures/math"
+      "!tests/fixtures/math",
+      "!resources/toolbar-icons"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

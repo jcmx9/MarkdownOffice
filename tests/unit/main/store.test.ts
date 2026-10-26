@@ -146,14 +146,8 @@ describe('session', () => {
     expect(s.recent).toHaveLength(10)
   })
 
-  it('outlineWidth: missing or invalid → null (default width), numbers clamped to 10–40em', () => {
-    expect(DEFAULT_SESSION.outlineWidth).toBeNull()
-    expect(sanitizeSession({}).outlineWidth).toBeNull()
-    expect(sanitizeSession({ outlineWidth: 22.5 }).outlineWidth).toBe(22.5)
-    expect(sanitizeSession({ outlineWidth: 3 }).outlineWidth).toBe(10)
-    expect(sanitizeSession({ outlineWidth: 99 }).outlineWidth).toBe(40)
-    expect(sanitizeSession({ outlineWidth: '20' }).outlineWidth).toBeNull()
-    expect(sanitizeSession({ outlineWidth: Number.NaN }).outlineWidth).toBeNull()
+  it('drops the outline width of older sessions (the width fits itself on showing)', () => {
+    expect(sanitizeSession({ outlineWidth: 22.5 })).not.toHaveProperty('outlineWidth')
   })
   it('outline: missing → both off, booleans kept, anything else → off', () => {
     expect(DEFAULT_SESSION.outline).toEqual({ edit: false, present: false })
@@ -167,6 +161,17 @@ describe('session', () => {
       present: false,
     })
     expect(sanitizeSession({ outline: true }).outline).toEqual({ edit: false, present: false })
+  })
+  // Formatting toolbar: on by default, so old sessions (written before the toolbar existed) and
+  // anything hand-edited show it; only an explicit false hides it.
+  it('toolbar: missing or old session → on, false kept, anything else → on', () => {
+    expect(DEFAULT_SESSION.toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({}).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ outline: { edit: true } }).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ toolbar: { edit: false } }).toolbar).toEqual({ edit: false })
+    expect(sanitizeSession({ toolbar: { edit: true } }).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ toolbar: { edit: 'no' } }).toolbar).toEqual({ edit: true })
+    expect(sanitizeSession({ toolbar: false }).toolbar).toEqual({ edit: true })
   })
 })
 

@@ -18,6 +18,12 @@ describe('renderInline', () => {
     expect(el.querySelector('s.mdo-strike')?.textContent).toBe('weg')
     expect(el.querySelector('span.mdo-link')?.textContent).toBe('Link')
   })
+  it('renders ==x== as <mark class="mdo-hl"> without its marks', () => {
+    const el = render('a ==b== c')
+    expect(el.textContent).toBe('a b c')
+    expect(el.querySelector('mark.mdo-hl')?.textContent).toBe('b')
+    expect(render('$a == b == c$').querySelector('.mdo-hl')).toBeNull()
+  })
   it('keeps bare URLs and escapes as text', () => {
     const el = render('siehe https://x.de \\*kein\\*')
     expect(el.textContent).toBe('siehe https://x.de *kein*')

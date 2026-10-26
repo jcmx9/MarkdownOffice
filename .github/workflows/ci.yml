@@ -124,6 +124,11 @@ jobs:
         if: runner.os != 'Windows'
         run: bash pipeline/tests/test-typography.sh
 
+      # The editor's ==highlights== (src/core/highlight.ts) against markdown.typ's marks().
+      - name: Highlight parity (core against Typst)
+        if: runner.os != 'Windows'
+        run: bash pipeline/tests/test-marks.sh
+
       # The preview's Mermaid diagrams (src/core/mermaid.ts running the bundled mmdr wasm)
       # against Typst running the same plugin with memo's arguments, plus the committed references.
       - name: Mermaid parity (core against Typst)

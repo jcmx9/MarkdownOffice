@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import type { MenuItemConstructorOptions } from 'electron'
-import { revealLabel } from '../shared/reveal'
+import { revealAccelerator, revealLabel } from '../shared/reveal'
 import type { MenuCommand } from '../shared/types'
 
 export interface MenuDeps {
@@ -83,6 +83,20 @@ export class PresentKeyGuard {
   }
 }
 
+/**
+ * The alert entries of Einfügen → Hinweisbox, the same as the toolbar's Box menu
+ * (renderer/editor/format.ts ALERT_ENTRIES: German keyword aliases of the pipeline contract,
+ * the inserted GFM keyword shown). Copied because main must not import the renderer's
+ * CodeMirror module; menu.test.ts keeps both lists equal.
+ */
+export const ALERT_MENU = [
+  { type: 'note', label: 'Info', keyword: 'NOTE' },
+  { type: 'tip', label: 'Tipp', keyword: 'TIP' },
+  { type: 'important', label: 'Wichtig', keyword: 'IMPORTANT' },
+  { type: 'warning', label: 'Hinweis', keyword: 'WARNING' },
+  { type: 'caution', label: 'Achtung', keyword: 'CAUTION' },
+] as const
+
 /** Electron passes this as the click handler's third argument. */
 interface ClickEvent {
   triggeredByAccelerator?: boolean
@@ -155,8 +169,8 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       { label: 'Zuletzt geöffnet', submenu: recent },
       sep,
       item('rename', 'Umbenennen …', 'CmdOrCtrl+Shift+R'),
-      // No accelerator: a rare action; the label names the platform's own file manager.
-      item('reveal', revealLabel(d.platform)),
+      // The label names the platform's own file manager.
+      item('reveal', revealLabel(d.platform), revealAccelerator(d.platform)),
       item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),
       sep,
       item('export', 'PDF exportieren', 'CmdOrCtrl+E'),
@@ -189,6 +203,37 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     ],
   }
 
+  // The formatting toolbar's commands for menu and keyboard users (spec „Formatting toolbar“).
+  // No accelerators on purpose: CodeMirror's default keys stay (Mod+I selects the parent syntax,
+  // Mod+Shift+K deletes a line, Mod+1…9 switch tabs). The table entries act on the table at the
+  // cursor and do nothing elsewhere; the menu cannot know the cursor, so they stay enabled.
+  const format: MenuItemConstructorOptions = {
+    label: 'Format',
+    submenu: [
+      item('format-h1', 'Überschrift 1'),
+      item('format-h2', 'Überschrift 2'),
+      item('format-h3', 'Überschrift 3'),
+      sep,
+      item('format-bold', 'Fett'),
+      item('format-italic', 'Kursiv'),
+      item('format-strike', 'Durchgestrichen'),
+      item('format-mark', 'Markieren'),
+      item('format-code', 'Code'),
+      sep,
+      item('format-bullet', 'Aufzählung'),
+      item('format-numbered', 'Nummerierte Liste'),
+      item('format-task', 'Aufgabe'),
+      item('format-quote', 'Zitat'),
+      sep,
+      item('format-link', 'Link'),
+      sep,
+      item('table-row-below', 'Tabellenzeile darunter einfügen'),
+      item('table-col-right', 'Tabellenspalte rechts einfügen'),
+      item('table-row-delete', 'Tabellenzeile löschen'),
+      item('table-col-delete', 'Tabellenspalte löschen'),
+    ],
+  }
+
   const insert: MenuItemConstructorOptions = {
     label: 'Einfügen',
     submenu: [
@@ -196,6 +241,14 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       // comes from the picker, so the menu itself names no set.
       item('insert-template', 'Vorlage …'),
       item('insert-pagebreak', 'Seitenumbruch', 'CmdOrCtrl+Enter'),
+      sep,
+      // A menu cannot hold the toolbar's size grid: the renderer asks for the size in a dialog.
+      item('insert-table', 'Tabelle …'),
+      // The keyboard path to the Box menu (toolbar buttons never take focus).
+      {
+        label: 'Hinweisbox',
+        submenu: ALERT_MENU.map((a) => item(`insert-alert-${a.type}`, `${a.label} (${a.keyword})`)),
+      },
     ],
   }
 
@@ -208,6 +261,8 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       item('toggle-view', 'Code-Ansicht ein/aus', 'CmdOrCtrl+Shift+M'),
       item('toggle-header', 'YAML-Header ein/aus', 'CmdOrCtrl+Shift+H'),
       item('toggle-outline', 'Gliederung ein/aus', 'CmdOrCtrl+Shift+O'),
+      // Mod+Shift+T: checked free of menu accelerators and CodeMirror default bindings (spec).
+      item('toggle-toolbar', 'Formatierungsleiste ein/aus', 'CmdOrCtrl+Shift+T'),
       sep,
       item('fold', 'Abschnitt einklappen', `${foldKey}[`),
       item('unfold', 'Abschnitt ausklappen', `${foldKey}]`),
@@ -246,7 +301,16 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
     submenu: [{ role: 'about', label: 'Über Markdown Office' }],
   }
 
-  return [...(mac ? [appMenu] : []), file, edit, insert, view, window, ...(mac ? [] : [help])]
+  return [
+    ...(mac ? [appMenu] : []),
+    file,
+    edit,
+    format,
+    insert,
+    view,
+    window,
+    ...(mac ? [] : [help]),
+  ]
 }
 
 /**
@@ -270,7 +334,7 @@ export function noteMenuTemplate(
   })
   return [
     item('rename', 'Umbenennen …', 'CmdOrCtrl+Shift+R'),
-    item('reveal', revealLabel(platform)),
+    item('reveal', revealLabel(platform), revealAccelerator(platform)),
     item('export', 'PDF exportieren', 'CmdOrCtrl+E'),
     { type: 'separator' },
     item('close-tab', 'Tab schließen', 'CmdOrCtrl+W'),

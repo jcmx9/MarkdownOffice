@@ -213,38 +213,76 @@ test('a long heading stays one line; hover shows it in full, right-aligned', asy
   await expect(tip).toBeHidden()
   const widths = await page.evaluate(() => ({
     bar: (document.querySelector('#outline') as HTMLElement).offsetWidth,
-    win: window.innerWidth,
+    workspace: (document.querySelector('#workspace') as HTMLElement).clientWidth,
   }))
-  expect(widths.bar).toBeLessThanOrEqual(widths.win * 0.33 + 1)
+  // Fitted to the titles, at most a fifth of the workspace: the long one ends in "…".
+  expect(widths.bar).toBeLessThanOrEqual(widths.workspace * 0.2 + 1)
   await app.close()
 })
 
-test('the outline keeps one width (18em), whatever the headings', async () => {
+test('long child headings end in … inside the bar, also after dragging it narrower', async () => {
+  const long = `Unterkapitel ${'y'.repeat(80)}`
+  const { app, page } = await openNote(`# Kapitel\n\n## ${long}\n\nText.\n`)
+  await clickMenu(app, 'toggle-outline')
+  await expect(labels(page)).toHaveCount(2)
+  const fits = () =>
+    labels(page)
+      .nth(1)
+      .evaluate((el) => {
+        const bar = (document.querySelector('#outline') as HTMLElement).getBoundingClientRect()
+        const r = el.getBoundingClientRect()
+        // Cut with "…" (scrollWidth > clientWidth) and ending inside the bar.
+        return el.scrollWidth > el.clientWidth && r.right <= bar.right + 1
+      })
+  expect(await fits()).toBe(true)
+  const grip = page.locator('#outline-grip')
+  const box = await grip.boundingBox()
+  if (!box) throw new Error('no grip')
+  await page.mouse.move(box.x + box.width / 2, box.y + 100)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + 100, { steps: 5 })
+  await page.mouse.up()
+  await expect.poll(fits).toBe(true)
+  await app.close()
+})
+
+test('the outline fits its titles when shown and keeps that width while typing', async () => {
   const { app, page } = await openNote('# A\n\nText.\n\n# B\n\nText.\n')
   await clickMenu(app, 'toggle-outline')
   await expect(labels(page)).toHaveCount(2)
   const measure = () =>
-    page.evaluate(() => {
-      const el = document.querySelector('#outline') as HTMLElement
-      return { bar: el.offsetWidth, em: Number.parseFloat(getComputedStyle(el).fontSize) }
-    })
+    page.evaluate(() => ({
+      bar: (document.querySelector('#outline') as HTMLElement).offsetWidth,
+      workspace: (document.querySelector('#workspace') as HTMLElement).clientWidth,
+      cut: [...document.querySelectorAll<HTMLElement>('#outline .mdo-ol-label')].some(
+        (l) => l.scrollWidth > l.clientWidth,
+      ),
+    }))
   const short = await measure()
-  expect(
-    Math.abs(
-      short.bar - Math.min(18 * short.em, (await page.evaluate(() => window.innerWidth)) * 0.33),
-    ),
-  ).toBeLessThan(2)
+  expect(short.cut).toBe(false)
   await page.locator('.cm-content').click()
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+End' : 'Control+End')
-  await page.keyboard.type('\n\n# Eine deutlich längere Überschrift, die nicht mehr passt\n')
+  await page.keyboard.type('\n\n# Eine deutlich längere Überschrift\n')
   await expect(labels(page)).toHaveCount(3)
+  // Stable while shown: typing never changes the width.
   expect((await measure()).bar).toBe(short.bar)
+  // Shown again: fitted to the new, longer title, at most a fifth of the workspace.
+  await clickMenu(app, 'toggle-outline')
+  await clickMenu(app, 'toggle-outline')
+  // Showing first restores the CSS default (18em) and fits on the next frame; that default is
+  // already wider than `short`, so wait for the fitted width itself, not just for "wider".
+  await expect
+    .poll(async () => {
+      const m = await measure()
+      return m.bar > short.bar && m.bar <= m.workspace * 0.2 + 1
+    })
+    .toBe(true)
   await app.close()
 })
 
 test('a classic scrollbar does not cut a medium heading short', async () => {
-  // Fits 18em even in a ~1000px window with the H1 serif at 16px (Windows CI windows are narrower).
-  const medium = 'Mittellange Überschrift'
+  // Fits a fifth of a ~1000px workspace with the H1 serif at 16px (Windows CI windows are narrower).
+  const medium = 'Mittel'
   const body = Array.from({ length: 80 }, (_, i) => `# Kurz ${i}\n\nText.\n`).join('\n')
   const { app, page } = await openNote(`# ${medium}\n\nText.\n\n${body}`)
   // Force a non-overlay scrollbar as on Windows/Linux (CSSOM rule, not blocked by the CSP).
@@ -266,7 +304,7 @@ test('a classic scrollbar does not cut a medium heading short', async () => {
   })
   expect(m.scrollbar).toBeGreaterThan(0)
   expect(m.overflows, JSON.stringify(m)).toBe(false)
-  expect(m.bar).toBeLessThanOrEqual(m.win * 0.33 + 1)
+  expect(m.bar).toBeLessThanOrEqual(m.win * 0.2 + 1)
   await app.close()
 })
 
@@ -292,81 +330,62 @@ test('the outline grows and shrinks with the zoom; H2 rows hang from tree lines'
   await app.close()
 })
 
-test('the outline width is dragged by its left edge, kept across restarts, default in Present, draggable there for one Present only', async () => {
-  const o = await openNote()
-  const dirs = { root: o.root, notes: o.notes, userData: o.userData, templates: o.templates }
-  const { app, page } = o
+test('the outline fits its titles on showing and in Present; a dragged width lasts until then', async () => {
+  const { app, page } = await openNote()
   await clickMenu(app, 'toggle-outline')
   await expect(outline(page)).toBeVisible()
   const width = () => outline(page).evaluate((el) => (el as HTMLElement).offsetWidth)
-  const before = await width()
   const grip = page.locator('#outline-grip')
   await expect(grip).toBeVisible()
-  const box = await grip.boundingBox()
-  if (!box) throw new Error('no grip')
-  await page.mouse.move(box.x + box.width / 2, box.y + 100)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2 - 60, box.y + 100, { steps: 5 })
-  await page.mouse.up()
-  await expect.poll(width).toBeGreaterThan(before + 50)
-  const dragged = await width()
-
-  // Present always uses the default width; back in Edit the dragged width returns.
+  await expect(outline(page)).toHaveClass(/mdo-ol-custom/)
+  const fitted = await width()
+  // Press until the drag has really started (the grip sets body.mdo-ol-resizing on
+  // pointerdown): in Present the window can still change its size after entering (Linux CI:
+  // Xvfb applies fullscreen late), so a grip position measured once could be stale. From then
+  // on the grip captures the pointer and the new width depends only on the distance moved.
+  const drag = async (dx: number) => {
+    let start = { x: 0, y: 0 }
+    await expect(async () => {
+      const box = await grip.boundingBox()
+      if (!box) throw new Error('no grip')
+      start = { x: box.x + box.width / 2, y: box.y + 100 }
+      await page.mouse.move(start.x, start.y)
+      await page.mouse.down()
+      try {
+        await expect(page.locator('body.mdo-ol-resizing')).toHaveCount(1, { timeout: 500 })
+      } catch (err) {
+        await page.mouse.up()
+        throw err
+      }
+    }).toPass({ timeout: 10_000 })
+    await page.mouse.move(start.x + dx, start.y, { steps: 5 })
+    await page.mouse.up()
+  }
+  await drag(-60)
+  await expect.poll(width).toBeGreaterThan(fitted + 50)
+  // Hidden and shown again: fitted again, the dragged width is gone.
+  await clickMenu(app, 'toggle-outline')
+  await clickMenu(app, 'toggle-outline')
+  await expect.poll(width).toBe(fitted)
+  // Present fits it too, and a drag there lasts until Present ends.
+  await drag(-60)
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await clickMenu(app, 'toggle-outline')
   await expect(outline(page)).toBeVisible()
-  await expect(grip).toBeVisible()
-  await expect(outline(page)).not.toHaveClass(/mdo-ol-custom/)
-  await expect.poll(width).toBe(before)
-  // Dragging in Present widens the outline for this Present only.
-  // Entering Present asks for fullscreen, and the window can still change its size after the
-  // checks above (Linux CI: Xvfb applies it late), so a grip position measured once could be
-  // stale and the press missed the grip. Press until the drag has really started (the grip
-  // sets body.mdo-ol-resizing on pointerdown); from then on the grip captures the pointer and
-  // the new width depends only on the distance moved.
-  let start = { x: 0, y: 0 }
-  await expect(async () => {
-    const pbox = await grip.boundingBox()
-    if (!pbox) throw new Error('no grip in Present')
-    start = { x: pbox.x + pbox.width / 2, y: pbox.y + 100 }
-    await page.mouse.move(start.x, start.y)
-    await page.mouse.down()
-    try {
-      await expect(page.locator('body.mdo-ol-resizing')).toHaveCount(1, { timeout: 500 })
-    } catch (err) {
-      await page.mouse.up()
-      throw err
-    }
-  }).toPass({ timeout: 10_000 })
-  await page.mouse.move(start.x - 80, start.y, { steps: 5 })
-  await page.mouse.up()
-  await expect.poll(width).toBeGreaterThan(before + 60)
+  await expect.poll(width).toBe(fitted)
+  await drag(-80)
+  await expect.poll(width).toBeGreaterThan(fitted + 60)
   await shot(page, 'outline-present-grip')
-  // Leaving Present restores the saved Edit width, untouched by the Present drag.
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
-  await expect.poll(width).toBe(dragged)
-  // Entering Present again starts at the default width.
-  await clickMenu(app, 'toggle-present')
-  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
-  await expect.poll(width).toBe(before)
-  await clickMenu(app, 'toggle-present')
-  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
-  await expect.poll(width).toBe(dragged)
+  await expect.poll(width).toBe(fitted)
+  // Double-click on the grip fits it again after a drag.
+  await drag(-60)
+  await expect.poll(width).toBeGreaterThan(fitted + 50)
+  await grip.dblclick()
+  await expect.poll(width).toBe(fitted)
   await app.close()
-
-  const second = await launch({ dirs, args: [o.note] })
-  await expect(outline(second.page)).toBeVisible()
-  await expect
-    .poll(() => outline(second.page).evaluate((el) => (el as HTMLElement).offsetWidth))
-    .toBe(dragged)
-  // Double-click on the grip restores the default width.
-  await second.page.locator('#outline-grip').dblclick()
-  await expect
-    .poll(() => outline(second.page).evaluate((el) => (el as HTMLElement).offsetWidth))
-    .toBe(before)
-  await second.app.close()
 })
 
 test('entries read as a list: arrow with children, bullet without; levels are relative', async () => {
