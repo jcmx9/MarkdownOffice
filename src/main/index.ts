@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { app } from 'electron'
 import { argsFromArgv, HELP_TEXT, parseCli } from './cli'
 import { AppContext } from './context'
@@ -5,6 +6,7 @@ import { handleFontProtocol, registerFontScheme } from './font-protocol'
 import { registerIpc } from './ipc'
 import { pipelinePaths } from './pipeline'
 import { enableExistingTextSpellcheck } from './spellcheck/features'
+import { mdoBaseDir } from './templates'
 import { userDataOverride } from './user-data'
 
 // Must run before requestSingleInstanceLock: the lock lives in userData.
@@ -34,12 +36,23 @@ function isPathsData(data: unknown): data is { paths: string[] } {
   )
 }
 
+/** The app's folder; documents only to find a folder kept from earlier versions. */
+function baseDir(): string {
+  let documents = ''
+  try {
+    documents = app.getPath('documents')
+  } catch {
+    // No documents folder (service accounts): only the home folder counts.
+  }
+  return mdoBaseDir(app.getPath('home'), documents, existsSync)
+}
+
 function run(initial: string[]): void {
   const pipeline = {
     paths: pipelinePaths(app.isPackaged, process.resourcesPath, app.getAppPath()),
     version: app.getVersion(),
   }
-  const ctx = new AppContext(app.getPath('userData'), app.getPath('documents'), pipeline)
+  const ctx = new AppContext(app.getPath('userData'), baseDir(), pipeline)
   // openPaths canonicalises every path before allowing it or sending it to the renderer.
   const open = (paths: readonly string[]) => void ctx.openPaths(paths).catch(() => undefined)
   open(initial)

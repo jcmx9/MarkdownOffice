@@ -20,7 +20,7 @@ import {
 import { applyChanges } from '../core/header-merge'
 import { findingMessage } from '../core/validate-messages'
 import { validationContext } from '../core/validation-context'
-import { userTemplatesDir } from '../main/templates'
+import { mdoBaseDir, userTemplatesDir } from '../main/templates'
 import { validationInputs } from '../main/validation-inputs'
 import type { Env } from './launch'
 
@@ -73,7 +73,9 @@ function writeAtomic(link: string, bytes: Uint8Array): void {
 async function check(text: string, file: string, env: Env) {
   const root = env.MDO_PIPELINE_ROOT || path.dirname(path.resolve(process.argv[1] ?? file))
   const setsDir = env.MDO_SETS_DIR || path.join(root, '..', 'sets')
-  const userDir = userTemplatesDir(env, path.join(os.homedir(), 'Documents'))
+  const home = os.homedir()
+  const base = mdoBaseDir(home, path.join(home, 'Documents'), fs.existsSync)
+  const userDir = userTemplatesDir(env, base)
   const inputs = await validationInputs({
     setsDir,
     userDir,

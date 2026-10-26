@@ -48,6 +48,7 @@ const api: MdoApi = {
     ipcRenderer.invoke(Ch.previewInputs, path, template, profile),
   showNoteMenu: () => ipcRenderer.invoke(Ch.noteMenu),
   revealPath: (path) => ipcRenderer.invoke(Ch.revealPath, path),
+  openExternal: (url) => ipcRenderer.invoke(Ch.openExternal, url),
   openTemplatesFolder: () => ipcRenderer.invoke(Ch.openTemplatesFolder),
   getSettingsStatus: () => ipcRenderer.invoke(Ch.settingsStatus),
   updateSettings: (patch) => ipcRenderer.invoke(Ch.updateSettings, patch),

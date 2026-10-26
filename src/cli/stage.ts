@@ -13,7 +13,7 @@
 // search order, profile lookup order, `~`/$VAR/%XX expansion, MDO_BASE_DIR), so a note whose
 // files were found before still finds the same files. Where the two scripts differ, `win`
 // selects convert.ps1's behaviour (noted at each place).
-import { constants, type Dirent } from 'node:fs'
+import { constants, type Dirent, existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -23,6 +23,7 @@ import {
   svgHasExternalRefs,
   visibleImages,
 } from '../core/export-files'
+import { MDO_FOLDER, mdoBaseDir } from '../main/templates'
 import type { Env } from './launch'
 
 /** What MDO_MANIFEST points to (JSON). Every path is absolute and was validated. */
@@ -408,19 +409,23 @@ async function findLogo(
  * The options for writeManifest from the wrapper's environment (after invocation() filled in
  * MDO_PIPELINE_ROOT and MDO_SETS_DIR, and windowsTemplates() MDO_TEMPLATES on Windows). The
  * templates folder as the scripts derive it: MDO_TEMPLATES (relative to the caller's folder),
- * else build.sh's `$HOME/Documents/Markdown Office/Vorlagen`. On Windows without MDO_TEMPLATES
- * (no Documents folder, see windowsTemplates) there is none, as in convert.ps1.
+ * else build.sh's `<base>/Vorlagen` (base: mdoBaseDir of `$HOME` and `$HOME/Documents`). On
+ * Windows windowsTemplates always sets MDO_TEMPLATES; without it there is none.
  */
 export function manifestOptions(
   platform: string,
   env: Env,
   cwd: string,
   template: string,
+  exists: (p: string) => boolean = existsSync,
 ): ManifestOptions {
   const win = platform === 'win32'
   const P = win ? path.win32 : path.posix
-  // build.sh writes `${HOME:-}/Documents/…`: an empty HOME gives /Documents/…, not a relative path.
-  const fallback = win ? '' : `${env.HOME ?? ''}/Documents/Markdown Office/Vorlagen`
+  // build.sh writes `${HOME:-}/…`: an empty HOME gives /Markdown Office/…, not a relative path.
+  const home = `${env.HOME ?? ''}`
+  const fallback = win
+    ? ''
+    : P.join(mdoBaseDir(home || '/', `${home}/Documents`, exists, P), 'Vorlagen')
   const templates = env.MDO_TEMPLATES || fallback
   return {
     templatesDir: templates ? P.resolve(cwd, templates) : '',
@@ -439,15 +444,21 @@ export type Runner = (file: string, args: string[], timeoutMs: number) => Promis
 
 /**
  * Windows: the environment with MDO_TEMPLATES set to the folder convert.ps1 would use, so the
- * wrapper and the script agree. convert.ps1 takes `[Environment]::GetFolderPath('MyDocuments')`,
- * which OneDrive can redirect and Node cannot ask for; so the wrapper asks PowerShell once
- * (no profile, short timeout). On failure `%USERPROFILE%\Documents` stands in (then passed to
- * the script too). An empty answer (no Documents folder, service accounts) means no user
- * templates for both: MDO_TEMPLATES stays unset and convert.ps1 gets '' itself. An existing
- * MDO_TEMPLATES is kept.
+ * wrapper and the script agree: `<base>\Vorlagen` (base: mdoBaseDir of %USERPROFILE% and the
+ * documents folder, which only counts for a folder kept from earlier versions). convert.ps1
+ * takes `[Environment]::GetFolderPath('MyDocuments')`, which OneDrive can redirect and Node
+ * cannot ask for; so the wrapper asks PowerShell once (no profile, short timeout). On failure
+ * `%USERPROFILE%\Documents` stands in. Without USERPROFILE nothing is set (convert.ps1 decides
+ * itself). An existing MDO_TEMPLATES is kept.
  */
-export async function windowsTemplates(env: Env, powershell: string, run: Runner): Promise<Env> {
+export async function windowsTemplates(
+  env: Env,
+  powershell: string,
+  run: Runner,
+  exists: (p: string) => boolean = existsSync,
+): Promise<Env> {
   if (envLookup(env, 'MDO_TEMPLATES', true)) return env
+  const home = envLookup(env, 'USERPROFILE', true)
   let docs: string
   try {
     docs = (
@@ -466,11 +477,15 @@ export async function windowsTemplates(env: Env, powershell: string, run: Runner
     ).trim()
     docs = Buffer.from(docs, 'base64').toString('utf8')
   } catch {
-    const home = envLookup(env, 'USERPROFILE', true)
     docs = home ? path.win32.join(home, 'Documents') : ''
   }
-  if (!docs) return env
-  return { ...env, MDO_TEMPLATES: path.win32.join(docs, 'Markdown Office', 'Vorlagen') }
+  const base = home
+    ? mdoBaseDir(home, docs, exists, path.win32)
+    : docs
+      ? path.win32.join(docs, MDO_FOLDER)
+      : ''
+  if (!base) return env
+  return { ...env, MDO_TEMPLATES: path.win32.join(base, 'Vorlagen') }
 }
 
 /**

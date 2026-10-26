@@ -155,6 +155,11 @@ dialog.prompt input:focus-visible {
 #editor .cm-editor {
   height: 100%;
 }
+/* Cmd/Ctrl held over a link (ui/link-open.ts): the click will open it. */
+#editor.mdo-link-ready .cm-content,
+#editor.mdo-link-ready .cm-content * {
+  cursor: pointer;
+}
 #editor {
   flex: 1;
   min-width: 0;
@@ -802,4 +807,70 @@ dialog.validate fieldset.val-missing {
 }
 .cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail {
   color: inherit;
+}
+
+/* Find and replace (editor/search.ts): CodeMirror's panel in the app's chrome, not the note's
+   look. It sits inside #editor (paint containment), above the note. */
+#editor .cm-panels {
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
+  font:
+    13px system-ui,
+    sans-serif;
+}
+#editor .cm-panels-top {
+  border-bottom: 1px solid var(--line);
+}
+#editor .cm-search {
+  /* Inline layout: the panel's own <br> puts the replace row on its own line. */
+  padding: 6px 28px 6px 8px;
+  line-height: 2;
+}
+#editor .cm-search .cm-textfield {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--chrome-fg);
+  min-width: 14em;
+}
+#editor .cm-search .cm-textfield:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+#editor .cm-search .cm-button {
+  font: inherit;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  background-image: none;
+  color: var(--chrome-fg);
+}
+#editor .cm-search .cm-button:active {
+  background: var(--line-soft);
+}
+#editor .cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--chrome-muted);
+}
+#editor .cm-search button[name="close"] {
+  font-size: 16px;
+  color: var(--chrome-muted);
+}
+#editor .cm-searchMatch {
+  background: rgb(255 200 0 / 0.35);
+}
+#editor .cm-searchMatch-selected {
+  background: rgb(255 140 0 / 0.55);
+}
+/* Present rewrites nothing on the shared screen: the panel only finds there. */
+body.mdo-mode-present
+  #editor
+  .cm-search
+  :is(input[name="replace"], button[name="replace"], button[name="replaceAll"]) {
+  display: none;
 }

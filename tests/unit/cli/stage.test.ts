@@ -565,10 +565,10 @@ describe.runIf(posix)('sweepStaleStages', () => {
 })
 
 describe('manifestOptions', () => {
-  it('macOS/Linux: MDO_TEMPLATES (relative to the caller) or $HOME/Documents/…', () => {
+  it('macOS/Linux: MDO_TEMPLATES (relative to the caller) or $HOME/Markdown Office/…', () => {
     const env = { HOME: '/h', MDO_SETS_DIR: '/s', MDO_PIPELINE_ROOT: '/p', MDO_BASE_DIR: 'b' }
-    expect(manifestOptions('darwin', env, '/cwd', 'memo')).toEqual({
-      templatesDir: '/h/Documents/Markdown Office/Vorlagen',
+    expect(manifestOptions('darwin', env, '/cwd', 'memo', () => false)).toEqual({
+      templatesDir: '/h/Markdown Office/Vorlagen',
       setsDir: '/s',
       pipelineRoot: '/p',
       baseDir: 'b',
@@ -580,6 +580,18 @@ describe('manifestOptions', () => {
     expect(
       manifestOptions('linux', { ...env, MDO_TEMPLATES: 'tpl' }, '/cwd', '').templatesDir,
     ).toBe('/cwd/tpl')
+  })
+
+  it('macOS/Linux: a kept ~/Documents/Markdown Office while ~/Markdown Office is missing', () => {
+    const env = { HOME: '/h', MDO_SETS_DIR: '/s', MDO_PIPELINE_ROOT: '/p' }
+    const kept = (p: string) => p === '/h/Documents/Markdown Office'
+    expect(manifestOptions('darwin', env, '/cwd', '', kept).templatesDir).toBe(
+      '/h/Documents/Markdown Office/Vorlagen',
+    )
+    const both = (p: string) => kept(p) || p === '/h/Markdown Office'
+    expect(manifestOptions('darwin', env, '/cwd', '', both).templatesDir).toBe(
+      '/h/Markdown Office/Vorlagen',
+    )
   })
 
   it('Windows: MDO_TEMPLATES (set by windowsTemplates), else no templates folder', () => {
@@ -597,33 +609,48 @@ describe('windowsTemplates', () => {
   // PowerShell answers with the Base64 of the path's UTF-8 bytes (code-page proof).
   const b64 = (p: string) => `${Buffer.from(p, 'utf8').toString('base64')}\r\n`
 
-  it('asks PowerShell for MyDocuments and passes <docs>\\Markdown Office\\Vorlagen', async () => {
+  const fresh = 'C:\\Users\\u\\Markdown Office\\Vorlagen'
+  const none = () => false
+
+  it('passes %USERPROFILE%\\Markdown Office\\Vorlagen for a new install', async () => {
     let seen: string[] = []
-    const r = await windowsTemplates(env, 'ps.exe', async (file, args, timeout) => {
-      seen = [file, ...args]
-      expect(timeout).toBeLessThanOrEqual(5000)
-      return b64('D:\\OneDrive\\Dokumente')
-    })
+    const r = await windowsTemplates(
+      env,
+      'ps.exe',
+      async (file, args, timeout) => {
+        seen = [file, ...args]
+        expect(timeout).toBeLessThanOrEqual(5000)
+        return b64('D:\\OneDrive\\Dokumente')
+      },
+      none,
+    )
     expect(seen.slice(0, 4)).toEqual(['ps.exe', '-NoProfile', '-NonInteractive', '-Command'])
     expect(seen[4]).toContain("[Environment]::GetFolderPath('MyDocuments')")
     expect(seen[4]).toContain('ToBase64String')
-    expect(r.MDO_TEMPLATES).toBe('D:\\OneDrive\\Dokumente\\Markdown Office\\Vorlagen')
+    expect(r.MDO_TEMPLATES).toBe(fresh)
   })
 
-  it('keeps umlauts in the Documents path whatever the console code page', async () => {
-    const r = await windowsTemplates(env, 'ps.exe', answer(b64('C:\\Users\\Jürgen\\Dokumente ß')))
-    expect(r.MDO_TEMPLATES).toBe('C:\\Users\\Jürgen\\Dokumente ß\\Markdown Office\\Vorlagen')
+  it('keeps a <MyDocuments>\\Markdown Office from earlier versions (umlauts intact)', async () => {
+    const docs = 'C:\\Users\\Jürgen\\Dokumente ß'
+    const kept = (p: string) => p === `${docs}\\Markdown Office`
+    const r = await windowsTemplates(env, 'ps.exe', answer(b64(docs)), kept)
+    expect(r.MDO_TEMPLATES).toBe(`${docs}\\Markdown Office\\Vorlagen`)
   })
 
-  it('falls back to %USERPROFILE%\\Documents when PowerShell fails', async () => {
-    const r = await windowsTemplates(env, 'ps.exe', async () => {
+  it('falls back to %USERPROFILE%\\Documents for a kept folder when PowerShell fails', async () => {
+    const fail = async () => {
       throw new Error('timeout')
-    })
-    expect(r.MDO_TEMPLATES).toBe('C:\\Users\\u\\Documents\\Markdown Office\\Vorlagen')
+    }
+    const kept = (p: string) => p === 'C:\\Users\\u\\Documents\\Markdown Office'
+    expect((await windowsTemplates(env, 'ps.exe', fail, kept)).MDO_TEMPLATES).toBe(
+      'C:\\Users\\u\\Documents\\Markdown Office\\Vorlagen',
+    )
+    expect((await windowsTemplates(env, 'ps.exe', fail, none)).MDO_TEMPLATES).toBe(fresh)
   })
 
-  it('no Documents folder: no templates for both; an existing MDO_TEMPLATES is kept', async () => {
-    expect((await windowsTemplates(env, 'ps.exe', answer('\r\n'))).MDO_TEMPLATES).toBeUndefined()
+  it('no Documents folder: the profile folder; an existing MDO_TEMPLATES is kept', async () => {
+    expect((await windowsTemplates(env, 'ps.exe', answer('\r\n'), none)).MDO_TEMPLATES).toBe(fresh)
+    expect((await windowsTemplates({}, 'ps.exe', answer('\r\n'))).MDO_TEMPLATES).toBeUndefined()
     const set = { ...env, MDO_TEMPLATES: 'X' }
     expect(await windowsTemplates(set, 'ps.exe', answer(b64('D:\\no')))).toBe(set)
     const lower = { ...env, mdo_templates: 'X' }
