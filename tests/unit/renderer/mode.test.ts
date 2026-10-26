@@ -2,6 +2,7 @@
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
+import { formatMode } from '../../../src/renderer/editor/format'
 import { modeCompartment, modeExtensions, presentMode } from '../../../src/renderer/editor/mode'
 
 describe('mode compartment', () => {
@@ -10,6 +11,13 @@ describe('mode compartment', () => {
     expect(s.facet(presentMode)).toBe(true)
     const e = s.update({ effects: modeCompartment.reconfigure(modeExtensions('edit')) }).state
     expect(e.facet(presentMode)).toBe(false)
+  })
+  // The format commands read the mode from formatMode (format.ts): the compartment provides it.
+  it('provides formatMode for the format commands', () => {
+    const s = EditorState.create({ extensions: modeCompartment.of(modeExtensions('present')) })
+    expect(s.facet(formatMode)).toBe('present')
+    const e = s.update({ effects: modeCompartment.reconfigure(modeExtensions('edit')) }).state
+    expect(e.facet(formatMode)).toBe('edit')
   })
   it('defaults to false without the compartment', () => {
     expect(EditorState.create({}).facet(presentMode)).toBe(false)

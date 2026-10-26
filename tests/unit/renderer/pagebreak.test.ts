@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 
 import { undo } from '@codemirror/commands'
+import { EditorState, StateEffect } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { describe, expect, it } from 'vitest'
 import { insertPageBreak, PAGEBREAK } from '../../../src/renderer/editor/pagebreak'
 import { createState, serializeDoc } from '../../../src/renderer/editor/setup'
 import type { Mode } from '../../../src/shared/types'
+import { parsed } from './parsed'
 
 const B = PAGEBREAK
 
@@ -24,7 +26,7 @@ function make(marked: string, mode: Mode = 'edit', eol: '\n' | '\r\n' = '\n') {
     anchor = head = marked.indexOf('|')
     text = marked.replace('|', '')
   }
-  const state = createState(text, eol, 'code', false, mode)
+  const state = parsed(createState(text, eol, 'code', false, mode))
   const view = new EditorView({
     state: state.update({ selection: { anchor, head } }).state,
     parent: document.body,
@@ -33,6 +35,15 @@ function make(marked: string, mode: Mode = 'edit', eol: '\n' | '\r\n' = '\n') {
 }
 
 const doc = (v: EditorView) => v.state.doc.toString()
+
+/** A view on `text` taken literally (no markers: tables and code are full of `|` and `[]`). */
+function plain(text: string, anchor: number, head = anchor): EditorView {
+  const state = parsed(createState(text, '\n', 'code'))
+  return new EditorView({
+    state: state.update({ selection: { anchor, head } }).state,
+    parent: document.body,
+  })
+}
 
 describe('insertPageBreak', () => {
   it.each([
@@ -99,10 +110,62 @@ describe('insertPageBreak', () => {
     expect(insertPageBreak(v)).toBe(false)
   })
 
-  it('works below the header in Present', () => {
-    const v = make('---\ntitle: "X"\n---\n\nBody|', 'present')
-    expect(insertPageBreak(v)).toBe(true)
-    expect(doc(v)).toBe(`---\ntitle: "X"\n---\n\nBody\n\n${B}\n\n`)
+  it('refuses in Present, below the header too (spec: refused like every format command)', () => {
+    const text = '---\ntitle: "X"\n---\n\nBody'
+    const v = make(`${text}|`, 'present')
+    expect(insertPageBreak(v)).toBe(false)
+    expect(doc(v)).toBe(text)
+  })
+
+  it('refuses in a frozen (read-only) editor', () => {
+    const v = make('A|B')
+    v.dispatch({ effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)) })
+    expect(insertPageBreak(v)).toBe(false)
+    expect(doc(v)).toBe('AB')
+  })
+
+  it.each([
+    ['a table cell', '| wort | c |\n|---|---|\n| x | y |', 3],
+    ['a table body row', '| a | b |\n|---|---|\n| x | y |', 22],
+    ['a fenced code block', '```\ncode\n```', 6],
+    ['an indented code block', 'Text\n\n    code', 10],
+    ['an HTML block', '<div>\ntext\n</div>', 8],
+    ['a page-break comment', `${B}\n\nText`, 5],
+  ])('refuses in %s', (_name, text, at) => {
+    const v = plain(text, at)
+    expect(insertPageBreak(v)).toBe(false)
+    expect(doc(v)).toBe(text)
+  })
+
+  it('refuses a selection that reaches into a table', () => {
+    const text = 'Text\n\n| a | b |\n|---|---|'
+    const v = plain(text, 0, 10)
+    expect(insertPageBreak(v)).toBe(false)
+  })
+
+  it('Mod-Enter in a table changes nothing and still claims the key', () => {
+    const text = '| wort | c |\n|---|---|'
+    const v = plain(text, 3)
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      keyCode: 13,
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    v.contentDOM.dispatchEvent(ev)
+    expect(doc(v)).toBe(text)
+    expect(ev.defaultPrevented).toBe(true)
+  })
+
+  it('typing right after the break is its own undo step', () => {
+    const v = make('A|B')
+    insertPageBreak(v)
+    v.dispatch(v.state.replaceSelection('x'), { userEvent: 'input.type' })
+    undo(v)
+    expect(doc(v)).toBe(`A\n\n${B}\n\nB`)
+    undo(v)
+    expect(doc(v)).toBe('AB')
   })
 
   it('Mod-Enter beats insertBlankLine and is consumed even when refused', () => {

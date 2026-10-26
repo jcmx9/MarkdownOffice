@@ -81,6 +81,19 @@ describe('inline elements', () => {
       expect.arrayContaining(['mark:mdo-code-inline@0-6', 'hide@0-1', 'hide@5-6']),
     )
   })
+  it('highlight: styles ==b== and hides both marks, shows them faint at the cursor', () => {
+    expect(rf('a ==b== c')).toEqual(
+      expect.arrayContaining(['mark:mdo-hl@2-7', 'hide@2-4', 'hide@5-7']),
+    )
+    const d = rf('a ==b== c', 5)
+    expect(d).toEqual(
+      expect.arrayContaining(['mark:mdo-hl@2-7', 'mark:mdo-mark@2-4', 'mark:mdo-mark@5-7']),
+    )
+    expect(d.filter((x) => x.startsWith('hide'))).toEqual([])
+  })
+  it('highlight: none in a formula', () => {
+    expect(rf('$a == b == c$').filter((x) => x.includes('mdo-hl'))).toEqual([])
+  })
   it('link: keeps the text, hides brackets and URL', () => {
     expect(rf('[Text](https://x.de)')).toEqual(
       expect.arrayContaining([

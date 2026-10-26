@@ -70,6 +70,7 @@ export function lift(b: HTMLButtonElement, on: boolean): void {
 }
 
 export interface ToggleActions {
+  toggleToolbar(): void
   toggleOutline(): void
   toggleYaml(): void
 }
@@ -77,6 +78,8 @@ export interface ToggleActions {
 export interface ToggleState {
   /** A note is open. */
   hasNote: boolean
+  /** The formatting toolbar is switched on (Edit mode). */
+  toolbar: boolean
   /** The outline is visible in this mode. */
   outline: boolean
   /** The note has a front matter. */
@@ -88,15 +91,23 @@ export interface ToggleState {
 }
 
 /**
- * Two single flat toggles right of `Code | Vorschau`: `Gliederung` and `YAML`. Same look as
- * ModeSwitches (lifted = on, grey = off). Test ids: `<prefix>-outline`, `<prefix>-yaml`.
+ * Three single flat toggles right of `Code | Vorschau`: `Leiste` (formatting toolbar),
+ * `Gliederung` and `YAML`. Same look as ModeSwitches (lifted = on, grey = off). Test ids:
+ * `<prefix>-toolbar`, `<prefix>-outline`, `<prefix>-yaml`.
  */
 export class StatusToggles {
   readonly el = document.createElement('span')
+  private readonly toolbar: HTMLButtonElement
   private readonly outline: HTMLButtonElement
   private readonly yaml: HTMLButtonElement
 
   constructor(prefix: string, actions: ToggleActions) {
+    this.toolbar = chromeButton(
+      `${prefix}-toolbar`,
+      'Leiste',
+      'Formatierungsleiste ein/aus (Mod+Shift+T)',
+      () => actions.toggleToolbar(),
+    )
     this.outline = chromeButton(
       `${prefix}-outline`,
       'Gliederung',
@@ -107,10 +118,13 @@ export class StatusToggles {
       actions.toggleYaml(),
     )
     this.el.className = 'mdo-switches'
-    this.el.append(this.outline, this.yaml)
+    this.el.append(this.toolbar, this.outline, this.yaml)
   }
 
   render(s: ToggleState): void {
+    // Like Gliederung: without a note there is no toolbar to show, so the switch rests.
+    lift(this.toolbar, s.hasNote && s.toolbar)
+    this.toolbar.disabled = !s.hasNote
     lift(this.outline, s.hasNote && s.outline)
     this.outline.disabled = !s.hasNote
     // Intent: the lifted state mirrors what toggle-header changes (expanded = on). Code shows

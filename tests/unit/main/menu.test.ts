@@ -1,12 +1,14 @@
 import type { MenuItemConstructorOptions } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  ALERT_MENU,
   buildMenuTemplate,
   type MenuDeps,
   noteMenuTemplate,
   PresentKeyGuard,
   recentLabels,
 } from '../../../src/main/menu'
+import { ALERT_ENTRIES } from '../../../src/renderer/editor/format'
 
 const deps = (over: Partial<MenuDeps> = {}): MenuDeps => ({
   platform: 'darwin',
@@ -48,6 +50,7 @@ describe('buildMenuTemplate', () => {
     ['toggle-view', 'CmdOrCtrl+Shift+M'],
     ['toggle-header', 'CmdOrCtrl+Shift+H'],
     ['toggle-outline', 'CmdOrCtrl+Shift+O'],
+    ['toggle-toolbar', 'CmdOrCtrl+Shift+T'],
     ['fold', 'Cmd+Alt+['],
     ['unfold', 'Cmd+Alt+]'],
     ['fold-all', 'Ctrl+Alt+['],
@@ -235,6 +238,7 @@ describe('buildMenuTemplate', () => {
       'toggle-view',
       'toggle-header',
       'toggle-outline',
+      'toggle-toolbar',
       'fold',
       'unfold',
       'fold-all',
@@ -243,6 +247,108 @@ describe('buildMenuTemplate', () => {
       'zoom-out',
       'zoom-reset',
     ])
+  })
+})
+
+describe('Format menu (formatting toolbar)', () => {
+  const ids = (m: MenuItemConstructorOptions | undefined) =>
+    (Array.isArray(m?.submenu) ? m.submenu : []).map((i) => i.id ?? i.type ?? i.label)
+
+  it.each(['darwin', 'win32'] as const)('%s: sits between Bearbeiten and Einfügen', (platform) => {
+    const labels = buildMenuTemplate(deps({ platform })).map((m) => m.label)
+    const at = labels.indexOf('Format')
+    expect(at).toBeGreaterThan(0)
+    expect(labels[at - 1]).toBe('Bearbeiten')
+    expect(labels[at + 1]).toBe('Einfügen')
+  })
+
+  it('holds the formats and table commands in the toolbar order', () => {
+    const format = buildMenuTemplate(deps()).find((m) => m.label === 'Format')
+    expect(ids(format)).toEqual([
+      'format-h1',
+      'format-h2',
+      'format-h3',
+      'separator',
+      'format-bold',
+      'format-italic',
+      'format-strike',
+      'format-mark',
+      'format-code',
+      'separator',
+      'format-bullet',
+      'format-numbered',
+      'format-task',
+      'format-quote',
+      'separator',
+      'format-link',
+      'separator',
+      'table-row-below',
+      'table-col-right',
+      'table-row-delete',
+      'table-col-delete',
+    ])
+  })
+
+  // Spec: no shortcuts for format commands (Mod+I, Mod+Shift+K, Mod+1…9 keep their meaning).
+  it('has no accelerators and every entry sends its own id', () => {
+    const d = deps()
+    const format = buildMenuTemplate(d).find((m) => m.label === 'Format')
+    const items = (Array.isArray(format?.submenu) ? format.submenu : []).filter((i) => i.id)
+    expect(items).toHaveLength(17)
+    for (const i of items) {
+      expect(i.accelerator).toBeUndefined()
+      expect(i.label).toBeTruthy()
+      click(i)
+      expect(d.command).toHaveBeenLastCalledWith(i.id)
+    }
+  })
+
+  it('Einfügen offers „Tabelle …“ and a Hinweisbox submenu with the five alerts', () => {
+    const d = deps()
+    const insert = buildMenuTemplate(d).find((m) => m.label === 'Einfügen')
+    const items = Array.isArray(insert?.submenu) ? insert.submenu : []
+    const table = items.find((i) => i.id === 'insert-table')
+    expect(table?.label).toBe('Tabelle …')
+    expect(table?.accelerator).toBeUndefined()
+    const box = items.find((i) => i.label === 'Hinweisbox')
+    const alerts = Array.isArray(box?.submenu) ? box.submenu : []
+    expect(alerts.map((i) => i.id)).toEqual([
+      'insert-alert-note',
+      'insert-alert-tip',
+      'insert-alert-important',
+      'insert-alert-warning',
+      'insert-alert-caution',
+    ])
+    expect(alerts.map((i) => i.label)).toEqual([
+      'Info (NOTE)',
+      'Tipp (TIP)',
+      'Wichtig (IMPORTANT)',
+      'Hinweis (WARNING)',
+      'Achtung (CAUTION)',
+    ])
+    for (const i of [table, ...alerts]) {
+      expect(i?.accelerator).toBeUndefined()
+      click(i)
+      expect(d.command).toHaveBeenLastCalledWith(i?.id)
+    }
+  })
+
+  // Main cannot import the renderer's format.ts (CodeMirror); the labels are copied, kept equal here.
+  it('alert labels match the toolbar Box menu (ALERT_ENTRIES)', () => {
+    expect(ALERT_MENU).toEqual(ALERT_ENTRIES)
+  })
+
+  it('Ansicht: „Formatierungsleiste ein/aus“ on Mod+Shift+T', () => {
+    const item = byId(buildMenuTemplate(deps()), 'toggle-toolbar')
+    expect(item?.label).toBe('Formatierungsleiste ein/aus')
+    expect(item?.accelerator).toBe('CmdOrCtrl+Shift+T')
+  })
+
+  it('no other menu item uses Mod+Shift+T', () => {
+    const users = flatten(buildMenuTemplate(deps())).filter(
+      (i) => i.accelerator === 'CmdOrCtrl+Shift+T',
+    )
+    expect(users.map((i) => i.id)).toEqual(['toggle-toolbar'])
   })
 })
 
@@ -387,15 +493,15 @@ describe('settings item', () => {
 })
 
 const REVEAL_LABELS = [
-  ['darwin', 'Im Finder zeigen'],
-  ['win32', 'Im Explorer zeigen'],
-  ['linux', 'Im Dateimanager zeigen'],
+  ['darwin', 'Im Finder zeigen', 'Alt+Cmd+R'],
+  ['win32', 'Im Explorer zeigen', 'Shift+Alt+R'],
+  ['linux', 'Im Dateimanager zeigen', 'Shift+Alt+R'],
 ] as const
 
 describe('reveal in file manager', () => {
   it.each(REVEAL_LABELS)(
-    '%s: Datei menu has „%s“ right after Umbenennen, no shortcut',
-    (platform, label) => {
+    '%s: Datei menu has „%s“ right after Umbenennen, shortcut %s',
+    (platform, label, key) => {
       const command = vi.fn()
       const file = buildMenuTemplate(deps({ platform, command })).find((m) => m.label === 'Datei')
       const items = (file?.submenu ?? []) as MenuItemConstructorOptions[]
@@ -403,7 +509,7 @@ describe('reveal in file manager', () => {
       const reveal = items[at + 1]
       expect(reveal?.id).toBe('reveal')
       expect(reveal?.label).toBe(label)
-      expect(reveal?.accelerator).toBeUndefined()
+      expect(reveal?.accelerator).toBe(key)
       click(reveal)
       expect(command).toHaveBeenCalledWith('reveal')
     },
@@ -413,7 +519,7 @@ describe('reveal in file manager', () => {
 describe('noteMenuTemplate', () => {
   it.each(REVEAL_LABELS)(
     '%s: offers rename, „%s“, export and close; shortcuts only shown, not registered twice',
-    (platform, label) => {
+    (platform, label, key) => {
       const command = vi.fn()
       const items = noteMenuTemplate(command, platform)
       expect(items.map((i) => i.label ?? i.type)).toEqual([
@@ -423,7 +529,7 @@ describe('noteMenuTemplate', () => {
         'separator',
         'Tab schließen',
       ])
-      expect(items[1]?.accelerator).toBeUndefined()
+      expect(items[1]?.accelerator).toBe(key)
       for (const i of items.filter((x) => x.type !== 'separator')) {
         expect(i.registerAccelerator).toBe(false)
         ;(i.click as () => void)()

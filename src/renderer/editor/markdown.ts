@@ -3,6 +3,7 @@ import type { LanguageDescription } from '@codemirror/language'
 import { foldService, LanguageSupport, syntaxTree } from '@codemirror/language'
 import type { Extension } from '@codemirror/state'
 import type { SyntaxNode } from '@lezer/common'
+import { HighlightSyntax } from '../../core/markdown-syntax'
 import { Frontmatter } from './frontmatter'
 import { MathSyntax } from './math-syntax'
 
@@ -40,7 +41,7 @@ export const sectionFold = foldService.of((state, start, end) => {
 })
 
 /**
- * Markdown with our front matter, formulas and section folds. lang-markdown's support is
+ * Markdown with our front matter, formulas, highlights and section folds. lang-markdown's support is
  * [html tag support, header fold service, …rest]; its header fold service is replaced by
  * `sectionFold` (sections.test.ts fails if that order changes).
  */
@@ -48,8 +49,9 @@ export function mdoMarkdown(codeLanguages?: readonly LanguageDescription[]): Lan
   const md = markdown({
     base: markdownLanguage,
     codeLanguages: codeLanguages as LanguageDescription[] | undefined,
-    // Formulas by the PDF's rules: also keeps emphasis and typography out of them.
-    extensions: [Frontmatter, MathSyntax],
+    // Formulas by the PDF's rules: also keeps emphasis and typography out of them. Highlights
+    // `==…==` exactly where markdown.typ's marks() sets them (core/highlight).
+    extensions: [Frontmatter, MathSyntax, HighlightSyntax],
   })
   const [htmlSupport, , ...rest] = md.support as Extension[]
   return new LanguageSupport(md.language, [htmlSupport ?? [], sectionFold, ...rest])

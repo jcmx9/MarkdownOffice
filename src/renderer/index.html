@@ -15,12 +15,14 @@
   <body>
     <div id="app">
       <div id="tabbar" role="tablist"></div>
+      <!-- Formatting toolbar (ui/toolbar.ts): shown by App in Edit mode while a note is shown. -->
+      <div id="toolbar" role="toolbar" aria-label="Formatierung" hidden></div>
       <main id="workspace">
         <div id="editor"></div>
         <hr
           id="outline-grip"
           aria-orientation="vertical"
-          aria-label="Breite der Gliederung (Doppelklick: Standard)"
+          aria-label="Breite der Gliederung (Doppelklick: an die Titel anpassen)"
           aria-valuemin="10"
           aria-valuemax="40"
           aria-valuenow="18"

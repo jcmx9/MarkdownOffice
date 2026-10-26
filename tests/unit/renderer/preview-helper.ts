@@ -1,6 +1,5 @@
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorState } from '@codemirror/state'
-import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
+import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
 import { buildPreview } from '../../../src/renderer/editor/preview'
 import { parsed } from './parsed'
 
@@ -11,7 +10,7 @@ export function rf(text: string, cursor?: number): string[] {
     EditorState.create({
       doc,
       selection: { anchor: cursor ?? doc.length },
-      extensions: markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+      extensions: mdoMarkdown(), // the editor's own parser: formulas and ==highlights== parse as in the app
     }),
   )
   const out: string[] = []
