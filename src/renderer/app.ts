@@ -25,6 +25,7 @@ import type {
   View,
 } from '../shared/types'
 import { AutosaveScheduler } from './editor/autosave'
+import { focusCompartment, focusExtensions } from './editor/focus'
 import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
 import { headerNote, insertTemplate } from './editor/insert-header'
@@ -153,6 +154,8 @@ export class App {
   private toolbarOn = true
   /** Outline sidebar on/off per mode (persisted in the session). */
   private outlineOn = { edit: false, present: false }
+  /** Focus mode on/off per mode (persisted in the session): only headings and the cursor's section. */
+  private focusOn = { edit: false, present: false }
   /** The mode the outline was last shown in; null while hidden. A change fits its width. */
   private outlineShownIn: Mode | null = null
   private view: View = 'preview'
@@ -251,6 +254,7 @@ export class App {
       // Through command(): the same guards as the menu (closing window, open dialog).
       toggleToolbar: () => void this.command('toggle-toolbar'),
       toggleOutline: () => void this.command('toggle-outline'),
+      toggleFocus: () => void this.command('toggle-focus'),
       toggleYaml: () => void this.command('toggle-header'),
       // The menu command, so Present refuses it with the same toast.
       validateYaml: () => void this.command('validate-yaml'),
@@ -298,6 +302,7 @@ export class App {
       zoomIn: () => this.setZoom(zoomIn(this.zoom[this.mode])),
       zoomOut: () => this.setZoom(zoomOut(this.zoom[this.mode])),
       toggleOutline: () => void this.command('toggle-outline'),
+      toggleFocus: () => void this.command('toggle-focus'),
     })
     this.outline = new OutlineSync(
       new Outline(root.outline, {
@@ -396,6 +401,7 @@ export class App {
     this.view = startup.session.view
     this.zoom = { ...startup.session.zoom }
     this.outlineOn = { ...startup.session.outline }
+    this.focusOn = { ...startup.session.focus }
     this.toolbarOn = startup.session.toolbar.edit
     this.settings = startup.settings
     this.spellcheckOn = startup.settings.spellcheck
@@ -497,6 +503,8 @@ export class App {
         return this.toggleOutline()
       case 'toggle-toolbar':
         return this.toggleToolbar()
+      case 'toggle-focus':
+        return this.toggleFocus()
       case 'toggle-spellcheck':
         return this.toggleSpellcheck()
       case 'fold':
@@ -819,6 +827,8 @@ export class App {
       hideHeader,
       this.mode,
       this.spellcheckOn,
+      'markdown',
+      this.focusOn[this.mode],
     )
     // Selection only: the document stays equal to the saved one, so the tab is not dirty.
     if (note && this.mode !== 'present')
@@ -1003,6 +1013,7 @@ export class App {
         this.mode,
         this.spellcheckOn && isMarkdownTab({ path }),
         docKind(path),
+        this.focusOn[this.mode],
       ),
       bom: res.bom,
       eol: res.eol,
@@ -1077,6 +1088,8 @@ export class App {
       spellcheckCompartment.reconfigure(
         spellcheckExtensions(this.spellcheckOn && isMarkdownTab(tab), this.mode),
       ),
+      // Per mode, like the outline: focus for the audience in Present, the full text in Edit.
+      focusCompartment.reconfigure(focusExtensions(this.focusOn[this.mode] && isMarkdownTab(tab))),
     ]
     const collapses = (tab: Tab, state: EditorState) =>
       this.mode === 'present' ||
@@ -1404,6 +1417,22 @@ export class App {
     tab.headerHidden = hide
     this.syncMain()
     this.refresh()
+    this.editor.focus()
+  }
+
+  /**
+   * Focus mode on/off for the current mode (status switch „Fokus“, info line, Ansicht →
+   * „Fokus ein/aus“); allowed in Present, where it matters most.
+   */
+  private toggleFocus(): void {
+    if (this.shownId === null) return
+    this.focusOn[this.mode] = !this.focusOn[this.mode]
+    this.reconfigureAll()
+    this.mdo
+      .saveSession({ focus: { ...this.focusOn } })
+      .catch((e: unknown) => console.error('saveSession(focus) failed', e))
+    this.refresh()
+    this.editor.dispatch({ scrollIntoView: true })
     this.editor.focus()
   }
 
@@ -1848,6 +1877,7 @@ export class App {
         this.mode,
         this.spellcheckOn && isMarkdownTab(tab),
         docKind(tab.path),
+        this.focusOn[this.mode],
       ).update({ effects: setPreviewSource.of(source) }).state,
     )
     const wasOnDisk = tab.onDisk
@@ -1982,6 +2012,7 @@ export class App {
     this.status.render(tab ? fileName(tab.path) : null, state, error, md ? this.view : 'code', {
       toolbar: this.toolbarOn,
       outline: this.outlineOn.edit,
+      focus: this.focusOn.edit,
       hasHeader: md && doc !== null && frontmatterRange(doc.doc) !== null,
       yamlOn: doc !== null && !doc.field(headerHidden),
     })
@@ -2000,6 +2031,7 @@ export class App {
         saveText(state, error),
         this.zoom.present,
         this.outlineOn.present,
+        this.focusOn.present,
       )
     }
   }
@@ -2026,6 +2058,7 @@ export class App {
       view: this.view,
       zoom: this.zoom,
       outline: { ...this.outlineOn },
+      focus: { ...this.focusOn },
     })
   }
 }

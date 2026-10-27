@@ -174,6 +174,19 @@ describe('session', () => {
   })
   // Formatting toolbar: on by default, so old sessions (written before the toolbar existed) and
   // anything hand-edited show it; only an explicit false hides it.
+  it('focus: off by default and per mode, only an explicit true turns it on', () => {
+    expect(DEFAULT_SESSION.focus).toEqual({ edit: false, present: false })
+    expect(sanitizeSession({}).focus).toEqual({ edit: false, present: false })
+    expect(sanitizeSession({ focus: { present: true } }).focus).toEqual({
+      edit: false,
+      present: true,
+    })
+    expect(sanitizeSession({ focus: { edit: 'yes' } }).focus).toEqual({
+      edit: false,
+      present: false,
+    })
+  })
+
   it('toolbar: missing or old session → on, false kept, anything else → on', () => {
     expect(DEFAULT_SESSION.toolbar).toEqual({ edit: true })
     expect(sanitizeSession({}).toolbar).toEqual({ edit: true })

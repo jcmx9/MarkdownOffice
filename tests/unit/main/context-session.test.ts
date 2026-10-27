@@ -28,4 +28,12 @@ describe('AppContext session patch', () => {
     await ctx.updateSession({ toolbar: { edit: true } })
     expect(ctx.session.toolbar).toEqual({ edit: true })
   })
+
+  it('copies the focus mode per mode and keeps it on a later patch without it', async () => {
+    const ctx = await context()
+    expect(ctx.session.focus).toEqual({ edit: false, present: false })
+    await ctx.updateSession({ focus: { edit: false, present: true } })
+    await ctx.updateSession({ view: 'code' })
+    expect(ctx.session.focus).toEqual({ edit: false, present: true })
+  })
 })

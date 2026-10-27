@@ -21,6 +21,7 @@ import {
 } from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
 import { diagrams } from './diagrams'
+import { focusCompartment, focusExtensions } from './focus'
 import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
@@ -131,6 +132,7 @@ export function createState(
   mode: Mode = 'edit',
   spellcheck = false,
   kind: DocKind = 'markdown',
+  focus = false,
 ): EditorState {
   const md = kind === 'markdown'
   const state = EditorState.create({
@@ -159,6 +161,8 @@ export function createState(
       // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
       spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
+      // A profile has no sections to focus on.
+      focusCompartment.of(focusExtensions(focus && md)),
     ],
   })
   const range = headerHiddenInit || mode === 'present' ? frontmatterRange(state.doc) : null

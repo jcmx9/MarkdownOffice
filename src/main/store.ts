@@ -13,6 +13,7 @@ export const DEFAULT_SESSION: Session = {
   zoom: { edit: 1, present: 1 },
   outline: { edit: false, present: false },
   toolbar: { edit: true },
+  focus: { edit: false, present: false },
   recent: [],
 }
 
@@ -106,6 +107,7 @@ export function sanitizeSession(raw: unknown): Session {
   const zoom = isObj(o.zoom) ? o.zoom : {}
   const outline = isObj(o.outline) ? o.outline : {}
   const toolbar = isObj(o.toolbar) ? o.toolbar : {}
+  const focus = isObj(o.focus) ? o.focus : {}
   return {
     tabs,
     activeIndex: tabs.length ? Math.trunc(clamp(o.activeIndex, 0, tabs.length - 1, 0)) : 0,
@@ -116,6 +118,7 @@ export function sanitizeSession(raw: unknown): Session {
     // Default on (spec): sessions written before the toolbar existed show it; only an explicit
     // false (the user switched it off) hides it.
     toolbar: { edit: toolbar.edit !== false },
+    focus: { edit: focus.edit === true, present: focus.present === true },
     recent: Array.isArray(o.recent)
       ? o.recent
           .map(absPath)

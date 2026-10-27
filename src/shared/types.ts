@@ -83,11 +83,13 @@ export interface Session {
   outline: { edit: boolean; present: boolean }
   /** Formatting toolbar on/off in Edit mode (Present never shows it); default on. */
   toolbar: { edit: boolean }
+  /** Focus mode on/off per mode: only headings and the section with the cursor are shown. */
+  focus: { edit: boolean; present: boolean }
   recent: string[]
 }
 
 export type SessionPatch = Partial<
-  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'toolbar'>
+  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'toolbar' | 'focus'>
 >
 
 export interface StartupState {
@@ -156,6 +158,7 @@ export type MenuCommand =
   | 'table-row-delete'
   | 'table-col-delete'
   | 'toggle-toolbar'
+  | 'toggle-focus'
   | 'toggle-present'
   | 'toggle-view'
   | 'toggle-header'

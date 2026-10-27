@@ -34,7 +34,13 @@ export interface StatusActions extends ToggleActions {
   zoomOut(): void
 }
 
-const DEFAULT_TOGGLES = { toolbar: false, outline: false, hasHeader: false, yamlOn: false }
+const DEFAULT_TOGGLES = {
+  toolbar: false,
+  outline: false,
+  focus: false,
+  hasHeader: false,
+  yamlOn: false,
+}
 
 /**
  * Edit's bottom line: clock, mode and view switches, file name, the note's set, save state,
