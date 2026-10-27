@@ -38,6 +38,7 @@ import { searchExtensions } from './search'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
+import { cellEditing } from './table-cell-edit'
 import { tableField } from './tables'
 import { typoMask } from './typo-mask'
 import { wrapTyping } from './wrap-typing'
@@ -98,6 +99,8 @@ export function viewExtensions(view: View): Extension {
         // after previewPlugin: it reads the preview's decorations of the lines it sets
         paragraphsPlugin,
         tableField,
+        // Cells of the drawn tables are edited in place (never as Markdown in the preview).
+        cellEditing,
         // Mermaid blocks as the PDF draws them; one plugin and cache for every tab.
         diagrams.extension,
         // Formulas as the PDF sets them (bundled Typst + mitex); one service and cache per window.
