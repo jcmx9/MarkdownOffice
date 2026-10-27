@@ -272,6 +272,8 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       item('toggle-outline', 'Gliederung ein/aus', 'CmdOrCtrl+Shift+O'),
       // Mod+Shift+T: checked free of menu accelerators and CodeMirror default bindings (spec).
       item('toggle-toolbar', 'Formatierungsleiste ein/aus', 'CmdOrCtrl+Shift+T'),
+      // Mod+Shift+F: free in the menu and in CodeMirror's keymaps (search's own keymap is off).
+      item('toggle-focus', 'Fokus ein/aus', 'CmdOrCtrl+Shift+F'),
       sep,
       item('fold', 'Abschnitt einklappen', `${foldKey}[`),
       item('unfold', 'Abschnitt ausklappen', `${foldKey}]`),

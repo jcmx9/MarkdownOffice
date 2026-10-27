@@ -322,6 +322,7 @@ export class AppContext {
     if (patch.zoom !== undefined) next.zoom = patch.zoom
     if (patch.outline !== undefined) next.outline = patch.outline
     if (patch.toolbar !== undefined) next.toolbar = patch.toolbar
+    if (patch.focus !== undefined) next.focus = patch.focus
     this.session = sanitizeSession(next)
     await this.persistSession()
   }

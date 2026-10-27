@@ -9,6 +9,7 @@ const actions = () => ({
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
   toggleOutline: vi.fn(),
+  toggleFocus: vi.fn(),
 })
 const q = (el: HTMLElement, id: string) => el.querySelector(`[data-testid=${id}]`) as HTMLElement
 
@@ -67,6 +68,17 @@ describe('InfoLine', () => {
     expect(a.toggleOutline).toHaveBeenCalledOnce()
     // No YAML toggle: Present refuses the header toggle.
     expect(q(el, 'il-yaml')).toBeNull()
+  })
+  it('shows the focus toggle lifted when focus is on and calls the action', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const line = new InfoLine(el, a)
+    line.render([{ name: 'A.md', dirty: false }], 0, 'Gespeichert', 1, false, true)
+    const b = q(el, 'il-focus')
+    expect(b.textContent).toBe('Fokus')
+    expect(b.getAttribute('aria-pressed')).toBe('true')
+    b.click()
+    expect(a.toggleFocus).toHaveBeenCalledOnce()
   })
   it('updates the clock while started and stops cleanly', () => {
     let now = new Date(2026, 9, 15, 14, 30)
