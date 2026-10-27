@@ -9,6 +9,7 @@ import {
   type Line,
   type SelectionRange,
   type StateEffect,
+  type TransactionSpec,
 } from '@codemirror/state'
 import type { Command, EditorView } from '@codemirror/view'
 import type { SyntaxNode, Tree } from '@lezer/common'
@@ -504,6 +505,65 @@ export function toggleInline(id: InlineId): Command {
       annotations: isolateHistory.of('full'),
     })
     return true
+  }
+}
+
+/** The marker characters a typed wrap may put around a selection (wrap-typing.ts). */
+export type WrapMarker = '*' | '**' | '***' | '~~' | '=='
+
+/** How many times `ch` repeats right before `pos` (`dir` -1) or from `pos` on (`dir` 1). */
+function runLength(state: EditorState, pos: number, ch: string, dir: 1 | -1): number {
+  let n = 0
+  for (let p = pos; ; p += dir) {
+    const at = dir === 1 ? p : p - 1
+    if (at < 0 || at >= state.doc.length || state.doc.sliceString(at, at + 1) !== ch) return n
+    n++
+  }
+}
+
+/**
+ * The transaction that puts `marker` around every selected piece as typed (owner request
+ * 2026-10-27: select text, type `*`, `**`, `***`, `~~` or `==`, and the text is wrapped). Unlike
+ * `toggleInline` it never removes marks, so `*` pressed three times reaches `***Text***`; the
+ * selection stays on the text for the next press. Pieces are split per line and table cell like
+ * a toolbar wrap. A piece already inside a full run (`***` for `*`, two for `~`/`=`) is left
+ * alone. Null — the key then types as usual — for an empty selection, a refused context
+ * (`refused(state, 'inline')`), a selection inside a code span or formula, or when no piece
+ * could be wrapped.
+ */
+export function wrapSelection(state: EditorState, marker: WrapMarker): TransactionSpec | null {
+  if (state.selection.ranges.some((r) => r.empty) || refused(state, 'inline')) return null
+  const tree = syntaxTree(state)
+  const ch = marker[0] as string
+  const full = ch === '*' ? 3 : 2
+  const changes: Change[] = []
+  for (const r of state.selection.ranges) {
+    if (insideOf(tree, r, OPAQUE)) return null
+    for (const seg of segments(state, tree, r)) {
+      const before = runLength(state, seg.from, ch, -1)
+      const after = runLength(state, seg.to, ch, 1)
+      if (Math.min(before, after) + marker.length > full) continue
+      changes.push({ from: seg.from, to: seg.from, insert: marker })
+      changes.push({ from: seg.to, to: seg.to, insert: marker })
+    }
+  }
+  if (changes.length === 0) return null
+  const set = state.changes(changes)
+  const ranges = state.selection.ranges.map((r) => {
+    const fwd = r.anchor <= r.head
+    // The markers go outside the range: the anchor and head stay on the text.
+    return EditorSelection.range(
+      set.mapPos(r.anchor, fwd ? 1 : -1),
+      set.mapPos(r.head, fwd ? -1 : 1),
+    )
+  })
+  return {
+    changes: set,
+    selection: EditorSelection.create(ranges, state.selection.mainIndex),
+    scrollIntoView: true,
+    userEvent: 'input.format.wrap',
+    // One press, one undo step, also for three `*` in a row.
+    annotations: isolateHistory.of('full'),
   }
 }
 
