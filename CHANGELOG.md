@@ -8,6 +8,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Settings: „Ebenen in der Gliederung“ sets how many heading levels the outline lists (1–6, default 2 = H1 and H2), counted from the note's highest level; applies at once in Edit and Present, deeper levels nest under their section. Focus mode and the PDF's table of contents are unchanged
 
+### Changed
+- Present uses the preview's text width (the set's measure), scaled by the Present factor like the font, instead of its own narrower 70ch column: lines break in Present as in the preview and the PDF
+
 ## [26.10.7] - 2026-10-27
 
 ### Added

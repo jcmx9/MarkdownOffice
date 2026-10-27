@@ -818,13 +818,11 @@
   height: auto;
 }
 
-/* Present: larger text in a calm, centred column; no gutters. Deliberately not the PDF's
-   measure: about 60 instead of 82 characters per line, readable for an audience, so line
-   breaks never match the PDF here. !important: a set's measure must not widen it (the set
-   CSS sanitiser strips !important from set rules, so this always wins). */
+/* Present: the preview's column, only larger. The measure is the set's (--mdo-measure) scaled
+   by --mdo-scale like the font, so lines break as in the preview and the PDF (owner,
+   2026-10-27: a narrower 70ch column in Present "macht keinen Sinn"). A window too narrow for
+   the scaled measure still caps the column. No gutters. */
 .mdo-present .cm-content {
-  /* biome-ignore lint/complexity/noImportantStyles: Present's column must beat a set's measure */
-  max-width: 70ch !important;
   padding-top: 3em;
 }
 .mdo-present .cm-gutters {

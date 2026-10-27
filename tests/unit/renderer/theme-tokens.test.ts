@@ -228,8 +228,8 @@ describe('set tokens in theme.css', () => {
     expect(theme).not.toMatch(/--mdo-scale\s*:/)
   })
 
-  it('Present keeps 70ch against set rules', () => {
-    expect(theme).toMatch(/\.mdo-present \.cm-content\s*{[^}]*max-width:\s*70ch !important/)
+  it('Present keeps the scaled measure of the preview (no own column width)', () => {
+    expect(theme).not.toMatch(/\.mdo-present \.cm-content\s*{[^}]*max-width/)
   })
 
   it('no em measure and no inline body size left', () => {
