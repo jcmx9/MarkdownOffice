@@ -25,6 +25,7 @@ describe('settings', () => {
       spellcheck: true,
       dictionaryAutoUpdate: true,
       appUpdateCheck: true,
+      outlineDepth: 2,
     })
   })
 
@@ -94,6 +95,7 @@ describe('settingsPatch', () => {
         spellcheck: false,
         dictionaryAutoUpdate: false,
         appUpdateCheck: false,
+        outlineDepth: 4,
       }),
     ).toEqual({
       defaultFolder: folder,
@@ -103,6 +105,7 @@ describe('settingsPatch', () => {
       spellcheck: false,
       dictionaryAutoUpdate: false,
       appUpdateCheck: false,
+      outlineDepth: 4,
     })
   })
 
@@ -225,5 +228,26 @@ describe('loadJson / saveJson', () => {
     await writeFile(file, '{kaputt')
     expect(await loadJson(file)).toBeUndefined()
     expect(await readdir(dir)).toEqual(['session.json.corrupt'])
+  })
+})
+
+describe('outlineDepth setting', () => {
+  it('defaults to 2 (H1 and H2)', () => {
+    expect(defaultSettings('/docs').outlineDepth).toBe(2)
+  })
+  it('loading keeps whole numbers 1–6, clamps others into range, falls back on junk', () => {
+    const d = defaultSettings('/docs')
+    expect(sanitizeSettings({ outlineDepth: 4 }, d).outlineDepth).toBe(4)
+    expect(sanitizeSettings({ outlineDepth: 9 }, d).outlineDepth).toBe(6)
+    expect(sanitizeSettings({ outlineDepth: 0 }, d).outlineDepth).toBe(1)
+    expect(sanitizeSettings({ outlineDepth: 2.5 }, d).outlineDepth).toBe(2)
+    expect(sanitizeSettings({ outlineDepth: '3' }, d).outlineDepth).toBe(2)
+  })
+  it('a patch takes only whole numbers 1–6', () => {
+    const d = defaultSettings('/docs')
+    expect(settingsPatch(d, { outlineDepth: 3 }).outlineDepth).toBe(3)
+    expect(settingsPatch(d, { outlineDepth: 7 }).outlineDepth).toBe(2)
+    expect(settingsPatch(d, { outlineDepth: 1.5 }).outlineDepth).toBe(2)
+    expect(settingsPatch(d, { outlineDepth: '1' }).outlineDepth).toBe(2)
   })
 })

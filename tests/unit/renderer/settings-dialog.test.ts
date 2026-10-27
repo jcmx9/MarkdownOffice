@@ -20,6 +20,7 @@ const settings: Settings = {
   spellcheck: true,
   dictionaryAutoUpdate: true,
   appUpdateCheck: true,
+  outlineDepth: 2,
 }
 
 const status: SettingsStatus = { version: '26.10.0', typst: '0.15.0' }
@@ -394,5 +395,29 @@ describe('isAbsolutePath', () => {
     ['', false],
   ])('%j → %s', (p, abs) => {
     expect(isAbsolutePath(p)).toBe(abs)
+  })
+})
+
+describe('outline depth', () => {
+  it('offers 1–6 levels, shows the current one and returns a change', async () => {
+    const done = openSettings(deps())
+    const select = $<HTMLSelectElement>('settings-outline-depth')
+    expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+      ['1', 'nur H1'],
+      ['2', 'H1–H2'],
+      ['3', 'H1–H3'],
+      ['4', 'H1–H4'],
+      ['5', 'H1–H5'],
+      ['6', 'H1–H6'],
+    ])
+    expect(select.value).toBe('2')
+    select.value = '4'
+    $('settings-save').click()
+    expect(await done).toEqual({ outlineDepth: 4 })
+  })
+  it('an unchanged depth is not part of the patch', async () => {
+    const done = openSettings(deps())
+    $('settings-save').click()
+    expect(await done).toEqual({})
   })
 })

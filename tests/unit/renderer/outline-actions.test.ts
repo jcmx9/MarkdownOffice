@@ -187,8 +187,23 @@ describe('OutlineSync', () => {
       view.dispatch(tr)
       sync.update([tr])
     }
-    return { view, render, setVisible, recentre, sync, flush, compute, dispatch }
+    return { view, render, setVisible, recentre, fitWidth, sync, flush, compute, dispatch }
   }
+
+  it('a new depth (settings) recomputes with it, fits the width and renders at once', () => {
+    const { sync, render, fitWidth, flush, compute } = setup('# A\n## a1\n### deep\n')
+    sync.setVisible(true)
+    flush()
+    expect(render.mock.calls[0]?.[0][0]?.children[0]?.children).toEqual([])
+    sync.setDepth(3)
+    flush()
+    expect(compute).toHaveBeenLastCalledWith(expect.anything(), 3)
+    expect(fitWidth).toHaveBeenCalledTimes(1)
+    expect(render.mock.calls[1]?.[0][0]?.children[0]?.children.map((e) => e.text)).toEqual(['deep'])
+    sync.setDepth(3)
+    flush()
+    expect(render).toHaveBeenCalledTimes(2)
+  })
 
   it('does nothing while hidden', () => {
     const { sync, render, compute, flush, dispatch } = setup()
