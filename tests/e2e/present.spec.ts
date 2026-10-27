@@ -51,6 +51,24 @@ test('Present: fullscreen, title block, info line only; Esc returns', async () =
   await app.close()
 })
 
+test('Present: a table cell is edited in place; Escape leaves the cell, then Present', async () => {
+  const { app, page, note } = await openFixture()
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await page.locator('table.mdo-table td', { hasText: 'Filter' }).click()
+  await expect(page.locator('table.mdo-table .mdo-cell-edit')).toHaveText('Filter')
+  await page.keyboard.press('End')
+  await page.keyboard.type('kaffee')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('table.mdo-table .mdo-cell-edit')).toHaveCount(0)
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await waitForFile(note, (b) => b.toString('utf8').includes('| Filterkaffee |'))
+  await page.keyboard.press('Escape')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  if (!linux) await expect.poll(() => fullScreen(app)).toBe(false)
+  await app.close()
+})
+
 test('typing in Present is saved; the header stays untouched', async () => {
   const { app, page, note } = await openFixture()
   const original = await readFile(note, 'utf8')

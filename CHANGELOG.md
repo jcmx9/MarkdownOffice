@@ -6,12 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Tables are edited in place in Preview and Present: they never switch to their Markdown there (only the code view shows it). A click makes just that cell editable, showing its own Markdown; Tab/Shift+Tab move to the next/previous cell, Enter to the cell below, Esc leaves the table. A typed `|` is escaped as `\|`, line breaks become spaces. Every input changes only that cell's text, so the rest of the note stays byte-identical; undo, the formatting toolbar and its table commands work on the edited cell. Cmd/Ctrl+click on a link in a cell still opens it
 - Typing over selected text wraps it: `*` once, twice or three times gives `*Text*`, `**Text**`, `***Text***`; `~~` and `==` (two presses, as in Markdown) give `~~Text~~` and `==Text==`. The selection stays on the text, every press is an undo step; without a selection, in code and formulas the keys type as usual
 - Settings: block „Standardprogramm“ shows whether `.md` files open with Markdown Office, and „Als Standard für Markdown festlegen“ makes it the default: macOS via Launch Services, Linux via `xdg-mime`; on Windows (where no program may set itself) it registers the app for `.md`/`.markdown` and opens Settings → Default apps at Markdown Office
 - Windows install (`bootstrap.ps1`) registers Markdown Office as a program for `.md` and `.markdown` (ProgID, „Öffnen mit“, Default-apps list, below HKCU); uninstall removes exactly these keys
-
-### Changed
-- Preview: a click into a rendered table leaves it rendered; a double click (or the arrow keys) shows its Markdown for editing. Cmd/Ctrl+click on a link in a cell still opens it
 
 ### Fixed
 - Windows and Linux: the menu bar comes back after leaving Present. Electron's leave restored the bar to its hidden state from the enter, so it stayed gone until the app restarted

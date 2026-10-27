@@ -9,6 +9,7 @@ import { referenceLabels } from './link-refs'
 import { formulaElement } from './math'
 import { type MathEntry, type MathService, mathRefresh, mathService } from './math-render'
 import { unescapeCellPipes } from './math-syntax'
+import { CELL_EDIT_CLASS, cellPainters, editCell } from './table-cell-edit'
 import { typoMaskOf } from './typo-mask'
 
 export type Align = 'left' | 'center' | 'right'
@@ -192,6 +193,9 @@ function cellFormulas(state: EditorState, table: SyntaxNode): MathItem[] {
   return out
 }
 
+/** Per widget DOM: the widget it shows, so updateDOM can tell whether rows or columns changed. */
+const shownWidgets = new WeakMap<HTMLElement, TableWidget>()
+
 class TableWidget extends WidgetType {
   constructor(
     readonly model: TableModel,
@@ -214,6 +218,56 @@ class TableWidget extends WidgetType {
       sameEntries(other.formulas, this.formulas)
     )
   }
+  /** The model text of source row `row` (0 header, 2… body; table-edit.ts) and column `col`. */
+  cellText(row: number, col: number): string {
+    return (row === 0 ? this.model.head[col] : this.model.rows[row - 2]?.[col]) ?? ''
+  }
+
+  /** Draws a cell (`[data-row][data-col]`) from this widget; formulas still being set are collected. */
+  private painter(): { pending: MathItem[]; paint: (td: HTMLElement) => void } {
+    // Cell formulas as the inline widget draws them (math.ts), at the cell's text size.
+    const pending: MathItem[] = []
+    const formula = (item: MathItem, source: string) => {
+      const entry = this.service.get(item)
+      if (entry.state === 'pending') pending.push(item)
+      return formulaElement(entry, item, source)
+    }
+    const paint = (td: HTMLElement) => {
+      const row = Number(td.dataset.row)
+      const col = Number(td.dataset.col)
+      if (row > 0) td.className = `mdo-al-${this.model.aligns[col] ?? 'left'}`
+      td.replaceChildren()
+      renderInline(this.cellText(row, col), td, this.labels, formula)
+    }
+    return { pending, paint }
+  }
+
+  /**
+   * Same rows and columns: the cells are drawn again in the existing DOM, all but the one being
+   * edited in place, so typing in a cell keeps its editor, caret and IME composition. Otherwise
+   * CodeMirror draws the table anew (the cell editor then reopens in the new DOM).
+   */
+  override updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    const old = shownWidgets.get(dom)
+    if (
+      !old ||
+      old.model.head.length !== this.model.head.length ||
+      old.model.rows.length !== this.model.rows.length ||
+      old.model.rows.some((r, i) => r.length !== this.model.rows[i]?.length)
+    )
+      return false
+    const { pending, paint } = this.painter()
+    for (const td of dom.querySelectorAll<HTMLElement>('[data-row]')) {
+      if (!td.querySelector(`.${CELL_EDIT_CLASS}`)) paint(td)
+    }
+    shownWidgets.set(dom, this)
+    cellPainters.set(dom, paint)
+    if (pending.length > 0) this.service.request(pending)
+    const table = dom.querySelector('table')
+    if (table && typeof view.requestMeasure === 'function') fitColumns(view, dom, table)
+    return true
+  }
+
   override toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'mdo-table-wrap'
@@ -223,45 +277,44 @@ class TableWidget extends WidgetType {
     const colgroup = document.createElement('colgroup')
     for (let i = 0; i < this.model.head.length; i++) colgroup.append(document.createElement('col'))
     table.append(colgroup)
-    // Cell formulas as the inline widget draws them (math.ts), at the cell's text size.
-    const pending: MathItem[] = []
-    const formula = (item: MathItem, source: string) => {
-      const entry = this.service.get(item)
-      if (entry.state === 'pending') pending.push(item)
-      return formulaElement(entry, item, source)
-    }
+    const { pending, paint } = this.painter()
     const thead = table.createTHead().insertRow()
-    for (const cell of this.model.head) {
+    this.model.head.forEach((_, i) => {
       const th = document.createElement('th')
-      renderInline(cell, th, this.labels, formula)
+      th.dataset.row = '0'
+      th.dataset.col = String(i)
+      paint(th)
       thead.append(th)
-    }
+    })
     const body = table.createTBody()
     this.model.rows.forEach((cells, k) => {
       const tr = body.insertRow()
       // mdo-table-fill: luma(96%) on even y (y = 0 is the head) → every second data row
       if (k % 2 === 1) tr.className = 'mdo-table-stripe'
-      cells.forEach((cell, i) => {
+      cells.forEach((_, i) => {
         const td = tr.insertCell()
-        td.className = `mdo-al-${this.model.aligns[i] ?? 'left'}`
-        renderInline(cell, td, this.labels, formula)
+        // Source row: 0 is the header, 1 the delimiter row, body rows from 2 (table-edit.ts).
+        td.dataset.row = String(k + 2)
+        td.dataset.col = String(i)
+        paint(td)
       })
     })
     wrap.append(table)
+    shownWidgets.set(wrap, this)
+    cellPainters.set(wrap, paint)
     // A formula settled when the field was built may be evicted by the time the widget draws
     // (or the widget was kept as equal to one built while it was pending): it would stay pending
     // for ever without a request here. The service skips the ones it has or is setting.
     if (pending.length > 0) this.service.request(pending)
     wrap.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return
+      const cell = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-row]') : null
+      // In the cell being edited the browser places the caret itself.
+      if (cell?.querySelector(`.${CELL_EDIT_CLASS}`)) return
       e.preventDefault()
-      // A single click leaves the table rendered and the cursor where it was, so reading or
-      // pointing at it in the preview never flips it to Markdown (owner, 2026-10-27). A double
-      // click puts the cursor into the table: the field then shows the Markdown for editing
-      // (arrow keys still do as well).
-      if (e.detail < 2) return
-      view.dispatch({ selection: { anchor: view.posAtDOM(wrap) } })
-      view.focus()
+      // The table never turns into Markdown in the preview (owner, 2026-10-27): a click edits
+      // just the cell, in place (table-cell-edit.ts).
+      if (cell) editCell(view, wrap, cell)
     })
     wrap.addEventListener('click', (e) => e.preventDefault())
     // Unit tests pass a stub view and happy-dom may lack ResizeObserver: no fitting there.
@@ -305,33 +358,31 @@ function build(state: EditorState, service: MathService): DecorationSet {
       if (n.name !== 'Table') return false
       const from = doc.lineAt(n.from).from
       const to = doc.lineAt(Math.max(n.from, n.to - 1)).to
-      const touched = state.selection.ranges.some((r) => r.from <= to && r.to >= from)
-      if (!touched) {
-        const source = doc.sliceString(from, to)
-        // The PDF's typography runs over the raw row lines before cmarker splits them
-        // (markdown.typ smart-typography; it never adds or removes a `|` or `\`), so the
-        // cells show the same quotes, dashes and ellipses as the PDF's table.
-        const tm = typoMaskOf(state)
-        const lang = tm.lang
-        const first = doc.lineAt(from).number - 1
-        const rows = source
-          .split('\n')
-          .map((l, i) => (tm.mask[first + i] ? l : applySubstitutions(l, smartTypography(l, lang))))
-        labels ??= referenceLabels(tree, (a, b) => doc.sliceString(a, b))
-        // Only a shown table asks for its formulas; one being edited shows its source.
-        const items = cellFormulas(state, n.node)
-        const formulas = items.map((item) => service.get(item))
-        formulas.forEach((e, i) => {
-          if (e.state === 'pending') want.push(items[i] as MathItem)
-        })
-        out.push(
-          Decoration.replace({
-            widget: new TableWidget(tableModel(rows), source, labels, service, formulas, lang),
-            block: true,
-            rf: 'table',
-          }).range(from, to),
-        )
-      }
+      // Always drawn, also with the cursor inside: the table is edited in place, cell by cell
+      // (table-cell-edit.ts), and never shows its Markdown in the preview (owner, 2026-10-27).
+      const source = doc.sliceString(from, to)
+      // The PDF's typography runs over the raw row lines before cmarker splits them
+      // (markdown.typ smart-typography; it never adds or removes a `|` or `\`), so the
+      // cells show the same quotes, dashes and ellipses as the PDF's table.
+      const tm = typoMaskOf(state)
+      const lang = tm.lang
+      const first = doc.lineAt(from).number - 1
+      const rows = source
+        .split('\n')
+        .map((l, i) => (tm.mask[first + i] ? l : applySubstitutions(l, smartTypography(l, lang))))
+      labels ??= referenceLabels(tree, (a, b) => doc.sliceString(a, b))
+      const items = cellFormulas(state, n.node)
+      const formulas = items.map((item) => service.get(item))
+      formulas.forEach((e, i) => {
+        if (e.state === 'pending') want.push(items[i] as MathItem)
+      })
+      out.push(
+        Decoration.replace({
+          widget: new TableWidget(tableModel(rows), source, labels, service, formulas, lang),
+          block: true,
+          rf: 'table',
+        }).range(from, to),
+      )
       return false
     },
   })
@@ -341,7 +392,7 @@ function build(state: EditorState, service: MathService): DecorationSet {
 }
 
 /**
- * Preview-only: tables as PDF-like widgets while the cursor is elsewhere. Cell formulas come
+ * Preview-only: tables as PDF-like widgets, edited in place (table-cell-edit.ts). Cell formulas come
  * from `service` (the window's by default) and are redrawn on {@link mathRefresh}, which the
  * formula extension (math.ts) dispatches when the service settles formulas.
  */
@@ -352,9 +403,7 @@ export function createTableField(opts: { service?: MathService } = {}) {
     update(deco, tr) {
       const treeChanged = syntaxTree(tr.startState) !== syntaxTree(tr.state)
       const refresh = tr.effects.some((e) => e.is(mathRefresh))
-      return tr.docChanged || tr.selection || treeChanged || refresh
-        ? build(tr.state, service)
-        : deco
+      return tr.docChanged || treeChanged || refresh ? build(tr.state, service) : deco
     },
     provide: (f) => EditorView.decorations.from(f),
   })

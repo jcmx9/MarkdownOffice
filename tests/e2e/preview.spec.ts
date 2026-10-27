@@ -62,19 +62,25 @@ test('a checkbox click changes exactly one byte on disk', async () => {
   await app.close()
 })
 
-test('a table click keeps it rendered, a double click switches to Markdown and back, bytes untouched', async () => {
+test('a table cell is edited in place: the table stays drawn, only the cell changes', async () => {
   const { app, page, note, original } = await openFixture()
-  await page.locator('table.mdo-table').click()
-  await page.waitForTimeout(300)
-  await expect(page.locator('table.mdo-table')).toHaveCount(1)
-  await page.locator('table.mdo-table').dblclick()
-  await expect(page.locator('table.mdo-table')).toHaveCount(0)
-  await expect(page.locator('.cm-line.mdo-table-head')).toBeVisible()
-  await shot(page, 'table-editing')
-  await page.locator('.cm-line.mdo-h1').click()
-  await expect(page.locator('table.mdo-table')).toHaveCount(1)
-  await page.waitForTimeout(1500)
-  expect((await readFile(note)).equals(original)).toBe(true)
+  await page.locator('table.mdo-table td', { hasText: 'Espresso' }).click()
+  const edit = page.locator('table.mdo-table .mdo-cell-edit')
+  await expect(edit).toHaveText('Espresso')
+  await expect(page.locator('.cm-line.mdo-table-head')).toHaveCount(0)
+  await page.keyboard.press('End')
+  await page.keyboard.type(' Bio|fair')
+  // Tab: the next cell („12“), Escape leaves the table; it never shows its Markdown.
+  await page.keyboard.press('Tab')
+  await expect(edit).toHaveText('12')
+  await page.keyboard.press('Escape')
+  await expect(edit).toHaveCount(0)
+  await expect(page.locator('table.mdo-table td', { hasText: 'Espresso Bio|fair' })).toHaveCount(1)
+  await shot(page, 'table-cell-edit')
+  const saved = await waitForFile(note, (b) => b.toString('utf8').includes('fair'))
+  expect(saved.toString('utf8')).toBe(
+    original.toString('utf8').replace('| Espresso |', '| Espresso Bio\\|fair |'),
+  )
   await app.close()
 })
 
