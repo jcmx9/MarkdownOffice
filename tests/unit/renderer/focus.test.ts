@@ -7,6 +7,7 @@ import {
   focusExtensions,
   focusHiddenField,
   focusHiddenRanges,
+  focusStepTarget,
 } from '../../../src/renderer/editor/focus'
 import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
 import { parsed } from './parsed'
@@ -49,42 +50,26 @@ const DOC = [
 const at = (s: string) => DOC.indexOf(s)
 
 describe('focusHiddenRanges', () => {
-  it('cursor in an H2: every H1, all headings of its chapter and only its own body stay', () => {
-    expect(visible(DOC, at('Text 1B'))).toEqual([
-      '# Eins',
-      '## Eins A',
-      '### Eins A x',
-      '## Eins B',
-      'Text 1B',
-      '# Zwei',
-    ])
+  it('cursor in an H2: every H1, the path to it and only its own text stay', () => {
+    expect(visible(DOC, at('Text 1B'))).toEqual(['# Eins', '## Eins B', 'Text 1B', '# Zwei'])
   })
 
-  it('the active section includes its sub-headings and their text', () => {
-    expect(visible(DOC, at('## Eins A'))).toEqual([
-      '# Eins',
-      '## Eins A',
-      'Text 1A',
-      '### Eins A x',
-      'Text 1Ax',
-      '## Eins B',
-      '# Zwei',
-    ])
+  it('sub-headings of the active section and their text are hidden', () => {
+    expect(visible(DOC, at('## Eins A'))).toEqual(['# Eins', '## Eins A', 'Text 1A', '# Zwei'])
   })
 
-  it('a deeper heading is the active section when the cursor is in it', () => {
+  it('a deeper heading shows the whole path back to its chapter, siblings stay hidden', () => {
     expect(visible(DOC, at('Text 1Ax'))).toEqual([
       '# Eins',
       '## Eins A',
       '### Eins A x',
       'Text 1Ax',
-      '## Eins B',
       '# Zwei',
     ])
   })
 
-  it('cursor in the H1 intro: the whole chapter is visible, other chapters show their H1', () => {
-    expect(visible(DOC, at('Intro eins'))).toEqual(DOC.split('\n').slice(0, 8).concat('# Zwei'))
+  it('cursor in the H1 intro: only the intro, no sub-chapters', () => {
+    expect(visible(DOC, at('Intro eins'))).toEqual(['# Eins', 'Intro eins', '# Zwei'])
   })
 
   it('cursor before the first heading: text before it stays, only the H1 lines show', () => {
@@ -160,5 +145,69 @@ describe('focus field', () => {
     expect(hidden.length).toBeGreaterThan(0)
     expect(view.dom.textContent).not.toContain('a')
     view.destroy()
+  })
+})
+
+describe('focusStepTarget (PageDown/PageUp)', () => {
+  const lineEnd = (doc: string, text: string) => doc.indexOf(text) + text.length
+
+  it('goes to the next and previous heading with text of its own', () => {
+    const s = state(DOC, at('Text 1B'))
+    expect(focusStepTarget(s, at('Text 1B'), 1)).toBe(lineEnd(DOC, '# Zwei'))
+    expect(focusStepTarget(s, at('Text 1B'), -1)).toBe(lineEnd(DOC, '### Eins A x'))
+  })
+
+  it('skips a heading without own text; the path still shows it', () => {
+    const doc = '# A\n## A1\ntext\n# B\nb'
+    const s = state(doc, 0)
+    expect(focusStepTarget(s, 0, 1)).toBe(lineEnd(doc, '## A1'))
+    expect(focusStepTarget(s, doc.indexOf('text'), -1)).toBeNull()
+    expect(visible(doc, doc.indexOf('text'))).toEqual(['# A', '## A1', 'text', '# B'])
+  })
+
+  it('does nothing at the ends', () => {
+    expect(focusStepTarget(state(DOC), at('Text 2A'), 1)).toBeNull()
+    expect(focusStepTarget(state(DOC), at('Intro eins'), -1)).toBeNull()
+  })
+
+  it('before the first heading the first step goes to the first filled heading', () => {
+    const doc = `Vorspann\n\n${DOC}`
+    expect(focusStepTarget(state(doc), 0, 1)).toBe(lineEnd(doc, '# Eins'))
+  })
+
+  it('no headings: no step', () => {
+    expect(focusStepTarget(state('nur text'), 0, 1)).toBeNull()
+  })
+})
+
+describe('focus keys and scrolling', () => {
+  const press = (view: EditorView, key: string) =>
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+    )
+
+  it('PageDown steps to the next section only while focus is on', () => {
+    const view = new EditorView({ state: state(DOC, at('Text 1B')) })
+    press(view, 'PageDown')
+    expect(view.state.selection.main.head).toBe(DOC.indexOf('# Zwei') + '# Zwei'.length)
+    press(view, 'PageUp')
+    expect(view.state.selection.main.head).toBe(DOC.indexOf('## Eins B') + '## Eins B'.length)
+    view.dispatch({ effects: focusCompartment.reconfigure(focusExtensions(false)) })
+    press(view, 'PageDown')
+    // Off: CodeMirror's own page motion (happy-dom has no layout), never the section step.
+    expect(view.state.selection.main.head).not.toBe(DOC.indexOf('# Zwei') + '# Zwei'.length)
+    view.destroy()
+  })
+
+  it('a cursor move into another section asks to scroll; a move inside it does not', () => {
+    const s = state(DOC, at('Text 1B'))
+    expect(s.update({ selection: { anchor: at('Text 2A') } }).effects).toHaveLength(1)
+    expect(s.update({ selection: { anchor: at('Text 1B') + 2 } }).effects).toHaveLength(0)
+  })
+
+  it('an edit never scrolls', () => {
+    const s = state(DOC, at('Text 1B'))
+    const tr = s.update({ changes: { from: at('Text 1B'), insert: 'x' } })
+    expect(tr.effects.length).toBe(0)
   })
 })
