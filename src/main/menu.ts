@@ -122,12 +122,15 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
   const sep: MenuItemConstructorOptions = { type: 'separator' }
 
   const settings = item('settings', 'Einstellungen …', 'CmdOrCtrl+,')
+  // Manual check for a newer release (app-update.ts); next to „Über“ as in other Mac apps.
+  const checkUpdate = item('check-app-update', 'Nach Updates suchen …')
 
   // macOS: the standard app menu (Electron's appMenu role) with the settings item added.
   const appMenu: MenuItemConstructorOptions = {
     role: 'appMenu',
     submenu: [
       { role: 'about' },
+      checkUpdate,
       sep,
       settings,
       sep,
@@ -304,7 +307,7 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
   // gets its own Hilfe menu there, as AGPL §5 d) asks every interactive UI to show them.
   const help: MenuItemConstructorOptions = {
     label: 'Hilfe',
-    submenu: [{ role: 'about', label: 'Über Markdown Office' }],
+    submenu: [{ role: 'about', label: 'Über Markdown Office' }, checkUpdate],
   }
 
   return [

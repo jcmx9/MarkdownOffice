@@ -58,6 +58,7 @@ import {
 } from './editor/spellcheck'
 import { choiceSpec } from './editor/validate'
 import { isMarkdownTab, type Tab, TabStore } from './tabs/tab-store'
+import { AppUpdateUi } from './ui/app-update'
 import { allowedWithDialog, type EditTarget, editTarget } from './ui/edit-target'
 import {
   FORMAT_COMMANDS,
@@ -142,6 +143,7 @@ export class App {
   /** Sets whose broken `.preview.yaml` notice was already shown this session. */
   private readonly previewNoticed = new Set<string>()
   private readonly notices: Notices
+  private readonly appUpdate: AppUpdateUi
   private readonly infoLine: InfoLine
   private readonly outline: OutlineSync
   private readonly toolbar: Toolbar
@@ -307,6 +309,12 @@ export class App {
     )
     this.toolbar = new Toolbar(root.toolbar, (a) => this.toolbarAction(a))
     this.toolbarSync = new FrameThrottle(() => this.renderToolbar())
+    this.appUpdate = new AppUpdateUi({
+      mdo: this.mdo,
+      notices: this.notices,
+      openLink: (url) => void this.openLink(url),
+      presenting: () => this.mode === 'present',
+    })
     attachLinkOpen(
       root.editor,
       () => this.editor,
@@ -401,6 +409,7 @@ export class App {
     if (this.store.all.length === 0) await this.newNote()
     else this.show()
     void this.reloadSnippets()
+    void this.appUpdate.start()
   }
 
   // ── commands ────────────────────────────────────────────────────────────
@@ -516,6 +525,8 @@ export class App {
         return this.presentToggle.toggle()
       case 'settings':
         return this.editSettings()
+      case 'check-app-update':
+        return this.appUpdate.check(true)
     }
   }
 
@@ -1116,6 +1127,7 @@ export class App {
     this.reconfigureAll()
     // Notices were held back during Present: ask again for the note now shown.
     void this.reportSpellLanguage(true)
+    this.appUpdate.flush()
     document.body.classList.remove('mdo-mode-present')
     this.root.tabbar.hidden = false
     this.root.status.hidden = false
