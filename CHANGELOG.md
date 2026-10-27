@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.8] - 2026-10-28
+
 ### Added
 - Settings: „Ebenen in der Gliederung“ sets how many heading levels the outline lists (1–6, default 2 = H1 and H2), counted from the note's highest level; applies at once in Edit and Present, deeper levels nest under their section. Focus mode and the PDF's table of contents are unchanged
 
