@@ -36,6 +36,8 @@ export interface Settings {
   dictionaryAutoUpdate: boolean
   /** Look for a newer Markdown Office release at start (at most once a day). */
   appUpdateCheck: boolean
+  /** Heading levels the outline lists, counted from the note's highest level (1–6). */
+  outlineDepth: number
 }
 
 export type HeaderDefault = 'yaml' | 'titleblock'

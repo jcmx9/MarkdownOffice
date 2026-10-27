@@ -132,9 +132,11 @@ const DROP_REASONS: Record<keyof Settings, string> = {
   spellcheck: 'ungültiger Wert',
   dictionaryAutoUpdate: 'ungültiger Wert',
   appUpdateCheck: 'ungültiger Wert',
+  outlineDepth: 'ungültiger Wert',
 }
 
 const FACTOR_LABEL = 'Schriftfaktor im Präsentationsmodus'
+const OUTLINE_DEPTH_LABEL = 'Ebenen in der Gliederung'
 
 const FIELD_LABELS: Record<keyof Settings, string> = {
   ...(Object.fromEntries(PATH_FIELDS.map((f) => [f.key, f.label])) as Record<
@@ -147,6 +149,7 @@ const FIELD_LABELS: Record<keyof Settings, string> = {
   spellcheck: 'Rechtschreibprüfung',
   dictionaryAutoUpdate: 'Wörterbücher automatisch aktualisieren',
   appUpdateCheck: 'Nach Updates suchen',
+  outlineDepth: OUTLINE_DEPTH_LABEL,
 }
 
 /**
@@ -244,6 +247,16 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
     factor.step = '0.1'
     const factorLabel = el('label', { textContent: FACTOR_LABEL })
     factorLabel.append(factor)
+
+    // Levels count from the note's highest heading (outline.ts), so the options name H1 as the
+    // usual top; the default 2 lists H1 and H2 (owner, 2026-10-27).
+    const depth = el('select', {}, 'settings-outline-depth')
+    for (let n = 1; n <= 6; n++) {
+      depth.append(el('option', { value: String(n), textContent: n === 1 ? 'nur H1' : `H1–H${n}` }))
+    }
+    depth.value = String(settings.outlineDepth)
+    const depthLabel = el('label', { textContent: OUTLINE_DEPTH_LABEL })
+    depthLabel.append(depth)
 
     const header = el('fieldset', { className: 'settings-header' })
     header.append(el('legend', { textContent: 'YAML-Header in der Vorschau:' }))
@@ -430,6 +443,7 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       el('h2', { textContent: 'Einstellungen' }),
       ...rows,
       factorLabel,
+      depthLabel,
       header,
       spell,
       updates,
@@ -478,6 +492,8 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       if (autoBox && autoBox.checked !== settings.dictionaryAutoUpdate)
         patch.dictionaryAutoUpdate = autoBox.checked
       if (updateBox.checked !== settings.appUpdateCheck) patch.appUpdateCheck = updateBox.checked
+      const levels = Number(depth.value)
+      if (levels !== settings.outlineDepth) patch.outlineDepth = levels
       finish(patch)
     }
 

@@ -406,6 +406,7 @@ export class App {
     this.settings = startup.settings
     this.spellcheckOn = startup.settings.spellcheck
     this.presentFactor = startup.settings.presentFontFactor
+    this.outline.setDepth(startup.settings.outlineDepth)
     this.applyZoom()
     for (const t of startup.session.tabs) await this.openPath(t.path, t.headerHidden)
     const activePath = startup.session.tabs[startup.session.activeIndex]?.path
@@ -565,6 +566,8 @@ export class App {
           'Nicht alle Einstellungen übernommen',
           `${dropped.join('\n')}\nFür diese Felder gilt weiter der bisherige Wert.`,
         )
+      // Applies at once, in Edit and Present alike; the width follows the new titles once.
+      this.outline.setDepth(next.outlineDepth)
       if (next.spellcheck !== this.spellcheckOn) {
         // A settings change (not the menu) must reach the editor too.
         this.spellcheckOn = next.spellcheck

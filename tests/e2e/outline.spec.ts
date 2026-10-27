@@ -446,3 +446,23 @@ test('entries read as a list: arrow with children, bullet without; levels are re
   await shot(page, 'outline-list-h2-only')
   await app.close()
 })
+
+test('settings „Ebenen in der Gliederung“: three levels list H3 under its H2', async () => {
+  const dirs = await makeDirs()
+  const note = join(dirs.notes, 'Tief.md')
+  await writeFile(note, `${NOTE}### Beta tief\n\nText tief.\n`)
+  // Stored as the settings dialog would have stored it.
+  const { app, page } = await launch({ dirs, args: [note], settings: { outlineDepth: 3 } })
+  await page.locator('.cm-editor.mdo-preview').waitFor()
+  await clickMenu(app, 'toggle-outline')
+  await expect(labels(page)).toHaveText([
+    'Alpha',
+    'Alpha eins',
+    'Alpha zwei',
+    'Beta',
+    'Beta eins',
+    'Beta tief',
+  ])
+  await expect(page.locator('#outline li.mdo-ol-h3')).toHaveCount(1)
+  await app.close()
+})
