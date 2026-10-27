@@ -8,6 +8,7 @@ import { Frontmatter } from '../../../src/renderer/editor/frontmatter'
 import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
 import { createMath } from '../../../src/renderer/editor/math'
 import { previewView } from '../../../src/renderer/editor/rendered'
+import { cellEditing } from '../../../src/renderer/editor/table-cell-edit'
 import {
   createTableField,
   splitRow,
@@ -126,7 +127,7 @@ describe('tableField', () => {
     expect(tables(make(quote, quote.length))).toEqual([])
     expect(tables(make(list, list.length))).toEqual([])
   })
-  it('click switches to Markdown; secondary button does nothing', () => {
+  it('a click edits the cell in place, the table stays drawn; secondary button does nothing', async () => {
     const doc = `Text\n\n${TABLE}\n\nende`
     const parent = document.createElement('div')
     document.body.append(parent)
@@ -135,24 +136,43 @@ describe('tableField', () => {
       state: EditorState.create({
         doc,
         selection: { anchor: doc.length },
-        extensions: [markdown({ base: markdownLanguage, extensions: [Frontmatter] }), tableField],
+        extensions: [
+          markdown({ base: markdownLanguage, extensions: [Frontmatter] }),
+          tableField,
+          cellEditing,
+        ],
       }),
     })
     ensureSyntaxTree(view.state, doc.length, 5000)
     view.dispatch({})
-    const start = doc.indexOf('| Produkt')
-    const wrap = () => view.dom.querySelector('.mdo-table-wrap') as HTMLElement
-    expect(wrap()).not.toBeNull()
-    wrap().dispatchEvent(
+    const cell = () =>
+      [...view.dom.querySelectorAll<HTMLElement>('td')].find((td) =>
+        td.textContent?.includes('Espresso'),
+      ) as HTMLElement
+    cell().dispatchEvent(
       new MouseEvent('mousedown', { button: 2, bubbles: true, cancelable: true }),
     )
     expect(view.state.selection.main.head).toBe(doc.length)
-    wrap().dispatchEvent(
+    cell().dispatchEvent(
       new MouseEvent('mousedown', { button: 0, bubbles: true, cancelable: true }),
     )
-    expect(view.state.selection.main.head).toBe(start)
-    expect(tables(view.state)).toEqual([])
-    expect(view.state.doc.toString()).toBe(doc)
+    const end = doc.indexOf('Espresso') + 'Espresso'.length
+    expect(view.state.selection.main.head).toBe(end)
+    expect(tables(view.state)).toHaveLength(1)
+    const edit = view.dom.querySelector('.mdo-cell-edit') as HTMLElement
+    expect(edit.textContent).toBe('Espresso')
+    // Typing: only the cell's text changes; a `|` is escaped.
+    edit.textContent = 'Espresso|Bio'
+    edit.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(view.state.doc.toString()).toBe(doc.replace('Espresso', 'Espresso\\|Bio'))
+    expect(edit.textContent).toBe('Espresso\\|Bio')
+    expect(tables(view.state)).toHaveLength(1)
+    await Promise.resolve()
+    // Escape leaves the cell: it is drawn again, the cursor is in the line after the table.
+    edit.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(view.dom.querySelector('.mdo-cell-edit')).toBeNull()
+    expect(cell().textContent).toBe('Espresso|Bio')
+    expect(view.state.doc.lineAt(view.state.selection.main.head).text).toBe('')
     view.destroy()
   })
 
@@ -162,9 +182,9 @@ describe('tableField', () => {
     const start = doc.indexOf('| Produkt')
     expect(t.map((x) => x.range)).toEqual([`table@${start}-${start + TABLE.length}`])
   })
-  it('shows the Markdown when the cursor is inside', () => {
+  it('stays drawn with the cursor inside (edited in place, never as Markdown)', () => {
     const doc = `Text\n\n${TABLE}\n\nende`
-    expect(tables(make(doc, doc.indexOf('Espresso') + 2))).toEqual([])
+    expect(tables(make(doc, doc.indexOf('Espresso') + 2))).toHaveLength(1)
   })
   it('renders a PDF-like table', () => {
     const doc = `${TABLE}\n\nende`
@@ -339,7 +359,7 @@ describe('formulas in table cells', () => {
     expect(service.requests.flat()).toEqual(['I:x'])
   })
 
-  it('a table being edited shows its source and asks for nothing', () => {
+  it('a table with the cursor inside stays drawn', () => {
     const service = stubService()
     const field = createTableField({ service })
     const state = parsed(
@@ -349,7 +369,6 @@ describe('formulas in table cells', () => {
         extensions: [mdoMarkdown(), field],
       }),
     )
-    expect(state.field(field).size).toBe(0)
-    expect(service.requests).toEqual([])
+    expect(state.field(field).size).toBe(1)
   })
 })

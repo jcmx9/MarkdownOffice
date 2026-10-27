@@ -1,5 +1,7 @@
 import type {
   ChooseKind,
+  DefaultAppResult,
+  DefaultAppStatus,
   HeaderDefault,
   Settings,
   SettingsPatch,
@@ -21,6 +23,22 @@ export interface SettingsDialogDeps {
   /** The user's own words. */
   words(): Promise<string[]>
   removeWord(word: string): Promise<boolean>
+  /** Whether this app opens `.md` files by default. */
+  defaultAppStatus(): Promise<DefaultAppStatus>
+  /** „Als Standard für Markdown festlegen“. */
+  makeDefaultApp(): Promise<DefaultAppResult>
+}
+
+/** The status line of the „Standardprogramm“ block. */
+export function defaultAppText(s: DefaultAppStatus): string {
+  switch (s.state) {
+    case 'default':
+      return 'Markdown-Dateien (.md) öffnen mit Markdown Office.'
+    case 'other':
+      return 'Markdown-Dateien (.md) öffnet ein anderes Programm.'
+    case 'unknown':
+      return 'Nicht feststellbar, welches Programm Markdown-Dateien öffnet.'
+  }
 }
 
 export const MAC_SPELL_HINT =
@@ -113,6 +131,7 @@ const DROP_REASONS: Record<keyof Settings, string> = {
   // The spellcheck switches are booleans; main rejects anything else.
   spellcheck: 'ungültiger Wert',
   dictionaryAutoUpdate: 'ungültiger Wert',
+  appUpdateCheck: 'ungültiger Wert',
 }
 
 const FACTOR_LABEL = 'Schriftfaktor im Präsentationsmodus'
@@ -127,6 +146,7 @@ const FIELD_LABELS: Record<keyof Settings, string> = {
   // Labels for the spellcheck switches, so a refused value is named in the dialog's notice.
   spellcheck: 'Rechtschreibprüfung',
   dictionaryAutoUpdate: 'Wörterbücher automatisch aktualisieren',
+  appUpdateCheck: 'Nach Updates suchen',
 }
 
 /**
@@ -320,6 +340,67 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       () => undefined,
     )
 
+    // App updates: the start looks for a newer release (at most once a day, app-update.ts);
+    // the menu's „Nach Updates suchen …“ always works.
+    const updates = el('fieldset', { className: 'settings-updates' })
+    updates.append(el('legend', { textContent: 'Updates' }))
+    const updateBox = el(
+      'input',
+      { type: 'checkbox', checked: settings.appUpdateCheck },
+      'set-app-update',
+    )
+    const updateLabel = el('label', { className: 'settings-radio' })
+    updateLabel.append(updateBox, ' Nach Updates suchen')
+    updates.append(updateLabel)
+
+    // Default program for .md: status, and a button where this app is not (yet) the default.
+    // Windows only lets the user pick in its settings; the button opens them (default-app.ts).
+    const defaultApp = el('fieldset', { className: 'settings-default-app' })
+    defaultApp.append(el('legend', { textContent: 'Standardprogramm' }))
+    const defaultText = el(
+      'p',
+      { className: 'settings-hint', textContent: 'Wird geprüft …' },
+      'set-default-app-status',
+    )
+    defaultText.setAttribute('role', 'status')
+    const makeDefault = el(
+      'button',
+      { type: 'button', textContent: 'Als Standard für Markdown festlegen', hidden: true },
+      'set-default-app',
+    )
+    const defaultResult = el('span', { className: 'settings-hint' }, 'set-default-app-result')
+    defaultResult.setAttribute('role', 'status')
+    const showDefault = (s: DefaultAppStatus) => {
+      defaultText.textContent = defaultAppText(s)
+      makeDefault.hidden = s.state === 'default'
+    }
+    const queryDefault = () =>
+      deps
+        .defaultAppStatus()
+        .then(showDefault, () => showDefault({ state: 'unknown', platform: String(deps.platform) }))
+    makeDefault.addEventListener('click', () => {
+      makeDefault.disabled = true
+      defaultResult.textContent = ''
+      deps
+        .makeDefaultApp()
+        .then(
+          (r) => {
+            defaultResult.textContent = r.message
+          },
+          (e: unknown) => {
+            defaultResult.textContent = `Nicht gelungen: ${e instanceof Error ? e.message : 'unbekannter Fehler'}`
+          },
+        )
+        .finally(() => {
+          makeDefault.disabled = false
+          void queryDefault()
+        })
+    })
+    void queryDefault()
+    const defaultRow = el('div', { className: 'settings-path' })
+    defaultRow.append(makeDefault, defaultResult)
+    defaultApp.append(defaultText, defaultRow)
+
     const status = el('div', { className: 'settings-status' })
     const pipeline = el(
       'div',
@@ -351,6 +432,8 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       factorLabel,
       header,
       spell,
+      updates,
+      defaultApp,
       status,
       error,
       actions,
@@ -394,6 +477,7 @@ export function openSettings(deps: SettingsDialogDeps): Promise<SettingsPatch | 
       if (spellBox.checked !== settings.spellcheck) patch.spellcheck = spellBox.checked
       if (autoBox && autoBox.checked !== settings.dictionaryAutoUpdate)
         patch.dictionaryAutoUpdate = autoBox.checked
+      if (updateBox.checked !== settings.appUpdateCheck) patch.appUpdateCheck = updateBox.checked
       finish(patch)
     }
 

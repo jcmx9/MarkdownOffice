@@ -5,6 +5,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.7] - 2026-10-27
+
+### Added
+- Tables are edited in place in Preview and Present: they never switch to their Markdown there (only the code view shows it). A click makes just that cell editable, showing its own Markdown; Tab/Shift+Tab move to the next/previous cell, Enter to the cell below, Esc leaves the table. A typed `|` is escaped as `\|`, line breaks become spaces. Every input changes only that cell's text, so the rest of the note stays byte-identical; undo, the formatting toolbar and its table commands work on the edited cell. Cmd/Ctrl+click on a link in a cell still opens it
+- App update in the app: at start (at most once a day, switch „Nach Updates suchen“ in the settings) and via „Nach Updates suchen …“ (macOS app menu, else Hilfe) the app looks for a newer stable release on GitHub. A notice offers „Jetzt aktualisieren“, „Was ist neu?“, „Später“ and „Diese Version überspringen“. „Jetzt aktualisieren“ downloads the bootstrap script of exactly that tag, quits through the normal close path and lets a detached helper run it once the app has ended (log `update.log` in the app data folder), then starts the app again; the next start reports the result. Only for bootstrap installs (install marker); the app is unsigned, so the bootstrap's verified swap replaces electron-updater
+- Focus mode (owner, 2026-10-27): only the chapter headings (H1), the headings of the chapter with the cursor and the text of the section with the cursor stay visible, so an audience cannot read ahead. Switch `Fokus` in the status line and in Present's info line, Ansicht → „Fokus ein/aus“, Mod+Shift+F; remembered per mode. Moving the cursor (click, outline, search) opens a section. Decorations only: the file stays byte-exact, user folds are untouched, the PDF is unaffected
+- Typing over selected text wraps it: `*` once, twice or three times gives `*Text*`, `**Text**`, `***Text***`; `~~` and `==` (two presses, as in Markdown) give `~~Text~~` and `==Text==`. The selection stays on the text, every press is an undo step; without a selection, in code and formulas the keys type as usual
+- Settings: block „Standardprogramm“ shows whether `.md` files open with Markdown Office, and „Als Standard für Markdown festlegen“ makes it the default: macOS via Launch Services, Linux via `xdg-mime`; on Windows (where no program may set itself) it registers the app for `.md`/`.markdown` and opens Settings → Default apps at Markdown Office
+- Windows install (`bootstrap.ps1`) registers Markdown Office as a program for `.md` and `.markdown` (ProgID, „Öffnen mit“, Default-apps list, below HKCU); uninstall removes exactly these keys
+
+### Fixed
+- Windows and Linux: the menu bar comes back after leaving Present. Electron's leave restored the bar to its hidden state from the enter, so it stayed gone until the app restarted
+
 ## [26.10.6] - 2026-10-26
 
 ### Added

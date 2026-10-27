@@ -13,6 +13,7 @@ export const DEFAULT_SESSION: Session = {
   zoom: { edit: 1, present: 1 },
   outline: { edit: false, present: false },
   toolbar: { edit: true },
+  focus: { edit: false, present: false },
   recent: [],
 }
 
@@ -34,6 +35,8 @@ export function defaultSettings(baseDir: string): Settings {
     // Spell checking is on by default; updates of the bundled dictionaries too (Windows/Linux).
     spellcheck: true,
     dictionaryAutoUpdate: true,
+    // The app looks for a newer release at start (at most once a day; app-update.ts).
+    appUpdateCheck: true,
   }
 }
 
@@ -62,6 +65,8 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       typeof o.dictionaryAutoUpdate === 'boolean'
         ? o.dictionaryAutoUpdate
         : defaults.dictionaryAutoUpdate,
+    appUpdateCheck:
+      typeof o.appUpdateCheck === 'boolean' ? o.appUpdateCheck : defaults.appUpdateCheck,
   }
 }
 
@@ -86,6 +91,7 @@ export function settingsPatch(current: Settings, raw: unknown): Settings {
   if (typeof o.spellcheck === 'boolean') next.spellcheck = o.spellcheck
   if (typeof o.dictionaryAutoUpdate === 'boolean')
     next.dictionaryAutoUpdate = o.dictionaryAutoUpdate
+  if (typeof o.appUpdateCheck === 'boolean') next.appUpdateCheck = o.appUpdateCheck
   return next
 }
 
@@ -101,6 +107,7 @@ export function sanitizeSession(raw: unknown): Session {
   const zoom = isObj(o.zoom) ? o.zoom : {}
   const outline = isObj(o.outline) ? o.outline : {}
   const toolbar = isObj(o.toolbar) ? o.toolbar : {}
+  const focus = isObj(o.focus) ? o.focus : {}
   return {
     tabs,
     activeIndex: tabs.length ? Math.trunc(clamp(o.activeIndex, 0, tabs.length - 1, 0)) : 0,
@@ -111,6 +118,7 @@ export function sanitizeSession(raw: unknown): Session {
     // Default on (spec): sessions written before the toolbar existed show it; only an explicit
     // false (the user switched it off) hides it.
     toolbar: { edit: toolbar.edit !== false },
+    focus: { edit: focus.edit === true, present: focus.present === true },
     recent: Array.isArray(o.recent)
       ? o.recent
           .map(absPath)

@@ -12,6 +12,7 @@ import type {
   SettingsStatus,
   StartupState,
 } from '../shared/types'
+import type { AppUpdater } from './app-update'
 import { addRecent, replaceRecent } from './cli'
 import { canonicalPath, canonicalPaths, sameFile } from './files'
 import { FullScreenOwner, leaveFullScreenBeforeClose } from './fullscreen'
@@ -49,6 +50,8 @@ export class AppContext {
   /** Tells a held Present shortcut's auto-repeats from deliberate presses (menu.ts). */
   private readonly presentKey = new PresentKeyGuard(process.platform === 'darwin')
   settings: Settings
+  /** Update of the app itself (set up in index.ts once the app is ready). */
+  appUpdate: AppUpdater | null = null
   session: Session = DEFAULT_SESSION
   readonly reserved = new Set<string>()
   readonly watcher = new NoteWatcher((change) => this.send(Ch.externalChange, change))
@@ -247,6 +250,8 @@ export class AppContext {
     this.closeRequested = false
     if (!ok) {
       this.quitting = false
+      // A quit for an app update that the user stopped (unsaved notes) drops the update too.
+      this.appUpdate?.cancelInstall()
       return
     }
     this.closeApproved = true
@@ -317,6 +322,7 @@ export class AppContext {
     if (patch.zoom !== undefined) next.zoom = patch.zoom
     if (patch.outline !== undefined) next.outline = patch.outline
     if (patch.toolbar !== undefined) next.toolbar = patch.toolbar
+    if (patch.focus !== undefined) next.focus = patch.focus
     this.session = sanitizeSession(next)
     await this.persistSession()
   }

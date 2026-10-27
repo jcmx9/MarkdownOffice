@@ -19,14 +19,20 @@ export interface InfoLineActions {
   zoomOut(): void
   /** Outline on/off for Present (the same command as Mod+Shift+O). */
   toggleOutline(): void
+  /** Focus mode on/off for Present (the same command as Mod+Shift+F). */
+  toggleFocus(): void
 }
 
-/** Present's only chrome: clock, mode and view switches, outline toggle, tabs, zoom, save state. */
+/**
+ * Present's only chrome: clock, mode and view switches, outline and focus toggles, tabs, zoom,
+ * save state.
+ */
 export class InfoLine {
   private readonly clock: Clock
   private readonly switches: ModeSwitches
   /** Like Edit's status line; the YAML toggle stays out because Present refuses it. */
   private readonly outline: HTMLButtonElement
+  private readonly focus: HTMLButtonElement
   private readonly tabs = document.createElement('span')
   private readonly zoom = document.createElement('span')
   private readonly state = document.createElement('span')
@@ -55,9 +61,12 @@ export class InfoLine {
       'Gliederung ein/aus (Mod+Shift+O)',
       () => actions.toggleOutline(),
     )
+    this.focus = chromeButton('il-focus', 'Fokus', 'Fokus ein/aus (Mod+Shift+F)', () =>
+      actions.toggleFocus(),
+    )
     const toggles = document.createElement('span')
     toggles.className = 'mdo-switches'
-    toggles.append(this.outline)
+    toggles.append(this.outline, this.focus)
     this.tabs.className = 'mdo-il-tabs'
     this.zoom.className = 'mdo-il-zoom'
     this.zoom.dataset.testid = 'il-zoom'
@@ -92,8 +101,10 @@ export class InfoLine {
     saveText: string,
     zoom: number,
     outline = false,
+    focus = false,
   ): void {
     lift(this.outline, outline)
+    lift(this.focus, focus)
     // Update in place; only a changed tab count adds or removes buttons at the end.
     while (this.tabButtons.length > tabs.length) this.tabButtons.pop()?.remove()
     while (this.tabButtons.length < tabs.length) {

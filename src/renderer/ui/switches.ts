@@ -72,6 +72,7 @@ export function lift(b: HTMLButtonElement, on: boolean): void {
 export interface ToggleActions {
   toggleToolbar(): void
   toggleOutline(): void
+  toggleFocus(): void
   toggleYaml(): void
 }
 
@@ -82,6 +83,8 @@ export interface ToggleState {
   toolbar: boolean
   /** The outline is visible in this mode. */
   outline: boolean
+  /** Focus mode is on in this mode (only headings and the section with the cursor). */
+  focus: boolean
   /** The note has a front matter. */
   hasHeader: boolean
   /** The header is shown expanded; in Code it always is. */
@@ -91,14 +94,15 @@ export interface ToggleState {
 }
 
 /**
- * Three single flat toggles right of `Code | Vorschau`: `Leiste` (formatting toolbar),
- * `Gliederung` and `YAML`. Same look as ModeSwitches (lifted = on, grey = off). Test ids:
- * `<prefix>-toolbar`, `<prefix>-outline`, `<prefix>-yaml`.
+ * Four single flat toggles right of `Code | Vorschau`: `Leiste` (formatting toolbar),
+ * `Gliederung`, `Fokus` and `YAML`. Same look as ModeSwitches (lifted = on, grey = off). Test
+ * ids: `<prefix>-toolbar`, `<prefix>-outline`, `<prefix>-focus`, `<prefix>-yaml`.
  */
 export class StatusToggles {
   readonly el = document.createElement('span')
   private readonly toolbar: HTMLButtonElement
   private readonly outline: HTMLButtonElement
+  private readonly focus: HTMLButtonElement
   private readonly yaml: HTMLButtonElement
 
   constructor(prefix: string, actions: ToggleActions) {
@@ -114,11 +118,14 @@ export class StatusToggles {
       'Gliederung ein/aus (Mod+Shift+O)',
       () => actions.toggleOutline(),
     )
+    this.focus = chromeButton(`${prefix}-focus`, 'Fokus', 'Fokus ein/aus (Mod+Shift+F)', () =>
+      actions.toggleFocus(),
+    )
     this.yaml = chromeButton(`${prefix}-yaml`, 'YAML', 'YAML-Header ein/aus (Mod+Shift+H)', () =>
       actions.toggleYaml(),
     )
     this.el.className = 'mdo-switches'
-    this.el.append(this.toolbar, this.outline, this.yaml)
+    this.el.append(this.toolbar, this.outline, this.focus, this.yaml)
   }
 
   render(s: ToggleState): void {
@@ -127,6 +134,8 @@ export class StatusToggles {
     this.toolbar.disabled = !s.hasNote
     lift(this.outline, s.hasNote && s.outline)
     this.outline.disabled = !s.hasNote
+    lift(this.focus, s.hasNote && s.focus)
+    this.focus.disabled = !s.hasNote
     // Intent: the lifted state mirrors what toggle-header changes (expanded = on). Code shows
     // the header always expanded, so the button stays lifted but cannot act there.
     lift(this.yaml, s.hasNote && s.hasHeader && s.yamlOn)
