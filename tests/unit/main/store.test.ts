@@ -24,7 +24,15 @@ describe('settings', () => {
       headerDefault: 'yaml',
       spellcheck: true,
       dictionaryAutoUpdate: true,
+      appUpdateCheck: true,
     })
+  })
+
+  it('app update switch: default on, booleans kept, anything else rejected', () => {
+    expect(sanitizeSettings({ appUpdateCheck: false }, defaults).appUpdateCheck).toBe(false)
+    expect(sanitizeSettings({ appUpdateCheck: 'no' }, defaults).appUpdateCheck).toBe(true)
+    expect(settingsPatch(defaults, { appUpdateCheck: false }).appUpdateCheck).toBe(false)
+    expect(settingsPatch(defaults, { appUpdateCheck: 1 }).appUpdateCheck).toBe(true)
   })
 
   it('spellcheck switches: default on, booleans kept, anything else → default', () => {
@@ -85,6 +93,7 @@ describe('settingsPatch', () => {
         headerDefault: 'titleblock',
         spellcheck: false,
         dictionaryAutoUpdate: false,
+        appUpdateCheck: false,
       }),
     ).toEqual({
       defaultFolder: folder,
@@ -93,6 +102,7 @@ describe('settingsPatch', () => {
       headerDefault: 'titleblock',
       spellcheck: false,
       dictionaryAutoUpdate: false,
+      appUpdateCheck: false,
     })
   })
 

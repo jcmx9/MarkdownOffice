@@ -187,6 +187,22 @@ export function registerIpc(ctx: AppContext): void {
       ? (ctx.spellcheck?.downloadDictionary(code) ?? false)
       : false,
   )
+  // App update (app-update.ts): versions from the renderer are checked there again.
+  ipcMain.handle(Ch.appUpdateCheck, (_e, manual: unknown) =>
+    ctx.appUpdate ? ctx.appUpdate.check(manual === true) : ({ kind: 'unsupported' } as const),
+  )
+  ipcMain.handle(Ch.appUpdateSkip, (_e, version: unknown) =>
+    typeof version === 'string' ? ctx.appUpdate?.skip(version) : undefined,
+  )
+  ipcMain.handle(Ch.appUpdateInstall, (_e, version: unknown) =>
+    typeof version === 'string' && ctx.appUpdate
+      ? ctx.appUpdate.install(version)
+      : 'Update nicht möglich.',
+  )
+  ipcMain.handle(Ch.appUpdateOutcome, () => ctx.appUpdate?.outcome() ?? null)
+  ipcMain.handle(Ch.appUpdateShowLog, () => {
+    if (ctx.appUpdate) shell.showItemInFolder(ctx.appUpdate.logPath)
+  })
   ipcMain.handle(
     Ch.spellCheckUpdates,
     () => ctx.spellcheck?.checkNow() ?? ({ kind: 'skipped' } as const),

@@ -19,6 +19,7 @@ const settings: Settings = {
   headerDefault: 'yaml',
   spellcheck: true,
   dictionaryAutoUpdate: true,
+  appUpdateCheck: true,
 }
 
 const status: SettingsStatus = { version: '26.10.0', typst: '0.15.0' }
@@ -164,6 +165,16 @@ describe('settings dialog', () => {
     expect($('settings-status-pipeline').textContent).toBe(
       'Status nicht verfügbar (keine Antwort nach 10 s)',
     )
+  })
+})
+
+describe('updates section', () => {
+  it('shows the app update switch and returns a change', async () => {
+    const done = openSettings(deps())
+    expect(input('set-app-update').checked).toBe(true)
+    input('set-app-update').checked = false
+    $('settings-save').click()
+    expect(await done).toEqual({ appUpdateCheck: false })
   })
 })
 

@@ -1,5 +1,8 @@
-import { existsSync } from 'node:fs'
-import { app } from 'electron'
+import { spawn } from 'node:child_process'
+import { existsSync, promises as fs } from 'node:fs'
+import { join } from 'node:path'
+import { app, net } from 'electron'
+import { AppUpdater, installLocation } from './app-update'
 import { argsFromArgv, HELP_TEXT, parseCli } from './cli'
 import { AppContext } from './context'
 import { handleFontProtocol, registerFontScheme } from './font-protocol'
@@ -66,6 +69,8 @@ function run(initial: string[]): void {
     ctx.focus()
   })
   app.on('before-quit', () => ctx.markQuitting())
+  // Only now is the quit certain (no note kept it open): the update helper may start.
+  app.on('will-quit', () => ctx.appUpdate?.onWillQuit())
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
   })
@@ -88,6 +93,7 @@ function run(initial: string[]): void {
       website: 'https://github.com/jcmx9/MarkdownOffice',
     })
     await ctx.load()
+    ctx.appUpdate = appUpdater(() => ctx.settings.appUpdateCheck)
     // Before handleFontProtocol: protocol.handle creates the default session, and with it
     // Chromium's spellchecker, which must find the dictionaries and the dead download URL.
     // A failure only logs: the window and its own guard (SpellcheckController) still start.
@@ -98,5 +104,46 @@ function run(initial: string[]): void {
     registerIpc(ctx)
     ctx.markInitialized()
     if (!ctx.window) ctx.createWindow()
+  })
+}
+
+/** The app update (app-update.ts) with the real network, files and processes. */
+function appUpdater(enabled: () => boolean): AppUpdater {
+  const userData = app.getPath('userData')
+  const readText = (p: string) => fs.readFile(p, 'utf8').catch(() => null)
+  const exists = (p: string) =>
+    fs.access(p).then(
+      () => true,
+      () => false,
+    )
+  return new AppUpdater({
+    statePath: join(userData, 'app-update.json'),
+    logPath: join(userData, 'update.log'),
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    enabled,
+    fetch: (url, init) =>
+      net.fetch(url, { headers: { 'User-Agent': 'Markdown Office' }, signal: init.signal }),
+    location: () =>
+      installLocation({
+        platform: process.platform,
+        execPath: process.execPath,
+        home: app.getPath('home'),
+        xdgDataHome: process.env.XDG_DATA_HOME,
+        read: readText,
+        exists,
+      }),
+    now: () => Date.now(),
+    tempDir: () => fs.mkdtemp(join(app.getPath('temp'), 'mdo-update-')),
+    writeFile: (p, data) => fs.writeFile(p, data, { mode: 0o600 }),
+    spawn: (command, args, mdoHome) => {
+      // The bootstrap installs where this app lives: MDO_HOME only when that is not its default.
+      const env = { ...process.env }
+      delete env.MDO_HOME
+      if (mdoHome) env.MDO_HOME = mdoHome
+      spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, env }).unref()
+    },
+    pid: process.pid,
+    quit: () => app.quit(),
   })
 }
