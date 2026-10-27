@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Windows and Linux: the menu bar comes back after leaving Present. Electron's leave restored the bar to its hidden state from the enter, so it stayed gone until the app restarted
+
 ## [26.10.6] - 2026-10-26
 
 ### Added

@@ -227,15 +227,15 @@ export function registerIpc(ctx: AppContext): void {
    * The app only leaves a fullscreen it requested itself (FullScreenOwner); returns whether
    * the user had the window fullscreen before the request.
    */
-  ipcMain.handle(Ch.setFullScreen, (e, on: unknown): Promise<boolean> | boolean => {
+  ipcMain.handle(Ch.setFullScreen, async (e, on: unknown): Promise<boolean> => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win) return false
     const flag = on === true
-    // macOS hides the menu bar in fullscreen itself; Windows/Linux need it hidden explicitly,
-    // and shown again on leaving Present even when the user's own fullscreen stays.
-    if (process.platform !== 'darwin') win.setMenuBarVisibility(!flag)
+    const bar = process.platform !== 'darwin'
+    // macOS hides the menu bar in fullscreen itself; Windows/Linux need it hidden explicitly.
+    if (bar && flag) win.setMenuBarVisibility(false)
     // An enter settles when it took effect or the OS refused it (then Present stays windowed).
-    return setWindowFullScreen(
+    const was = await setWindowFullScreen(
       ctx.fullScreen,
       {
         isFullScreen: () => !win.isDestroyed() && win.isFullScreen(),
@@ -246,6 +246,11 @@ export function registerIpc(ctx: AppContext): void {
         if (!win.isDestroyed()) win.webContents.send(Ch.fullScreenRefused)
       },
     )
+    // Shown only after the leave: Electron's leave restores the bar to its state before the
+    // enter, which the enter above had hidden, so a bar shown earlier stayed gone after Present
+    // on Windows (26.10.6). Also shown when the user's own fullscreen stays.
+    if (bar && !flag && !win.isDestroyed()) win.setMenuBarVisibility(true)
+    return was
   })
 
   ipcMain.handle(Ch.readNote, async (_e, path: unknown): Promise<NoteFile | { error: string }> => {
