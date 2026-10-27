@@ -38,6 +38,8 @@ export const Ch = {
   spellWords: 'mdo:spell-words',
   spellRemoveWord: 'mdo:spell-remove-word',
   settingsStatus: 'mdo:settings-get-status',
+  defaultAppStatus: 'mdo:default-app-status',
+  makeDefaultApp: 'mdo:default-app-make',
   updateSettings: 'mdo:settings-update',
   choosePath: 'mdo:settings-choose-path',
   pluginWasm: 'mdo:plugin-wasm',

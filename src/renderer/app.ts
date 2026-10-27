@@ -534,6 +534,8 @@ export class App {
         checkDictionaries: () => this.mdo.checkDictionaryUpdates(),
         words: () => this.mdo.spellWords(),
         removeWord: (w) => this.mdo.removeSpellWord(w),
+        defaultAppStatus: () => this.mdo.defaultAppStatus(),
+        makeDefaultApp: () => this.mdo.makeDefaultApp(),
       })
       if (!patch || Object.keys(patch).length === 0) return
       const next = await this.mdo.updateSettings(patch)

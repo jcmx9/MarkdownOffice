@@ -73,7 +73,7 @@ Windows (PowerShell):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jcmx9/MarkdownOffice/main/scripts/bootstrap.ps1))) -Uninstall
 ```
 
-Entfernt wird nur, was die Installation angelegt hat (erkennbar an ihrer Installationsmarkierung): App, Befehl, Startmenü- bzw. Desktop-Eintrag und der Dateimanager-Eintrag „Markdown-PDF“ (samt der Ordner und Registry-Schlüssel, die nur dafür angelegt wurden). Dokumente, eigene Vorlagen-Sets, Snippets und Einstellungen bleiben unangetastet.
+Entfernt wird nur, was die Installation angelegt hat (erkennbar an ihrer Installationsmarkierung): App, Befehl, Startmenü- bzw. Desktop-Eintrag und der Dateimanager-Eintrag „Markdown-PDF“ (samt der Ordner und Registry-Schlüssel, die nur dafür angelegt wurden), unter Windows auch der Eintrag als Programm für `.md`. Dokumente, eigene Vorlagen-Sets, Snippets und Einstellungen bleiben unangetastet.
 
 ## Testversion
 
@@ -152,6 +152,8 @@ Dieselben Befehle stehen im Menü **Format** (ohne Tastenkürzel) und unter **Ei
 ### Einstellungen
 
 „Einstellungen …“ (macOS Cmd+, im App-Menü, sonst Ctrl+, im Menü „Datei“) öffnet den Dialog: Standardordner für neue Notizen, Snippet-Ordner, Schriftfaktor im Präsentationsmodus und die Voreinstellung für den YAML-Header in der Vorschau (als YAML oder als Titelblock) sowie die Rechtschreibung (Schalter, automatische Wörterbuch-Updates, eigene Wörter). Ein schreibgeschützter Statusblock zeigt die Version der Pipeline und des mitgelieferten Typst. Der Knopf „Vorlagen-Ordner öffnen“ öffnet den Ordner für eigene Vorlagen-Sets (`~/Markdown Office/Vorlagen/` bzw. `MDO_TEMPLATES`, siehe [Vorlagen-Sets](#vorlagen-sets)) im Dateimanager und legt ihn an, wenn er fehlt. Das Ändern des Standardordners verschiebt oder löscht keine Dateien. Nicht übernommene Werte nennt der Dialog nach dem Speichern; für sie gilt der bisherige Wert.
+
+Der Block „Standardprogramm“ zeigt, ob Markdown-Dateien (`.md`) mit Markdown Office öffnen, und bietet sonst den Knopf „Als Standard für Markdown festlegen“. Unter macOS und Linux setzt er das Standardprogramm direkt (Linux über `xdg-mime`, dafür muss die App mit dem Installationsskript installiert sein). Unter Windows darf kein Programm sich selbst zum Standard machen: Der Knopf trägt Markdown Office als Programm für `.md` und `.markdown` ein (unter `HKCU`, ohne Adminrechte; das macht auch schon die Installation) und öffnet die Windows-Einstellungen „Standard-Apps“ bei Markdown Office, wo ein Klick bei `.md` genügt. Nur in der installierten App.
 
 ### Gliederung
 
