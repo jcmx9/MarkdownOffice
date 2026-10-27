@@ -1,7 +1,13 @@
 import { foldEffect, foldedRanges, unfoldEffect } from '@codemirror/language'
 import type { EditorState, Transaction, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { activeEntry, foldsAt, type OutlineEntry, outlineEntries } from './outline'
+import {
+  activeEntry,
+  foldsAt,
+  OUTLINE_DEPTH_DEFAULT,
+  type OutlineEntry,
+  outlineEntries,
+} from './outline'
 
 /**
  * Unfolds the folds stored at the heading line end (their real ranges, which may differ from
@@ -71,13 +77,28 @@ export class OutlineSync {
   private visible = false
   private entries: OutlineEntry[] | null = null
   private frame: number | null = null
+  private depth = OUTLINE_DEPTH_DEFAULT
 
   constructor(
     private readonly target: OutlineTarget,
     private readonly state: () => EditorState | null,
     private readonly frames: FrameScheduler = animationFrames,
-    private readonly compute: (state: EditorState) => OutlineEntry[] = outlineEntries,
+    private readonly compute: (
+      state: EditorState,
+      depth: number,
+    ) => OutlineEntry[] = outlineEntries,
   ) {}
+
+  /**
+   * Heading levels to list (settings „Ebenen in der Gliederung“), applied at once. The titles
+   * change, so the width follows them once, as when the outline is shown.
+   */
+  setDepth(depth: number): void {
+    if (depth === this.depth) return
+    this.depth = depth
+    this.entries = null
+    this.fit()
+  }
 
   setVisible(on: boolean): void {
     if (on === this.visible) return
@@ -127,7 +148,7 @@ export class OutlineSync {
     this.frame = null
     const state = this.state()
     if (!this.visible || !state) return
-    this.entries ??= this.compute(state)
+    this.entries ??= this.compute(state, this.depth)
     this.target.render(this.entries, activeEntry(this.entries, state.selection.main.head))
   }
 }

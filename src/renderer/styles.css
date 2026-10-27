@@ -271,7 +271,8 @@ body.mdo-ol-resizing {
   box-shadow: inset 2px 0 var(--accent);
 }
 /* Hierarchy (relative to the note's highest level): top entries in the heading serif, their
-   children hanging from tree lines (├─ └─). */
+   children hanging from tree lines (├─ └─); deeper levels (settings „Ebenen in der Gliederung“)
+   hang from their own section the same way. */
 #outline .mdo-ol-list > .mdo-ol-top + .mdo-ol-top {
   margin-top: calc(6px * var(--mdo-ol-zoom, 1));
 }
@@ -282,18 +283,18 @@ body.mdo-ol-resizing {
   font-weight: 560;
   color: var(--mdo-heading);
 }
-#outline .mdo-ol-top > .mdo-ol-list {
-  /* The trunk runs below the centre of the H1 chevron slot (18px wide). */
+#outline .mdo-ol-item > .mdo-ol-list {
+  /* The trunk runs below the centre of the parent's chevron slot (18px wide). */
   margin: 0 0 calc(2px * var(--mdo-ol-zoom, 1)) calc(8.5px * var(--mdo-ol-zoom, 1));
 }
-#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item {
+#outline .mdo-ol-item > .mdo-ol-list > .mdo-ol-item {
   /* Half the height of an H2 row: where the branch meets the label. */
   --mdo-ol-mid: calc(10px * var(--mdo-ol-zoom, 1));
   position: relative;
   padding-left: calc(10px * var(--mdo-ol-zoom, 1));
 }
 /* Trunk: through every H2 row, ending at the branch of the last one (└─). */
-#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item::before {
+#outline .mdo-ol-item > .mdo-ol-list > .mdo-ol-item::before {
   content: "";
   position: absolute;
   left: 0;
@@ -301,12 +302,12 @@ body.mdo-ol-resizing {
   bottom: 0;
   border-left: 1px solid var(--line);
 }
-#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item:last-child::before {
+#outline .mdo-ol-item > .mdo-ol-list > .mdo-ol-item:last-child::before {
   bottom: auto;
   height: var(--mdo-ol-mid);
 }
 /* Branch: from the trunk to the H2 row. */
-#outline .mdo-ol-top > .mdo-ol-list > .mdo-ol-item::after {
+#outline .mdo-ol-item > .mdo-ol-list > .mdo-ol-item::after {
   content: "";
   position: absolute;
   left: 0;

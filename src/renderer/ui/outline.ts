@@ -41,7 +41,7 @@ interface Row {
   /** Empty slot for an entry without children, so its label lines up with the chevron rows. */
   spacer: HTMLSpanElement
   label: HTMLButtonElement
-  /** Children list of an H1, present only while the H1 is expanded. */
+  /** Children list of an entry, present only while the entry is expanded. */
   sub: HTMLUListElement | null
   /** Latest entry for this key; handlers read it so they never act on stale data. */
   entry: OutlineEntry
@@ -76,7 +76,7 @@ export class Outline {
   private activeKey: string | null = null
   private keys = new Map<OutlineEntry, string>()
   /** Highest heading level in the note: its entries get the top-level look, the rest the child look. */
-  private topLevel: 1 | 2 = 1
+  private topLevel = 1
   /** Full text of a cut-off label on hover, right-aligned to it (created on first use). */
   private tip: HTMLDivElement | null = null
   /**
@@ -154,8 +154,8 @@ export class Outline {
       this.el.replaceChildren(this.list)
     }
     this.keys = keyEntries(entries)
-    // Levels are relative: a note with only H2 headings shows them as top-level entries.
-    this.topLevel = entries.some((e) => e.level === 1) ? 1 : 2
+    // Levels are relative: a note whose highest heading is H2 shows its H2 as top-level entries.
+    this.topLevel = Math.min(...entries.map((e) => e.level))
     const seen = new Set<string>()
     this.reconcile(this.list, entries, seen)
     for (const k of this.rows.keys()) if (!seen.has(k)) this.rows.delete(k)
