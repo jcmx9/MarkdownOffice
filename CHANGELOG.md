@@ -10,6 +10,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Settings: block „Standardprogramm“ shows whether `.md` files open with Markdown Office, and „Als Standard für Markdown festlegen“ makes it the default: macOS via Launch Services, Linux via `xdg-mime`; on Windows (where no program may set itself) it registers the app for `.md`/`.markdown` and opens Settings → Default apps at Markdown Office
 - Windows install (`bootstrap.ps1`) registers Markdown Office as a program for `.md` and `.markdown` (ProgID, „Öffnen mit“, Default-apps list, below HKCU); uninstall removes exactly these keys
 
+### Changed
+- Preview: a click into a rendered table leaves it rendered; a double click (or the arrow keys) shows its Markdown for editing. Cmd/Ctrl+click on a link in a cell still opens it
+
 ### Fixed
 - Windows and Linux: the menu bar comes back after leaving Present. Electron's leave restored the bar to its hidden state from the enter, so it stayed gone until the app restarted
 

@@ -62,9 +62,12 @@ test('a checkbox click changes exactly one byte on disk', async () => {
   await app.close()
 })
 
-test('a table click switches to Markdown editing and back, bytes untouched', async () => {
+test('a table click keeps it rendered, a double click switches to Markdown and back, bytes untouched', async () => {
   const { app, page, note, original } = await openFixture()
   await page.locator('table.mdo-table').click()
+  await page.waitForTimeout(300)
+  await expect(page.locator('table.mdo-table')).toHaveCount(1)
+  await page.locator('table.mdo-table').dblclick()
   await expect(page.locator('table.mdo-table')).toHaveCount(0)
   await expect(page.locator('.cm-line.mdo-table-head')).toBeVisible()
   await shot(page, 'table-editing')

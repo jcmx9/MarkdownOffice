@@ -126,7 +126,7 @@ describe('tableField', () => {
     expect(tables(make(quote, quote.length))).toEqual([])
     expect(tables(make(list, list.length))).toEqual([])
   })
-  it('click switches to Markdown; secondary button does nothing', () => {
+  it('a single click keeps the table rendered, a double click switches to Markdown; secondary button does nothing', () => {
     const doc = `Text\n\n${TABLE}\n\nende`
     const parent = document.createElement('div')
     document.body.append(parent)
@@ -148,7 +148,12 @@ describe('tableField', () => {
     )
     expect(view.state.selection.main.head).toBe(doc.length)
     wrap().dispatchEvent(
-      new MouseEvent('mousedown', { button: 0, bubbles: true, cancelable: true }),
+      new MouseEvent('mousedown', { button: 0, detail: 1, bubbles: true, cancelable: true }),
+    )
+    expect(view.state.selection.main.head).toBe(doc.length)
+    expect(tables(view.state)).toHaveLength(1)
+    wrap().dispatchEvent(
+      new MouseEvent('mousedown', { button: 0, detail: 2, bubbles: true, cancelable: true }),
     )
     expect(view.state.selection.main.head).toBe(start)
     expect(tables(view.state)).toEqual([])

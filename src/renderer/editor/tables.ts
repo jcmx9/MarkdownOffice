@@ -255,7 +255,11 @@ class TableWidget extends WidgetType {
     wrap.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return
       e.preventDefault()
-      // Into the table: the field then shows the Markdown for editing.
+      // A single click leaves the table rendered and the cursor where it was, so reading or
+      // pointing at it in the preview never flips it to Markdown (owner, 2026-10-27). A double
+      // click puts the cursor into the table: the field then shows the Markdown for editing
+      // (arrow keys still do as well).
+      if (e.detail < 2) return
       view.dispatch({ selection: { anchor: view.posAtDOM(wrap) } })
       view.focus()
     })
