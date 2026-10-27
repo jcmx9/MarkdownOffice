@@ -4,7 +4,7 @@ import type { OutlineEntry } from '../../../src/renderer/editor/outline'
 import { Outline } from '../../../src/renderer/ui/outline'
 
 function entry(
-  level: 1 | 2,
+  level: number,
   text: string,
   from: number,
   opts: { fold?: boolean; folded?: boolean; children?: OutlineEntry[] } = {},
@@ -229,6 +229,24 @@ describe('Outline in-place updates', () => {
     spacers[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect(handlers.jump).not.toHaveBeenCalled()
     expect(handlers.toggle).not.toHaveBeenCalled()
+  })
+  it('deeper levels nest under their section with the child look and their own chevron', () => {
+    outline.render(
+      [
+        entry(1, 'Alpha', 0, {
+          children: [entry(2, 'Beta', 20, { children: [entry(3, 'Tief', 30, { fold: false })] })],
+        }),
+      ],
+      null,
+    )
+    expect(labels().map((l) => l.textContent)).toEqual(['Alpha', 'Beta', 'Tief'])
+    const tief = el.querySelector('li.mdo-ol-h3') as HTMLElement
+    expect(tief.classList.contains('mdo-ol-sub')).toBe(true)
+    // Nested in Beta's list, which hangs in Alpha's.
+    expect(tief.parentElement?.closest('li')?.querySelector('.mdo-ol-label')?.textContent).toBe(
+      'Beta',
+    )
+    expect(el.querySelectorAll('.mdo-ol-chevron').length).toBe(2)
   })
   it('levels are relative: with only H2 headings they are the top-level look', () => {
     outline.render([entry(2, 'Eins', 0, { fold: false }), entry(2, 'Zwei', 20)], null)

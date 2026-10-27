@@ -1,19 +1,18 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
 import {
   Compartment,
-  type EditorState,
+  EditorState,
   type Extension,
   Prec,
   type Range,
   StateField,
 } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView } from '@codemirror/view'
+import { Decoration, type DecorationSet, EditorView, keymap } from '@codemirror/view'
 
 /**
- * Focus mode (owner, 2026-10-27): while a note is shown to others, the chapters not being
- * talked about stay closed, so nobody reads ahead. Only headings are visible: every chapter
- * heading, the headings of the chapter with the cursor, and the text of the section with the
- * cursor. The text is hidden by decorations only, never changed and never folded (folds are
+ * Focus mode (owner, 2026-10-27): while a note is shown to others, nobody reads ahead. Like a
+ * slide, only the section with the cursor shows its text, under the chapter headings and the
+ * path of headings leading to it (focusHiddenRanges); PageDown/PageUp step to the next one. The text is hidden by decorations only, never changed and never folded (folds are
  * the user's own, „Alle ausklappen“ must not end focus).
  */
 export const focusCompartment = new Compartment()
@@ -45,48 +44,59 @@ function headings(state: EditorState): Heading[] {
   return out
 }
 
+/** Index of the deepest heading at or before `pos`, -1 before the first heading. */
+function activeIndex(hs: readonly Heading[], pos: number): number {
+  let active = -1
+  hs.forEach((h, i) => {
+    if (h.from <= pos) active = i
+  })
+  return active
+}
+
+/** Body of heading `i`: the lines after it up to the next heading of any level (may be empty). */
+function bodyRange(
+  state: EditorState,
+  hs: readonly Heading[],
+  i: number,
+): { from: number; to: number } | null {
+  const h = hs[i]
+  if (!h) return null
+  const from = h.to + 1
+  const to = (hs[i + 1]?.from ?? state.doc.length + 1) - 1
+  return from <= to ? { from, to } : null
+}
+
 /**
- * The whole-line ranges focus mode hides for the cursor at `pos`. The chapter level is the
- * highest heading level in the note (H1, or H2 in a note without H1), so a note without H1
- * still keeps an agenda. The active section is the deepest heading at or before `pos`; its
- * text and sub-headings stay. Text before the first heading (front matter, intro) is never
- * hidden: the header toggle owns the front matter.
+ * The whole-line ranges focus mode hides for the cursor at `pos`. Like a slide (owner,
+ * 2026-10-27: participants must not see too much at once): every chapter heading stays as the
+ * agenda, plus the path of headings from the active section's chapter down to it, plus the
+ * active heading's own text up to the next heading of any level. Sibling and sub-headings and
+ * all other text are hidden. The chapter level is the highest heading level in the note (H1,
+ * or H2 in a note without H1), so a note without H1 still keeps an agenda. The active section
+ * is the deepest heading at or before `pos`. Text before the first heading (front matter,
+ * intro) is never hidden: the header toggle owns the front matter.
  */
 export function focusHiddenRanges(state: EditorState, pos: number): { from: number; to: number }[] {
   const hs = headings(state)
   if (hs.length === 0) return []
   const top = Math.min(...hs.map((h) => h.level))
-  // The section of heading i ends right before the next heading of the same or a higher level.
-  const sectionEnd = (i: number): number => {
-    const own = hs[i]?.level ?? 0
-    for (let j = i + 1; j < hs.length; j++) {
-      const h = hs[j]
-      if (h && h.level <= own) return h.from - 1
-    }
-    return state.doc.length
-  }
-  let active = -1
-  hs.forEach((h, i) => {
-    if (h.from <= pos) active = i
-  })
-  let chapter = -1
+  const active = activeIndex(hs, pos)
+  // The path: the active heading and every enclosing one (each a level higher than the last).
+  const path = new Set<number>()
+  let level = 7
   for (let i = active; i >= 0; i--) {
-    if (hs[i]?.level === top) {
-      chapter = i
-      break
+    const h = hs[i]
+    if (h && h.level < level) {
+      path.add(i)
+      level = h.level
     }
   }
-  const activeEnd = active < 0 ? -1 : sectionEnd(active)
-  const chapterEnd = chapter < 0 ? -1 : sectionEnd(chapter)
   // Each heading is two parts: its own line(s) and the body lines up to the next heading.
   const parts: { from: number; to: number; hidden: boolean }[] = []
   hs.forEach((h, i) => {
-    const inActive = active >= 0 && h.from >= (hs[active]?.from ?? 0) && h.from <= activeEnd
-    const inChapter = chapter >= 0 && h.from >= (hs[chapter]?.from ?? 0) && h.from <= chapterEnd
-    parts.push({ from: h.from, to: h.to, hidden: !(h.level === top || inChapter || inActive) })
-    const bodyFrom = h.to + 1
-    const bodyTo = (hs[i + 1]?.from ?? state.doc.length + 1) - 1
-    if (bodyFrom <= bodyTo) parts.push({ from: bodyFrom, to: bodyTo, hidden: !inActive })
+    parts.push({ from: h.from, to: h.to, hidden: !(h.level === top || path.has(i)) })
+    const body = bodyRange(state, hs, i)
+    if (body) parts.push({ ...body, hidden: i !== active })
   })
   const out: { from: number; to: number }[] = []
   for (const p of parts) {
@@ -98,6 +108,84 @@ export function focusHiddenRanges(state: EditorState, pos: number): { from: numb
   }
   return out
 }
+
+/**
+ * Where PageDown (dir 1) or PageUp (dir -1) moves the cursor in focus mode: the end of the first
+ * line of the next or previous heading that has text of its own, so every step shows a filled
+ * slide (a chapter heading followed directly by a sub-heading is skipped; the path still shows
+ * it). Null at the first or last such heading, or without headings.
+ */
+export function focusStepTarget(state: EditorState, pos: number, dir: 1 | -1): number | null {
+  const hs = headings(state)
+  const filled = (i: number) => {
+    const body = bodyRange(state, hs, i)
+    return body !== null && state.doc.sliceString(body.from, body.to).trim() !== ''
+  }
+  const active = activeIndex(hs, pos)
+  for (let i = active + dir; i >= 0 && i < hs.length; i += dir) {
+    const h = hs[i]
+    if (h && filled(i)) return state.doc.lineAt(h.from).to
+  }
+  return null
+}
+
+/** Top of the visible path for the cursor at `pos`: the active section's chapter heading. */
+function pathTop(state: EditorState, pos: number): number | null {
+  const hs = headings(state)
+  const active = activeIndex(hs, pos)
+  if (active < 0) return null
+  const top = Math.min(...hs.map((h) => h.level))
+  for (let i = active; i >= 0; i--) {
+    const h = hs[i]
+    if (h && h.level === top) return h.from
+  }
+  return hs[active]?.from ?? null
+}
+
+function step(dir: 1 | -1) {
+  return (view: EditorView): boolean => {
+    const target = focusStepTarget(view.state, view.state.selection.main.head, dir)
+    // Consumed even at the ends: the plain page scroll would only show hidden blocks' edges.
+    if (target !== null) view.dispatch({ selection: { anchor: target }, userEvent: 'select' })
+    return true
+  }
+}
+
+/**
+ * PageDown/PageUp step through the sections like slides (presenter remotes send these keys).
+ * Only while focus is on (this keymap lives in focusExtensions); Prec.high so it wins over
+ * CodeMirror's page motion.
+ */
+const focusKeys = Prec.high(
+  keymap.of([
+    { key: 'PageDown', run: step(1) },
+    { key: 'PageUp', run: step(-1) },
+  ]),
+)
+
+/** Start of the active heading for `pos`, -1 before the first heading. */
+function activeOf(state: EditorState, pos: number): number {
+  const hs = headings(state)
+  return hs[activeIndex(hs, pos)]?.from ?? -1
+}
+
+/**
+ * A new active section (step, outline click, search hit, arrow keys) scrolls its path to the
+ * top of the view: the hidden text above changes, and without this the new slide could sit at
+ * the bottom of the window. Appended after the transaction's own scroll request, so it wins.
+ * Only for cursor moves: an edit keeps the view where the typing is (and the start state's
+ * headings are the transaction's, without computing tr.state twice).
+ */
+const scrollToSection = EditorState.transactionExtender.of((tr) => {
+  if (!tr.selection || tr.docChanged) return null
+  const s = tr.startState
+  const head = tr.newSelection.main.head
+  if (activeOf(s, s.selection.main.head) === activeOf(s, head)) return null
+  const top = pathTop(s, head)
+  return top === null
+    ? null
+    : { effects: EditorView.scrollIntoView(top, { y: 'start', yMargin: 24 }) }
+})
 
 const hide = Decoration.replace({ block: true })
 
@@ -128,5 +216,12 @@ export const focusHiddenField = StateField.define<DecorationSet>({
 })
 
 export function focusExtensions(on: boolean): Extension {
-  return on ? [focusHiddenField, EditorView.editorAttributes.of({ class: 'mdo-focus' })] : []
+  return on
+    ? [
+        focusHiddenField,
+        focusKeys,
+        scrollToSection,
+        EditorView.editorAttributes.of({ class: 'mdo-focus' }),
+      ]
+    : []
 }

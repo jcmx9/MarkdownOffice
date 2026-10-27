@@ -181,29 +181,23 @@ test('zoom 1 is the set print size; a zoom step scales font, line distance and m
   await app.close()
 })
 
-test('Present multiplies by the factor and keeps the 70ch measure', async () => {
+test('Present multiplies font and measure by the factor (the preview column, larger)', async () => {
   const { app, page } = await openBrief()
   await expect.poll(() => bodySize(page)).toBeCloseTo(BRIEF_SIZE, 1)
+  const columnMax = () =>
+    page.evaluate(() =>
+      Number.parseFloat(
+        getComputedStyle(document.querySelector('.cm-content') as Element).maxWidth,
+      ),
+    )
+  const editMax = await columnMax()
   await inPresent(app, page, async () => {
     await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
     // Default Present factor 1.6 at Present zoom 100 %.
     await expect.poll(() => bodySize(page)).toBeCloseTo(BRIEF_SIZE * 1.6, 1)
-    const widths = await page.evaluate(() => {
-      const scroller = document.querySelector('.cm-scroller') as HTMLElement
-      const probe = document.createElement('div')
-      Object.assign(probe.style, { width: '70ch', position: 'absolute', visibility: 'hidden' })
-      scroller.append(probe)
-      const probeWidth = probe.getBoundingClientRect().width
-      probe.remove()
-      return {
-        max: Number.parseFloat(
-          getComputedStyle(document.querySelector('.cm-content') as Element).maxWidth,
-        ),
-        probe: probeWidth,
-      }
-    })
-    // The set's 165 mm measure never widens Present's column.
-    expect(Math.abs(widths.max - widths.probe)).toBeLessThanOrEqual(1)
+    // The set's 165 mm measure, scaled like the font: lines break as in the preview. The
+    // column's em and px parts (padding, space advance) scale by the same factor or stay tiny.
+    expect(Math.abs((await columnMax()) / editMax - 1.6)).toBeLessThanOrEqual(0.02)
   })
   await app.close()
 })

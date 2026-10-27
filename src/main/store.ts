@@ -37,11 +37,17 @@ export function defaultSettings(baseDir: string): Settings {
     dictionaryAutoUpdate: true,
     // The app looks for a newer release at start (at most once a day; app-update.ts).
     appUpdateCheck: true,
+    // Outline lists H1 and H2 by default (owner, 2026-10-27).
+    outlineDepth: 2,
   }
 }
 
 export const FACTOR_MIN = 1
 export const FACTOR_MAX = 3
+export const OUTLINE_DEPTH_MIN = 1
+export const OUTLINE_DEPTH_MAX = 6
+
+const wholeNumber = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v)
 
 const headerDefault = (v: unknown): HeaderDefault | null =>
   v === 'yaml' || v === 'titleblock' ? v : null
@@ -67,6 +73,10 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
         : defaults.dictionaryAutoUpdate,
     appUpdateCheck:
       typeof o.appUpdateCheck === 'boolean' ? o.appUpdateCheck : defaults.appUpdateCheck,
+    // A hand-edited 9 still means "everything"; a fraction or text is not a level at all.
+    outlineDepth: wholeNumber(o.outlineDepth)
+      ? clamp(o.outlineDepth, OUTLINE_DEPTH_MIN, OUTLINE_DEPTH_MAX, defaults.outlineDepth)
+      : defaults.outlineDepth,
   }
 }
 
@@ -92,6 +102,9 @@ export function settingsPatch(current: Settings, raw: unknown): Settings {
   if (typeof o.dictionaryAutoUpdate === 'boolean')
     next.dictionaryAutoUpdate = o.dictionaryAutoUpdate
   if (typeof o.appUpdateCheck === 'boolean') next.appUpdateCheck = o.appUpdateCheck
+  const depth = o.outlineDepth
+  if (wholeNumber(depth) && depth >= OUTLINE_DEPTH_MIN && depth <= OUTLINE_DEPTH_MAX)
+    next.outlineDepth = depth
   return next
 }
 
