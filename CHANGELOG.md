@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Focus works like slides: every chapter heading, the path of headings down to the section with the cursor and only that section's own text (no sibling or sub-sections). Page Down/Page Up step to the next/previous section with text (presenter remotes send these keys), skipping headings without own text; a new section scrolls its chapter to the top
 - Present uses the preview's text width (the set's measure), scaled by the Present factor like the font, instead of its own narrower 70ch column: lines break in Present as in the preview and the PDF
 
 ## [26.10.7] - 2026-10-27

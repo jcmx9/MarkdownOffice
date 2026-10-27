@@ -120,7 +120,8 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Mod+Shift+M | Toggle code view (Preview is the default); in Present it ends Present and shows the Code view |
 | Mod+Shift+H | Show/hide the YAML header in the preview (hidden, the title block appears as in the PDF) |
 | Mod+Shift+O | Toggle outline (remembered per mode) |
-| Mod+Shift+F | Toggle focus: only headings and the section with the cursor (remembered per mode) |
+| Mod+Shift+F | Toggle focus: chapter headings, the path to the section with the cursor and only its text (remembered per mode) |
+| Page Down / Page Up | in focus: next or previous section with text (presenter remotes too) |
 | Mod+Shift+T | Toggle the formatting toolbar (see [Formatting toolbar](#formatting-toolbar)) |
 | macOS Cmd+Alt+[ / ], otherwise Ctrl+Shift+[ / ] | Fold/unfold section |
 | macOS Ctrl+Alt+[ / ], otherwise Alt+0 / Alt+Shift+0 | Fold/unfold all sections |
@@ -166,7 +167,7 @@ A sidebar on the right lists the note's H1 and H2 headings. Entries read as a li
 
 ### Focus
 
-Focus shows only what is being talked about while a note is discussed, so nobody reads ahead into the next chapters. All chapter headings (H1) stay visible, in the chapter with the cursor also all its sub-headings, and only in the section with the cursor also the text with its sub-sections. With the cursor in a chapter's intro text the whole chapter is visible. Without H1 the highest heading level in the note counts as chapter. Text before the first heading (header, title block, preamble) stays as it is. A click on a heading, an outline entry or a search hit places the cursor and so opens the section; the arrow keys jump over hidden text. Focus only hides: the file stays byte for byte the same, folded sections stay as they are, and the PDF always contains everything. It is turned on and off with `Fokus` in the status line, in the info line while presenting, via Ansicht → „Fokus ein/aus“ or with Mod+Shift+F, in Code, Preview and Present; the setting is remembered separately for the editor and Present.
+Focus shows only what is being talked about while a note is discussed, like a slide, so nobody reads ahead. All chapter headings (H1) stay visible as the agenda, plus the headings on the way from the chapter to the section with the cursor (such as „Umsetzung“ → „Technik“) and only that section's own text up to the next heading. Neighbouring headings, sub-sections and all other text are hidden; with the cursor in a chapter's intro text only that intro is visible. Without H1 the highest heading level in the note counts as chapter. Text before the first heading (header, title block, preamble) stays as it is. Page Down and Page Up go to the next or previous section that has text of its own (a heading followed directly by a sub-heading is skipped but stays in the path); presenter remotes send exactly these keys. A click on a heading, an outline entry or a search hit places the cursor and so opens the section; the arrow keys jump over hidden text. When the section changes, its chapter moves to the top of the window. Focus only hides: the file stays byte for byte the same, folded sections stay as they are, and the PDF always contains everything. It is turned on and off with `Fokus` in the status line, in the info line while presenting, via Ansicht → „Fokus ein/aus“ or with Mod+Shift+F, in Code, Preview and Present; the setting is remembered separately for the editor and Present.
 
 ### Snippets
 
