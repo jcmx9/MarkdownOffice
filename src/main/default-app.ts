@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { join, win32 } from 'node:path'
+import { posix, win32 } from 'node:path'
 import type { DefaultAppResult, DefaultAppStatus } from '../shared/types'
 
 /**
@@ -108,8 +108,9 @@ export function windowsRegistration(execPath: string): string[][] {
 export const WIN_SETTINGS_URL = `ms-settings:defaultapps?registeredAppUser=${encodeURIComponent(APP_NAME)}`
 
 function desktopPath(e: DefaultAppEnv): string {
-  const data = e.env.XDG_DATA_HOME || join(e.home, '.local', 'share')
-  return join(data, 'applications', DESKTOP_FILE)
+  // Only asked on Linux: POSIX paths, also when the tests run on Windows.
+  const data = e.env.XDG_DATA_HOME || posix.join(e.home, '.local', 'share')
+  return posix.join(data, 'applications', DESKTOP_FILE)
 }
 
 /** Whether this app opens `.md` files by default, as far as the system tells. */
