@@ -122,12 +122,15 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
   const sep: MenuItemConstructorOptions = { type: 'separator' }
 
   const settings = item('settings', 'Einstellungen …', 'CmdOrCtrl+,')
+  // Manual check for a newer release (app-update.ts); next to „Über“ as in other Mac apps.
+  const checkUpdate = item('check-app-update', 'Nach Updates suchen …')
 
   // macOS: the standard app menu (Electron's appMenu role) with the settings item added.
   const appMenu: MenuItemConstructorOptions = {
     role: 'appMenu',
     submenu: [
       { role: 'about' },
+      checkUpdate,
       sep,
       settings,
       sep,
@@ -269,6 +272,8 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       item('toggle-outline', 'Gliederung ein/aus', 'CmdOrCtrl+Shift+O'),
       // Mod+Shift+T: checked free of menu accelerators and CodeMirror default bindings (spec).
       item('toggle-toolbar', 'Formatierungsleiste ein/aus', 'CmdOrCtrl+Shift+T'),
+      // Mod+Shift+F: free in the menu and in CodeMirror's keymaps (search's own keymap is off).
+      item('toggle-focus', 'Fokus ein/aus', 'CmdOrCtrl+Shift+F'),
       sep,
       item('fold', 'Abschnitt einklappen', `${foldKey}[`),
       item('unfold', 'Abschnitt ausklappen', `${foldKey}]`),
@@ -304,7 +309,7 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
   // gets its own Hilfe menu there, as AGPL §5 d) asks every interactive UI to show them.
   const help: MenuItemConstructorOptions = {
     label: 'Hilfe',
-    submenu: [{ role: 'about', label: 'Über Markdown Office' }],
+    submenu: [{ role: 'about', label: 'Über Markdown Office' }, checkUpdate],
   }
 
   return [

@@ -21,6 +21,7 @@ import {
 } from '@codemirror/view'
 import type { Eol, Mode, View } from '../../shared/types'
 import { diagrams } from './diagrams'
+import { focusCompartment, focusExtensions } from './focus'
 import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
@@ -38,8 +39,10 @@ import { searchExtensions } from './search'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
+import { cellEditing } from './table-cell-edit'
 import { tableField } from './tables'
 import { typoMask } from './typo-mask'
+import { wrapTyping } from './wrap-typing'
 
 export const viewCompartment = new Compartment()
 
@@ -97,6 +100,8 @@ export function viewExtensions(view: View): Extension {
         // after previewPlugin: it reads the preview's decorations of the lines it sets
         paragraphsPlugin,
         tableField,
+        // Cells of the drawn tables are edited in place (never as Markdown in the preview).
+        cellEditing,
         // Mermaid blocks as the PDF draws them; one plugin and cache for every tab.
         diagrams.extension,
         // Formulas as the PDF sets them (bundled Typst + mitex); one service and cache per window.
@@ -127,6 +132,7 @@ export function createState(
   mode: Mode = 'edit',
   spellcheck = false,
   kind: DocKind = 'markdown',
+  focus = false,
 ): EditorState {
   const md = kind === 'markdown'
   const state = EditorState.create({
@@ -138,7 +144,8 @@ export function createState(
       codeFolding(),
       // A profile is YAML: no snippets or page breaks, and YAML highlighting, so a `# comment`
       // line is not taken for a heading (outline, section folds).
-      md ? [snippetExtensions, pageBreakKeymap] : [],
+      // Typing `*`, `~~` or `==` over selected text wraps it (wrap-typing.ts).
+      md ? [snippetExtensions, pageBreakKeymap, wrapTyping] : [],
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
       searchExtensions,
@@ -154,6 +161,8 @@ export function createState(
       // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
       spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
+      // A profile has no sections to focus on.
+      focusCompartment.of(focusExtensions(focus && md)),
     ],
   })
   const range = headerHiddenInit || mode === 'present' ? frontmatterRange(state.doc) : null

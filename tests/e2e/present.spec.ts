@@ -18,6 +18,10 @@ async function openFixture() {
 const fullScreen = (app: ElectronApplication) =>
   app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false)
 
+/** Windows/Linux: the window's menu bar (macOS has none in the window). */
+const menuBar = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isMenuBarVisible() ?? false)
+
 const bodySize = (page: import('@playwright/test').Page) =>
   page.locator('.cm-scroller').evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
 
@@ -41,6 +45,26 @@ test('Present: fullscreen, title block, info line only; Esc returns', async () =
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
   await expect(page.locator('#tabbar')).toBeVisible()
   await expect(page.locator('#infoline')).toBeHidden()
+  if (!linux) await expect.poll(() => fullScreen(app)).toBe(false)
+  // 26.10.6 on Windows: the menu bar stayed hidden after Present.
+  if (process.platform !== 'darwin') await expect.poll(() => menuBar(app)).toBe(true)
+  await app.close()
+})
+
+test('Present: a table cell is edited in place; Escape leaves the cell, then Present', async () => {
+  const { app, page, note } = await openFixture()
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await page.locator('table.mdo-table td', { hasText: 'Filter' }).click()
+  await expect(page.locator('table.mdo-table .mdo-cell-edit')).toHaveText('Filter')
+  await page.keyboard.press('End')
+  await page.keyboard.type('kaffee')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('table.mdo-table .mdo-cell-edit')).toHaveCount(0)
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await waitForFile(note, (b) => b.toString('utf8').includes('| Filterkaffee |'))
+  await page.keyboard.press('Escape')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
   if (!linux) await expect.poll(() => fullScreen(app)).toBe(false)
   await app.close()
 })

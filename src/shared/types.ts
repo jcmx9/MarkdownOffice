@@ -34,6 +34,8 @@ export interface Settings {
   spellcheck: boolean
   /** Windows/Linux: look for dictionary updates at start (at most once a day). */
   dictionaryAutoUpdate: boolean
+  /** Look for a newer Markdown Office release at start (at most once a day). */
+  appUpdateCheck: boolean
 }
 
 export type HeaderDefault = 'yaml' | 'titleblock'
@@ -48,6 +50,19 @@ export interface SettingsStatus {
   version: string
   /** null: the bundled `typst --version` gave no answer. */
   typst: string | null
+}
+
+/** Whether this app opens `.md` files by default (settings, main/default-app.ts). */
+export interface DefaultAppStatus {
+  /** 'unknown': a dev build, or the system's tool gave no answer. */
+  state: 'default' | 'other' | 'unknown'
+  platform: string
+}
+
+/** What „Als Standard für Markdown festlegen“ did; `message` is shown as is. */
+export interface DefaultAppResult {
+  ok: boolean
+  message: string
 }
 
 export type Mode = 'edit' | 'present'
@@ -68,11 +83,13 @@ export interface Session {
   outline: { edit: boolean; present: boolean }
   /** Formatting toolbar on/off in Edit mode (Present never shows it); default on. */
   toolbar: { edit: boolean }
+  /** Focus mode on/off per mode: only headings and the section with the cursor are shown. */
+  focus: { edit: boolean; present: boolean }
   recent: string[]
 }
 
 export type SessionPatch = Partial<
-  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'toolbar'>
+  Pick<Session, 'tabs' | 'activeIndex' | 'mode' | 'view' | 'zoom' | 'outline' | 'toolbar' | 'focus'>
 >
 
 export interface StartupState {
@@ -109,6 +126,7 @@ export type MenuCommand =
   | 'redo'
   | 'select-all'
   // Find and replace (renderer/editor/search.ts).
+  | 'check-app-update'
   | 'find'
   | 'replace'
   | 'find-next'
@@ -140,6 +158,7 @@ export type MenuCommand =
   | 'table-row-delete'
   | 'table-col-delete'
   | 'toggle-toolbar'
+  | 'toggle-focus'
   | 'toggle-present'
   | 'toggle-view'
   | 'toggle-header'
@@ -188,6 +207,16 @@ export interface MdoApi {
   /** Checks the dictionary repo now (Windows/Linux); macOS answers skipped. */
   checkDictionaryUpdates(): Promise<UpdateResult>
   declineDictionary(code: string): Promise<void>
+  /** manual: the menu's check (ignores setting, day limit and skipped version). */
+  checkAppUpdate(manual: boolean): Promise<AppUpdateCheck>
+  /** „Diese Version überspringen“ */
+  skipAppUpdate(version: string): Promise<void>
+  /** Downloads the release's installer and quits; an error message, or null when quitting. */
+  installAppUpdate(version: string): Promise<string | null>
+  /** At start, once: what became of the install handed over at the last quit. */
+  appUpdateOutcome(): Promise<AppUpdateOutcome | null>
+  /** Shows the update log in the file manager. */
+  showAppUpdateLog(): Promise<void>
   /** The user's own words in the spellchecker dictionary (settings dialog). */
   spellWords(): Promise<string[]>
   /** Removes one own word; false when main refused the string or the word was not there. */
@@ -246,6 +275,10 @@ export interface MdoApi {
    */
   openTemplatesFolder(): Promise<string | null>
   getSettingsStatus(): Promise<SettingsStatus>
+  /** Whether this app is the default for `.md` files. */
+  defaultAppStatus(): Promise<DefaultAppStatus>
+  /** Makes it the default where the system allows; on Windows opens the system settings. */
+  makeDefaultApp(): Promise<DefaultAppResult>
   /** Main validates every value; resolves to the settings now in effect (invalid ones dropped). */
   updateSettings(patch: SettingsPatch): Promise<Settings>
   /** Native picker; resolves to the canonical path, or null when cancelled. */
@@ -291,6 +324,23 @@ export interface SnippetDef {
 }
 
 /** Outcome of a dictionary update check (MarkdownOffice-dictionaries releases). */
+/** Answer of an app update check (main/app-update.ts). */
+export type AppUpdateCheck =
+  /** canInstall: the app runs from a bootstrap install, so „Jetzt aktualisieren“ works. */
+  | { kind: 'available'; version: string; url: string; canInstall: boolean }
+  | { kind: 'current'; version: string }
+  /** An automatic check that was not due, switched off, or skipped this version. */
+  | { kind: 'skipped' }
+  /** A dev run or pre-release: no updates. */
+  | { kind: 'unsupported' }
+  | { kind: 'failed'; message: string }
+
+/** What became of the install handed to the helper at the last quit. */
+export type AppUpdateOutcome =
+  | { kind: 'updated'; version: string }
+  /** log: the helper's log file. */
+  | { kind: 'failed'; version: string; log?: string }
+
 export type UpdateResult =
   | { kind: 'current' }
   // pending: at least one file replaced an open dictionary and becomes active after a restart.

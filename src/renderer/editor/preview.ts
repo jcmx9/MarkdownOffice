@@ -448,7 +448,8 @@ export function visitBlock(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefin
     case 'Table': {
       const firstLine = doc.lineAt(ref.from).number
       const lastLine = doc.lineAt(Math.max(ref.from, ref.to - 1)).number
-      // Away from the cursor, tableField (Task 6) shows the PDF-like widget instead.
+      // Top-level tables are always tableField's widget (edited in place); this styles the raw
+      // rows of the others (in lists and quotes) while the cursor is in them.
       if (!cx.touches(doc.line(firstLine).from, doc.line(lastLine).to)) return false
       for (let n = firstLine; n <= lastLine; n++) {
         const idx = n - firstLine

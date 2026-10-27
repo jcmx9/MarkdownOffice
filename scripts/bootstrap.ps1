@@ -93,6 +93,16 @@ try {
     $ClassesKey    = 'Software\Classes'
     if ($env:MDO_CLASSES_KEY) { $ClassesKey = $env:MDO_CLASSES_KEY.Trim('\') }
     $WScriptExe    = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    # Registration as a program for .md/.markdown (see Write-MdoDefaultApp); the same keys as
+    # src/main/default-app.ts writes from the settings. MDO_SOFTWARE_KEY (tests) moves the keys
+    # below HKCU\Software away, like MDO_CLASSES_KEY.
+    $ProgId          = 'MarkdownOffice.md'
+    $AppName         = 'Markdown Office'
+    $DefaultAppTag   = 'Standardprogramm (Markdown Office)'
+    $SoftwareKey     = 'Software'
+    if ($env:MDO_SOFTWARE_KEY) { $SoftwareKey = $env:MDO_SOFTWARE_KEY.Trim('\') }
+    $CapabilitiesKey = "$SoftwareKey\Markdown Office\Capabilities"
+    $RegisteredApps  = "$SoftwareKey\RegisteredApplications"
 
     function Write-Step([string]$Message) { Write-Host "-> $Message" }
     function Write-Ok([string]$Message) { Write-Host "OK  $Message" -ForegroundColor Green }
@@ -614,6 +624,8 @@ WScript.Quit(0);
           }
           if ($record -notcontains "K $sub") { [void]$record.Add("K $sub") }
         }
+        # The program registration shares the record (created keys), so it is written here.
+        Write-MdoDefaultApp $record
         [IO.File]::WriteAllLines($RecordPath, [string[]]$record.ToArray(), (New-Object System.Text.UTF8Encoding $false))
       } catch {
         Write-Warn "Kontextmenue-Eintrag $PdfAction konnte nicht angelegt werden ($($_.Exception.Message)). Markdown Office ist trotzdem installiert."
@@ -651,6 +663,112 @@ WScript.Quit(0);
           if ($verb -eq $sub -or $verb.StartsWith("$sub\", [StringComparison]::OrdinalIgnoreCase)) { $above = $true }
         }
         if (-not $above) { continue }
+        $key = $hkcu.OpenSubKey($sub)
+        if ($null -eq $key) { continue }
+        $empty = ($key.SubKeyCount -eq 0 -and $key.ValueCount -eq 0)
+        $key.Close()
+        if ($empty) {
+          try { $hkcu.DeleteSubKey($sub, $false) } catch { Write-Warn "Leerer Schluessel bleibt: HKCU\$sub" }
+        }
+      }
+    }
+
+    # --- Program for .md files ------------------------------------------------------
+    # Windows lets no program make itself the default for a file type; the user picks in
+    # Settings -> Default apps, which lists only registered programs. So the install registers
+    # Markdown Office for .md and .markdown below HKCU (no admin rights): a ProgID that opens the
+    # file with the app, OpenWithProgids for "Open with", and Capabilities + RegisteredApplications
+    # for the Default-apps list. Nothing here changes which program is the default. The app's
+    # settings ("Als Standard fuer Markdown festlegen") write the same keys and open that page.
+    # Keys carry the tag; created parents go into the record ("E"), so uninstall removes exactly
+    # what was added. A failure only warns: the install itself is complete.
+
+    function Get-MdoDefaultAppKeys {
+      "$ClassesKey\$ProgId"
+      "$CapabilitiesKey"
+      foreach ($ext in $PdfExtensions) { "$ClassesKey\$ext\OpenWithProgids" }
+      "$CapabilitiesKey\FileAssociations"
+      "$RegisteredApps"
+    }
+
+    function Test-OwnTag([string]$SubKey) {
+      $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($SubKey)
+      if ($null -eq $key) { return $false }
+      try { return ([string]$key.GetValue('MarkdownOfficeBootstrap') -eq $DefaultAppTag) } finally { $key.Close() }
+    }
+
+    function Set-MdoKeyValues([string]$SubKey, [hashtable]$Values, [System.Collections.ArrayList]$Record) {
+      $key = New-MdoRegKey $SubKey $Record
+      try {
+        foreach ($name in $Values.Keys) { $key.SetValue($name, $Values[$name]) }
+      } finally {
+        $key.Close()
+      }
+    }
+
+    function Write-MdoDefaultApp([System.Collections.ArrayList]$Record) {
+      try {
+        foreach ($sub in @("$ClassesKey\$ProgId", $CapabilitiesKey)) {
+          if ((Test-MdoKey $sub) -and -not (Test-OwnTag $sub)) {
+            Write-Warn "HKCU\$sub stammt nicht von Markdown Office - als Programm fuer .md nicht eingetragen."
+            return
+          }
+        }
+        $prog = "$ClassesKey\$ProgId"
+        Set-MdoKeyValues $prog @{ '' = 'Markdown-Notiz'; 'MarkdownOfficeBootstrap' = $DefaultAppTag } $Record
+        Set-MdoKeyValues "$prog\DefaultIcon" @{ '' = "`"$Exe`",0" } $Record
+        Set-MdoKeyValues "$prog\shell\open\command" @{ '' = "`"$Exe`" `"%1`"" } $Record
+        foreach ($ext in $PdfExtensions) {
+          $key = New-MdoRegKey "$ClassesKey\$ext\OpenWithProgids" $Record
+          try { $key.SetValue($ProgId, [byte[]]@(), [Microsoft.Win32.RegistryValueKind]::None) } finally { $key.Close() }
+        }
+        Set-MdoKeyValues $CapabilitiesKey @{
+          'ApplicationName' = $AppName
+          'ApplicationDescription' = 'Markdown-Editor mit PDF-Export'
+          'MarkdownOfficeBootstrap' = $DefaultAppTag
+        } $Record
+        $assoc = @{}
+        foreach ($ext in $PdfExtensions) { $assoc[$ext] = $ProgId }
+        Set-MdoKeyValues "$CapabilitiesKey\FileAssociations" $assoc $Record
+        Set-MdoKeyValues $RegisteredApps @{ $AppName = $CapabilitiesKey } $Record
+      } catch {
+        Write-Warn "Als Programm fuer .md nicht eingetragen ($($_.Exception.Message)). Markdown Office ist trotzdem installiert."
+      }
+    }
+
+    # Tagged keys and our values go; foreign ones stay. Keys the install created (record "E")
+    # go only when empty again and only if they lie on the path to one of our keys.
+    function Remove-MdoDefaultApp([string[]]$Lines) {
+      $hkcu = [Microsoft.Win32.Registry]::CurrentUser
+      foreach ($sub in @("$ClassesKey\$ProgId", $CapabilitiesKey)) {
+        if (Test-OwnTag $sub) {
+          try { $hkcu.DeleteSubKeyTree($sub, $false) } catch { Write-Warn "Schluessel bleibt: HKCU\$sub ($($_.Exception.Message))" }
+        }
+      }
+      $values = @()
+      foreach ($ext in $PdfExtensions) { $values += ,@("$ClassesKey\$ext\OpenWithProgids", $ProgId, '') }
+      $values += ,@($RegisteredApps, $AppName, $CapabilitiesKey)
+      foreach ($v in $values) {
+        $key = $hkcu.OpenSubKey($v[0], $true)
+        if ($null -eq $key) { continue }
+        try {
+          $names = @($key.GetValueNames())
+          # RegisteredApplications only when it still points at our capabilities.
+          if (($names -contains $v[1]) -and (($v[2] -eq '') -or ([string]$key.GetValue($v[1]) -eq $v[2]))) {
+            $key.DeleteValue($v[1], $false)
+          }
+        } finally {
+          $key.Close()
+        }
+      }
+      $own = @(Get-MdoDefaultAppKeys)
+      $created = @(@($Lines) | Where-Object { $_ -like 'E *' } | ForEach-Object { $_.Substring(2) } | Sort-Object -Property Length -Descending)
+      foreach ($sub in $created) {
+        $onPath = $false
+        foreach ($k in $own) {
+          if ($k -eq $sub -or $k.StartsWith("$sub\", [StringComparison]::OrdinalIgnoreCase)) { $onPath = $true }
+        }
+        if (-not $onPath) { continue }
         $key = $hkcu.OpenSubKey($sub)
         if ($null -eq $key) { continue }
         $empty = ($key.SubKeyCount -eq 0 -and $key.ValueCount -eq 0)
@@ -701,6 +819,7 @@ WScript.Quit(0);
       Write-Ok "Markdown Office installiert: $InstallDir"
       Write-Ok "Befehl: $CmdPath"
       Write-Ok "Explorer: Rechtsklick auf eine .md-Datei -> $PdfAction (Windows 11: Weitere Optionen anzeigen)"
+      Write-Ok 'Als Standard fuer .md: Einstellungen -> Standard-Apps -> Markdown Office (oder in Markdown Office: Einstellungen)'
       Test-MdoPath
       Write-Host 'Fertig. Editor: markdown-office --app [notiz.md] oder Startmenue -> Markdown Office; PDF: markdown-office notiz.md'
     }
@@ -728,6 +847,7 @@ WScript.Quit(0);
         Remove-MdoOld
         Remove-MdoEntry
         Remove-MdoContextMenu @()
+        Remove-MdoDefaultApp @()
         return
       }
       if (-not (Test-MdoOwned $InstallDir)) { Stop-Foreign $InstallDir }
@@ -748,6 +868,7 @@ WScript.Quit(0);
       Remove-MdoOld
       Remove-MdoEntry
       Remove-MdoContextMenu $record
+      Remove-MdoDefaultApp $record
       Write-Ok 'Markdown Office deinstalliert. Dokumente, Vorlagen-Sets, Snippets und Einstellungen bleiben unangetastet.'
     }
 

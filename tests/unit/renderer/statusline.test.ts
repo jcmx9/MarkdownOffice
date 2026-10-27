@@ -7,6 +7,7 @@ const actions = () => ({
   setMode: vi.fn(),
   setView: vi.fn(),
   toggleOutline: vi.fn(),
+  toggleFocus: vi.fn(),
   toggleYaml: vi.fn(),
   toggleToolbar: vi.fn(),
   validateYaml: vi.fn(),
@@ -82,6 +83,7 @@ describe('status line', () => {
     status.render('a.md', 'saved', null, 'preview', {
       toolbar: true,
       outline: true,
+      focus: false,
       hasHeader: true,
       yamlOn: false,
     })
@@ -95,10 +97,28 @@ describe('status line', () => {
     status.stop()
   })
 
+  it('„Fokus“ sits between „Gliederung“ and „YAML“, lifted by state, resting without a note', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const status = new StatusLine(el, a)
+    const ids = [...el.querySelectorAll('[data-testid]')].map((b) => b.getAttribute('data-testid'))
+    expect(ids.indexOf('status-focus')).toBe(ids.indexOf('status-outline') + 1)
+    expect(ids.indexOf('status-yaml')).toBe(ids.indexOf('status-focus') + 1)
+    const on = { toolbar: true, outline: false, focus: true, hasHeader: true, yamlOn: true }
+    status.render('a.md', 'saved', null, 'preview', on)
+    expect(q(el, 'status-focus').getAttribute('aria-pressed')).toBe('true')
+    q(el, 'status-focus').click()
+    expect(a.toggleFocus).toHaveBeenCalledOnce()
+    status.render(null, 'saved', null, 'preview', on)
+    expect(q(el, 'status-focus').disabled).toBe(true)
+    expect(q(el, 'status-focus').classList.contains('active')).toBe(false)
+    status.stop()
+  })
+
   it('disables YAML without front matter, in Code and without a note; Gliederung without a note', () => {
     const el = document.createElement('footer')
     const status = new StatusLine(el, actions())
-    const on = { toolbar: true, outline: true, hasHeader: true, yamlOn: true }
+    const on = { toolbar: true, outline: true, focus: false, hasHeader: true, yamlOn: true }
     status.render('a.md', 'saved', null, 'preview', { ...on, hasHeader: false })
     expect(q(el, 'status-yaml').disabled).toBe(true)
     expect(q(el, 'status-yaml').classList.contains('active')).toBe(false)
@@ -119,7 +139,7 @@ describe('status line', () => {
     const el = document.createElement('footer')
     const a = actions()
     const status = new StatusLine(el, a)
-    const on = { outline: false, hasHeader: true, yamlOn: true, toolbar: true }
+    const on = { outline: false, focus: false, hasHeader: true, yamlOn: true, toolbar: true }
     status.render('a.md', 'saved', null, 'preview', on)
     const leiste = q(el, 'status-toolbar')
     expect(leiste.textContent).toBe('Leiste')
@@ -139,6 +159,7 @@ describe('status line', () => {
     const status = new StatusLine(el, actions())
     status.render(null, 'saved', null, 'preview', {
       outline: false,
+      focus: false,
       hasHeader: false,
       yamlOn: false,
       toolbar: true,

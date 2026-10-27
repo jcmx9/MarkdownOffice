@@ -57,6 +57,10 @@ try {
   # again (every key the install created).
   $regRoot = 'Software\MarkdownOffice-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
   $env:MDO_CLASSES_KEY = "$regRoot\Classes"
+  # The registration as a program for .md (Default apps list) goes below the same test root.
+  $env:MDO_SOFTWARE_KEY = "$regRoot\Software"
+  $progKey = "$env:MDO_CLASSES_KEY\MarkdownOffice.md"
+  $capsKey = "$env:MDO_SOFTWARE_KEY\Markdown Office\Capabilities"
   $verbKeys = @('.md', '.markdown' | ForEach-Object { "$env:MDO_CLASSES_KEY\SystemFileAssociations\$_\shell\Markdown-PDF" })
   $pdfHelper = Join-Path $installDir 'markdown-pdf.js'
   $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
@@ -194,6 +198,24 @@ function global:Invoke-WebRequest {
       if ($record -notcontains "K $sub") { Fail "record lacks K $sub" }
     }
     if ($record -notcontains "E $regRoot") { Fail "record lacks the created key $regRoot" }
+    Assert-DefaultApp
+  }
+
+  # Registered as a program for .md/.markdown: ProgID opening the file with the app, "Open
+  # with" entries, and Capabilities + RegisteredApplications for Settings -> Default apps.
+  function Assert-DefaultApp {
+    $tag = 'Standardprogramm (Markdown Office)'
+    if ((Get-RegValue $progKey 'MarkdownOfficeBootstrap') -ne $tag) { Fail "ProgID tag missing: HKCU\$progKey" }
+    $open = Get-RegValue "$progKey\shell\open\command" ''
+    if ($open -ne ('"{0}" "%1"' -f $exe)) { Fail "ProgID command is '$open'" }
+    foreach ($ext in @('.md', '.markdown')) {
+      $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("$env:MDO_CLASSES_KEY\$ext\OpenWithProgids")
+      if ($null -eq $key) { Fail "OpenWithProgids missing for $ext" }
+      try { if (@($key.GetValueNames()) -notcontains 'MarkdownOffice.md') { Fail "OpenWithProgids lacks MarkdownOffice.md for $ext" } } finally { $key.Close() }
+      if ((Get-RegValue "$capsKey\FileAssociations" $ext) -ne 'MarkdownOffice.md') { Fail "Capabilities lack $ext" }
+    }
+    if ((Get-RegValue $capsKey 'ApplicationName') -ne 'Markdown Office') { Fail 'Capabilities lack ApplicationName' }
+    if ((Get-RegValue "$env:MDO_SOFTWARE_KEY\RegisteredApplications" 'Markdown Office') -ne $capsKey) { Fail 'RegisteredApplications entry missing' }
   }
 
   # Runs the .md verb's command line as Explorer does (%1 = the selected file) and waits.
@@ -443,7 +465,7 @@ function global:Invoke-WebRequest {
   }
   # Every key the install created is gone again, up to the test root it had to create.
   if (Test-RegKey $regRoot) { Fail "uninstall left created registry keys below HKCU\$regRoot" }
-  Pass 'uninstall removed everything (incl. own .old, Explorer verbs and the keys they needed), junction target untouched'
+  Pass 'uninstall removed everything (incl. own .old, Explorer verbs, the program registration and the keys they needed), junction target untouched'
 
   # 8b. A verb of the same name that is not ours is neither overwritten nor removed.
   $foreignVerb = $verbKeys[1]

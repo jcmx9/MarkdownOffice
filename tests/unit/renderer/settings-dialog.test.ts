@@ -19,6 +19,7 @@ const settings: Settings = {
   headerDefault: 'yaml',
   spellcheck: true,
   dictionaryAutoUpdate: true,
+  appUpdateCheck: true,
 }
 
 const status: SettingsStatus = { version: '26.10.0', typst: '0.15.0' }
@@ -32,6 +33,8 @@ const deps = (over: Partial<SettingsDialogDeps> = {}): SettingsDialogDeps => ({
   checkDictionaries: vi.fn(async () => ({ kind: 'current' as const })),
   words: vi.fn(async () => []),
   removeWord: vi.fn(async () => true),
+  defaultAppStatus: vi.fn(async () => ({ state: 'other' as const, platform: 'win32' })),
+  makeDefaultApp: vi.fn(async () => ({ ok: true, message: 'erledigt' })),
   ...over,
 })
 
@@ -165,6 +168,16 @@ describe('settings dialog', () => {
   })
 })
 
+describe('updates section', () => {
+  it('shows the app update switch and returns a change', async () => {
+    const done = openSettings(deps())
+    expect(input('set-app-update').checked).toBe(true)
+    input('set-app-update').checked = false
+    $('settings-save').click()
+    expect(await done).toEqual({ appUpdateCheck: false })
+  })
+})
+
 describe('spelling section', () => {
   it('shows both switches with the current values and returns changes', async () => {
     const done = openSettings(deps())
@@ -287,6 +300,59 @@ describe('droppedFields', () => {
     expect(
       droppedFields({ headerDefault: 'titleblock' }, { ...settings, headerDefault: 'titleblock' }),
     ).toEqual([])
+  })
+})
+
+describe('Standardprogramm', () => {
+  it('offers the button while another program opens .md files', async () => {
+    void openSettings(deps())
+    await flush()
+    expect($('set-default-app-status').textContent).toBe(
+      'Markdown-Dateien (.md) öffnet ein anderes Programm.',
+    )
+    expect($('set-default-app').hidden).toBe(false)
+  })
+
+  it('hides the button when Markdown Office is the default', async () => {
+    void openSettings(
+      deps({
+        defaultAppStatus: vi.fn(async () => ({ state: 'default' as const, platform: 'darwin' })),
+      }),
+    )
+    await flush()
+    expect($('set-default-app-status').textContent).toBe(
+      'Markdown-Dateien (.md) öffnen mit Markdown Office.',
+    )
+    expect($('set-default-app').hidden).toBe(true)
+  })
+
+  it('says it cannot tell when the query fails, and still offers the button', async () => {
+    void openSettings(deps({ defaultAppStatus: vi.fn(async () => Promise.reject(new Error('x'))) }))
+    await flush()
+    expect($('set-default-app-status').textContent).toMatch(/^Nicht feststellbar/)
+    expect($('set-default-app').hidden).toBe(false)
+  })
+
+  it('runs the command, shows its message and asks again', async () => {
+    const status = vi
+      .fn()
+      .mockResolvedValueOnce({ state: 'other', platform: 'darwin' })
+      .mockResolvedValueOnce({ state: 'default', platform: 'darwin' })
+    const make = vi.fn(async () => ({
+      ok: true,
+      message: 'Markdown-Dateien öffnen jetzt mit Markdown Office.',
+    }))
+    void openSettings(deps({ defaultAppStatus: status, makeDefaultApp: make }))
+    await flush()
+    $('set-default-app').click()
+    await flush()
+    await flush()
+    expect(make).toHaveBeenCalledOnce()
+    expect($('set-default-app-result').textContent).toBe(
+      'Markdown-Dateien öffnen jetzt mit Markdown Office.',
+    )
+    expect(status).toHaveBeenCalledTimes(2)
+    expect($('set-default-app').hidden).toBe(true)
   })
 })
 

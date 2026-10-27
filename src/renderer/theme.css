@@ -554,7 +554,7 @@
   background: var(--mdo-table-stripe);
 }
 
-/* Table widget (cursor elsewhere): like the memo set's #show table */
+/* Table widget (always, in preview and Present): like the memo set's #show table */
 .mdo-preview .mdo-table-wrap {
   /* Same side insets as a .cm-line, so a table spans exactly the text width; the right inset
      also takes the one space advance the content box carries for text lines (.cm-content). */
@@ -596,6 +596,18 @@
 }
 .mdo-preview table.mdo-table tr.mdo-table-stripe td {
   background: var(--mdo-table-stripe);
+}
+/* A cell edited in place (table-cell-edit.ts): its own Markdown as plain text, framed. */
+.mdo-preview table.mdo-table .mdo-cell-edit {
+  display: block;
+  min-height: 1.2em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+  cursor: text;
+}
+.mdo-preview table.mdo-table :is(th, td).mdo-cell-editing {
+  box-shadow: inset 0 0 0 1.5px var(--accent, #2f6fde);
 }
 .mdo-preview table.mdo-table .mdo-al-left {
   text-align: left;
