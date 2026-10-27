@@ -73,7 +73,7 @@ Windows (PowerShell):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jcmx9/MarkdownOffice/main/scripts/bootstrap.ps1))) -Uninstall
 ```
 
-Only what the installation created is removed (recognised by its install marker): app, command, Start-menu or desktop entry and the file-manager entry "Markdown-PDF" (with the folders and registry keys created only for it). Documents, your own template sets, snippets and settings are left untouched.
+Only what the installation created is removed (recognised by its install marker): app, command, Start-menu or desktop entry and the file-manager entry "Markdown-PDF" (with the folders and registry keys created only for it), on Windows also the registration as a program for `.md`. Documents, your own template sets, snippets and settings are left untouched.
 
 ## Test version
 
@@ -154,6 +154,8 @@ The keyboard works without the toolbar too: select text and type `*` to get `*Te
 ### Settings
 
 „Einstellungen …“ (macOS Cmd+, in the app menu, otherwise Ctrl+, in the „Datei“ menu) opens the dialog: default folder for new notes, snippet folder, font factor in presentation mode and the default for the YAML header in the preview (as YAML or as title block) as well as spelling (switch, automatic dictionary updates, own words). A read-only status block shows the version of the pipeline and of the bundled Typst. The button „Vorlagen-Ordner öffnen“ opens the folder for your own template sets (`~/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`, see [Template sets](#template-sets)) in the file manager and creates it when it is missing. Changing the default folder never moves or deletes files. The dialog names values it did not take after saving; the previous value stays in effect for them.
+
+The block „Standardprogramm“ shows whether Markdown files (`.md`) open with Markdown Office and otherwise offers the button „Als Standard für Markdown festlegen“ (make default for Markdown). On macOS and Linux it sets the default program directly (Linux via `xdg-mime`, which needs the app installed with the install script). On Windows no program may make itself the default: the button registers Markdown Office as a program for `.md` and `.markdown` (below `HKCU`, no admin rights; the installation does this already) and opens the Windows settings „Default apps“ at Markdown Office, where one click at `.md` is enough. Only in the installed app.
 
 ### Outline
 

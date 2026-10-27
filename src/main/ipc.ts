@@ -1,6 +1,7 @@
+import { existsSync } from 'node:fs'
 import { mkdir, stat } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
-import { BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { validateMathBatch } from '../core/math'
 import { SET_NAME_RE } from '../core/sets'
 import { Ch } from '../shared/ipc'
@@ -12,6 +13,7 @@ import type {
   SessionPatch,
 } from '../shared/types'
 import { type AppContext, logSessionError } from './context'
+import { type DefaultAppEnv, defaultAppStatus, makeDefaultApp, runFile } from './default-app'
 import { externalUrl } from './external'
 import {
   canonicalPath,
@@ -202,6 +204,20 @@ export function registerIpc(ctx: AppContext): void {
       await ctx.spellcheck?.declineDictionary(code)
   })
   ipcMain.handle(Ch.settingsStatus, () => ctx.settingsStatus())
+  // „Als Standard für Markdown festlegen“: no argument from the renderer; main runs only the
+  // system's own tools with fixed arguments (default-app.ts).
+  const defaultAppEnv = (): DefaultAppEnv => ({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    execPath: process.execPath,
+    env: process.env,
+    home: app.getPath('home'),
+    run: runFile,
+    openExternal: (url) => shell.openExternal(url),
+    exists: existsSync,
+  })
+  ipcMain.handle(Ch.defaultAppStatus, () => defaultAppStatus(defaultAppEnv()))
+  ipcMain.handle(Ch.makeDefaultApp, () => makeDefaultApp(defaultAppEnv()))
   ipcMain.handle(Ch.updateSettings, (_e, patch: unknown) => ctx.updateSettings(patch))
 
   /** Picker for the settings dialog; it only returns a path, nothing on disk is changed. */

@@ -50,6 +50,19 @@ export interface SettingsStatus {
   typst: string | null
 }
 
+/** Whether this app opens `.md` files by default (settings, main/default-app.ts). */
+export interface DefaultAppStatus {
+  /** 'unknown': a dev build, or the system's tool gave no answer. */
+  state: 'default' | 'other' | 'unknown'
+  platform: string
+}
+
+/** What „Als Standard für Markdown festlegen“ did; `message` is shown as is. */
+export interface DefaultAppResult {
+  ok: boolean
+  message: string
+}
+
 export type Mode = 'edit' | 'present'
 export type View = 'code' | 'preview'
 
@@ -246,6 +259,10 @@ export interface MdoApi {
    */
   openTemplatesFolder(): Promise<string | null>
   getSettingsStatus(): Promise<SettingsStatus>
+  /** Whether this app is the default for `.md` files. */
+  defaultAppStatus(): Promise<DefaultAppStatus>
+  /** Makes it the default where the system allows; on Windows opens the system settings. */
+  makeDefaultApp(): Promise<DefaultAppResult>
   /** Main validates every value; resolves to the settings now in effect (invalid ones dropped). */
   updateSettings(patch: SettingsPatch): Promise<Settings>
   /** Native picker; resolves to the canonical path, or null when cancelled. */
