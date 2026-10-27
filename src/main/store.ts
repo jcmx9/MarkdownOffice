@@ -34,6 +34,8 @@ export function defaultSettings(baseDir: string): Settings {
     // Spell checking is on by default; updates of the bundled dictionaries too (Windows/Linux).
     spellcheck: true,
     dictionaryAutoUpdate: true,
+    // The app looks for a newer release at start (at most once a day; app-update.ts).
+    appUpdateCheck: true,
   }
 }
 
@@ -62,6 +64,8 @@ export function sanitizeSettings(raw: unknown, defaults: Settings): Settings {
       typeof o.dictionaryAutoUpdate === 'boolean'
         ? o.dictionaryAutoUpdate
         : defaults.dictionaryAutoUpdate,
+    appUpdateCheck:
+      typeof o.appUpdateCheck === 'boolean' ? o.appUpdateCheck : defaults.appUpdateCheck,
   }
 }
 
@@ -86,6 +90,7 @@ export function settingsPatch(current: Settings, raw: unknown): Settings {
   if (typeof o.spellcheck === 'boolean') next.spellcheck = o.spellcheck
   if (typeof o.dictionaryAutoUpdate === 'boolean')
     next.dictionaryAutoUpdate = o.dictionaryAutoUpdate
+  if (typeof o.appUpdateCheck === 'boolean') next.appUpdateCheck = o.appUpdateCheck
   return next
 }
 

@@ -216,9 +216,23 @@ describe('buildMenuTemplate', () => {
       const menus = buildMenuTemplate(deps({ platform }))
       const help = menus.at(-1)
       expect(help?.label).toBe('Hilfe')
-      expect(help?.submenu).toEqual([{ role: 'about', label: 'Über Markdown Office' }])
+      const items = help?.submenu as MenuItemConstructorOptions[]
+      expect(items[0]).toEqual({ role: 'about', label: 'Über Markdown Office' })
+      expect(items[1]?.id).toBe('check-app-update')
     },
   )
+
+  it('Nach Updates suchen … sends its command (macOS: in the app menu)', () => {
+    const command = vi.fn()
+    const menus = buildMenuTemplate(deps({ command }))
+    const item = byId(menus, 'check-app-update')
+    expect(item?.label).toBe('Nach Updates suchen …')
+    expect(menus[0]?.role).toBe('appMenu')
+    const appItems = (menus[0]?.submenu ?? []) as MenuItemConstructorOptions[]
+    expect(appItems.includes(item as never)).toBe(true)
+    click(item)
+    expect(command).toHaveBeenCalledWith('check-app-update')
+  })
 
   it('darwin: About stays in the app menu, no extra Hilfe menu', () => {
     const menus = buildMenuTemplate(deps())
