@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Typing over selected text wraps it: `*` once, twice or three times gives `*Text*`, `**Text**`, `***Text***`; `~~` and `==` (two presses, as in Markdown) give `~~Text~~` and `==Text==`. The selection stays on the text, every press is an undo step; without a selection, in code and formulas the keys type as usual
+
 ### Fixed
 - Windows and Linux: the menu bar comes back after leaving Present. Electron's leave restored the bar to its hidden state from the enter, so it stayed gone until the app restarted
 

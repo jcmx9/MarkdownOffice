@@ -149,6 +149,8 @@ Below the tab bar the editor (Code and Preview) has a toolbar that inserts Markd
 
 The same commands are in the **Format** menu (without shortcuts) and under **Einfügen** (Tabelle …, Hinweisbox). In the YAML front matter, in code blocks and in HTML blocks the toolbar does nothing; line formats, boxes and page breaks do nothing in tables either. Bold, italic, strikethrough, highlight, code and link act on the cell only inside table cells.
 
+The keyboard works without the toolbar too: select text and type `*` to get `*Text*`, a second `*` makes `**Text**`, a third `***Text***`; the selection stays on the text. `~` and `=` act only when doubled, as in Markdown: `~~` gives `~~Text~~`, `==` gives `==Text==`. If another key follows the first `~` or `=`, both characters are typed as usual. Every key press is an undo step of its own. Without a selection, in code and in formulas the keys type as always.
+
 ### Settings
 
 „Einstellungen …“ (macOS Cmd+, in the app menu, otherwise Ctrl+, in the „Datei“ menu) opens the dialog: default folder for new notes, snippet folder, font factor in presentation mode and the default for the YAML header in the preview (as YAML or as title block) as well as spelling (switch, automatic dictionary updates, own words). A read-only status block shows the version of the pipeline and of the bundled Typst. The button „Vorlagen-Ordner öffnen“ opens the folder for your own template sets (`~/Markdown Office/Vorlagen/` or `MDO_TEMPLATES`, see [Template sets](#template-sets)) in the file manager and creates it when it is missing. Changing the default folder never moves or deletes files. The dialog names values it did not take after saving; the previous value stays in effect for them.
