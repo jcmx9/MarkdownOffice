@@ -186,7 +186,9 @@ test('Present multiplies font and measure by the factor (the preview column, lar
   await expect.poll(() => bodySize(page)).toBeCloseTo(BRIEF_SIZE, 1)
   const columnMax = () =>
     page.evaluate(() =>
-      Number.parseFloat(getComputedStyle(document.querySelector('.cm-content') as Element).maxWidth),
+      Number.parseFloat(
+        getComputedStyle(document.querySelector('.cm-content') as Element).maxWidth,
+      ),
     )
   const editMax = await columnMax()
   await inPresent(app, page, async () => {
