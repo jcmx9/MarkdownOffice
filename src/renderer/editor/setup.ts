@@ -40,6 +40,7 @@ import { snippetExtensions } from './snippets'
 import { spellcheckCompartment, spellcheckExtensions } from './spellcheck'
 import { tableField } from './tables'
 import { typoMask } from './typo-mask'
+import { wrapTyping } from './wrap-typing'
 
 export const viewCompartment = new Compartment()
 
@@ -138,7 +139,8 @@ export function createState(
       codeFolding(),
       // A profile is YAML: no snippets or page breaks, and YAML highlighting, so a `# comment`
       // line is not taken for a heading (outline, section folds).
-      md ? [snippetExtensions, pageBreakKeymap] : [],
+      // Typing `*`, `~~` or `==` over selected text wraps it (wrap-typing.ts).
+      md ? [snippetExtensions, pageBreakKeymap, wrapTyping] : [],
       unfoldOnCursor,
       keymap.of([...foldBindings(), ...defaultKeymap, ...historyKeymap, indentWithTab]),
       searchExtensions,
