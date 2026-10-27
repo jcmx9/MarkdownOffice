@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.7] - 2026-10-27
+
 ### Added
 - Tables are edited in place in Preview and Present: they never switch to their Markdown there (only the code view shows it). A click makes just that cell editable, showing its own Markdown; Tab/Shift+Tab move to the next/previous cell, Enter to the cell below, Esc leaves the table. A typed `|` is escaped as `\|`, line breaks become spaces. Every input changes only that cell's text, so the rest of the note stays byte-identical; undo, the formatting toolbar and its table commands work on the edited cell. Cmd/Ctrl+click on a link in a cell still opens it
 - App update in the app: at start (at most once a day, switch „Nach Updates suchen“ in the settings) and via „Nach Updates suchen …“ (macOS app menu, else Hilfe) the app looks for a newer stable release on GitHub. A notice offers „Jetzt aktualisieren“, „Was ist neu?“, „Später“ and „Diese Version überspringen“. „Jetzt aktualisieren“ downloads the bootstrap script of exactly that tag, quits through the normal close path and lets a detached helper run it once the app has ended (log `update.log` in the app data folder), then starts the app again; the next start reports the result. Only for bootstrap installs (install marker); the app is unsigned, so the bootstrap's verified swap replaces electron-updater
