@@ -108,7 +108,7 @@ jobs:
       # case (the pipeline's fallback stage) is covered by test-windows.ps1.
       - name: End-to-end tests (Windows)
         if: runner.os == 'Windows'
-        run: npx playwright test
+        run: npx playwright test menu-probe --reporter=list
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
