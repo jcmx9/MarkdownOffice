@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Present uses the preview's text width (the set's measure), scaled by the Present factor like the font, instead of its own narrower 70ch column: lines break in Present as in the preview and the PDF
+
 ## [26.10.7] - 2026-10-27
 
 ### Added
