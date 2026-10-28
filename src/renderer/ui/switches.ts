@@ -134,11 +134,13 @@ export class StatusToggles {
     this.toolbar.disabled = !s.hasNote
     lift(this.outline, s.hasNote && s.outline)
     this.outline.disabled = !s.hasNote
-    lift(this.focus, s.hasNote && s.focus)
-    this.focus.disabled = !s.hasNote
-    // Intent: the lifted state mirrors what toggle-header changes (expanded = on). Code shows
-    // the header always expanded, so the button stays lifted but cannot act there.
-    lift(this.yaml, s.hasNote && s.hasHeader && s.yamlOn)
+    // Code shows the full source: focus is off there and the header always expanded, so both
+    // switches show that state and rest (owner, 2026-10-28); the Preview choice is kept.
+    lift(this.focus, s.hasNote && s.focus && !s.code)
+    this.focus.disabled = !s.hasNote || s.code
+    this.focus.title =
+      s.hasNote && s.code ? 'Der Fokus wirkt nur in der Vorschau' : 'Fokus ein/aus (Mod+Shift+F)'
+    lift(this.yaml, s.hasNote && s.hasHeader && (s.yamlOn || s.code))
     this.yaml.disabled = !s.hasNote || !s.hasHeader || s.code
     this.yaml.title = !s.hasNote
       ? 'YAML-Header ein/aus (Mod+Shift+H)'

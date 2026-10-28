@@ -1092,7 +1092,14 @@ export class App {
         spellcheckExtensions(this.spellcheckOn && isMarkdownTab(tab), this.mode),
       ),
       // Per mode, like the outline: focus for the audience in Present, the full text in Edit.
-      focusCompartment.reconfigure(focusExtensions(this.focusOn[this.mode] && isMarkdownTab(tab))),
+      // Never in Code: there the source is shown in full, like the YAML header (owner, 2026-10-28).
+      focusCompartment.reconfigure(
+        focusExtensions(
+          this.focusOn[this.mode] &&
+            isMarkdownTab(tab) &&
+            this.effectiveView(tab.path) === 'preview',
+        ),
+      ),
     ]
     const collapses = (tab: Tab, state: EditorState) =>
       this.mode === 'present' ||
@@ -1429,6 +1436,10 @@ export class App {
    */
   private toggleFocus(): void {
     if (this.shownId === null) return
+    if (this.mode === 'edit' && this.view === 'code') {
+      this.notices.toast('Der Fokus wirkt nur in der Vorschau und beim Präsentieren.')
+      return
+    }
     this.focusOn[this.mode] = !this.focusOn[this.mode]
     this.reconfigureAll()
     this.mdo
