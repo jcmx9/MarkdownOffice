@@ -161,8 +161,8 @@ export function createState(
       // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
       spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
-      // A profile has no sections to focus on.
-      focusCompartment.of(focusExtensions(focus && md)),
+      // A profile has no sections to focus on; Code shows the full source (owner, 2026-10-28).
+      focusCompartment.of(focusExtensions(focus && md && view === 'preview')),
     ],
   })
   const range = headerHiddenInit || mode === 'present' ? frontmatterRange(state.doc) : null

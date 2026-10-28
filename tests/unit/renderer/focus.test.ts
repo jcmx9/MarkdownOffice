@@ -10,6 +10,7 @@ import {
   focusStepTarget,
 } from '../../../src/renderer/editor/focus'
 import { mdoMarkdown } from '../../../src/renderer/editor/markdown'
+import { createState } from '../../../src/renderer/editor/setup'
 import { parsed } from './parsed'
 
 function state(doc: string, cursor = 0, on = true): EditorState {
@@ -209,5 +210,14 @@ describe('focus keys and scrolling', () => {
     const s = state(DOC, at('Text 1B'))
     const tr = s.update({ changes: { from: at('Text 1B'), insert: 'x' } })
     expect(tr.effects.length).toBe(0)
+  })
+})
+
+describe('focus per view', () => {
+  it('a new tab gets focus in Preview only; Code shows the full source', () => {
+    const preview = createState(DOC, '\n', 'preview', false, 'edit', false, 'markdown', true)
+    expect(preview.field(focusHiddenField, false)).toBeDefined()
+    const code = createState(DOC, '\n', 'code', false, 'edit', false, 'markdown', true)
+    expect(code.field(focusHiddenField, false)).toBeUndefined()
   })
 })
