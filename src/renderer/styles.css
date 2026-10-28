@@ -875,3 +875,9 @@ body.mdo-mode-present
   :is(input[name="replace"], button[name="replace"], button[name="replaceAll"]) {
   display: none;
 }
+
+/* Present: the outline navigates the talk, it is no link to edit; the plain arrow (owner,
+   2026-10-28). */
+body.mdo-mode-present #outline button {
+  cursor: default;
+}
