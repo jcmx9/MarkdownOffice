@@ -34,7 +34,7 @@ import { pageBreakKeymap } from './pagebreak'
 import { paragraphsPlugin } from './paragraphs'
 import { previewPlugin } from './preview'
 import { previewSource } from './preview-source'
-import { previewView } from './rendered'
+import { previewView, quietCursor } from './rendered'
 import { searchExtensions } from './search'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
@@ -152,6 +152,7 @@ export function createState(
       md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
+      quietCursor,
       // Every tab keeps its own set description; null (built-in memo) until main answers.
       previewSource,
       EditorView.lineWrapping,
