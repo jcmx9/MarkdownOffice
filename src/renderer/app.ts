@@ -39,6 +39,8 @@ import { setNoteProfile } from './editor/note-profile'
 import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
+import { carrySelection, textChange } from './editor/reload-map'
+import { quietCursor, setQuietCursor } from './editor/rendered'
 import { findAgain, openFind, openReplace } from './editor/search'
 import { foldAllSections } from './editor/sections'
 import {
@@ -1915,7 +1917,11 @@ export class App {
     // The old set description stays until main answers for the new text, so a din5008a note
     // does not flash the memo look (blocks and scope) for one round trip.
     const source = tab.state.field(previewSource, false) ?? null
-    const state = this.closingState(
+    const shown = this.shownId === tab.id
+    const old = shown ? this.editor.state : tab.state
+    // The view as the reader saw it, mapped into the new text after setState below.
+    const scroll = shown ? this.editor.scrollSnapshot() : null
+    const fresh = this.closingState(
       createState(
         note.text,
         note.eol,
@@ -1927,6 +1933,15 @@ export class App {
         this.focusOn[this.mode],
       ).update({ effects: setPreviewSource.of(source) }).state,
     )
+    // Same place as before the outside change (reload-map.ts); a quiet Present cursor stays
+    // quiet, and a cursor that would land in the collapsed header moves out like on a switch.
+    let state = carrySelection(old, fresh)
+    state = state.update({
+      effects: setQuietCursor.of(old.field(quietCursor, false) ?? false),
+    }).state
+    if (this.mode === 'present' || (this.effectiveView(tab.path) === 'preview' && tab.headerHidden))
+      state = state.update(moveOutOfHeader(state)).state
+    const changes = textChange(old.doc.toString(), state.doc.toString())
     const wasOnDisk = tab.onDisk
     tab.bom = note.bom
     tab.eol = note.eol
@@ -1934,8 +1949,9 @@ export class App {
     this.unwritten.delete(tab.id)
     this.store.updateState(tab.id, state)
     this.store.markSaved(tab.id, state.doc)
-    if (this.shownId === tab.id) {
+    if (shown) {
       this.editor.setState(state)
+      if (scroll) this.editor.dispatch({ effects: scroll.map(changes) })
       this.outline.invalidate()
       // setState bypasses dispatchTransactions, which schedules the check after edits.
       void this.setCheck.now(tab.id)

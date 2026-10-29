@@ -2,7 +2,7 @@
 
 > Ruhiger Markdown-Editor mit eingebauter PDF/A-Pipeline: Die Notiz sieht schon beim Tippen aus wie das PDF.
 
-**Version:** 26.10.10 · [English](README.en.md)
+**Version:** 26.10.11 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -13,7 +13,7 @@ Markdown Office ist ein Editor zum Mitschreiben, etwa im Kundentermin bei geteil
 
 Markdown Office führt den Editor rf-write und die Pipeline real-fast-document in einem Produkt zusammen.
 
-- **Editor:** Tabs, Autosave mit atomarem Schreiben, Wiederherstellen der Sitzung, Erkennen externer Änderungen ohne stilles Überschreiben, Vorschau in der Optik des PDFs, Präsentationsmodus, Gliederung, Snippets.
+- **Editor:** Tabs, Autosave mit atomarem Schreiben, Wiederherstellen der Sitzung, Erkennen externer Änderungen ohne stilles Überschreiben (beim Neuladen bleiben Cursor, Abschnitt und Ansicht, wo sie waren), Vorschau in der Optik des PDFs, Präsentationsmodus, Gliederung, Snippets.
 - **PDF:** festes Layout aus dem Vorlagen-Set `memo` (DIN A4, Titelblock, Kopf- und Fußzeile, Inhaltsverzeichnis, Hinweisboxen, Aufgabentabellen, Formeln, Mermaid-Diagramme), Markdown-Quelle als Anhang, eigene Vorlagen-Sets.
 - **Alles dabei:** Typst, Schriften und Typst-Packages liegen in der App; nichts muss zusätzlich installiert werden.
 
