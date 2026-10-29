@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.9] - 2026-10-29
+
 ### Fixed
 - Preview/Present: Enter at the start of a paragraph directly under a heading seemed to do nothing (the new blank line collapses at the heading like in the PDF, the cursor stayed on the text). It now opens a new empty paragraph above with the cursor in it
 
