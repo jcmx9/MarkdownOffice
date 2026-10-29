@@ -458,6 +458,27 @@ expect_code 5 "Prüfsumme falsch" run_online --version 0.0.1
 assert_installed
 pass "--version with bad checksum -> exit 5, install intact"
 
+# --archive/--sums (the app's update): the archive the app fetched is checked against its
+# SHA256SUMS under the asset name of --version and installed without any network request.
+local_sums="${work}/SHA256SUMS"
+local_hash="$({ sha256sum "${archive}" 2>/dev/null || shasum -a 256 "${archive}"; } | awk '{ print $1 }')"
+printf '%s  %s\n' "${local_hash}" "markdown-office-${version}${suffix}" >"${local_sums}"
+expect_code 2 "gehören zusammen" run_online --version "${version}" --archive "${archive}"
+expect_code 2 "braucht --version" run_online --archive "${archive}" --sums "${local_sums}"
+expect_code 2 "nicht gefunden" run_online --version "${version}" --archive "${work}/fehlt.zip" --sums "${local_sums}"
+: >"${fake}/requests.log"
+run_online --version "${version}" --archive "${archive}" --sums "${local_sums}" >/dev/null
+assert_installed
+[[ ! -s "${fake}/requests.log" ]] || fail "--archive still used the network: $(cat "${fake}/requests.log")"
+printf '%s  %s\n' "0000000000000000000000000000000000000000000000000000000000000000" \
+  "markdown-office-${version}${suffix}" >"${local_sums}"
+expect_code 5 "Prüfsumme falsch" run_online --version "${version}" --archive "${archive}" --sums "${local_sums}"
+# Sums for another version: the name of --version is missing there.
+printf '%s  %s\n' "${local_hash}" "markdown-office-0.0.9${suffix}" >"${local_sums}"
+expect_code 5 "keinen Eintrag" run_online --version "${version}" --archive "${archive}" --sums "${local_sums}"
+assert_installed
+pass "--archive/--sums: checked and installed offline; usage errors -> 2, wrong or missing sum -> 5"
+
 # 7. Uninstall removes command, menu entry, install folder, marker and an own leftover .old;
 #    documents (with the user's sets and snippets) stay.
 make_owned_old
