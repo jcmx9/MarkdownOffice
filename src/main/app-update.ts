@@ -180,8 +180,16 @@ export function looksLikeBootstrap(platform: InstallLocation['platform'], text: 
  * the app to exit (at most 5 minutes), runs the bootstrap (again while it reports the app as
  * still running: Electron's helper processes end shortly after), logs, starts the app again
  * (also after a failure: the old version is still in place) and removes the script.
+ * Hangup, interrupt and terminate do not stop it: a macOS update died mid-download without a
+ * trace (owner, 2026-10-29). The helper logs each such signal; the bootstrap and curl run with
+ * them ignored (inherited), so a signal to the whole group cannot cut the download either. A
+ * log without the closing `exit` line then means SIGKILL, which nothing can catch.
  */
 export const HELPER_SH = `pid="$1"; script="$2"; version="$3"; log="$4"; shift 4
+echo "mdo-update: helper $$ started ($(date))" >>"$log"
+trap 'echo "mdo-update: signal HUP ignored ($(date))" >>"$log"' HUP
+trap 'echo "mdo-update: signal INT ignored ($(date))" >>"$log"' INT
+trap 'echo "mdo-update: signal TERM ignored ($(date))" >>"$log"' TERM
 i=0
 while kill -0 "$pid" 2>/dev/null; do
   i=$((i + 1)); [ "$i" -gt 600 ] && break; sleep 0.5
@@ -189,7 +197,7 @@ done
 n=0
 while :; do
   echo "mdo-update: bootstrap --version $version ($(date))" >>"$log"
-  bash "$script" --version "$version" >>"$log" 2>&1; code=$?
+  (trap '' HUP INT TERM; exec bash "$script" --version "$version") >>"$log" 2>&1; code=$?
   [ "$code" -eq 12 ] && [ "$n" -lt 10 ] || break
   n=$((n + 1)); sleep 1
 done
@@ -200,6 +208,7 @@ rm -f "$script"
 
 /** The same for Windows, written to a .ps1 next to the downloaded script (ASCII only, PS 5.1). */
 export const HELPER_PS1 = `param([int]$AppPid, [string]$Script, [string]$Version, [string]$Log, [string]$Exe)
+Add-Content -LiteralPath $Log -Value ("mdo-update: helper " + $PID + " started (" + (Get-Date) + ")")
 try { Wait-Process -Id $AppPid -Timeout 300 -ErrorAction Stop } catch { }
 $code = 0
 for ($n = 0; $n -le 10; $n++) {
