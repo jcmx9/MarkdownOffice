@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- A note reloaded after an outside change (another editor, another window) keeps the cursor, the scroll position and so the outline's active entry and focus mode's section; before, it jumped to the first heading. A quiet Present cursor stays quiet
+
 ## [26.10.10] - 2026-10-29
 
 ### Fixed
