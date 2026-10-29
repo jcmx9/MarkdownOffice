@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -293,6 +293,37 @@ describe('helperCommand', () => {
     ])
     expect(c.mdoHome).toBe('C:\\M')
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'the sh helper and its download survive TERM and HUP to the whole group, and log them',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'mdo-helper-'))
+      const script = join(dir, 'bootstrap.sh')
+      const log = join(dir, 'update.log')
+      const started = join(dir, 'started')
+      // A slow fake bootstrap: the signals arrive while it "downloads".
+      await writeFile(script, 'sleep 1\necho "download done"\nexit 0\n')
+      const loc: InstallLocation = {
+        platform: 'linux',
+        mdoHome: null,
+        relaunch: ['touch', started],
+      }
+      const c = helperCommand(loc, { pid: 999_999, script, version: '26.10.7', log })
+      const child = spawn(c.command, c.args, { detached: true, stdio: 'ignore' })
+      await vi.waitFor(async () => expect(await readFile(log, 'utf8')).toContain('started'))
+      await new Promise((r) => setTimeout(r, 200))
+      process.kill(-(child.pid as number), 'SIGTERM')
+      process.kill(-(child.pid as number), 'SIGHUP')
+      await vi.waitFor(async () => expect(await readFile(started, 'utf8')).toBe(''), {
+        timeout: 5000,
+      })
+      const text = await readFile(log, 'utf8')
+      expect(text).toContain('mdo-update: signal TERM ignored')
+      expect(text).toContain('mdo-update: signal HUP ignored')
+      expect(text).toContain('download done')
+      expect(text).toContain('mdo-update: exit 0')
+    },
+  )
 
   it.skipIf(process.platform === 'win32')(
     'the sh helper runs the script with the version, logs and relaunches',

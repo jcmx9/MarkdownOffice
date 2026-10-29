@@ -2,7 +2,7 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.10 · [Deutsch](README.md)
+**Version:** 26.10.11 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -13,7 +13,7 @@ Markdown Office is an editor for taking notes, for example in a client meeting w
 
 Markdown Office brings the rf-write editor and the real-fast-document pipeline together in one product.
 
-- **Editor:** tabs, autosave with atomic writes, session restore, detection of external changes without silent overwrites, a preview in the look of the PDF, presentation mode, outline, snippets.
+- **Editor:** tabs, autosave with atomic writes, session restore, detection of external changes without silent overwrites (a reload keeps the cursor, section and view where they were), a preview in the look of the PDF, presentation mode, outline, snippets.
 - **PDF:** fixed layout from the template set `memo` (DIN A4, title block, header and footer, table of contents, callouts, task tables, formulas, Mermaid diagrams), the Markdown source as an attachment, your own template sets.
 - **Everything included:** Typst, fonts and Typst packages ship with the app; nothing else needs to be installed.
 
