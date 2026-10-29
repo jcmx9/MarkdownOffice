@@ -3,6 +3,7 @@ import {
   Compartment,
   EditorState,
   type Extension,
+  Facet,
   Prec,
   type Range,
   StateField,
@@ -16,6 +17,15 @@ import { Decoration, type DecorationSet, EditorView, keymap } from '@codemirror/
  * the user's own, „Alle ausklappen“ must not end focus).
  */
 export const focusCompartment = new Compartment()
+
+/**
+ * Present with the outline shown (owner, 2026-10-29): the outline is the agenda, so the text
+ * drops the chapter headings off the path too and shows only the path and the active section,
+ * like a slide. Without the outline every chapter heading stays as the agenda.
+ */
+export const focusPathOnly = Facet.define<boolean, boolean>({
+  combine: (values) => values.some(Boolean),
+})
 
 const HEADING = /^(ATX|Setext)Heading([1-6])$/
 
@@ -76,7 +86,11 @@ function bodyRange(
  * is the deepest heading at or before `pos`. Text before the first heading (front matter,
  * intro) is never hidden: the header toggle owns the front matter.
  */
-export function focusHiddenRanges(state: EditorState, pos: number): { from: number; to: number }[] {
+export function focusHiddenRanges(
+  state: EditorState,
+  pos: number,
+  pathOnly = state.facet(focusPathOnly),
+): { from: number; to: number }[] {
   const hs = headings(state)
   if (hs.length === 0) return []
   const top = Math.min(...hs.map((h) => h.level))
@@ -94,7 +108,8 @@ export function focusHiddenRanges(state: EditorState, pos: number): { from: numb
   // Each heading is two parts: its own line(s) and the body lines up to the next heading.
   const parts: { from: number; to: number; hidden: boolean }[] = []
   hs.forEach((h, i) => {
-    parts.push({ from: h.from, to: h.to, hidden: !(h.level === top || path.has(i)) })
+    const agenda = !pathOnly && h.level === top
+    parts.push({ from: h.from, to: h.to, hidden: !(agenda || path.has(i)) })
     const body = bodyRange(state, hs, i)
     if (body) parts.push({ ...body, hidden: i !== active })
   })
@@ -203,7 +218,13 @@ function build(state: EditorState): DecorationSet {
 export const focusHiddenField = StateField.define<DecorationSet>({
   create: build,
   update(value, tr) {
-    if (tr.docChanged || tr.selection || syntaxTree(tr.state) !== syntaxTree(tr.startState))
+    if (
+      tr.docChanged ||
+      tr.selection ||
+      syntaxTree(tr.state) !== syntaxTree(tr.startState) ||
+      // The outline shown or hidden in Present (focusPathOnly).
+      tr.state.facet(focusPathOnly) !== tr.startState.facet(focusPathOnly)
+    )
       return build(tr.state)
     return value
   },
@@ -215,9 +236,10 @@ export const focusHiddenField = StateField.define<DecorationSet>({
   ],
 })
 
-export function focusExtensions(on: boolean): Extension {
+export function focusExtensions(on: boolean, pathOnly = false): Extension {
   return on
     ? [
+        focusPathOnly.of(pathOnly),
         focusHiddenField,
         focusKeys,
         scrollToSection,

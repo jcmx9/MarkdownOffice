@@ -5,6 +5,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.12] - 2026-10-29
+
+### Changed
+- Focus in Present with the outline shown: the outline is the agenda, so the text hides the chapter headings off the path too and shows only the path and the active section, like a slide. Without the outline every chapter heading stays; Edit is unchanged
+
 ## [26.10.11] - 2026-10-29
 
 ### Fixed
