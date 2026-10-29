@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.11] - 2026-10-29
+
 ### Fixed
 - A note reloaded after an outside change (another editor, another window) keeps the cursor, the scroll position and so the outline's active entry and focus mode's section; before, it jumped to the first heading. A quiet Present cursor stays quiet
 - In-app update (macOS/Linux): the update helper and its download no longer stop on hangup, interrupt or terminate (a macOS update died mid-download without a trace); each such signal and the helper's start are written to `update.log` for diagnosis, on Windows the start as well
