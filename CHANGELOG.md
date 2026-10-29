@@ -5,6 +5,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.10] - 2026-10-29
+
+### Fixed
+- Windows export: `h1_break` was ignored (the front matter reader skipped keys with digits), so `h1_break: false` still broke before every chapter whenever `auto` would
+
 ## [26.10.9] - 2026-10-29
 
 ### Fixed
