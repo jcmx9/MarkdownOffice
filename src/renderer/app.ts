@@ -25,7 +25,12 @@ import type {
   View,
 } from '../shared/types'
 import { AutosaveScheduler } from './editor/autosave'
-import { focusCompartment, focusExtensions } from './editor/focus'
+import {
+  focusCompartment,
+  focusExtensions,
+  focusHiddenField,
+  focusStepTarget,
+} from './editor/focus'
 import { frontmatterFields, frontmatterRange } from './editor/frontmatter'
 import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header'
 import { headerNote, insertTemplate } from './editor/insert-header'
@@ -306,7 +311,7 @@ export class App {
     })
     this.outline = new OutlineSync(
       new Outline(root.outline, {
-        jump: (e) => jumpToEntry(this.editor, e),
+        jump: (e) => jumpToEntry(this.editor, e, this.mode === 'present'),
         toggle: (e) => toggleEntryFold(this.editor, e),
         fitted: (em) => root.outlineGrip.setAttribute('aria-valuenow', String(Math.round(em))),
       }),
@@ -753,6 +758,7 @@ export class App {
       void this.exitPresent()
       return
     }
+    if (this.presentPageKey(e)) return
     const zoomed = handleZoomKey(e, isMac, (action) => {
       const z = this.zoom[this.mode]
       this.setZoom(action === 'in' ? zoomIn(z) : action === 'out' ? zoomOut(z) : 1)
@@ -763,6 +769,30 @@ export class App {
       e.preventDefault()
       this.activate(Number(e.key) - 1)
     }
+  }
+
+  /**
+   * Present after an outline click: the editor has no keyboard focus (quiet cursor), so Page
+   * Down/Page Up (presenter remotes) are taken here. With focus on they step to the next or
+   * previous section as in the text; otherwise they scroll a page.
+   */
+  private presentPageKey(e: KeyboardEvent): boolean {
+    if (this.mode !== 'present' || this.shownId === null || this.editor.hasFocus) return false
+    if ((e.key !== 'PageDown' && e.key !== 'PageUp') || e.defaultPrevented) return false
+    if (document.querySelector('dialog[open]')) return false
+    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return false
+    e.preventDefault()
+    const dir = e.key === 'PageDown' ? 1 : -1
+    const state = this.editor.state
+    if (state.field(focusHiddenField, false)) {
+      const target = focusStepTarget(state, state.selection.main.head, dir)
+      if (target !== null)
+        this.editor.dispatch({ selection: { anchor: target }, userEvent: 'select' })
+    } else {
+      const page = this.editor.scrollDOM.clientHeight * 0.9
+      this.editor.scrollDOM.scrollBy({ top: dir * page })
+    }
+    return true
   }
 
   private setZoom(next: number): void {
@@ -1092,7 +1122,14 @@ export class App {
         spellcheckExtensions(this.spellcheckOn && isMarkdownTab(tab), this.mode),
       ),
       // Per mode, like the outline: focus for the audience in Present, the full text in Edit.
-      focusCompartment.reconfigure(focusExtensions(this.focusOn[this.mode] && isMarkdownTab(tab))),
+      // Never in Code: there the source is shown in full, like the YAML header (owner, 2026-10-28).
+      focusCompartment.reconfigure(
+        focusExtensions(
+          this.focusOn[this.mode] &&
+            isMarkdownTab(tab) &&
+            this.effectiveView(tab.path) === 'preview',
+        ),
+      ),
     ]
     const collapses = (tab: Tab, state: EditorState) =>
       this.mode === 'present' ||
@@ -1114,6 +1151,9 @@ export class App {
   private async enterPresent(): Promise<void> {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
+    // Every Present starts like slides, with focus on (owner, 2026-10-29); „Fokus“ can still
+    // turn it off for this Present, the next one starts focused again.
+    this.focusOn.present = true
     this.reconfigureAll()
     // Clients watch Present: no dictionary notice may stay on the shared screen.
     this.dismissDictNotices()
@@ -1429,6 +1469,10 @@ export class App {
    */
   private toggleFocus(): void {
     if (this.shownId === null) return
+    if (this.mode === 'edit' && this.view === 'code') {
+      this.notices.toast('Der Fokus wirkt nur in der Vorschau und beim Präsentieren.')
+      return
+    }
     this.focusOn[this.mode] = !this.focusOn[this.mode]
     this.reconfigureAll()
     this.mdo

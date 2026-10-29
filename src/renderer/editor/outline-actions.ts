@@ -8,6 +8,7 @@ import {
   type OutlineEntry,
   outlineEntries,
 } from './outline'
+import { setQuietCursor } from './rendered'
 
 /**
  * Unfolds the folds stored at the heading line end (their real ranges, which may differ from
@@ -31,14 +32,22 @@ export function toggleEntryFold(view: EditorView, entry: OutlineEntry): void {
   view.dispatch(spec)
 }
 
-/** Cursor to the end of the heading line, scrolled to the top area, focus to the editor. */
-export function jumpToEntry(view: EditorView, entry: OutlineEntry): void {
+/**
+ * Cursor to the end of the heading line, scrolled to the top area, focus to the editor. `quiet`
+ * (Present): the cursor still moves, so focus mode follows, but the editor loses the keyboard
+ * focus and reveals no Markdown (quietCursor) until the text is clicked.
+ */
+export function jumpToEntry(view: EditorView, entry: OutlineEntry, quiet = false): void {
   if (entry.to > view.state.doc.length) return
   view.dispatch({
     selection: { anchor: entry.to },
-    effects: EditorView.scrollIntoView(entry.from, { y: 'start', yMargin: 24 }),
+    effects: [
+      EditorView.scrollIntoView(entry.from, { y: 'start', yMargin: 24 }),
+      setQuietCursor.of(quiet),
+    ],
   })
-  view.focus()
+  if (quiet) view.contentDOM.blur()
+  else view.focus()
 }
 
 /** True when the transaction changed the folded ranges (effects or folds cleared by the selection). */
