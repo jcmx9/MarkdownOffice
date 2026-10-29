@@ -61,6 +61,17 @@ export class Notices {
   }
 
   /**
+   * New text for the banner shown under key, its buttons kept (a running download's progress:
+   * a redrawn banner would move „Abbrechen“ under the pointer). false when none is shown.
+   */
+  setBannerText(key: string, message: string): boolean {
+    const text = this.banners.get(key)?.querySelector('p')
+    if (!text) return false
+    text.textContent = message
+    return true
+  }
+
+  /**
    * A banner with the same key replaces the one already shown for that key.
    * detail: technical text shown as the message's tooltip only.
    */

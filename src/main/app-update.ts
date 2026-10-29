@@ -1,14 +1,18 @@
+import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { posix, win32 } from 'node:path'
-import type { AppUpdateCheck, AppUpdateOutcome } from '../shared/types'
+import type { AppUpdateCheck, AppUpdateOutcome, AppUpdateProgress } from '../shared/types'
 import { writeFileAtomic } from './files'
 
 /**
  * Update of the app itself (owner, 2026-10-27). The app is unsigned (macOS only ad hoc), so
- * electron-updater cannot replace it; the bootstrap script already downloads the release,
- * verifies it against SHA256SUMS and swaps the install safely. The app only finds a newer
- * stable release, downloads the bootstrap script of exactly that tag and lets a detached helper
- * run it once the app has quit, then starts the app again.
+ * electron-updater cannot replace it; the bootstrap script verifies a release against
+ * SHA256SUMS and swaps the install safely. The app finds a newer stable release, downloads its
+ * archive and SHA256SUMS and checks the archive while it still runs, with progress in the
+ * notice (owner, 2026-10-29: a minute of background download without feedback made the user
+ * reopen the app, and the bootstrap then refused the swap). Then it downloads the bootstrap
+ * script of exactly that tag and lets a detached helper run it on the local archive once the
+ * app has quit, which takes seconds, and starts the app again.
  */
 export const REPO = 'jcmx9/MarkdownOffice'
 const LATEST = `https://api.github.com/repos/${REPO}/releases/latest`
@@ -17,6 +21,14 @@ const DAY = 24 * 60 * 60 * 1000
 export const FETCH_TIMEOUT_MS = 30_000
 /** The bootstrap scripts are ~50 KB; anything far larger is not ours. */
 export const SCRIPT_MAX_BYTES = 1024 * 1024
+/** SHA256SUMS lists a handful of files. */
+export const SUMS_MAX_BYTES = 64 * 1024
+/** The archives are ~150 MB; a download beyond this is not a release of ours. */
+export const ARCHIVE_MAX_BYTES = 1024 * 1024 * 1024
+/** The archive download may take long on a slow line, but not forever. */
+export const ARCHIVE_TIMEOUT_MS = 30 * 60 * 1000
+/** A pid file older than this is a leftover (the helper waits at most 5 minutes plus the swap). */
+export const PID_MAX_AGE_MS = 15 * 60 * 1000
 
 /**
  * A stable CalVer release (YY.M.MICRO). Checked before a version reaches any URL or helper
@@ -168,6 +180,40 @@ export function bootstrapUrl(platform: InstallLocation['platform'], version: str
   return `https://raw.githubusercontent.com/${REPO}/v${version}/scripts/${file}`
 }
 
+/**
+ * The release file the bootstrap installs on this system, named exactly as bootstrap.sh's
+ * asset_name and bootstrap.ps1's Get-MdoDownload name it (it checks the archive under that
+ * name). null where the bootstrap has no build (Linux ARM, Windows ARM).
+ */
+export function releaseAsset(
+  platform: InstallLocation['platform'],
+  arch: string,
+  version: string,
+): string | null {
+  if (!isReleaseVersion(version)) throw new Error(`Ungültige Version: ${version}`)
+  if (platform === 'darwin')
+    return arch === 'arm64' || arch === 'x64' ? `markdown-office-${version}-mac-${arch}.zip` : null
+  if (arch !== 'x64') return null
+  return platform === 'linux'
+    ? `markdown-office-${version}-linux-x86_64.AppImage`
+    : `markdown-office-${version}-win-x64.zip`
+}
+
+/** Where the release's files are downloaded from. */
+export function releaseFileUrl(version: string, file: string): string {
+  if (!isReleaseVersion(version)) throw new Error(`Ungültige Version: ${version}`)
+  return `https://github.com/${REPO}/releases/download/v${version}/${file}`
+}
+
+/** The SHA-256 SHA256SUMS lists for `file` (also `*file`, binary mode), like the bootstrap. */
+export function sumFor(sums: string, file: string): string | null {
+  for (const line of sums.split(/\r?\n/)) {
+    const m = /^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$/.exec(line.trim())
+    if (m && m[2] === file) return (m[1] ?? '').toLowerCase()
+  }
+  return null
+}
+
 /** A downloaded script must look like ours before it is ever run. */
 export function looksLikeBootstrap(platform: InstallLocation['platform'], text: string): boolean {
   if (platform === 'win32') return text.startsWith('<#') && text.includes('Markdown Office')
@@ -175,17 +221,22 @@ export function looksLikeBootstrap(platform: InstallLocation['platform'], text: 
 }
 
 /**
- * Helper for macOS/Linux, run as `sh -c HELPER_SH sh <pid> <script> <version> <log> <relaunch…>`:
- * a constant, every value arrives as a positional argument (never pasted into code). Waits for
- * the app to exit (at most 5 minutes), runs the bootstrap (again while it reports the app as
- * still running: Electron's helper processes end shortly after), logs, starts the app again
- * (also after a failure: the old version is still in place) and removes the script.
+ * Helper for macOS/Linux, run as
+ * `sh -c HELPER_SH sh <pid> <script> <version> <log> <archive> <sums> <pidfile> <relaunch…>`:
+ * a constant, every value arrives as a positional argument (never pasted into code). Writes
+ * its pid to <pidfile> (an app started meanwhile sees the install running and steps aside),
+ * waits for the app to exit (at most 5 minutes), runs the bootstrap on the archive the app
+ * already downloaded and checked (again while it reports the app as still running: Electron's
+ * helper processes end shortly after), logs, removes its files and the pid file and starts the
+ * app again (also after a failure: the old version is still in place).
  * Hangup, interrupt and terminate do not stop it: a macOS update died mid-download without a
  * trace (owner, 2026-10-29). The helper logs each such signal; the bootstrap and curl run with
  * them ignored (inherited), so a signal to the whole group cannot cut the download either. A
  * log without the closing `exit` line then means SIGKILL, which nothing can catch.
  */
-export const HELPER_SH = `pid="$1"; script="$2"; version="$3"; log="$4"; shift 4
+export const HELPER_SH = `pid="$1"; script="$2"; version="$3"; log="$4"; archive="$5"; sums="$6"
+pidfile="$7"; shift 7
+echo "$$" >"$pidfile"
 echo "mdo-update: helper $$ started ($(date))" >>"$log"
 trap 'echo "mdo-update: signal HUP ignored ($(date))" >>"$log"' HUP
 trap 'echo "mdo-update: signal INT ignored ($(date))" >>"$log"' INT
@@ -196,30 +247,33 @@ while kill -0 "$pid" 2>/dev/null; do
 done
 n=0
 while :; do
-  echo "mdo-update: bootstrap --version $version ($(date))" >>"$log"
-  (trap '' HUP INT TERM; exec bash "$script" --version "$version") >>"$log" 2>&1; code=$?
+  echo "mdo-update: bootstrap --version $version --archive ($(date))" >>"$log"
+  (trap '' HUP INT TERM
+    exec bash "$script" --version "$version" --archive "$archive" --sums "$sums") >>"$log" 2>&1
+  code=$?
   [ "$code" -eq 12 ] && [ "$n" -lt 10 ] || break
   n=$((n + 1)); sleep 1
 done
 echo "mdo-update: exit $code" >>"$log"
-rm -f "$script"
+rm -f "$script" "$archive" "$sums" "$pidfile"
 "$@" >/dev/null 2>&1 &
 `
 
 /** The same for Windows, written to a .ps1 next to the downloaded script (ASCII only, PS 5.1). */
-export const HELPER_PS1 = `param([int]$AppPid, [string]$Script, [string]$Version, [string]$Log, [string]$Exe)
+export const HELPER_PS1 = `param([int]$AppPid, [string]$Script, [string]$Version, [string]$Log, [string]$Exe, [string]$Archive, [string]$Sums, [string]$PidFile)
+Set-Content -LiteralPath $PidFile -Value $PID -Encoding Ascii
 Add-Content -LiteralPath $Log -Value ("mdo-update: helper " + $PID + " started (" + (Get-Date) + ")")
 try { Wait-Process -Id $AppPid -Timeout 300 -ErrorAction Stop } catch { }
 $code = 0
 for ($n = 0; $n -le 10; $n++) {
-  Add-Content -LiteralPath $Log -Value ("mdo-update: bootstrap -Version " + $Version + " (" + (Get-Date) + ")")
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script -Version $Version 2>&1 | Out-File -LiteralPath $Log -Append -Encoding utf8
+  Add-Content -LiteralPath $Log -Value ("mdo-update: bootstrap -Version " + $Version + " -Archive (" + (Get-Date) + ")")
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script -Version $Version -Archive $Archive -Sums $Sums 2>&1 | Out-File -LiteralPath $Log -Append -Encoding utf8
   $code = $LASTEXITCODE
   if ($code -ne 12) { break }
   Start-Sleep -Seconds 1
 }
 Add-Content -LiteralPath $Log -Value ("mdo-update: exit " + $code)
-Remove-Item -LiteralPath $Script -Force -ErrorAction SilentlyContinue
+foreach ($f in @($Script, $Archive, $Sums, $PidFile)) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
 Start-Process -FilePath $Exe
 `
 
@@ -230,11 +284,22 @@ export interface HelperCommand {
   mdoHome: string | null
 }
 
-/** The detached helper's command line; `helper` is the written HELPER_PS1 (Windows only). */
-export function helperCommand(
-  loc: InstallLocation,
-  o: { pid: number; script: string; version: string; log: string; helper?: string },
-): HelperCommand {
+export interface HelperFiles {
+  pid: number
+  script: string
+  version: string
+  log: string
+  /** The checked release archive and its SHA256SUMS, handed to the bootstrap. */
+  archive: string
+  sums: string
+  /** <userData>/update.pid: the helper's pid while it runs. */
+  pidFile: string
+  /** The written HELPER_PS1 (Windows only). */
+  helper?: string
+}
+
+/** The detached helper's command line. */
+export function helperCommand(loc: InstallLocation, o: HelperFiles): HelperCommand {
   if (!isReleaseVersion(o.version)) throw new Error(`Ungültige Version: ${o.version}`)
   if (loc.platform === 'win32') {
     if (!o.helper) throw new Error('Hilfsskript fehlt')
@@ -258,13 +323,31 @@ export function helperCommand(
         o.log,
         '-Exe',
         loc.relaunch[0] ?? '',
+        '-Archive',
+        o.archive,
+        '-Sums',
+        o.sums,
+        '-PidFile',
+        o.pidFile,
       ],
       mdoHome: loc.mdoHome,
     }
   }
   return {
     command: '/bin/sh',
-    args: ['-c', HELPER_SH, 'sh', String(o.pid), o.script, o.version, o.log, ...loc.relaunch],
+    args: [
+      '-c',
+      HELPER_SH,
+      'sh',
+      String(o.pid),
+      o.script,
+      o.version,
+      o.log,
+      o.archive,
+      o.sums,
+      o.pidFile,
+      ...loc.relaunch,
+    ],
     mdoHome: loc.mdoHome,
   }
 }
@@ -319,6 +402,67 @@ export async function fetchBootstrap(
   return bytes
 }
 
+/** A file being written, opened exclusively (never over an existing one). */
+export interface FileSink {
+  write(chunk: Uint8Array): Promise<void>
+  close(): Promise<void>
+}
+
+/** SHA256SUMS of the release, size-capped. */
+export async function fetchSums(
+  fetch: Fetch,
+  version: string,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<string> {
+  const r = await fetch(releaseFileUrl(version, 'SHA256SUMS'), {
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!r.ok) throw new Error(`SHA256SUMS: HTTP ${r.status}`)
+  const bytes = Buffer.from(await r.arrayBuffer())
+  if (bytes.length > SUMS_MAX_BYTES) throw new Error('SHA256SUMS zu groß')
+  return bytes.toString('utf8')
+}
+
+/**
+ * Streams the release archive into `sink`, hashing it on the way, and reports progress. Throws
+ * on HTTP errors, an oversized download or a hash that differs from `expected`; the caller
+ * removes the partial file.
+ */
+export async function downloadArchive(
+  fetch: Fetch,
+  url: string,
+  sink: FileSink,
+  expected: string,
+  onProgress: (received: number, total: number | null) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const r = await fetch(url, { signal })
+  if (!r.ok || !r.body) throw new Error(`Download: HTTP ${r.status}`)
+  const length = Number(r.headers.get('content-length'))
+  const total = Number.isFinite(length) && length > 0 ? length : null
+  if (total !== null && total > ARCHIVE_MAX_BYTES) throw new Error('Archiv zu groß')
+  const hash = createHash('sha256')
+  let received = 0
+  const reader = r.body.getReader()
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > ARCHIVE_MAX_BYTES) throw new Error('Archiv zu groß')
+      hash.update(value)
+      await sink.write(value)
+      onProgress(received, total)
+    }
+  } finally {
+    reader.releaseLock()
+    await sink.close()
+  }
+  const actual = hash.digest('hex')
+  if (actual !== expected)
+    throw new Error('Prüfsumme des Archivs stimmt nicht – nichts wurde verändert.')
+}
+
 /** The check's answer for the renderer. */
 export function checkResult(
   rel: LatestRelease,
@@ -335,6 +479,8 @@ export interface UpdaterDeps {
   statePath: string
   /** <userData>/update.log: the helper's output. */
   logPath: string
+  /** <userData>/update.pid: written by the helper while it installs. */
+  pidPath: string
   version: string
   packaged: boolean
   /** Setting „Nach Updates suchen“. */
@@ -342,9 +488,19 @@ export interface UpdaterDeps {
   fetch: Fetch
   location(): Promise<InstallLocation | null>
   now(): number
-  /** A new private temp folder for the downloaded script. */
+  /** process.arch: picks the release archive. */
+  arch: string
+  /** A new private temp folder for the downloaded files. */
   tempDir(): Promise<string>
   writeFile(path: string, data: Uint8Array): Promise<void>
+  /** Opens a new file for the archive (exclusive, private). */
+  openFile(path: string): Promise<FileSink>
+  removeFile(path: string): Promise<void>
+  /** Download progress for the notice. */
+  progress(p: AppUpdateProgress): void
+  /** The helper's pid from the pid file and the file's age, or null when there is none. */
+  readPid(): Promise<{ pid: number; ageMs: number } | null>
+  isAlive(pid: number): boolean
   /** Starts the helper detached from the app (it must outlive it). */
   spawn(command: string, args: string[], mdoHome: string | null): void
   pid: number
@@ -365,6 +521,8 @@ export class AppUpdater {
   private prepared: Prepared | null = null
   /** Versions the last check found, so an install request names one the network offered. */
   private offered = new Set<string>()
+  /** The archive download under way („Abbrechen“ aborts it). */
+  private download: AbortController | null = null
 
   constructor(private readonly d: UpdaterDeps) {}
 
@@ -427,18 +585,49 @@ export class AppUpdater {
   }
 
   /**
-   * „Jetzt aktualisieren“: downloads the release's bootstrap script, prepares the helper and
-   * quits. Returns an error message for the renderer, or null when the quit is under way.
+   * „Jetzt aktualisieren“: downloads the release archive and SHA256SUMS with progress, checks
+   * the archive, downloads the release's bootstrap script, prepares the helper and quits. The
+   * app keeps running (and showing progress) until the archive is checked, so the swap after
+   * the quit takes seconds. Returns an error message for the renderer, '' when the user
+   * cancelled, or null when the quit is under way.
    */
   async install(version: string): Promise<string | null> {
     if (!isReleaseVersion(version) || !this.offered.has(version))
       return 'Diese Version wurde nicht angeboten.'
+    if (this.download) return 'Das Update wird schon geladen.'
+    const abort = new AbortController()
+    this.download = abort
+    let archive: string | null = null
     try {
       const loc = await this.d.location()
       if (!loc) return 'Diese Installation kann sich nicht selbst aktualisieren.'
-      const bytes = await fetchBootstrap(this.d.fetch, loc.platform, version)
+      const asset = releaseAsset(loc.platform, this.d.arch, version)
+      if (!asset) return 'Für dieses System gibt es kein Update-Archiv.'
+      const sums = await fetchSums(this.d.fetch, version)
+      const expected = sumFor(sums, asset)
+      if (!expected) return `SHA256SUMS enthält keinen Eintrag für ${asset}.`
       const dir = await this.d.tempDir()
       const sep = loc.platform === 'win32' ? '\\' : '/'
+      archive = `${dir}${sep}${asset}`
+      const sink = await this.d.openFile(archive)
+      // Whole percents only: the notice is redrawn per step, not per network chunk.
+      let shown = -1
+      await downloadArchive(
+        this.d.fetch,
+        releaseFileUrl(version, asset),
+        sink,
+        expected,
+        (received, total) => {
+          const percent = total ? Math.floor((received / total) * 100) : null
+          if (percent !== null && percent === shown) return
+          shown = percent ?? shown
+          this.d.progress({ version, received, total })
+        },
+        AbortSignal.any([abort.signal, AbortSignal.timeout(ARCHIVE_TIMEOUT_MS)]),
+      )
+      const sumsFile = `${dir}${sep}SHA256SUMS`
+      await this.d.writeFile(sumsFile, Buffer.from(sums))
+      const bytes = await fetchBootstrap(this.d.fetch, loc.platform, version)
       const script = `${dir}${sep}${loc.platform === 'win32' ? 'bootstrap.ps1' : 'bootstrap.sh'}`
       await this.d.writeFile(script, bytes)
       let helper: string | undefined
@@ -451,15 +640,40 @@ export class AppUpdater {
         script,
         version,
         log: this.d.logPath,
+        archive,
+        sums: sumsFile,
+        pidFile: this.d.pidPath,
         helper,
       })
       await this.withState((s) => this.save({ ...s, pending: version }))
       this.prepared = { version, command }
     } catch (err) {
+      if (archive) await this.d.removeFile(archive).catch(() => undefined)
+      if (abort.signal.aborted) return ''
       return `Update nicht möglich: ${message(err)}`
+    } finally {
+      this.download = null
     }
     this.d.quit()
     return null
+  }
+
+  /** „Abbrechen“ in the notice while the archive downloads. */
+  cancelDownload(): void {
+    this.download?.abort()
+  }
+
+  /**
+   * At start: an install handed to the helper is still running (its pid file is fresh and the
+   * process lives). The app then steps aside instead of blocking the swap; the helper starts it
+   * again afterwards (owner, 2026-10-29: the app was reopened 5 s after quitting).
+   */
+  async installing(): Promise<boolean> {
+    const s = await readState(this.d.statePath)
+    if (!s.pending) return false
+    const p = await this.d.readPid().catch(() => null)
+    if (!p || p.pid === this.d.pid || p.ageMs > PID_MAX_AGE_MS) return false
+    return this.d.isAlive(p.pid)
   }
 
   /** The user kept the app open (unsaved notes): no helper, no pending install. */

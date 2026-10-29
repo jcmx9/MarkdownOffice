@@ -96,6 +96,10 @@ Markdown-Office-Bootstrap (macOS/Linux)
   bootstrap.sh --pre           neueste Vorabversion (Pre-Release) zum Testen – sie kann
                                älter sein als die neueste stabile Version
   bootstrap.sh --version X     genau Version X (z. B. 26.10.0 oder 26.10.0-dev.1)
+  bootstrap.sh --version X --archive DATEI --sums SHA256SUMS
+                               Version X aus einem schon geladenen Archiv installieren
+                               (Prüfsumme gegen SHA256SUMS, kein Download; so ruft die
+                               App das Update auf)
   bootstrap.sh --uninstall     Markdown Office entfernen (Dokumente, Vorlagen-Sets,
                                Snippets und Einstellungen bleiben)
 EOF
@@ -356,6 +360,20 @@ sha256_of() {
   fi
 }
 
+# Checks ${1} (the archive) against the SHA256SUMS file ${2} under the asset name ${3};
+# exit 5 when the sums lack the name or the hash differs. One path for both sources: the
+# download below and an archive the app already fetched (--archive/--sums).
+verify_archive() {
+  local file="$1" sums="$2" name="$3" expected actual
+  expected="$(awk -v f="${name}" '$2 == f || $2 == "*" f { print $1; exit }' "${sums}")"
+  [[ -n "${expected}" ]] || die 5 "SHA256SUMS enthält keinen Eintrag für ${name}."
+  actual="$(sha256_of "${file}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    die 5 "Prüfsumme falsch für ${name} (erwartet ${expected}, erhalten ${actual}) – nichts wurde verändert."
+  fi
+  ok "Prüfsumme stimmt"
+}
+
 # Downloads the asset into ${tmp} and verifies it; sets archive.
 download_release() {
   resolve_release
@@ -364,15 +382,19 @@ download_release() {
     die 4 "Download fehlgeschlagen: ${asset_url}"
   curl -fsSL --proto '=https' --retry 3 -o "${tmp}/SHA256SUMS" "${sums_url}" ||
     die 4 "Download fehlgeschlagen: ${sums_url}"
-  local expected actual
-  expected="$(awk -v f="${asset}" '$2 == f || $2 == "*" f { print $1; exit }' "${tmp}/SHA256SUMS")"
-  [[ -n "${expected}" ]] || die 5 "SHA256SUMS enthält keinen Eintrag für ${asset}."
-  actual="$(sha256_of "${tmp}/${asset}")"
-  if [[ "${actual}" != "${expected}" ]]; then
-    die 5 "Prüfsumme falsch für ${asset} (erwartet ${expected}, erhalten ${actual}) – nichts wurde verändert."
-  fi
-  ok "Prüfsumme stimmt"
+  verify_archive "${tmp}/${asset}" "${tmp}/SHA256SUMS" "${asset}"
   archive="${tmp}/${asset}"
+}
+
+# --archive/--sums: the app downloaded and checked the release itself before quitting (owner,
+# 2026-10-29: the background download took a minute without feedback, the app was reopened
+# meanwhile and the update was refused). Checked again here under the asset name of
+# --version, so a swapped file never installs; no network is used.
+use_local_release() {
+  asset="$(asset_name "${want_version}")"
+  say "Installiere Markdown Office ${want_version} aus ${local_archive}"
+  verify_archive "${local_archive}" "${local_sums}" "${asset}"
+  archive="${local_archive}"
 }
 
 # --- Install ------------------------------------------------------------------
@@ -1108,6 +1130,8 @@ do_install() {
     [[ -f "${MDO_ARCHIVE}" ]] || die 2 "MDO_ARCHIVE nicht gefunden: ${MDO_ARCHIVE}"
     archive="${MDO_ARCHIVE}"
     say "Installiere aus lokalem Archiv ${archive} (ohne Prüfsumme)"
+  elif [[ -n "${local_archive}" ]]; then
+    use_local_release
   else
     command -v curl >/dev/null 2>&1 || die 3 "curl nicht gefunden – bitte zuerst installieren."
     download_release
@@ -1204,9 +1228,16 @@ main() {
   local action="install"
   want_pre="false"
   want_version=""
+  local_archive=""
+  local_sums=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --pre) want_pre="true" ;;
+      --archive | --sums)
+        [[ $# -ge 2 && -n "$2" ]] || die 2 "${1} braucht einen Dateipfad."
+        if [[ "$1" == "--archive" ]]; then local_archive="$2"; else local_sums="$2"; fi
+        shift
+        ;;
       --version)
         [[ $# -ge 2 && -n "$2" ]] || die 2 "--version braucht eine Versionsnummer (z. B. 26.10.0)."
         want_version="${2#v}"
@@ -1233,6 +1264,13 @@ main() {
   fi
   if [[ -n "${want_version}" ]] && ! [[ "${want_version}" =~ ${version_re} ]]; then
     die 2 "Ungültige Version ${want_version} (erwartet z. B. 26.10.0 oder 26.10.0-dev.1)."
+  fi
+  if [[ -n "${local_archive}${local_sums}" ]]; then
+    [[ -n "${local_archive}" && -n "${local_sums}" ]] || die 2 "--archive und --sums gehören zusammen."
+    [[ -n "${want_version}" ]] || die 2 "--archive braucht --version (die Version des Archivs)."
+    [[ "${action}" == "install" ]] || die 2 "--archive passt nicht zu --uninstall."
+    [[ -f "${local_archive}" ]] || die 2 "Archiv nicht gefunden: ${local_archive}"
+    [[ -f "${local_sums}" ]] || die 2 "SHA256SUMS nicht gefunden: ${local_sums}"
   fi
 
   detect_platform

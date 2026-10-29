@@ -1,4 +1,4 @@
-import type { AppUpdateCheck, MdoApi } from '../../shared/types'
+import type { AppUpdateCheck, AppUpdateProgress, MdoApi } from '../../shared/types'
 import { remoteMessage } from '../util/remote-error'
 import type { NoticeAction } from './notices'
 
@@ -9,12 +9,29 @@ export const AUTO_CHECK_DELAY_MS = 5000
 
 type Api = Pick<
   MdoApi,
-  'checkAppUpdate' | 'skipAppUpdate' | 'installAppUpdate' | 'appUpdateOutcome' | 'showAppUpdateLog'
+  | 'checkAppUpdate'
+  | 'skipAppUpdate'
+  | 'installAppUpdate'
+  | 'cancelAppUpdate'
+  | 'onAppUpdateProgress'
+  | 'appUpdateOutcome'
+  | 'showAppUpdateLog'
 >
 
 export interface UpdateNotices {
   toast(message: string): void
   banner(message: string, actions: NoticeAction[], key?: string): void
+  setBannerText(key: string, message: string): boolean
+  dismiss(key: string): void
+}
+
+/** „42 %“, or the megabytes so far when the server sends no size. */
+export function progressText(p: AppUpdateProgress): string {
+  const done =
+    p.total !== null
+      ? `${Math.min(100, Math.floor((p.received / p.total) * 100))} %`
+      : `${(p.received / 1024 / 1024).toFixed(0)} MB`
+  return `Lade Markdown Office ${p.version} … ${done}`
 }
 
 export interface AppUpdateUiDeps {
@@ -32,8 +49,14 @@ export interface AppUpdateUiDeps {
  */
 export class AppUpdateUi {
   private held: Extract<AppUpdateCheck, { kind: 'available' }> | null = null
+  /** The version whose archive is downloading; progress for any other is ignored. */
+  private loading: string | null = null
 
-  constructor(private readonly d: AppUpdateUiDeps) {}
+  constructor(private readonly d: AppUpdateUiDeps) {
+    d.mdo.onAppUpdateProgress((p) => {
+      if (p.version === this.loading) d.notices.setBannerText(UPDATE_KEY, progressText(p))
+    })
+  }
 
   /** At start: the outcome of the last install, then (after a pause) the automatic check. */
   async start(schedule: (run: () => void, ms: number) => void = setTimeout): Promise<void> {
@@ -102,13 +125,32 @@ export class AppUpdateUi {
     this.d.notices.banner(`Markdown Office ${r.version} ist verfügbar.${how}`, actions, UPDATE_KEY)
   }
 
+  /**
+   * The archive downloads while the app runs, its progress in the banner (owner, 2026-10-29: a
+   * silent minute made the user reopen the app); the app quits only once it is checked.
+   */
   private async install(version: string): Promise<void> {
-    this.d.notices.toast(`Lade Markdown Office ${version} …`)
+    this.loading = version
+    this.d.notices.banner(
+      `Lade Markdown Office ${version} …`,
+      [{ label: 'Abbrechen', run: () => void this.d.mdo.cancelAppUpdate() }],
+      UPDATE_KEY,
+    )
+    let result: string | null
     try {
-      const error = await this.d.mdo.installAppUpdate(version)
-      if (error) this.d.notices.toast(error)
+      result = await this.d.mdo.installAppUpdate(version)
     } catch (err) {
-      this.d.notices.toast(`Update nicht möglich: ${remoteMessage(err)}`)
+      result = `Update nicht möglich: ${remoteMessage(err)}`
     }
+    this.loading = null
+    if (result === null) {
+      this.d.notices.setBannerText(
+        UPDATE_KEY,
+        `Markdown Office ${version} wird installiert und startet gleich neu.`,
+      )
+      return
+    }
+    this.d.notices.dismiss(UPDATE_KEY)
+    this.d.notices.toast(result === '' ? 'Update abgebrochen.' : result)
   }
 }

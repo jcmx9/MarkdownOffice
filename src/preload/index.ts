@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { Ch } from '../shared/ipc'
-import type { ExternalChange, MdoApi, MenuCommand } from '../shared/types'
+import type { AppUpdateProgress, ExternalChange, MdoApi, MenuCommand } from '../shared/types'
 
 const api: MdoApi = {
   startup: () => ipcRenderer.invoke(Ch.startup),
@@ -33,6 +33,10 @@ const api: MdoApi = {
   installAppUpdate: (version) => ipcRenderer.invoke(Ch.appUpdateInstall, version),
   appUpdateOutcome: () => ipcRenderer.invoke(Ch.appUpdateOutcome),
   showAppUpdateLog: () => ipcRenderer.invoke(Ch.appUpdateShowLog),
+  cancelAppUpdate: () => ipcRenderer.invoke(Ch.appUpdateCancel),
+  onAppUpdateProgress: (cb) => {
+    ipcRenderer.on(Ch.appUpdateProgress, (_e, p: AppUpdateProgress) => cb(p))
+  },
   spellWords: () => ipcRenderer.invoke(Ch.spellWords),
   removeSpellWord: (word) => ipcRenderer.invoke(Ch.spellRemoveWord, word),
   onOpenPaths: (cb) => {
