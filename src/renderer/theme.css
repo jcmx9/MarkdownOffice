@@ -368,6 +368,25 @@
   font-size: 0.9em;
   font-variant-numeric: normal;
 }
+/* Page break line (preview.ts): a quiet dashed rule with its name, like Word or Pages; the
+   audience does not need it, so Present shows nothing there. */
+.mdo-preview .cm-line.mdo-pagebreak {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  color: var(--mdo-faint);
+  font-family: var(--mdo-font-sans);
+  font-size: 0.75em;
+}
+.mdo-preview .cm-line.mdo-pagebreak::before,
+.mdo-preview .cm-line.mdo-pagebreak::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed currentColor;
+}
+.mdo-present .cm-line.mdo-pagebreak {
+  visibility: hidden;
+}
 .mdo-preview .mdo-comment {
   color: var(--mdo-faint);
   font-family: var(--mdo-font-code);
