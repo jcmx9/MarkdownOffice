@@ -213,8 +213,14 @@ export interface MdoApi {
   checkAppUpdate(manual: boolean): Promise<AppUpdateCheck>
   /** „Diese Version überspringen“ */
   skipAppUpdate(version: string): Promise<void>
-  /** Downloads the release's installer and quits; an error message, or null when quitting. */
+  /**
+   * Downloads and checks the release archive (progress via onAppUpdateProgress), then quits;
+   * an error message, '' when cancelled, or null when quitting.
+   */
   installAppUpdate(version: string): Promise<string | null>
+  /** „Abbrechen“ while the archive downloads. */
+  cancelAppUpdate(): Promise<void>
+  onAppUpdateProgress(cb: (p: AppUpdateProgress) => void): void
   /** At start, once: what became of the install handed over at the last quit. */
   appUpdateOutcome(): Promise<AppUpdateOutcome | null>
   /** Shows the update log in the file manager. */
@@ -336,6 +342,13 @@ export type AppUpdateCheck =
   /** A dev run or pre-release: no updates. */
   | { kind: 'unsupported' }
   | { kind: 'failed'; message: string }
+
+/** Download progress of „Jetzt aktualisieren“; total is null when the server sends no size. */
+export interface AppUpdateProgress {
+  version: string
+  received: number
+  total: number | null
+}
 
 /** What became of the install handed to the helper at the last quit. */
 export type AppUpdateOutcome =

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AppUpdateUi, AUTO_CHECK_DELAY_MS, UPDATE_KEY } from '../../../src/renderer/ui/app-update'
+import {
+  AppUpdateUi,
+  AUTO_CHECK_DELAY_MS,
+  progressText,
+  UPDATE_KEY,
+} from '../../../src/renderer/ui/app-update'
 import type { NoticeAction } from '../../../src/renderer/ui/notices'
-import type { AppUpdateCheck } from '../../../src/shared/types'
+import type { AppUpdateCheck, AppUpdateProgress } from '../../../src/shared/types'
 
 const available = (canInstall = true): AppUpdateCheck => ({
   kind: 'available',
@@ -13,6 +18,9 @@ const available = (canInstall = true): AppUpdateCheck => ({
 function setup(result: AppUpdateCheck, o: { presenting?: boolean } = {}) {
   const banners: { message: string; actions: NoticeAction[]; key?: string }[] = []
   const toasts: string[] = []
+  const dismissed: string[] = []
+  const texts: string[] = []
+  let progress: (p: AppUpdateProgress) => void = () => undefined
   let presenting = o.presenting ?? false
   const mdo = {
     checkAppUpdate: vi.fn(async () => result),
@@ -20,6 +28,10 @@ function setup(result: AppUpdateCheck, o: { presenting?: boolean } = {}) {
     installAppUpdate: vi.fn(async (): Promise<string | null> => null),
     appUpdateOutcome: vi.fn(async () => null),
     showAppUpdateLog: vi.fn(async () => undefined),
+    cancelAppUpdate: vi.fn(async () => undefined),
+    onAppUpdateProgress: (cb: (p: AppUpdateProgress) => void) => {
+      progress = cb
+    },
   }
   const openLink = vi.fn()
   const ui = new AppUpdateUi({
@@ -27,6 +39,8 @@ function setup(result: AppUpdateCheck, o: { presenting?: boolean } = {}) {
     notices: {
       toast: (m) => toasts.push(m),
       banner: (message, actions, key) => banners.push({ message, actions, key }),
+      setBannerText: (_key, message) => texts.push(message) > 0,
+      dismiss: (key) => dismissed.push(key),
     },
     openLink,
     presenting: () => presenting,
@@ -39,6 +53,9 @@ function setup(result: AppUpdateCheck, o: { presenting?: boolean } = {}) {
     toasts,
     openLink,
     action,
+    dismissed,
+    texts,
+    progress: (p: AppUpdateProgress) => progress(p),
     setPresenting: (v: boolean) => (presenting = v),
   }
 }
@@ -71,6 +88,49 @@ describe('AppUpdateUi', () => {
     await t.ui.check(true)
     expect(t.banners[0]?.actions.map((a) => a.label)).not.toContain('Jetzt aktualisieren')
     expect(t.banners[0]?.message).toMatch(/Installationsbefehl erneut ausführen/)
+  })
+
+  it('install: progress in the banner, „Abbrechen“ cancels; done says it restarts', async () => {
+    const t = setup(available())
+    let finish: (r: string | null) => void = () => undefined
+    t.mdo.installAppUpdate.mockReturnValue(
+      new Promise((r) => {
+        finish = r
+      }),
+    )
+    await t.ui.check(false)
+    t.action('Jetzt aktualisieren')?.run()
+    expect(t.banners.at(-1)?.message).toBe('Lade Markdown Office 26.10.7 …')
+    t.progress({ version: '26.10.7', received: 50, total: 200 })
+    // Another version's progress (a stale download) is not shown.
+    t.progress({ version: '26.10.8', received: 1, total: 2 })
+    expect(t.texts).toEqual(['Lade Markdown Office 26.10.7 … 25 %'])
+    t.action('Abbrechen')?.run()
+    expect(t.mdo.cancelAppUpdate).toHaveBeenCalledOnce()
+    finish(null)
+    await vi.waitFor(() =>
+      expect(t.texts.at(-1)).toBe(
+        'Markdown Office 26.10.7 wird installiert und startet gleich neu.',
+      ),
+    )
+  })
+
+  it('install: a cancel removes the banner and says so', async () => {
+    const t = setup(available())
+    t.mdo.installAppUpdate.mockResolvedValue('')
+    await t.ui.check(false)
+    t.action('Jetzt aktualisieren')?.run()
+    await vi.waitFor(() => expect(t.toasts).toEqual(['Update abgebrochen.']))
+    expect(t.dismissed).toEqual([UPDATE_KEY])
+  })
+
+  it('progress text: percent, or megabytes without a size', () => {
+    expect(progressText({ version: '26.10.7', received: 1, total: 3 })).toBe(
+      'Lade Markdown Office 26.10.7 … 33 %',
+    )
+    expect(progressText({ version: '26.10.7', received: 5 * 1024 * 1024, total: null })).toBe(
+      'Lade Markdown Office 26.10.7 … 5 MB',
+    )
   })
 
   it('shows an install error as toast', async () => {

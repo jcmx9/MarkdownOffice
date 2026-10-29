@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
 import { existsSync, promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import { app, net } from 'electron'
+import { app, dialog, net } from 'electron'
+import { Ch } from '../shared/ipc'
+import type { AppUpdateProgress } from '../shared/types'
 import { AppUpdater, installLocation } from './app-update'
 import { argsFromArgv, HELP_TEXT, parseCli } from './cli'
 import { AppContext } from './context'
@@ -93,7 +95,26 @@ function run(initial: string[]): void {
       website: 'https://github.com/jcmx9/MarkdownOffice',
     })
     await ctx.load()
-    ctx.appUpdate = appUpdater(() => ctx.settings.appUpdateCheck)
+    ctx.appUpdate = appUpdater(
+      () => ctx.settings.appUpdateCheck,
+      (p) => ctx.send(Ch.appUpdateProgress, p),
+    )
+    // Started while the update helper still installs (owner, 2026-10-29: reopened via Alfred
+    // 5 s after quitting): a running app would block the swap, so it says so and steps aside;
+    // the helper starts it again when it is done.
+    if (await ctx.appUpdate.installing().catch(() => false)) {
+      await dialog
+        .showMessageBox({
+          type: 'info',
+          message: 'Update wird installiert …',
+          detail: 'Markdown Office startet danach von selbst neu.',
+          buttons: ['OK'],
+          signal: AbortSignal.timeout(4000),
+        })
+        .catch(() => undefined)
+      app.exit(0)
+      return
+    }
     // Before handleFontProtocol: protocol.handle creates the default session, and with it
     // Chromium's spellchecker, which must find the dictionaries and the dead download URL.
     // A failure only logs: the window and its own guard (SpellcheckController) still start.
@@ -108,7 +129,7 @@ function run(initial: string[]): void {
 }
 
 /** The app update (app-update.ts) with the real network, files and processes. */
-function appUpdater(enabled: () => boolean): AppUpdater {
+function appUpdater(enabled: () => boolean, progress: (p: AppUpdateProgress) => void): AppUpdater {
   const userData = app.getPath('userData')
   const readText = (p: string) => fs.readFile(p, 'utf8').catch(() => null)
   const exists = (p: string) =>
@@ -119,6 +140,8 @@ function appUpdater(enabled: () => boolean): AppUpdater {
   return new AppUpdater({
     statePath: join(userData, 'app-update.json'),
     logPath: join(userData, 'update.log'),
+    pidPath: join(userData, 'update.pid'),
+    arch: process.arch,
     version: app.getVersion(),
     packaged: app.isPackaged,
     enabled,
@@ -136,6 +159,32 @@ function appUpdater(enabled: () => boolean): AppUpdater {
     now: () => Date.now(),
     tempDir: () => fs.mkdtemp(join(app.getPath('temp'), 'mdo-update-')),
     writeFile: (p, data) => fs.writeFile(p, data, { mode: 0o600 }),
+    openFile: async (p) => {
+      const fh = await fs.open(p, 'wx', 0o600)
+      return {
+        write: async (chunk) => {
+          await fh.write(chunk)
+        },
+        close: () => fh.close(),
+      }
+    },
+    removeFile: (p) => fs.unlink(p),
+    progress,
+    readPid: async () => {
+      const p = join(userData, 'update.pid')
+      const [text, stat] = await Promise.all([fs.readFile(p, 'utf8'), fs.stat(p)])
+      const pid = Number.parseInt(text.trim(), 10)
+      return Number.isInteger(pid) && pid > 0 ? { pid, ageMs: Date.now() - stat.mtimeMs } : null
+    },
+    isAlive: (pid) => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch (err) {
+        // EPERM: the process exists but belongs to someone else (not our helper, but alive).
+        return (err as NodeJS.ErrnoException).code === 'EPERM'
+      }
+    },
     spawn: (command, args, mdoHome) => {
       // The bootstrap installs where this app lives: MDO_HOME only when that is not its default.
       const env = { ...process.env }

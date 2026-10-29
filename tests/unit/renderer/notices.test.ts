@@ -15,3 +15,16 @@ describe('Notices.dismissPrefix', () => {
     ])
   })
 })
+
+describe('Notices.setBannerText', () => {
+  it('changes the shown banner text and keeps its buttons; false without a banner', () => {
+    const el = document.createElement('div')
+    const n = new Notices(el)
+    expect(n.setBannerText('app-update', '10 %')).toBe(false)
+    n.banner('Lade …', [{ label: 'Abbrechen', run: () => undefined }], 'app-update')
+    const button = el.querySelector('button')
+    expect(n.setBannerText('app-update', 'Lade … 10 %')).toBe(true)
+    expect(el.querySelector('p')?.textContent).toBe('Lade … 10 %')
+    expect(el.querySelector('button')).toBe(button)
+  })
+})

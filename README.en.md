@@ -2,7 +2,7 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.12 · [Deutsch](README.md)
+**Version:** 26.10.13 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -57,9 +57,9 @@ What of this was created is listed in `.mdo-file-manager` next to the install ma
 
 ## Update
 
-**In the app:** At start, Markdown Office asks GitHub at most once a day for a newer stable version (can be switched off in the settings under „Updates“; at any time via „Nach Updates suchen …“ in the app menu on macOS or in the „Hilfe“ menu). If there is one, a notice offers „Jetzt aktualisieren“, „Was ist neu?“ (release page), „Später“ and „Diese Version überspringen“. „Jetzt aktualisieren“ downloads the install script of exactly that version (tag `v<version>`), quits the app the normal way (unsaved notes are saved or asked about first) and starts it again after the update; the script checks the archive against `SHA256SUMS` as during installation. If something goes wrong, the previous version keeps running and a notice shows the log `update.log` in the app data folder. „Jetzt aktualisieren“ is only offered for an app installed with the install script (recognised by its install marker); otherwise the way below remains. The app is not signed, so it updates through the install script instead of a built-in updater. Development versions do not look for updates.
+**In the app:** At start, Markdown Office asks GitHub at most once a day for a newer stable version (can be switched off in the settings under „Updates“; at any time via „Nach Updates suchen …“ in the app menu on macOS or in the „Hilfe“ menu). If there is one, a notice offers „Jetzt aktualisieren“, „Was ist neu?“ (release page), „Später“ and „Diese Version überspringen“. „Jetzt aktualisieren“ downloads that version's archive while the app keeps running; the notice shows the progress in percent and offers „Abbrechen“. Only once the archive is checked against `SHA256SUMS` does the app download the install script of exactly that version (tag `v<version>`) and quit the normal way (unsaved notes are saved or asked about first); the script checks the archive again and swaps the app in a few seconds, then it starts again. If the app is opened during that time, it briefly shows „Update wird installiert …“ and quits again, so it does not block the swap. If something goes wrong, the previous version keeps running and a notice shows the log `update.log` in the app data folder. „Jetzt aktualisieren“ is only offered for an app installed with the install script (recognised by its install marker); otherwise the way below remains. The app is not signed, so it updates through the install script instead of a built-in updater. Development versions do not look for updates.
 
-**In the terminal:** Run the install command again. The installed version is replaced; if the download fails, the old version stays as it is. A specific version: `... | bash -s -- --version 26.10.0`, or `-Version 26.10.0` on Windows.
+**In the terminal:** Run the install command again. The installed version is replaced; if the download fails, the old version stays as it is. A specific version: `... | bash -s -- --version 26.10.0`, or `-Version 26.10.0` on Windows. From an archive already downloaded (how the app calls the script): `--version X --archive FILE --sums SHA256SUMS`, or `-Version X -Archive FILE -Sums SHA256SUMS`.
 
 ## Uninstall
 

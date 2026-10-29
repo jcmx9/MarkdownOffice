@@ -199,6 +199,7 @@ export function registerIpc(ctx: AppContext): void {
       ? ctx.appUpdate.install(version)
       : 'Update nicht möglich.',
   )
+  ipcMain.handle(Ch.appUpdateCancel, () => ctx.appUpdate?.cancelDownload())
   ipcMain.handle(Ch.appUpdateOutcome, () => ctx.appUpdate?.outcome() ?? null)
   ipcMain.handle(Ch.appUpdateShowLog, () => {
     if (ctx.appUpdate) shell.showItemInFolder(ctx.appUpdate.logPath)

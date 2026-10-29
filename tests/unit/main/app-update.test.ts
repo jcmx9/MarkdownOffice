@@ -1,10 +1,12 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   AppUpdater,
+  ARCHIVE_MAX_BYTES,
   autoCheckDue,
   bootstrapUrl,
   compareVersions,
@@ -17,9 +19,12 @@ import {
   type LocationEnv,
   looksLikeBootstrap,
   parseLatestRelease,
+  releaseAsset,
+  releaseFileUrl,
   SCRIPT_MAX_BYTES,
   sanitizeState,
   settlePending,
+  sumFor,
   type UpdaterDeps,
   updatesSupported,
 } from '../../../src/main/app-update'
@@ -243,6 +248,45 @@ describe('bootstrap script', () => {
   })
 })
 
+/** Archive, sums and pid file of a helper run inside `dir`. */
+async function files(dir: string) {
+  const archive = join(dir, 'a.zip')
+  const sums = join(dir, 'SHA256SUMS')
+  await writeFile(archive, 'zip')
+  await writeFile(sums, 'sums')
+  return { archive, sums, pidFile: join(dir, 'update.pid') }
+}
+
+describe('release files', () => {
+  it('names the archive as the bootstrap does', () => {
+    expect(releaseAsset('darwin', 'arm64', '26.10.7')).toBe('markdown-office-26.10.7-mac-arm64.zip')
+    expect(releaseAsset('darwin', 'x64', '26.10.7')).toBe('markdown-office-26.10.7-mac-x64.zip')
+    expect(releaseAsset('linux', 'x64', '26.10.7')).toBe(
+      'markdown-office-26.10.7-linux-x86_64.AppImage',
+    )
+    expect(releaseAsset('win32', 'x64', '26.10.7')).toBe('markdown-office-26.10.7-win-x64.zip')
+    expect(releaseAsset('linux', 'arm64', '26.10.7')).toBeNull()
+    expect(() => releaseAsset('linux', 'x64', '26.10.7/../x')).toThrow()
+    expect(releaseFileUrl('26.10.7', 'SHA256SUMS')).toBe(
+      'https://github.com/jcmx9/MarkdownOffice/releases/download/v26.10.7/SHA256SUMS',
+    )
+  })
+
+  it('reads the sum of one file from SHA256SUMS', () => {
+    const a = 'a'.repeat(64)
+    const b = 'B'.repeat(64)
+    const sums = `${a}  x.zip\r\n${b} *y.zip\nnot a line\n`
+    expect(sumFor(sums, 'x.zip')).toBe(a)
+    expect(sumFor(sums, 'y.zip')).toBe('b'.repeat(64))
+    expect(sumFor(sums, 'z.zip')).toBeNull()
+    expect(sumFor(sums, 'x')).toBeNull()
+  })
+
+  it('caps the archive size', () => {
+    expect(ARCHIVE_MAX_BYTES).toBeGreaterThan(200 * 1024 * 1024)
+  })
+})
+
 describe('helperCommand', () => {
   const mac: InstallLocation = {
     platform: 'darwin',
@@ -251,7 +295,15 @@ describe('helperCommand', () => {
   }
 
   it('macOS/Linux: constant sh script, every value a positional argument', () => {
-    const c = helperCommand(mac, { pid: 42, script: '/t/b.sh', version: '26.10.7', log: '/l' })
+    const c = helperCommand(mac, {
+      pid: 42,
+      script: '/t/b.sh',
+      version: '26.10.7',
+      log: '/l',
+      archive: '/t/a.zip',
+      sums: '/t/SHA256SUMS',
+      pidFile: '/u/update.pid',
+    })
     expect(c.command).toBe('/bin/sh')
     expect(c.args).toEqual([
       '-c',
@@ -261,6 +313,9 @@ describe('helperCommand', () => {
       '/t/b.sh',
       '26.10.7',
       '/l',
+      '/t/a.zip',
+      '/t/SHA256SUMS',
+      '/u/update.pid',
       '/usr/bin/open',
       '/Users/u/Applications/Markdown Office.app',
     ])
@@ -274,6 +329,9 @@ describe('helperCommand', () => {
       script: 'C:\\t\\bootstrap.ps1',
       version: '26.10.7',
       log: 'C:\\l',
+      archive: 'C:\\t\\a.zip',
+      sums: 'C:\\t\\SHA256SUMS',
+      pidFile: 'C:\\u\\update.pid',
       helper: 'C:\\t\\update-helper.ps1',
     })
     expect(c.command).toBe('powershell.exe')
@@ -290,6 +348,12 @@ describe('helperCommand', () => {
       'C:\\l',
       '-Exe',
       'C:\\M\\M.exe',
+      '-Archive',
+      'C:\\t\\a.zip',
+      '-Sums',
+      'C:\\t\\SHA256SUMS',
+      '-PidFile',
+      'C:\\u\\update.pid',
     ])
     expect(c.mdoHome).toBe('C:\\M')
   })
@@ -308,9 +372,17 @@ describe('helperCommand', () => {
         mdoHome: null,
         relaunch: ['touch', started],
       }
-      const c = helperCommand(loc, { pid: 999_999, script, version: '26.10.7', log })
+      const c = helperCommand(loc, {
+        pid: 999_999,
+        script,
+        version: '26.10.7',
+        log,
+        ...(await files(dir)),
+      })
       const child = spawn(c.command, c.args, { detached: true, stdio: 'ignore' })
       await vi.waitFor(async () => expect(await readFile(log, 'utf8')).toContain('started'))
+      // While it runs, the pid file names the helper (an app started now steps aside).
+      expect(Number(await readFile(join(dir, 'update.pid'), 'utf8'))).toBe(child.pid)
       await new Promise((r) => setTimeout(r, 200))
       process.kill(-(child.pid as number), 'SIGTERM')
       process.kill(-(child.pid as number), 'SIGHUP')
@@ -344,22 +416,37 @@ describe('helperCommand', () => {
         relaunch: ['touch', started],
       }
       // A pid that is not running: the helper does not wait.
-      const c = helperCommand(loc, { pid: 999_999, script, version: '26.10.7', log })
+      const c = helperCommand(loc, {
+        pid: 999_999,
+        script,
+        version: '26.10.7',
+        log,
+        ...(await files(dir)),
+      })
       execFileSync(c.command, c.args)
       await vi.waitFor(async () => expect(await readFile(started, 'utf8')).toBe(''))
       const text = await readFile(log, 'utf8')
-      expect(text).toContain('args: --version 26.10.7')
+      expect(text).toContain(`args: --version 26.10.7 --archive ${join(dir, 'a.zip')} --sums`)
       expect(text).toContain('mdo-update: exit 0')
       expect(text.match(/mdo-update: bootstrap/g)).toHaveLength(2)
-      // The downloaded script is removed afterwards.
-      await expect(readFile(script)).rejects.toThrow()
+      // The downloaded files and the pid file are removed afterwards.
+      for (const f of ['bootstrap.sh', 'a.zip', 'SHA256SUMS', 'update.pid'])
+        await expect(access(join(dir, f))).rejects.toThrow()
     },
     15_000,
   )
 
   it('refuses a version that is not a release', () => {
     expect(() =>
-      helperCommand(mac, { pid: 1, script: 's', version: '26.10.7 && x', log: 'l' }),
+      helperCommand(mac, {
+        pid: 1,
+        script: 's',
+        version: '26.10.7 && x',
+        log: 'l',
+        archive: 'a',
+        sums: 's',
+        pidFile: 'p',
+      }),
     ).toThrow()
   })
 })
@@ -372,21 +459,44 @@ const release = (version: string) =>
     }),
   )
 
+const ARCHIVE = 'the release archive'
+const ASSET = 'markdown-office-26.10.7-linux-x86_64.AppImage'
+const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+
+/** The network of a release: API answer, SHA256SUMS, archive and bootstrap script. */
+function network(o: { sums?: string; archive?: string; script?: string } = {}) {
+  return async (url: string, init: { signal: AbortSignal }) => {
+    if (url.includes('api.github.com')) return release('26.10.7')
+    if (url.endsWith('/SHA256SUMS'))
+      return new Response(o.sums ?? `${sha(ARCHIVE)}  ${ASSET}\n${'0'.repeat(64)}  other.zip\n`)
+    if (url.includes('/releases/download/')) {
+      const body = o.archive ?? ARCHIVE
+      return new Response(new Blob([body]).stream(), {
+        headers: { 'content-length': String(body.length) },
+        // An aborted download fails like the real one.
+        ...(init.signal.aborted ? { status: 499 } : {}),
+      })
+    }
+    return new Response(o.script ?? '#!/usr/bin/env bash\n# Markdown Office bootstrap')
+  }
+}
+
 async function updater(o: Partial<UpdaterDeps> = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'mdo-upd-'))
   const spawn = vi.fn()
   const quit = vi.fn()
+  const progress = vi.fn()
+  const removed: string[] = []
   const written = new Map<string, string>()
   const deps: UpdaterDeps = {
     statePath: join(dir, 'app-update.json'),
     logPath: join(dir, 'update.log'),
+    pidPath: join(dir, 'update.pid'),
     version: '26.10.6',
     packaged: true,
+    arch: 'x64',
     enabled: () => true,
-    fetch: async (url) =>
-      url.includes('api.github.com')
-        ? release('26.10.7')
-        : new Response('#!/usr/bin/env bash\n# Markdown Office bootstrap'),
+    fetch: network(),
     location: async () => ({
       platform: 'linux',
       mdoHome: '/s',
@@ -397,12 +507,28 @@ async function updater(o: Partial<UpdaterDeps> = {}) {
     writeFile: async (p, data) => {
       written.set(p, Buffer.from(data).toString('utf8'))
     },
+    openFile: async (p) => {
+      written.set(p, '')
+      return {
+        write: async (chunk) => {
+          written.set(p, (written.get(p) ?? '') + Buffer.from(chunk).toString('utf8'))
+        },
+        close: async () => undefined,
+      }
+    },
+    removeFile: async (p) => {
+      removed.push(p)
+      written.delete(p)
+    },
+    progress,
+    readPid: async () => null,
+    isAlive: () => false,
     spawn,
     pid: 4242,
     quit,
     ...o,
   }
-  return { u: new AppUpdater(deps), deps, spawn, quit, written }
+  return { u: new AppUpdater(deps), deps, spawn, quit, written, progress, removed }
 }
 
 describe('AppUpdater', () => {
@@ -474,7 +600,86 @@ describe('AppUpdater', () => {
     expect(command).toBe('/bin/sh')
     expect(args).toContain('4242')
     expect(args).toContain('/tmp/mdo-update-x/bootstrap.sh')
+    expect(args).toContain(`/tmp/mdo-update-x/${ASSET}`)
+    expect(args).toContain('/tmp/mdo-update-x/SHA256SUMS')
+    expect(args).toContain(deps.pidPath)
     expect(mdoHome).toBe('/s')
+  })
+
+  it('install: the archive is downloaded and checked before the quit, with progress', async () => {
+    const { u, quit, written, progress } = await updater()
+    await u.check(true)
+    expect(await u.install('26.10.7')).toBeNull()
+    expect(written.get(`/tmp/mdo-update-x/${ASSET}`)).toBe(ARCHIVE)
+    expect(written.get('/tmp/mdo-update-x/SHA256SUMS')).toContain(ASSET)
+    expect(progress).toHaveBeenLastCalledWith({
+      version: '26.10.7',
+      received: ARCHIVE.length,
+      total: ARCHIVE.length,
+    })
+    expect(quit).toHaveBeenCalledOnce()
+  })
+
+  it('install: a wrong checksum removes the archive and keeps the app running', async () => {
+    const { u, quit, removed, spawn } = await updater({ fetch: network({ archive: 'tampered' }) })
+    await u.check(true)
+    expect(await u.install('26.10.7')).toMatch(/Prüfsumme des Archivs stimmt nicht/)
+    expect(removed).toEqual([`/tmp/mdo-update-x/${ASSET}`])
+    expect(quit).not.toHaveBeenCalled()
+    u.onWillQuit()
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('install: SHA256SUMS without this archive refuses before any download', async () => {
+    const fetch = vi.fn(network({ sums: `${'0'.repeat(64)}  other.zip\n` }))
+    const { u, quit } = await updater({ fetch })
+    await u.check(true)
+    expect(await u.install('26.10.7')).toMatch(/keinen Eintrag für markdown-office-26\.10\.7/)
+    expect(fetch.mock.calls.some(([url]) => url.endsWith(ASSET))).toBe(false)
+    expect(quit).not.toHaveBeenCalled()
+  })
+
+  it('install: „Abbrechen“ stops the download and answers with an empty message', async () => {
+    let release_: () => void = () => undefined
+    const gate = new Promise<void>((r) => {
+      release_ = r
+    })
+    const base = network()
+    const { u, quit, removed } = await updater({
+      fetch: async (url, init) => {
+        if (!url.endsWith(ASSET)) return base(url, init)
+        await gate
+        if (init.signal.aborted) throw new DOMException('aborted', 'AbortError')
+        return base(url, init)
+      },
+    })
+    await u.check(true)
+    const pending = u.install('26.10.7')
+    await vi.waitFor(() => expect(u.install('26.10.7')).resolves.toMatch(/schon geladen/))
+    u.cancelDownload()
+    release_()
+    expect(await pending).toBe('')
+    expect(removed).toEqual([`/tmp/mdo-update-x/${ASSET}`])
+    expect(quit).not.toHaveBeenCalled()
+  })
+
+  it('installing(): only a pending install with a fresh pid file of a living process', async () => {
+    const alive = new Set([77])
+    const pid = { pid: 77, ageMs: 1000 }
+    let read: { pid: number; ageMs: number } | null = pid
+    const { u, deps } = await updater({ readPid: async () => read, isAlive: (p) => alive.has(p) })
+    expect(await u.installing()).toBe(false)
+    await writeFile(deps.statePath, JSON.stringify({ pending: '26.10.7' }))
+    expect(await u.installing()).toBe(true)
+    alive.clear()
+    expect(await u.installing()).toBe(false)
+    alive.add(77)
+    read = { pid: 77, ageMs: 60 * 60 * 1000 }
+    expect(await u.installing()).toBe(false)
+    read = { pid: 4242, ageMs: 1000 }
+    expect(await u.installing()).toBe(false)
+    read = null
+    expect(await u.installing()).toBe(false)
   })
 
   it('a cancelled quit drops the install', async () => {
@@ -490,10 +695,7 @@ describe('AppUpdater', () => {
   })
 
   it('install refuses a script that is not ours', async () => {
-    const { u, quit } = await updater({
-      fetch: async (url) =>
-        url.includes('api.github.com') ? release('26.10.7') : new Response('<html>'),
-    })
+    const { u, quit } = await updater({ fetch: network({ script: '<html>' }) })
     await u.check(true)
     expect(await u.install('26.10.7')).toMatch(/Installationsskript unerwartet/)
     expect(quit).not.toHaveBeenCalled()
@@ -501,26 +703,25 @@ describe('AppUpdater', () => {
 
   it('install refuses an oversized script', async () => {
     const big = `#!/usr/bin/env bash\n# Markdown Office\n${'x'.repeat(SCRIPT_MAX_BYTES)}`
-    const { u } = await updater({
-      fetch: async (url) =>
-        url.includes('api.github.com') ? release('26.10.7') : new Response(big),
-    })
+    const { u } = await updater({ fetch: network({ script: big }) })
     await u.check(true)
     expect(await u.install('26.10.7')).toMatch(/zu groß/)
   })
 
   it('Windows install also writes the helper script', async () => {
+    const winAsset = 'markdown-office-26.10.7-win-x64.zip'
     const { u, written, spawn } = await updater({
-      fetch: async (url) =>
-        url.includes('api.github.com') ? release('26.10.7') : new Response('<#\n Markdown Office'),
+      fetch: network({ script: '<#\n Markdown Office', sums: `${sha(ARCHIVE)}  ${winAsset}\n` }),
       location: async () => ({ platform: 'win32', mdoHome: 'C:\\M', relaunch: ['C:\\M\\x.exe'] }),
       tempDir: async () => 'C:\\t',
     })
     await u.check(true)
     expect(await u.install('26.10.7')).toBeNull()
     expect(written.get('C:\\t\\update-helper.ps1')).toContain('Wait-Process')
+    expect(written.get(`C:\\t\\${winAsset}`)).toBe(ARCHIVE)
     u.onWillQuit()
     expect(spawn.mock.calls[0]?.[0]).toBe('powershell.exe')
+    expect(spawn.mock.calls[0]?.[1]).toContain(`C:\\t\\${winAsset}`)
   })
 
   it('reports the outcome of the last install once', async () => {
