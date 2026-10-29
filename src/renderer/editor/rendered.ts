@@ -1,5 +1,5 @@
-import { type EditorState, Facet, type Line } from '@codemirror/state'
-import type { DecorationSet } from '@codemirror/view'
+import { type EditorState, Facet, type Line, StateEffect, StateField } from '@codemirror/state'
+import { type DecorationSet, EditorView } from '@codemirror/view'
 
 /**
  * True while the editor shows the Preview (Present always does): viewExtensions adds it with the
@@ -24,6 +24,7 @@ export function lineIsRendered(state: EditorState, line: Line): boolean {
  * a mark reveals it, and the cursor at a line's end keeps that line raw.
  */
 export function selectionTouches(state: EditorState, from: number, to: number): boolean {
+  if (state.field(quietCursor, false)) return false
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from)
 }
 
@@ -33,3 +34,28 @@ export function selectionTouches(state: EditorState, from: number, to: number): 
  * on them as on the preview's own decorations, so a formula settling sets its line again.
  */
 export const layoutDecorations = Facet.define<DecorationSet>()
+
+/** Sets or clears the quiet cursor (quietCursor). */
+export const setQuietCursor = StateEffect.define<boolean>()
+
+/**
+ * Present: an outline click moves the cursor (so focus mode opens the section) but is no
+ * editing (owner, 2026-10-28): while true no line reveals its Markdown, and the editor has no
+ * keyboard focus, so no caret blinks either. Cleared when the text gets focus again (a click
+ * into it), which then edits as usual.
+ */
+export const quietCursor = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setQuietCursor)) value = e.value
+    return value
+  },
+  provide: () =>
+    EditorView.updateListener.of((u) => {
+      if (!u.focusChanged || !u.view.hasFocus || !u.state.field(quietCursor)) return
+      // Not inside an update; the selection makes the preview's plugins redraw the reveal.
+      queueMicrotask(() =>
+        u.view.dispatch({ selection: u.view.state.selection, effects: setQuietCursor.of(false) }),
+      )
+    }),
+})

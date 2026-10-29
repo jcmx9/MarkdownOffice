@@ -112,6 +112,11 @@ describe('status line', () => {
     status.render(null, 'saved', null, 'preview', on)
     expect(q(el, 'status-focus').disabled).toBe(true)
     expect(q(el, 'status-focus').classList.contains('active')).toBe(false)
+    // Code shows the full source: focus reads off and rests there.
+    status.render('a.md', 'saved', null, 'code', on)
+    expect(q(el, 'status-focus').disabled).toBe(true)
+    expect(q(el, 'status-focus').classList.contains('active')).toBe(false)
+    expect(q(el, 'status-focus').title).toBe('Der Fokus wirkt nur in der Vorschau')
     status.stop()
   })
 
@@ -124,6 +129,9 @@ describe('status line', () => {
     expect(q(el, 'status-yaml').classList.contains('active')).toBe(false)
     status.render('a.md', 'saved', null, 'code', on)
     expect(q(el, 'status-yaml').disabled).toBe(true)
+    expect(q(el, 'status-yaml').classList.contains('active')).toBe(true)
+    // Code always shows the header, also when the Preview hides it.
+    status.render('a.md', 'saved', null, 'code', { ...on, yamlOn: false })
     expect(q(el, 'status-yaml').classList.contains('active')).toBe(true)
     status.render(null, 'saved', null, 'preview', on)
     expect(q(el, 'status-yaml').disabled).toBe(true)

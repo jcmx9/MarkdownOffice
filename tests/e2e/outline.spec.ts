@@ -187,6 +187,29 @@ test('a click jumps to the heading and focus stays in the editor', async () => {
   await app.close()
 })
 
+test('Present: a click jumps without caret or Markdown, arrow pointer; a click into the text edits', async () => {
+  const { app, page } = await openNote()
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  await clickMenu(app, 'toggle-outline')
+  await expect(outline(page)).toBeVisible()
+  expect(
+    await labels(page)
+      .nth(3)
+      .evaluate((el) => getComputedStyle(el).cursor),
+  ).toBe('default')
+  await labels(page).nth(3).click()
+  await expect(page.locator('.cm-content')).not.toBeFocused()
+  // The heading stays rendered: no `# ` revealed at the cursor.
+  const beta = page.locator('.cm-line', { hasText: 'Beta' }).first()
+  await expect(beta).toHaveText('Beta')
+  await page.locator('.cm-line', { hasText: 'Text beta.' }).click()
+  await expect(page.locator('.cm-content')).toBeFocused()
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
+  await app.close()
+})
+
 test('a long heading stays one line; hover shows it in full, right-aligned', async () => {
   const long = `Lang ${'x'.repeat(195)}`
   expect(long.length).toBe(200)

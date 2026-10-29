@@ -13,6 +13,7 @@ import {
   OutlineSync,
   toggleEntryFold,
 } from '../../../src/renderer/editor/outline-actions'
+import { lineIsRendered, quietCursor } from '../../../src/renderer/editor/rendered'
 import { foldAllSections } from '../../../src/renderer/editor/sections'
 import { createState } from '../../../src/renderer/editor/setup'
 
@@ -123,6 +124,28 @@ describe('jumpToEntry', () => {
     expect(view.state.selection.main.head).toBe(b.to)
     expect(focus).toHaveBeenCalled()
     expect(folds(view)).toEqual([[b.fold?.from, b.fold?.to]])
+  })
+  it('quiet (Present): cursor moves, no focus, no revealed Markdown until the text gets focus', async () => {
+    const view = mkView()
+    const b = outlineEntries(view.state)[1] as OutlineEntry
+    const focus = vi.spyOn(view, 'focus')
+    jumpToEntry(view, b, true)
+    expect(view.state.selection.main.head).toBe(b.to)
+    expect(focus).not.toHaveBeenCalled()
+    expect(view.state.field(quietCursor)).toBe(true)
+    const line = view.state.doc.lineAt(b.from)
+    expect(lineIsRendered(view.state, line)).toBe(true)
+    // A click into the text gives it focus: it edits as usual again.
+    focus.mockRestore()
+    view.focus()
+    await Promise.resolve()
+    expect(view.state.field(quietCursor)).toBe(false)
+    expect(lineIsRendered(view.state, line)).toBe(false)
+    jumpToEntry(view, b, true)
+    // A later plain jump (Edit) ends the quiet state at once.
+    jumpToEntry(view, b)
+    expect(view.state.field(quietCursor)).toBe(false)
+    expect(lineIsRendered(view.state, line)).toBe(false)
   })
   it('ignores an entry beyond the document (stale)', () => {
     const view = mkView()

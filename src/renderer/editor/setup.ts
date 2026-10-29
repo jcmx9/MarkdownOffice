@@ -25,6 +25,7 @@ import { focusCompartment, focusExtensions } from './focus'
 import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
+import { headingEnter } from './heading-enter'
 import { mdoHighlight } from './highlight'
 import { mdoMarkdown } from './markdown'
 import { math } from './math'
@@ -34,7 +35,7 @@ import { pageBreakKeymap } from './pagebreak'
 import { paragraphsPlugin } from './paragraphs'
 import { previewPlugin } from './preview'
 import { previewSource } from './preview-source'
-import { previewView } from './rendered'
+import { previewView, quietCursor } from './rendered'
 import { searchExtensions } from './search'
 import { foldAllSections, unfoldOnCursor } from './sections'
 import { snippetExtensions } from './snippets'
@@ -108,6 +109,8 @@ export function viewExtensions(view: View): Extension {
         math.extension,
         headerFold,
         footBlock,
+        // A new paragraph under a heading stays visible (heading-enter.ts).
+        headingEnter,
       ]
 }
 
@@ -152,6 +155,7 @@ export function createState(
       md ? mdoMarkdown([...languages, mermaid]) : yaml(),
       mdoHighlight,
       headerHidden.init(() => headerHiddenInit),
+      quietCursor,
       // Every tab keeps its own set description; null (built-in memo) until main answers.
       previewSource,
       EditorView.lineWrapping,
@@ -161,8 +165,8 @@ export function createState(
       // New tabs start with the stored setting, so no tab misses it before a reconfigureAll.
       spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
-      // A profile has no sections to focus on.
-      focusCompartment.of(focusExtensions(focus && md)),
+      // A profile has no sections to focus on; Code shows the full source (owner, 2026-10-28).
+      focusCompartment.of(focusExtensions(focus && md && view === 'preview')),
     ],
   })
   const range = headerHiddenInit || mode === 'present' ? frontmatterRange(state.doc) : null
