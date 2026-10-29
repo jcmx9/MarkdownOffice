@@ -813,6 +813,20 @@ if ($rr.Code -ne 0) { Fail "sandbox umbruch: Exit $($rr.Code)`n$($rr.Text)" }
 elseif ($pages -ne 2) { Fail "sandbox umbruch: $pages Seite(n) statt 2 (Set ohne mdo-pagebreak)" }
 else { Ok 'sandbox: Seitenumbruch fuer ein Set ohne mdo-pagebreak (raw-typst-Form)' }
 
+# h1_break (Schluessel mit Ziffer) wirkt: sechs Kapitel, auto wuerde umbrechen; false nicht.
+$kap = (1..6 | ForEach-Object { "# Kapitel $_`n`nText $_.`n" }) -join "`n"
+foreach ($hb in @('false', 'true')) {
+  [IO.File]::WriteAllText((Join-Path $sbNote "hb-$hb.md"), "---`ntoc: false`nh1_break: $hb`n---`n$kap", $utf8)
+  Push-Location $sbNote
+  $rr = Invoke-Convert @("hb-$hb.md", (Join-Path $outDir "hb-$hb.pdf"))
+  Pop-Location
+  $pages = Get-PdfPages (Join-Path $outDir "hb-$hb.pdf")
+  $want = if ($hb -eq 'false') { 1 } else { 6 }
+  if ($rr.Code -ne 0) { Fail "h1_break $($hb): Exit $($rr.Code)`n$($rr.Text)" }
+  elseif ($pages -ne $want) { Fail "h1_break $($hb): $pages Seite(n) statt $want" }
+  else { Ok "h1_break: $hb ergibt $want Seite(n)" }
+}
+
 # convert.ps1 allein (ohne Manifest des Wrappers) exportiert nicht.
 Push-Location $sbNote
 $rr = Invoke-ConvertDirect @('aussen.md', (Join-Path $outDir 'sb-direkt.pdf')) ''
