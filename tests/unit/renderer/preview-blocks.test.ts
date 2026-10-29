@@ -127,6 +127,15 @@ describe('tables, code, rules', () => {
   it('horizontal rule', () => {
     expect(rf('Text\n\n***')).toEqual(expect.arrayContaining(['line:mdo-hr@6-6', 'hide@6-9']))
   })
+  it('page break: a quiet rule with its name; the cursor line keeps the Markdown', () => {
+    const doc = 'Text\n\n<!-- pagebreak -->\n\nMehr'
+    expect(rf(doc)).toEqual(expect.arrayContaining(['line:mdo-pagebreak@6-6', 'pagebreak@6-24']))
+    expect(rf(doc, 10)).not.toContain('line:mdo-pagebreak@6-6')
+    expect(rf('Text\n\n\\newpage\n\nMehr')).toContain('line:mdo-pagebreak@6-6')
+  })
+  it('a comment that is no page break stays a comment', () => {
+    expect(rf('Text\n\n<!-- Notiz -->')).not.toContain('line:mdo-pagebreak@6-6')
+  })
 })
 
 describe('toggleTaskAt', () => {
