@@ -25,6 +25,7 @@ import { focusCompartment, focusExtensions } from './focus'
 import { footBlock } from './footblock'
 import { frontmatterRange } from './frontmatter'
 import { headerFold, headerHidden } from './header'
+import { headingEnter } from './heading-enter'
 import { mdoHighlight } from './highlight'
 import { mdoMarkdown } from './markdown'
 import { math } from './math'
@@ -108,6 +109,8 @@ export function viewExtensions(view: View): Extension {
         math.extension,
         headerFold,
         footBlock,
+        // A new paragraph under a heading stays visible (heading-enter.ts).
+        headingEnter,
       ]
 }
 
