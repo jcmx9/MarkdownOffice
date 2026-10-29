@@ -697,7 +697,8 @@ function Convert-One {
     for ($i = 1; $i -lt $lines.Count; $i++) {
       if ($lines[$i].Trim() -in @('---', '...')) { break }
       $line = $lines[$i]
-      if ($line -notmatch '^([A-Za-z_-]+):(.*)$') { continue }
+      # Digits too: h1_break was skipped here and stayed auto (owner report, 2026-10-29).
+      if ($line -notmatch '^([A-Za-z0-9_-]+):(.*)$') { continue }
       $key = $Matches[1]; $raw = $Matches[2]
       switch ($key) {
         'date'            { $fmDate = ConvertTo-YamlStr $raw }
