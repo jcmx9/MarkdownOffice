@@ -263,3 +263,27 @@ test('a save after an outside case-only rename plus edit shows the conflict', as
   await waitForFile(renamed, (b) => b.toString('utf8') === 'alt meins')
   await app.close()
 })
+
+test('an outside change keeps the cursor in its section, also with focus on', async () => {
+  const dirs = await makeDirs()
+  const file = join(dirs.notes, 'fokus-reload.md')
+  const before = '# Eins\n\nText eins.\n\n# Zwei\n\nText zwei.\n'
+  await writeFile(file, before)
+  const { app, page } = await launch({ dirs, args: [file] })
+  const line = (text: string) => page.locator('.cm-line', { hasText: text })
+  await line('Text zwei.').click()
+  await page.getByTestId('status-focus').click()
+  await expect(line('Text eins.')).toHaveCount(0)
+  // Another editor adds text in the first chapter, above the cursor.
+  await writeFile(file, before.replace('Text eins.', 'Text eins, ergänzt.'))
+  // Focus off shows the reloaded text; on again, the cursor's section is still the second.
+  await page.getByTestId('status-focus').click()
+  await expect(line('ergänzt')).toBeVisible()
+  await page.getByTestId('status-focus').click()
+  await expect(line('ergänzt')).toHaveCount(0)
+  await expect(line('Text zwei.')).toBeVisible()
+  await page.keyboard.type('!')
+  // Typed into the second chapter's line, wherever the click put the cursor in it.
+  await waitForFile(file, (b) => /# Zwei\n\n[^\n]*!/.test(b.toString('utf8')))
+  await app.close()
+})
