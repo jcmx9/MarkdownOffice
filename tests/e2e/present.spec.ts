@@ -22,6 +22,16 @@ const fullScreen = (app: ElectronApplication) =>
 const menuBar = (app: ElectronApplication) =>
   app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isMenuBarVisible() ?? false)
 
+/**
+ * Present starts focused (only the section with the cursor shows); tests that click text in
+ * other sections turn focus off first.
+ */
+async function focusOff(app: ElectronApplication, page: import('@playwright/test').Page) {
+  await expect(page.locator('.cm-editor.mdo-focus')).toHaveCount(1)
+  await clickMenu(app, 'toggle-focus')
+  await expect(page.locator('.cm-editor.mdo-focus')).toHaveCount(0)
+}
+
 const bodySize = (page: import('@playwright/test').Page) =>
   page.locator('.cm-scroller').evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize))
 
@@ -29,6 +39,7 @@ test('Present: fullscreen, title block, info line only; Esc returns', async () =
   const { app, page } = await openFixture()
   const editSize = await bodySize(page)
   await clickMenu(app, 'toggle-present')
+  await focusOff(app, page)
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await expect(page.locator('#tabbar')).toBeHidden()
   await expect(page.locator('#status')).toBeHidden()
@@ -54,6 +65,7 @@ test('Present: fullscreen, title block, info line only; Esc returns', async () =
 test('Present: a table cell is edited in place; Escape leaves the cell, then Present', async () => {
   const { app, page, note } = await openFixture()
   await clickMenu(app, 'toggle-present')
+  await focusOff(app, page)
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await page.locator('table.mdo-table td', { hasText: 'Filter' }).click()
   await expect(page.locator('table.mdo-table .mdo-cell-edit')).toHaveText('Filter')
@@ -73,6 +85,7 @@ test('typing in Present is saved; the header stays untouched', async () => {
   const { app, page, note } = await openFixture()
   const original = await readFile(note, 'utf8')
   await clickMenu(app, 'toggle-present')
+  await focusOff(app, page)
   await page.locator('.cm-line', { hasText: 'Text unter drei Rauten' }).click()
   await page.keyboard.press('End')
   await page.keyboard.type(' Neu im Termin.')
@@ -233,6 +246,7 @@ test('a task checkbox click in Present ticks the task in the saved file', async 
   const original = await readFile(note, 'utf8')
   expect(original).toContain('- [ ] Angebot schicken')
   await clickMenu(app, 'toggle-present')
+  await focusOff(app, page)
   await page.locator('.cm-editor.mdo-present .mdo-task').first().click()
   const saved = (
     await waitForFile(note, (b) => b.toString('utf8').includes('- [x] Angebot schicken'))
@@ -301,6 +315,7 @@ test('a burst of Present toggles ends consistent: Edit is never fullscreen', asy
 test('Esc with a selection in Present: the first collapses it, the second leaves', async () => {
   const { app, page } = await openFixture()
   await clickMenu(app, 'toggle-present')
+  await focusOff(app, page)
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
   await page.locator('.cm-line', { hasText: 'Ein Absatz mit' }).click()
   await page.keyboard.press('Home')
