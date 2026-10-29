@@ -136,6 +136,7 @@ export function createState(
   spellcheck = false,
   kind: DocKind = 'markdown',
   focus = false,
+  focusPath = false,
 ): EditorState {
   const md = kind === 'markdown'
   const state = EditorState.create({
@@ -166,7 +167,7 @@ export function createState(
       spellcheckCompartment.of(spellcheckExtensions(spellcheck, mode)),
       closingCompartment.of(closingExtensions(false)),
       // A profile has no sections to focus on; Code shows the full source (owner, 2026-10-28).
-      focusCompartment.of(focusExtensions(focus && md && view === 'preview')),
+      focusCompartment.of(focusExtensions(focus && md && view === 'preview', focusPath)),
     ],
   })
   const range = headerHiddenInit || mode === 'present' ? frontmatterRange(state.doc) : null

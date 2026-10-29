@@ -23,9 +23,9 @@ function state(doc: string, cursor = 0, on = true): EditorState {
 }
 
 /** The visible lines: every line not covered by a hidden range. */
-function visible(doc: string, cursor: number): string[] {
+function visible(doc: string, cursor: number, pathOnly = false): string[] {
   const s = state(doc, cursor)
-  const hidden = focusHiddenRanges(s, cursor)
+  const hidden = focusHiddenRanges(s, cursor, pathOnly)
   const out: string[] = []
   for (let n = 1; n <= s.doc.lines; n++) {
     const line = s.doc.line(n)
@@ -219,5 +219,29 @@ describe('focus per view', () => {
     expect(preview.field(focusHiddenField, false)).toBeDefined()
     const code = createState(DOC, '\n', 'code', false, 'edit', false, 'markdown', true)
     expect(code.field(focusHiddenField, false)).toBeUndefined()
+  })
+})
+
+describe('path only (Present with the outline shown)', () => {
+  it('drops the chapter headings off the path: only the path and the section stay', () => {
+    expect(visible(DOC, at('Text 1B'), true)).toEqual(['# Eins', '## Eins B', 'Text 1B'])
+    expect(visible(DOC, at('Text 2A'), true)).toEqual(['# Zwei', '## Zwei A', 'Text 2A'])
+    expect(visible(DOC, at('Intro zwei'), true)).toEqual(['# Zwei', 'Intro zwei'])
+  })
+
+  it('the field follows a switch of the option without a cursor move', () => {
+    const s = state(DOC, at('Text 1B'))
+    const lines = (st: EditorState) => {
+      const out: number[] = []
+      st.field(focusHiddenField).between(0, st.doc.length, (from) => {
+        out.push(from)
+      })
+      return out
+    }
+    const on = s.update({
+      effects: focusCompartment.reconfigure(focusExtensions(true, true)),
+    }).state
+    expect(lines(on)).toContain(at('# Zwei'))
+    expect(lines(s)).not.toContain(at('# Zwei'))
   })
 })
