@@ -40,6 +40,8 @@ export const Ch = {
   appUpdateInstall: 'mdo:app-update-install',
   appUpdateOutcome: 'mdo:app-update-outcome',
   appUpdateShowLog: 'mdo:app-update-show-log',
+  appUpdateCancel: 'mdo:app-update-cancel',
+  appUpdateProgress: 'mdo:app-update-progress',
   spellWords: 'mdo:spell-words',
   spellRemoveWord: 'mdo:spell-remove-word',
   settingsStatus: 'mdo:settings-get-status',

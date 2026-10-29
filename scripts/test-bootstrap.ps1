@@ -388,6 +388,20 @@ function global:Invoke-WebRequest {
   Pass 'leftover .old: own one removed on update, foreign one kept (update proceeds)'
   Remove-Item Env:MDO_ARCHIVE
 
+  # 5b. -Archive/-Sums (the app's update): checked against SHA256SUMS under the asset name of
+  #     -Version and installed without the network; usage errors -> 2, a wrong sum -> 5.
+  $localSums = Join-Path $work 'SHA256SUMS'
+  $localHash = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
+  Set-Content -LiteralPath $localSums -Value "$localHash  markdown-office-$version-win-x64.zip" -Encoding Ascii
+  Assert-Code (Invoke-Bootstrap @('-Version', $version, '-Archive', $Archive)) 2 '-Archive without -Sums'
+  Assert-Code (Invoke-Bootstrap @('-Archive', $Archive, '-Sums', $localSums)) 2 '-Archive without -Version'
+  Assert-Code (Invoke-Bootstrap @('-Version', $version, '-Archive', $Archive, '-Sums', $localSums)) 0 '-Archive install'
+  Assert-Installed
+  Set-Content -LiteralPath $localSums -Value ('0' * 64 + "  markdown-office-$version-win-x64.zip") -Encoding Ascii
+  Assert-Code (Invoke-Bootstrap @('-Version', $version, '-Archive', $Archive, '-Sums', $localSums)) 5 '-Archive wrong sum'
+  Assert-Installed
+  Pass '-Archive/-Sums: checked and installed offline; usage errors -> 2, wrong sum -> 5'
+
   # 6. Download path against the fake GitHub.
   $latest = Get-FixturePath "$api/latest"
   Assert-Code (Invoke-Online '') 8 'no stable release'

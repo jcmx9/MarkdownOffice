@@ -7,6 +7,9 @@
   Vorabversion testen (neueste Pre-Release; kann aelter sein als die neueste stabile):
     & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jcmx9/MarkdownOffice/dev/scripts/bootstrap.ps1))) -Pre
   Bestimmte Version:   ... -Version 26.10.0   (oder 26.10.0-dev.1)
+  Aus geladenem Archiv: ... -Version X -Archive DATEI.zip -Sums SHA256SUMS
+                       (Pruefsumme gegen SHA256SUMS, kein Download; so ruft die App
+                       das Update auf)
   Deinstallieren:      ... -Uninstall
 
   Laedt das passende Archiv der GitHub-Release, prueft es gegen SHA256SUMS und
@@ -41,6 +44,8 @@
 param(
   [switch]$Pre,
   [string]$Version = '',
+  [string]$Archive = '',
+  [string]$Sums = '',
   [switch]$Uninstall
 )
 
@@ -280,21 +285,28 @@ try {
         Stop-Mdo 4 "Download fehlgeschlagen: $($_.Exception.Message)"
       }
 
+      Test-MdoArchive $zip $sumsFile $assetName
+      return $zip
+    }
+
+    # Checks the zip against the SHA256SUMS file under the asset name; exit 5 when the sums
+    # lack the name or the hash differs. One path for the download above and for an archive
+    # the app already fetched (-Archive/-Sums).
+    function Test-MdoArchive([string]$Zip, [string]$SumsFile, [string]$AssetName) {
       $expected = $null
-      foreach ($line in (Get-Content -LiteralPath $sumsFile)) {
+      foreach ($line in (Get-Content -LiteralPath $SumsFile)) {
         $parts = $line.Trim() -split '\s+', 2
-        if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $assetName) {
+        if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $AssetName) {
           $expected = $parts[0].ToLowerInvariant()
           break
         }
       }
-      if (-not $expected) { Stop-Mdo 5 "SHA256SUMS enthaelt keinen Eintrag fuer $assetName." }
-      $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+      if (-not $expected) { Stop-Mdo 5 "SHA256SUMS enthaelt keinen Eintrag fuer $AssetName." }
+      $actual = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
       if ($actual -ne $expected) {
-        Stop-Mdo 5 "Pruefsumme falsch fuer $assetName (erwartet $expected, erhalten $actual) - nichts wurde veraendert."
+        Stop-Mdo 5 "Pruefsumme falsch fuer $AssetName (erwartet $expected, erhalten $actual) - nichts wurde veraendert."
       }
       Write-Ok 'Pruefsumme stimmt'
-      return $zip
     }
 
     # --- Install --------------------------------------------------------------
@@ -802,6 +814,14 @@ WScript.Quit(0);
         if (-not (Test-Path -LiteralPath $env:MDO_ARCHIVE -PathType Leaf)) { Stop-Mdo 2 "MDO_ARCHIVE nicht gefunden: $env:MDO_ARCHIVE" }
         $zip = $env:MDO_ARCHIVE
         Write-Step "Installiere aus lokalem Archiv $zip (ohne Pruefsumme)"
+      } elseif ($Archive) {
+        # The app downloaded and checked the release before quitting (owner, 2026-10-29: the
+        # background download took a minute without feedback and the app was reopened
+        # meanwhile). Checked again under the asset name of -Version; no network is used.
+        $assetName = "markdown-office-$WantVersion-win-x64.zip"
+        Write-Step "Installiere Markdown Office $WantVersion aus $Archive"
+        Test-MdoArchive $Archive $Sums $assetName
+        $zip = $Archive
       } else {
         $zip = Get-MdoDownload $tempDir
       }
@@ -878,6 +898,13 @@ WScript.Quit(0);
       if ($Pre -and $WantVersion) { Stop-Mdo 2 '-Pre und -Version schliessen sich aus.' }
       if ($WantVersion -and $WantVersion -notmatch $VersionRegex) {
         Stop-Mdo 2 "Ungueltige Version $WantVersion (erwartet z. B. 26.10.0 oder 26.10.0-dev.1)."
+      }
+      if ($Archive -or $Sums) {
+        if (-not ($Archive -and $Sums)) { Stop-Mdo 2 '-Archive und -Sums gehoeren zusammen.' }
+        if (-not $WantVersion) { Stop-Mdo 2 '-Archive braucht -Version (die Version des Archivs).' }
+        if ($Uninstall) { Stop-Mdo 2 '-Archive passt nicht zu -Uninstall.' }
+        if (-not (Test-Path -LiteralPath $Archive -PathType Leaf)) { Stop-Mdo 2 "Archiv nicht gefunden: $Archive" }
+        if (-not (Test-Path -LiteralPath $Sums -PathType Leaf)) { Stop-Mdo 2 "SHA256SUMS nicht gefunden: $Sums" }
       }
       if ($Uninstall) {
         Uninstall-Mdo

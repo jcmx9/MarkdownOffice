@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- In-app update: „Jetzt aktualisieren“ downloads the release archive while the app keeps running, with progress in percent and „Abbrechen“ in the notice, and checks it against SHA256SUMS before quitting; the helper then installs from that archive (bootstrap `--archive/--sums`, Windows `-Archive/-Sums`, checked again), so the swap takes seconds. An app opened while the update installs shows „Update wird installiert …“ and steps aside; the helper starts it afterwards. Before, the download ran for a minute after the quit without feedback, the app was reopened meanwhile and the swap was refused
+
 ## [26.10.12] - 2026-10-29
 
 ### Changed
