@@ -1151,6 +1151,9 @@ export class App {
   private async enterPresent(): Promise<void> {
     if (this.mode === 'present' || this.shownId === null) return
     this.mode = 'present'
+    // Every Present starts like slides, with focus on (owner, 2026-10-29); „Fokus“ can still
+    // turn it off for this Present, the next one starts focused again.
+    this.focusOn.present = true
     this.reconfigureAll()
     // Clients watch Present: no dictionary notice may stay on the shared screen.
     this.dismissDictNotices()

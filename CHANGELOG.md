@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preview/Present: Enter at the start of a paragraph directly under a heading seemed to do nothing (the new blank line collapses at the heading like in the PDF, the cursor stayed on the text). It now opens a new empty paragraph above with the cursor in it
 
 ### Changed
+- Present always starts with focus on, like slides; „Fokus“ can still turn it off for that Present. Edit keeps its remembered setting
 - Present: a click in the outline only jumps (the cursor moves, so focus follows), without a blinking caret or revealed Markdown, under the plain mouse arrow; Page Down/Page Up keep working. A click into the text edits as before
 - Code view always shows the full source: focus does not apply there and its switch reads off and rests (Mod+Shift+F explains this in a toast); the `YAML` switch reads on, also when the Preview hides the header. The focus choice is kept and applies again in Preview
 
