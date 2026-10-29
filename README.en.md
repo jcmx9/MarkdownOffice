@@ -2,7 +2,7 @@
 
 > Calm Markdown editor with a built-in PDF/A pipeline: the note already looks like the PDF while you type.
 
-**Version:** 26.10.10-dev.0 · [Deutsch](README.md)
+**Version:** 26.10.11-dev.0 · [Deutsch](README.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
