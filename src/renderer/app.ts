@@ -864,6 +864,7 @@ export class App {
       this.spellcheckOn,
       'markdown',
       this.focusOn[this.mode],
+      this.focusPath(),
     )
     // Selection only: the document stays equal to the saved one, so the tab is not dirty.
     if (note && this.mode !== 'present')
@@ -1049,6 +1050,7 @@ export class App {
         this.spellcheckOn && isMarkdownTab({ path }),
         docKind(path),
         this.focusOn[this.mode],
+        this.focusPath(),
       ),
       bom: res.bom,
       eol: res.eol,
@@ -1130,6 +1132,7 @@ export class App {
           this.focusOn[this.mode] &&
             isMarkdownTab(tab) &&
             this.effectiveView(tab.path) === 'preview',
+          this.focusPath(),
         ),
       ),
     ]
@@ -1486,9 +1489,16 @@ export class App {
   }
 
   /** Outline on/off for the current mode; allowed in Present too. */
+  /** Present with the outline shown: focus drops the off-path chapter headings (focus.ts). */
+  private focusPath(): boolean {
+    return this.mode === 'present' && this.outlineOn.present
+  }
+
   private toggleOutline(): void {
     this.outlineOn[this.mode] = !this.outlineOn[this.mode]
     this.applyOutline()
+    // Present: the outline takes over the agenda, focus shows only the path (focusPath).
+    if (this.mode === 'present') this.reconfigureAll()
     this.mdo
       .saveSession({ outline: { ...this.outlineOn } })
       .catch((e: unknown) => console.error('saveSession(outline) failed', e))
@@ -1931,6 +1941,7 @@ export class App {
         this.spellcheckOn && isMarkdownTab(tab),
         docKind(tab.path),
         this.focusOn[this.mode],
+        this.focusPath(),
       ).update({ effects: setPreviewSource.of(source) }).state,
     )
     // Same place as before the outside change (reload-map.ts); a quiet Present cursor stays
