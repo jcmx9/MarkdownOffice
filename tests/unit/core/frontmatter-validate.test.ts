@@ -68,7 +68,14 @@ describe('result kinds', () => {
   })
 
   it('header: a plain false switches it off, no quoting hint', () => {
-    for (const line of ['header: false', 'header: False', 'header: "false"', 'header: Text']) {
+    for (const line of [
+      'header: false',
+      'header: False',
+      'header: "false"',
+      'header: Text',
+      'header: auto',
+      'header: ""',
+    ]) {
       const r = validateFrontmatter(`---\n${line}\n---\n`, pipelineCtx)
       expect(r.kind === 'checked' ? r.findings : null, line).toEqual([])
     }

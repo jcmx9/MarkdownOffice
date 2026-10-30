@@ -691,7 +691,7 @@ function Convert-One {
   # Schluessel mit ungueltigem Wert warnt und behaelt den Default. Leere Werte
   # werden ignoriert, nie ein Fehler.
   $fmDate = ''; $fmIsodatePraefix = ''; $fmToc = 'auto'; $fmBreak = 'auto'; $fmShowname = 'true'; $fmLang = 'de'
-  $fmHeader = ''; $fmHeaderOff = 'false'; $fmWatermark = ''; $fmTitle = ''
+  $fmHeader = ''; $fmHeaderOff = 'false'; $fmHeaderBlank = 'false'; $fmWatermark = ''; $fmTitle = ''
   $fmTemplate = ''; $fmSubtitle = ''; $fmToptitle = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
   if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
     for ($i = 1; $i -lt $lines.Count; $i++) {
@@ -711,9 +711,13 @@ function Convert-One {
         'logo-height'     { $fmLogoHeight = ConvertTo-YamlStr $raw }
         'profile'         { $fmProfile = ConvertTo-YamlStr $raw }
         'header'          {
-          # Ein schlichtes false schaltet die Kopfzeile ab, "false" in Anfuehrungszeichen bleibt Text.
-          $fmHeader = ConvertTo-YamlStr $raw; $fmHeaderOff = 'false'
-          if (($raw -replace '\s#.*$', '').Trim() -cmatch '^(false|False|FALSE)$') { $fmHeader = ''; $fmHeaderOff = 'true' }
+          # Schlichte Woerter sind Modi, in Anfuehrungszeichen bleiben sie Text: false = keine
+          # Kopfzeile, auto = laufender Kopf, "" = Logo und Linie ohne Text.
+          $fmHeader = ConvertTo-YamlStr $raw; $fmHeaderOff = 'false'; $fmHeaderBlank = 'false'
+          $hv = ($raw -replace '\s#.*$', '').Trim()
+          if ($hv -cmatch '^(false|False|FALSE)$') { $fmHeader = ''; $fmHeaderOff = 'true' }
+          elseif ($hv -cmatch '^(auto|Auto|AUTO)$') { $fmHeader = '' }
+          elseif ($hv -eq '""' -or $hv -eq "''") { $fmHeaderBlank = 'true' }
         }
         'watermark'       { $fmWatermark = ConvertTo-YamlStr $raw }
         'lang'            { $v = ConvertTo-YamlStr $raw; if ($v) { $fmLang = $v } }
@@ -952,6 +956,7 @@ function Convert-One {
       '--input', "lang=$fmLang",
       '--input', "header=$fmHeader",
       '--input', "header_off=$fmHeaderOff",
+      '--input', "header_blank=$fmHeaderBlank",
       '--input', "watermark=$fmWatermark",
       '--input', "hard_breaks=$fmBreaks",
       '--input', 'mdo=/mdo',

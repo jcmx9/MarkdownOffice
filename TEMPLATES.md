@@ -112,8 +112,9 @@ All values are **strings**. Booleans are `"true"`/`"false"`. Empty front-matter 
 | `toc` | Front matter `toc:` | `auto` / `true` / `false` | `auto` |
 | `h1_break` | Front matter `h1_break:` | `auto` / `true` / `false` | `auto` |
 | `showname` | Front matter `print_filename:` | `true` / `false` | `true` |
-| `header` | Front matter `header:` (fixed header text); empty for a plain `header: false` | text | `""` |
+| `header` | Front matter `header:` (fixed header text); empty for a plain `false` or `auto` | text | `""` |
 | `header_off` | `true` for a plain `header: false` (a quoted `"false"` is text): the set drops its header completely | `true` / `false` | `false` |
+| `header_blank` | `true` for `header: ""`: the set keeps its header (logo, rule) without text. No key, an empty `header:` and a plain `header: auto` mean the running header | `true` / `false` | `false` |
 | `watermark` | Front matter `watermark:` | text | `""` |
 | `hard_breaks` | Front matter `hard_breaks:`; `--hard-breaks` / `--soft-breaks` win | `true` / `false` | `true` |
 | `logo` | Staged logo file (see §2) | staging-root path | `""` = no logo |

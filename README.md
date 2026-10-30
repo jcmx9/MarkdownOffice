@@ -295,7 +295,7 @@ hard_breaks: false           # Umbrüche werden Leerzeichen
 | `lang` | `de`, `en`, … | `de` | Sprache: Datum, Silbentrennung, Anführungszeichen, Beschriftungen (Seite/Page, Inhalt/Contents, Aufgabe/Task, Hinweisboxen). |
 | `toc` | `auto` / `true` / `false` | `auto` | Inhaltsverzeichnis (nur H1 + H2); `auto` ab mehr als fünf H1/H2. |
 | `h1_break` | `auto` / `true` / `false` | `auto` | Jedes Kapitel (`#`) auf neuer Seite; `auto` wie bei `toc`. |
-| `header` | Text oder `false` | — | Fester Kopfzeilentext ab Seite 1 statt des laufenden Kapitels. `false` (ohne Anführungszeichen) lässt Kopfzeilentext, Logo und Linie weg, der obere Rand sinkt von 35 mm auf 20 mm; `"false"` ist normaler Text. Die Vorschau zeigt keine Seitenköpfe, das betrifft also nur das PDF. |
+| `header` | Text, `auto`, `false` | `auto` | Fester Kopfzeilentext ab Seite 1 statt des laufenden Kapitels. `auto` oder kein Schlüssel: laufender Titel und Kapitel. `""`: nur Logo und Linie, kein Text. `false` lässt Kopfzeilentext, Logo und Linie weg, der obere Rand sinkt von 35 mm auf 20 mm. `"auto"` und `"false"` in Anführungszeichen sind normaler Text. Die Vorschau zeigt keine Seitenköpfe, das betrifft also nur das PDF. |
 | `print_filename` | `true` / `false` | `true` | Angabe unten links (Dateiname bzw. „Toptitel · Titel“) ein-/ausblenden. |
 | `watermark` | Text | — | Diagonales, hellgraues Wasserzeichen unter allem. |
 | `logo` | Datei `.svg`/`.png`/`.jpg`/`.jpeg` | kein Logo | Logo im Kopf, nur wenn gesetzt; siehe [Logo](#logo). |
