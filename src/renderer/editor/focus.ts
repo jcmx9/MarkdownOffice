@@ -8,7 +8,7 @@ import {
   type Range,
   StateField,
 } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, keymap } from '@codemirror/view'
+import { Decoration, type DecorationSet, EditorView, keymap, scrollPastEnd } from '@codemirror/view'
 
 /**
  * Focus mode (owner, 2026-10-27): while a note is shown to others, nobody reads ahead. Like a
@@ -145,7 +145,7 @@ export function focusStepTarget(state: EditorState, pos: number, dir: 1 | -1): n
 }
 
 /** Top of the visible path for the cursor at `pos`: the active section's chapter heading. */
-function pathTop(state: EditorState, pos: number): number | null {
+export function pathTop(state: EditorState, pos: number): number | null {
   const hs = headings(state)
   const active = activeIndex(hs, pos)
   if (active < 0) return null
@@ -241,6 +241,8 @@ export function focusExtensions(on: boolean, pathOnly = false): Extension {
     ? [
         focusPathOnly.of(pathOnly),
         focusHiddenField,
+        // Room below the last line, so even a short last slide can sit at the top of the view.
+        scrollPastEnd(),
         focusKeys,
         scrollToSection,
         EditorView.editorAttributes.of({ class: 'mdo-focus' }),

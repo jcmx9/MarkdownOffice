@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Focus: every click in the outline puts the slide's chapter heading at the top of the view, also when the section stays the same; the text can scroll past its end, so a short last section reaches the top too
+
+### Changed
 - A page break line (`<!-- pagebreak -->`, `\newpage`, `\pagebreak`, `\clearpage`) shows in Preview as a quiet dashed rule „Seitenumbruch“ instead of the raw comment, and not at all in Present; the cursor line keeps the Markdown, Code is unchanged
 
 ### Changed
