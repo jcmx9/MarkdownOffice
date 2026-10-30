@@ -691,7 +691,7 @@ function Convert-One {
   # Schluessel mit ungueltigem Wert warnt und behaelt den Default. Leere Werte
   # werden ignoriert, nie ein Fehler.
   $fmDate = ''; $fmIsodatePraefix = ''; $fmToc = 'auto'; $fmBreak = 'auto'; $fmShowname = 'true'; $fmLang = 'de'
-  $fmHeader = ''; $fmWatermark = ''; $fmTitle = ''
+  $fmHeader = ''; $fmHeaderOff = 'false'; $fmWatermark = ''; $fmTitle = ''
   $fmTemplate = ''; $fmSubtitle = ''; $fmToptitle = ''; $fmAuthor = ''; $fmLogo = ''; $fmLogoHeight = ''; $fmProfile = ''; $fmEmbed = 'true'; $fmBreaks = 'true'
   if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
     for ($i = 1; $i -lt $lines.Count; $i++) {
@@ -710,7 +710,11 @@ function Convert-One {
         'logo'            { $fmLogo = ConvertTo-YamlStr $raw }
         'logo-height'     { $fmLogoHeight = ConvertTo-YamlStr $raw }
         'profile'         { $fmProfile = ConvertTo-YamlStr $raw }
-        'header'          { $fmHeader = ConvertTo-YamlStr $raw }
+        'header'          {
+          # Ein schlichtes false schaltet die Kopfzeile ab, "false" in Anfuehrungszeichen bleibt Text.
+          $fmHeader = ConvertTo-YamlStr $raw; $fmHeaderOff = 'false'
+          if (($raw -replace '\s#.*$', '').Trim() -cmatch '^(false|False|FALSE)$') { $fmHeader = ''; $fmHeaderOff = 'true' }
+        }
         'watermark'       { $fmWatermark = ConvertTo-YamlStr $raw }
         'lang'            { $v = ConvertTo-YamlStr $raw; if ($v) { $fmLang = $v } }
         'isodate_praefix' { $b = Get-FmBool $key $raw; if ($b) { $fmIsodatePraefix = $b } }
@@ -947,6 +951,7 @@ function Convert-One {
       '--input', "showname=$fmShowname",
       '--input', "lang=$fmLang",
       '--input', "header=$fmHeader",
+      '--input', "header_off=$fmHeaderOff",
       '--input', "watermark=$fmWatermark",
       '--input', "hard_breaks=$fmBreaks",
       '--input', 'mdo=/mdo',

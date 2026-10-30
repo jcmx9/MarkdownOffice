@@ -295,7 +295,7 @@ hard_breaks: false           # line breaks become spaces
 | `lang` | `de`, `en`, … | `de` | Language: date, hyphenation, quotes, labels (Seite/Page, Inhalt/Contents, Aufgabe/Task, callouts). |
 | `toc` | `auto` / `true` / `false` | `auto` | Table of contents (H1 + H2 only); `auto` above five H1/H2. |
 | `h1_break` | `auto` / `true` / `false` | `auto` | Every chapter (`#`) on a new page; `auto` as for `toc`. |
-| `header` | text | — | Fixed header text from page 1 instead of the running chapter. |
+| `header` | text or `false` | — | Fixed header text from page 1 instead of the running chapter. `false` (unquoted) drops the header text, logo and rule, and the top margin shrinks from 35 mm to 20 mm; `"false"` is ordinary text. The preview shows no page headers, so this only affects the PDF. |
 | `print_filename` | `true` / `false` | `true` | Show/hide the bottom-left entry (file name or “top title · title”). |
 | `watermark` | text | — | Diagonal light-grey watermark beneath everything. |
 | `logo` | file `.svg`/`.png`/`.jpg`/`.jpeg` | no logo | Logo in the header, only when set; see [Logo](#logo). |

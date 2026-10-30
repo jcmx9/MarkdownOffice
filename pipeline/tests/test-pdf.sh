@@ -488,6 +488,21 @@ test_fixtures() {
     die "memo.header.md: unerwartete Warnung: $(cat "${out_dir}/header.err")"
   fi
   ok memo.header.md
+
+  # header: Text ist feste Kopfzeile; schlichtes false nimmt sie weg, "false" bleibt Text.
+  local kapitel=$'# Kapitel\n\nText.\n'
+  printf -- '---\nheader: "Feste Kopfzeile"\n---\n%s' "${kapitel}" >"${out_dir}/kopf-text.md"
+  printf -- '---\nheader: false\n---\n%s' "${kapitel}" >"${out_dir}/kopf-aus.md"
+  printf -- '---\nheader: "false"\n---\n%s' "${kapitel}" >"${out_dir}/kopf-wort.md"
+  local name pages
+  for name in kopf-text kopf-aus kopf-wort; do
+    (cd "${out_dir}" && "${mdo[@]}" "${name}.md" "${out_dir}/${name}.pdf" >/dev/null 2>&1) ||
+      die "${name}: Export fehlgeschlagen"
+  done
+  pdf_text "${out_dir}/kopf-text.pdf" | quiet_grep "Feste Kopfzeile" || die "header: Text fehlt im PDF"
+  pdf_text "${out_dir}/kopf-wort.pdf" | quiet_grep "false" || die 'header: "false" ist kein Text'
+  if pdf_text "${out_dir}/kopf-aus.pdf" | quiet_grep "false"; then die "header: false steht als Text im PDF"; fi
+  ok "header: Text, false und \"false\""
 }
 
 test_interface() {
