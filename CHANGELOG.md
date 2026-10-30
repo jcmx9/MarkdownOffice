@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.13] - 2026-10-29
+
 ### Changed
 - Focus: every click in the outline puts the slide's chapter heading at the top of the view, also when the section stays the same; the text can scroll past its end, so a short last section reaches the top too
 

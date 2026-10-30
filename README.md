@@ -2,7 +2,7 @@
 
 > Ruhiger Markdown-Editor mit eingebauter PDF/A-Pipeline: Die Notiz sieht schon beim Tippen aus wie das PDF.
 
-**Version:** 26.10.13-dev.0 · [English](README.en.md)
+**Version:** 26.10.14-dev.0 · [English](README.en.md)
 
 [![CI](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml/badge.svg)](https://github.com/jcmx9/MarkdownOffice/actions/workflows/ci.yml)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
