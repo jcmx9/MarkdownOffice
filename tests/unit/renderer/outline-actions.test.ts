@@ -2,6 +2,7 @@
 import { foldEffect, foldedRanges, unfoldAll } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { focusCompartment, focusExtensions } from '../../../src/renderer/editor/focus'
 import {
   activeEntry,
   type OutlineEntry,
@@ -146,6 +147,22 @@ describe('jumpToEntry', () => {
     jumpToEntry(view, b)
     expect(view.state.field(quietCursor)).toBe(false)
     expect(lineIsRendered(view.state, line)).toBe(false)
+  })
+  it('focus on: every click scrolls the chapter heading of the slide to the top', () => {
+    const view = mkView()
+    view.dispatch({ effects: focusCompartment.reconfigure(focusExtensions(true)) })
+    const spy = vi.spyOn(view, 'dispatch')
+    const a1 = (outlineEntries(view.state)[0] as OutlineEntry).children[0] as OutlineEntry
+    jumpToEntry(view, a1)
+    jumpToEntry(view, a1)
+    const targets = spy.mock.calls.map((c) => {
+      const effects = [(c[0] as { effects: unknown }).effects].flat() as {
+        value: { range?: { from: number } }
+      }[]
+      return effects.find((e) => e.value?.range)?.value.range?.from
+    })
+    // Both clicks (also the second, same section) aim at „# A“, not at „## a1“.
+    expect(targets).toEqual([0, 0])
   })
   it('ignores an entry beyond the document (stale)', () => {
     const view = mkView()
