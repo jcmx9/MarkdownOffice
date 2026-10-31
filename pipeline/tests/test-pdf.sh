@@ -488,6 +488,25 @@ test_fixtures() {
     die "memo.header.md: unerwartete Warnung: $(cat "${out_dir}/header.err")"
   fi
   ok memo.header.md
+
+  # header: Text ist feste Kopfzeile; schlichtes false nimmt sie weg, "false" bleibt Text.
+  local kapitel=$'# Kapitel\n\nText.\n'
+  printf -- '---\nheader: "Feste Kopfzeile"\n---\n%s' "${kapitel}" >"${out_dir}/kopf-text.md"
+  printf -- '---\nheader: false\n---\n%s' "${kapitel}" >"${out_dir}/kopf-aus.md"
+  printf -- '---\nheader: "false"\n---\n%s' "${kapitel}" >"${out_dir}/kopf-wort.md"
+  printf -- '---\ntitle: Laufender Titel\nheader: auto\n---\n%s' "${kapitel}" >"${out_dir}/kopf-auto.md"
+  printf -- '---\ntitle: Laufender Titel\nheader: ""\n---\n%s' "${kapitel}" >"${out_dir}/kopf-leer.md"
+  local name
+  for name in kopf-text kopf-aus kopf-wort kopf-auto kopf-leer; do
+    (cd "${out_dir}" && "${mdo[@]}" "${name}.md" "${out_dir}/${name}.pdf" >/dev/null 2>&1) ||
+      die "${name}: Export fehlgeschlagen"
+  done
+  pdf_text "${out_dir}/kopf-text.pdf" | quiet_grep "Feste Kopfzeile" || die "header: Text fehlt im PDF"
+  pdf_text "${out_dir}/kopf-wort.pdf" | quiet_grep "false" || die 'header: "false" ist kein Text'
+  if pdf_text "${out_dir}/kopf-aus.pdf" | quiet_grep "false"; then die "header: false steht als Text im PDF"; fi
+  [[ "$(pdf_text "${out_dir}/kopf-auto.pdf" | grep -c "Laufender Titel")" -ge 2 ]] || die "header: auto ohne laufenden Kopf"
+  [[ "$(pdf_text "${out_dir}/kopf-leer.pdf" | grep -c "Laufender Titel")" -eq 1 ]] || die 'header: "" zeigt Text im Kopf'
+  ok "header: Text, false, \"false\", auto und \"\""
 }
 
 test_interface() {

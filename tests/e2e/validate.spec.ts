@@ -20,7 +20,7 @@ const MEMO_HEADER = [
   'lang: de                # de oder en',
   'toc: auto               # Inhaltsverzeichnis: auto, true, false',
   'h1_break: auto          # Kapitel auf neuer Seite: auto = wie toc',
-  'header: ""              # fester Kopfzeilentext',
+  'header: auto            # auto: Kapitel; Text: fest; "": nur Linie; false: keine',
   'print_filename: true    # Angabe links in der Fußzeile',
   'watermark: ""           # z. B. ENTWURF',
   'logo: ""                # .svg/.png/.jpg; leer: kein Logo',

@@ -827,6 +827,17 @@ foreach ($hb in @('false', 'true')) {
   else { Ok "h1_break: $hb ergibt $want Seite(n)" }
 }
 
+# header: schlichtes false nimmt die Kopfzeile weg, "false" in Anfuehrungszeichen bleibt Text.
+foreach ($k in @(@{ N = 'aus'; V = 'false'; Soll = $false }, @{ N = 'wort'; V = '"false"'; Soll = $true })) {
+  [IO.File]::WriteAllText((Join-Path $sbNote "kopf-$($k.N).md"), "---`nheader: $($k.V)`n---`n# Kapitel`n`nText.`n", $utf8)
+  Push-Location $sbNote
+  $rr = Invoke-Convert @("kopf-$($k.N).md", (Join-Path $outDir "kopf-$($k.N).pdf"))
+  Pop-Location
+  if ($rr.Code -ne 0) { Fail "header $($k.N): Exit $($rr.Code)`n$($rr.Text)" }
+  elseif (((Get-PdfPages (Join-Path $outDir "kopf-$($k.N).pdf")) -ne 1)) { Fail "header $($k.N): nicht 1 Seite" }
+  else { Ok "header: $($k.V) laeuft durch" }
+}
+
 # convert.ps1 allein (ohne Manifest des Wrappers) exportiert nicht.
 Push-Location $sbNote
 $rr = Invoke-ConvertDirect @('aussen.md', (Join-Path $outDir 'sb-direkt.pdf')) ''
