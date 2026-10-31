@@ -471,6 +471,7 @@ function checkLines(s: Subject): Verdict | null {
  */
 function checkText(s: Subject): Verdict | null {
   if (s.quoted || s.value === '' || /^[[{|>]/.test(s.value)) return null
+  if (s.rule.off && /^(false|False|FALSE)$/.test(s.value)) return null
   let parsed: unknown
   try {
     parsed = load(s.value, { schema: CORE_SCHEMA })

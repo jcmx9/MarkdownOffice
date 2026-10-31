@@ -67,6 +67,20 @@ describe('result kinds', () => {
     expect(validateFrontmatter('---\ntoc: ja\n', pipelineCtx)).toEqual({ kind: 'unclosed' })
   })
 
+  it('header: a plain false switches it off, no quoting hint', () => {
+    for (const line of [
+      'header: false',
+      'header: False',
+      'header: "false"',
+      'header: Text',
+      'header: auto',
+      'header: ""',
+    ]) {
+      const r = validateFrontmatter(`---\n${line}\n---\n`, pipelineCtx)
+      expect(r.kind === 'checked' ? r.findings : null, line).toEqual([])
+    }
+  })
+
   it('returns an empty checked result for a clean header', () => {
     expect(validateFrontmatter(note('toc: auto'), pipelineCtx)).toEqual({
       kind: 'checked',

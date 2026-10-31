@@ -8,6 +8,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [26.10.13] - 2026-10-29
 
 ### Changed
+- `header: ""` now means logo and rule without text instead of the running header; notes made from the old template, which wrote that line, lose their running header. New notes get `header: auto`
+
+### Added
+- `header: false` (unquoted) drops the PDF header completely: no header text, logo or rule, and the memo set's top margin shrinks from 35 mm to 20 mm. The pipeline passes it as `header_off`, `validate` accepts it, and a quoted `"false"` stays ordinary header text
+- `header: auto` names the running header (title, chapter), which also applies without the key
+
+### Changed
 - Focus: every click in the outline puts the slide's chapter heading at the top of the view, also when the section stays the same; the text can scroll past its end, so a short last section reaches the top too
 
 ### Changed

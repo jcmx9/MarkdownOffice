@@ -15,7 +15,7 @@ keys:
   subtitle:        { type: text }
   toptitle:        { type: text }
   author:          { type: text }
-  header:          { type: text }
+  header:          { type: text, off: true }
   watermark:       { type: text }
   profile:         { type: text }
   date:            { type: date, empty: none }

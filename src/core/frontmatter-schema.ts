@@ -32,6 +32,8 @@ export interface FieldRule {
   type: FieldType
   /** enum: the allowed values */
   values?: string[]
+  /** text: a plain `false` is a value of its own (`header: false`: no header), no quoting slip */
+  off?: boolean
   /** date: what an empty value means for the set (documentation only, never a finding) */
   empty?: 'today' | 'none'
   /** length: bounds with a unit (mm, cm, pt, in) */
@@ -87,6 +89,12 @@ function parseRule(key: string, raw: unknown): FieldRule | string {
       return `key '${key}': enum needs a non-empty values list`
     }
     rule.values = values
+  }
+  if (raw.off !== undefined) {
+    if (type !== 'text' || raw.off !== true) {
+      return `key '${key}': off must be true and only applies to text`
+    }
+    rule.off = true
   }
   if (raw.empty !== undefined) {
     if (type !== 'date' || (raw.empty !== 'today' && raw.empty !== 'none')) {
