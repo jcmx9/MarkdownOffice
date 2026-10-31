@@ -29,6 +29,7 @@ describe('sanitizeDiagramSvg', () => {
       'pie.svg',
       'sequence.svg',
       'state.svg',
+      'timeline.svg',
     ])
   })
 
