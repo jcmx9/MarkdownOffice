@@ -85,19 +85,11 @@ describe('combineSchemas', () => {
 
 describe('PIPELINE_SCHEMA', () => {
   it('has exactly the 18 keys of the pipeline with their rules', () => {
-    const text = [
-      'template',
-      'title',
-      'subtitle',
-      'toptitle',
-      'author',
-      'header',
-      'watermark',
-      'profile',
-    ]
+    const text = ['template', 'title', 'subtitle', 'toptitle', 'author', 'watermark', 'profile']
     const bool = ['isodate_praefix', 'print_filename', 'embed_source', 'hard_breaks']
     expect(Object.keys(PIPELINE_SCHEMA.keys)).toHaveLength(18)
     for (const k of text) expect(PIPELINE_SCHEMA.keys[k]).toEqual({ type: 'text' })
+    expect(PIPELINE_SCHEMA.keys.header).toEqual({ type: 'text', off: true })
     for (const k of bool) expect(PIPELINE_SCHEMA.keys[k]).toEqual({ type: 'bool' })
     expect(PIPELINE_SCHEMA.keys.date).toEqual({ type: 'date', empty: 'none' })
     expect(PIPELINE_SCHEMA.keys.lang).toEqual({ type: 'lang' })

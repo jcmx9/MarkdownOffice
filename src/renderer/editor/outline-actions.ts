@@ -1,6 +1,7 @@
 import { foldEffect, foldedRanges, unfoldEffect } from '@codemirror/language'
 import type { EditorState, Transaction, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
+import { focusHiddenField, pathTop } from './focus'
 import {
   activeEntry,
   foldsAt,
@@ -39,10 +40,14 @@ export function toggleEntryFold(view: EditorView, entry: OutlineEntry): void {
  */
 export function jumpToEntry(view: EditorView, entry: OutlineEntry, quiet = false): void {
   if (entry.to > view.state.doc.length) return
+  // Focus: every click puts the slide's chapter heading at the top (owner, 2026-10-30), also
+  // when the section did not change and focus.ts's own scroll on a section change stays out.
+  const focused = view.state.field(focusHiddenField, false) !== undefined
+  const top = focused ? (pathTop(view.state, entry.to) ?? entry.from) : entry.from
   view.dispatch({
     selection: { anchor: entry.to },
     effects: [
-      EditorView.scrollIntoView(entry.from, { y: 'start', yMargin: 24 }),
+      EditorView.scrollIntoView(top, { y: 'start', yMargin: 24 }),
       setQuietCursor.of(quiet),
     ],
   })

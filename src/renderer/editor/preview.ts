@@ -15,6 +15,7 @@ import { smartTypography } from '../../core/typography'
 import { frontmatterFields } from './frontmatter'
 import { EXTERNAL_DEST } from './inline-render'
 import { isRealLink, referenceLabels } from './link-refs'
+import { PAGEBREAK_LINE } from './pagebreak'
 import { previewSource } from './preview-source'
 import { lineIsRendered, selectionTouches } from './rendered'
 import { typoMaskOf } from './typo-mask'
@@ -182,6 +183,7 @@ function makeCx(
 }
 
 const headingGap = lineDeco('mdo-heading-gap')
+const pageBreakLine = lineDeco('mdo-pagebreak')
 
 /**
  * Typst ignores blank lines around a heading: the heading block's own above/below spacing sets
@@ -335,6 +337,19 @@ class TaskWidget extends WidgetType {
   }
 }
 
+class PageBreakWidget extends WidgetType {
+  override eq(): boolean {
+    return true
+  }
+  toDOM(): HTMLElement {
+    const s = document.createElement('span')
+    s.className = 'mdo-pagebreak-label'
+    s.textContent = 'Seitenumbruch'
+    return s
+  }
+}
+const pageBreakLabel = Decoration.replace({ widget: new PageBreakWidget(), rf: 'pagebreak' })
+
 class AlertTitleWidget extends WidgetType {
   constructor(readonly title: string) {
     super()
@@ -472,6 +487,16 @@ export function visitBlock(cx: PreviewCx, ref: SyntaxNodeRef): boolean | undefin
       out.push(lineDeco('mdo-hr').range(doc.lineAt(ref.from).from))
       if (!cx.onLine(ref.from)) out.push(hide.range(ref.from, ref.to))
       return
+    case 'CommentBlock':
+    case 'Paragraph': {
+      // A page break line shows as a quiet rule „Seitenumbruch“ (Present: nothing), like Word
+      // or Pages; the cursor line keeps its Markdown to edit (owner, 2026-10-29).
+      const line = doc.lineAt(ref.from)
+      if (ref.to > line.to || !PAGEBREAK_LINE.test(line.text) || cx.onLine(ref.from)) return
+      out.push(pageBreakLine.range(line.from))
+      out.push(pageBreakLabel.range(line.from, line.to))
+      return false
+    }
   }
   return
 }

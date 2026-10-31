@@ -6,6 +6,9 @@ import { refused } from './format'
 /** The pipeline's page break: an HTML comment on its own line. */
 export const PAGEBREAK = '<!-- pagebreak -->'
 
+/** Every line the pipeline reads as a page break (lib/markdown.typ pagebreaks()). */
+export const PAGEBREAK_LINE = /^\s*(?:<!--\s*pagebreak\s*-->|\\newpage|\\pagebreak|\\clearpage)\s*$/
+
 const isBlank = (text: string): boolean => /^\s*$/.test(text)
 
 /**

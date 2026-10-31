@@ -316,6 +316,8 @@ fm_break="auto"
 fm_showname="true"
 fm_lang="de"
 fm_header=""
+fm_header_off="false"
+fm_header_blank="false"
 fm_watermark=""
 fm_title=""
 fm_subtitle=""
@@ -339,7 +341,19 @@ if [[ "$(head -n 1 "${src}" | tr -d '\r')" == "---" ]]; then
         v="$(yaml_str "${line#lang:}")"
         if [[ -n "${v}" ]]; then fm_lang="${v}"; fi
         ;;
-      header:*)          fm_header="$(yaml_str "${line#header:}")" ;;
+      header:*)
+        # Plain words are modes, quoted ones stay text: false = no header (header_off), auto =
+        # running header, "" = rule and logo without text (header_blank). An older set gets an
+        # empty header for all three: its running header.
+        fm_header="$(yaml_str "${line#header:}")"
+        fm_header_off="false"
+        fm_header_blank="false"
+        case "$(printf '%s' "${line#header:}" | sed -e 's/[[:space:]]#.*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')" in
+          false | False | FALSE) fm_header=""; fm_header_off="true" ;;
+          auto | Auto | AUTO) fm_header="" ;;
+          \"\" | \'\') fm_header_blank="true" ;;
+        esac
+        ;;
       watermark:*)       fm_watermark="$(yaml_str "${line#watermark:}")" ;;
       toc:*)
         if b="$(fm_bool toc "${line#toc:}" auto)"; then fm_toc="${b}"; fi
@@ -885,6 +899,8 @@ typst_inputs=(
   --input "showname=${fm_showname}"
   --input "lang=${fm_lang}"
   --input "header=${fm_header}"
+  --input "header_off=${fm_header_off}"
+  --input "header_blank=${fm_header_blank}"
   --input "watermark=${fm_watermark}"
   --input "hard_breaks=${fm_breaks}"
   --input "mdo=/mdo"
