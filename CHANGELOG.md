@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.10.14] - 2026-10-31
+
 ### Added
 - `header: false` (unquoted) drops the PDF header completely: no header text, logo or rule, and the memo set's top margin shrinks from 35 mm to 20 mm. The pipeline passes it as `header_off`, `validate` accepts it, and a quoted `"false"` stays ordinary header text
 - `header: auto` names the running header (title, chapter), which also applies without the key
