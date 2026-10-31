@@ -73,5 +73,11 @@ export function renderMermaid(plugin: TypstPlugin, source: string, opts: Mermaid
   )
   if (opts.fontWeight === null) return svg
   // Typst's str.replace: every occurrence, left to right, never rescanning inserted text.
-  return svg.replaceAll('font-family=', `font-weight="${opts.fontWeight}" font-family=`)
+  // Only tags without their own weight: mmdr sets one on timeline titles, and a doubled
+  // attribute is invalid XML that stopped the whole PDF export (owner, 2026-10-31).
+  return svg.replace(/<[^<>]*\bfont-family=[^<>]*>/g, (tag) =>
+    tag.includes('font-weight=')
+      ? tag
+      : tag.replace('font-family=', `font-weight="${opts.fontWeight}" font-family=`),
+  )
 }

@@ -21,7 +21,7 @@ const tags = (root: Element) =>
 describe('sanitizeDiagramSvg', () => {
   const fixtures = readdirSync(FIXTURES).filter((f) => f.endsWith('.svg'))
 
-  it('has the six reference diagrams to check against', () => {
+  it('has the seven reference diagrams to check against', () => {
     expect(fixtures.sort()).toEqual([
       'class.svg',
       'flowchart.svg',

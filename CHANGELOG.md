@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- A Mermaid `timeline` no longer stops the whole PDF export: the sets' font-weight rule doubled the attribute on tags that already had one, in the editor preview too (memo 26.10.13, din5008a 26.10.8)
+
 ## [26.10.13] - 2026-10-29
 
 ### Changed
