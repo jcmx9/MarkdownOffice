@@ -5,20 +5,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [26.10.13] - 2026-10-29
-
-### Changed
-- `header: ""` now means logo and rule without text instead of the running header; notes made from the old template, which wrote that line, lose their running header. New notes get `header: auto`
-
 ### Added
 - `header: false` (unquoted) drops the PDF header completely: no header text, logo or rule, and the memo set's top margin shrinks from 35 mm to 20 mm. The pipeline passes it as `header_off`, `validate` accepts it, and a quoted `"false"` stays ordinary header text
 - `header: auto` names the running header (title, chapter), which also applies without the key
 
 ### Changed
+- `header: ""` now means logo and rule without text instead of the running header; notes made from the old template, which wrote that line, lose their running header. New notes get `header: auto`
 - Focus: every click in the outline puts the slide's chapter heading at the top of the view, also when the section stays the same; the text can scroll past its end, so a short last section reaches the top too
-
-### Changed
 - A page break line (`<!-- pagebreak -->`, `\newpage`, `\pagebreak`, `\clearpage`) shows in Preview as a quiet dashed rule „Seitenumbruch“ instead of the raw comment, and not at all in Present; the cursor line keeps the Markdown, Code is unchanged
+
+### Fixed
+- A Mermaid `timeline` no longer stops the whole PDF export: the sets' font-weight rule doubled the attribute on tags that already had one, in the editor preview too (memo 26.10.13, din5008a 26.10.8)
+
+## [26.10.13] - 2026-10-29
 
 ### Changed
 - In-app update: „Jetzt aktualisieren“ downloads the release archive while the app keeps running, with progress in percent and „Abbrechen“ in the notice, and checks it against SHA256SUMS before quitting; the helper then installs from that archive (bootstrap `--archive/--sums`, Windows `-Archive/-Sums`, checked again), so the swap takes seconds. An app opened while the update installs shows „Update wird installiert …“ and steps aside; the helper starts it afterwards. Before, the download ran for a minute after the quit without feedback, the app was reopened meanwhile and the swap was refused

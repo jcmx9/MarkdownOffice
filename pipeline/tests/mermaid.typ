@@ -30,7 +30,7 @@
 // memo.typ's call and replace; the parentheses keep the method chain one expression.
 #let draw(code) = (
   mermaid-svg(code, base-theme: "modern", theme: mermaid-theme, layout: mermaid-layout)
-    .replace("font-family=", "font-weight=\"500\" font-family=")
+    .replace(regex("<[^<>]*\bfont-family=[^<>]*>"), m => if m.text.contains("font-weight=") { m.text } else { m.text.replace("font-family=", "font-weight=\"500\" font-family=") })
 )
 
 #let names = sys.inputs.names.split(",")
