@@ -1,10 +1,16 @@
 import { constants } from 'node:fs'
 import { copyFile, lstat, mkdir, open, readdir, rm, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import {
+  generatedProfile,
+  headerWithProfileValues,
+  profileDefaults,
+} from '../core/profile-defaults'
 import { SET_NAME_RE } from '../core/sets'
 import type { CreateProfileResult } from '../shared/types'
 import { canonicalPath, errorCode } from './files'
-import { readSmallText, setExampleProfile } from './templates'
+import { readSetHeader, readSmallText, resolveSet, setExampleProfile } from './templates'
+import { findProfile } from './validation-inputs'
 
 const PROFILE_EXT = '.yaml'
 
@@ -72,11 +78,27 @@ export function renameCompanionValues(text: string, renamed: ReadonlyMap<string,
     .join('\n')
 }
 
+/** The set's header for a new note; a chosen profile's values replace its default values. */
+export async function setHeaderForProfile(
+  setsDir: string,
+  userDir: string,
+  set: string,
+  profile: string | null,
+): Promise<string | null> {
+  const header = await readSetHeader(setsDir, userDir, set)
+  if (header === null || profile === null) return header
+  const resolved = await resolveSet(setsDir, userDir, set)
+  const setDir = resolved ? dirname(resolved.typ) : null
+  const found = await findProfile(profile, { userDir, noteDir: null, set, setDir })
+  const text = found?.status === 'found' ? await readSmallText(found.path) : null
+  return text === null ? header : headerWithProfileValues(header, profileDefaults(text, header))
+}
+
 /**
  * „Profil anlegen …“: copies the set's example profile to `<user>/<set>/profiles/<name>.yaml`
  * (pipeline lookup step 2, so the new profile wins over the shared folder and the example),
  * with its companion files renamed `<ex>…` → `<name>…` and the YAML's references to them
- * updated. Nothing is ever overwritten: an existing target → error, and a target that appears
+ * updated. A set without an example gets a profile from its header fields. Nothing is ever overwritten: an existing target → error, and a target that appears
  * during the copy (`wx` / COPYFILE_EXCL) rolls back the files this call created. The YAML is
  * written last, so a failed copy never leaves a listed profile without its companions.
  * Returns the canonical path of the new YAML; the caller allows it for the renderer.
@@ -94,14 +116,21 @@ export async function createProfile(
       error: `„${name}“ ist kein gültiger Profilname: nur a–z, 0–9, - und _.`,
     }
   const source = await setExampleProfile(setsDir, userDir, set)
-  if (!source) return { ok: false, error: `Vorlage ${set} bringt kein Beispielprofil mit.` }
-  const { dir, example } = source
-  const yaml = await readSmallText(join(dir, `${example}${PROFILE_EXT}`))
-  if (yaml === null)
-    return { ok: false, error: `Beispielprofil ${example} von ${set} ist nicht lesbar.` }
+  const example = source?.example ?? ''
+  const dir = source?.dir ?? ''
+  let yaml: string | null
+  if (source) {
+    yaml = await readSmallText(join(dir, `${example}${PROFILE_EXT}`))
+    if (yaml === null)
+      return { ok: false, error: `Beispielprofil ${example} von ${set} ist nicht lesbar.` }
+  } else {
+    const header = await readSetHeader(setsDir, userDir, set)
+    if (header === null) return { ok: false, error: `Vorlage ${set} nicht gefunden.` }
+    yaml = generatedProfile(set, header)
+  }
 
   const targetDir = join(userDir, set, 'profiles')
-  const files = await companions(dir, example)
+  const files = source ? await companions(dir, example) : []
   const renamed = new Map(files.map((f) => [f, `${name}${f.slice(example.length)}`]))
   const target = join(targetDir, `${name}${PROFILE_EXT}`)
   for (const p of [target, ...[...renamed.values()].map((f) => join(targetDir, f))]) {

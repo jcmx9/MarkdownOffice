@@ -904,27 +904,33 @@ export class App {
   }
 
   /**
-   * Datei → „Profil anlegen …“: asks for a set that knows profiles (preselected: the shown
-   * note's `template:` set, else the default), then a name; main copies the set's example
-   * profile to `Vorlagen/<set>/profiles/<name>.yaml` and the new YAML opens as a tab for
-   * editing. Works without an open note (owner, 2026-10-24: offer the sets found instead of
-   * expecting a note with a header). The shown note gets `profile: <name>` (one undo step) only
-   * when it names the same set; any other note stays untouched. Main refuses with a toast
-   * (no example profile, name taken: nothing is ever overwritten).
+   * Datei → „Profil anlegen …“: the profile is for the shown note's set, fixed (owner,
+   * 2026-11-01); without a note, or with a `.typ` as template, the sets found are offered. Then
+   * a name; main writes `Vorlagen/<set>/profiles/<name>.yaml` from the set's example profile or
+   * its header fields and the new YAML opens as a tab for editing. The shown note gets
+   * `profile: <name>` (one undo step); any other note stays untouched. Main refuses with a
+   * toast (set not found, name taken: nothing is ever overwritten).
    */
   private async createProfile(): Promise<void> {
     if (this.pickerOpen || this.settingsOpen) return
     const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
     const tab = shown && isMarkdownTab(shown) ? shown : undefined
-    const noteSet = tab ? (frontmatterFields(this.editor.state.doc).template ?? '') : ''
-    const choice = await this.chooseTemplate('Profil anlegen', 'Weiter', () => !this.closing, {
-      filter: (s) => s.hasProfile,
-      selected: SET_NAME_RE.test(noteSet) ? noteSet : DEFAULT_SET,
-      withProfiles: false,
-      empty: 'Kein Vorlagen-Set mit Profilen gefunden.',
-    })
-    if (!choice || this.closing) return
-    const set = choice.name
+    const named = tab ? (frontmatterFields(this.editor.state.doc).template ?? '') : ''
+    const noteSet = tab
+      ? named === ''
+        ? DEFAULT_SET
+        : SET_NAME_RE.test(named)
+          ? named
+          : null
+      : null
+    const choice =
+      noteSet === null
+        ? await this.chooseTemplate('Profil anlegen', 'Weiter', () => !this.closing, {
+            withProfiles: false,
+          })
+        : null
+    const set = noteSet ?? choice?.name
+    if (!set || this.closing) return
     const name = await askText(
       'Profil anlegen',
       `Name des neuen ${set}-Profils (a–z, 0–9, - _)`,
@@ -970,7 +976,7 @@ export class App {
     if (!choice || !still()) return null
     let header: string | null = null
     try {
-      header = await this.mdo.readSetHeader(choice.name)
+      header = await this.mdo.readSetHeader(choice.name, choice.profile)
     } catch (e) {
       console.warn('readSetHeader failed', e)
     }
@@ -1229,7 +1235,7 @@ export class App {
     if (!choice || !still()) return
     let header: string | null = null
     try {
-      header = await this.mdo.readSetHeader(choice.name)
+      header = await this.mdo.readSetHeader(choice.name, choice.profile)
     } catch (e) {
       console.warn('readSetHeader failed', e)
     }

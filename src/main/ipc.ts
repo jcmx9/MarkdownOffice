@@ -32,10 +32,10 @@ import { setWindowFullScreen } from './fullscreen'
 import { noteMenuTemplate } from './menu'
 import { pluginWasm } from './plugins'
 import { previewInputs } from './preview-inputs'
-import { createProfile } from './profiles'
+import { createProfile, setHeaderForProfile } from './profiles'
 import { loadUserSnippets } from './snippets'
 import { CODE_RE } from './spellcheck/languages'
-import { listProfiles, listSets, readSetHeader, userTemplatesDir } from './templates'
+import { listProfiles, listSets, userTemplatesDir } from './templates'
 import { validationInputs } from './validation-inputs'
 
 const str = (v: unknown): string => {
@@ -115,8 +115,10 @@ export function registerIpc(ctx: AppContext): void {
     const error = await shell.openPath(dir)
     return error ? `Vorlagen-Ordner konnte nicht geöffnet werden: ${error}` : null
   })
-  ipcMain.handle(Ch.readSetHeader, (_e, name: unknown) =>
-    setName(name) ? readSetHeader(setsDir(), userDir(), name) : null,
+  ipcMain.handle(Ch.readSetHeader, (_e, name: unknown, profile: unknown) =>
+    setName(name)
+      ? setHeaderForProfile(setsDir(), userDir(), name, setName(profile) ? profile : null)
+      : null,
   )
   ipcMain.handle(Ch.listProfiles, (_e, name: unknown) =>
     setName(name) ? listProfiles(setsDir(), userDir(), name) : [],

@@ -33,7 +33,7 @@ const SIG = 'data:image/svg+xml;base64,PHN2Zy8+'
 function source(desc = DESC): PreviewSource {
   const spec = parsePreviewSpec(desc)
   if (!spec.ok) throw new Error(spec.error)
-  return { set: 'brief', spec: spec.spec, profile: {}, signature: SIG }
+  return { set: 'brief', spec: spec.spec, profile: {}, defaults: '', signature: SIG }
 }
 
 function view(hidden: boolean, withSource = true) {

@@ -181,7 +181,13 @@ describe('collapsed header in a real view', () => {
     const spec = parsePreviewSpec('preview: 1\nhead:\n  - class: subject\n    text: "{title}!"\n')
     if (!spec.ok) throw new Error(spec.error)
     v.dispatch({
-      effects: setPreviewSource.of({ set: 'brief', spec: spec.spec, profile: {}, signature: null }),
+      effects: setPreviewSource.of({
+        set: 'brief',
+        spec: spec.spec,
+        profile: {},
+        defaults: '',
+        signature: null,
+      }),
     })
     expect(v.contentDOM.querySelector('.mdo-tb-subject')?.textContent).toBe('Kickoff!')
     expect(v.contentDOM.querySelector('.mdo-tb-title')).toBeNull()
