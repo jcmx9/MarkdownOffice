@@ -7,6 +7,7 @@ const inputs = (set: string): PreviewInputs => ({
   css: [],
   preview: null,
   profile: {},
+  defaults: '',
   signature: null,
 })
 

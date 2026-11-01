@@ -47,7 +47,7 @@ const CLOSE = /^(---|\.\.\.)\s*$/
 export const KEY = /^([A-Za-z0-9_-]+):/
 
 export const stripCr = (line: string): string => (line.endsWith('\r') ? line.slice(0, -1) : line)
-const crOf = (line: string): string => (line.endsWith('\r') ? '\r' : '')
+export const crOf = (line: string): string => (line.endsWith('\r') ? '\r' : '')
 
 /** Index of the closing fence, -1 when the text has an unclosed header, null without one. */
 export function closingFence(lines: readonly string[]): number | null {
@@ -67,7 +67,7 @@ export function lineStarts(lines: readonly string[]): number[] {
   return out
 }
 
-interface Block {
+export interface Block {
   key: string
   /** The key line and its continuation lines (indented lines, `- ` list items), without `\r`. */
   lines: string[]
@@ -78,7 +78,7 @@ interface Block {
  * `- ` item of a block list) belongs to the key above it; comment lines and blank lines between
  * the keys belong to no key and are not copied. A repeated key counts once (the first).
  */
-function headerBlocks(header: string): Block[] {
+export function headerBlocks(header: string): Block[] {
   const lines = header.split('\n').map(stripCr)
   const close = closingFence(lines)
   const body = close === null ? lines : close < 0 ? lines.slice(1) : lines.slice(1, close)
