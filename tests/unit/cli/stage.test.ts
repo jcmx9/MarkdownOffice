@@ -110,6 +110,33 @@ describe.runIf(posix)('buildManifest (the brief case)', () => {
   })
 })
 
+describe.runIf(posix)('buildManifest profile defaults', () => {
+  it('fills empty header fields from the profile, a logo found through it too', async () => {
+    tree({
+      'notes/n.md': '---\ntemplate: brief\nprofile: firma\nauthor: ""\n---\n\nText\n',
+      'sets/brief/brief.typ': '',
+      'sets/brief/brief.header.md': '---\ntemplate: brief\nauthor: ""\nlogo: ""\n---\n',
+      'user/brief/profiles/firma.yaml': 'author: Anna\nlogo: firma.svg\ntoken: geheim\n',
+      'user/brief/profiles/firma.svg': '<svg xmlns="http://www.w3.org/2000/svg"/>',
+    })
+    const { manifest, merged } = await buildManifest(at('notes/n.md'), opts())
+    expect(merged).toBe(
+      '---\ntemplate: brief\nprofile: firma\nauthor: Anna\nlogo: firma.svg\n---\n\nText\n',
+    )
+    expect(manifest.logo).toBe(at('user/brief/profiles/firma.svg'))
+  })
+
+  it('leaves the note alone when the note already says it all', async () => {
+    tree({
+      'notes/n.md': '---\ntemplate: brief\nprofile: firma\nauthor: Ben\n---\n',
+      'sets/brief/brief.typ': '',
+      'sets/brief/brief.header.md': '---\nauthor: ""\n---\n',
+      'user/brief/profiles/firma.yaml': 'author: Anna\n',
+    })
+    expect((await buildManifest(at('notes/n.md'), opts())).merged).toBeNull()
+  })
+})
+
 describe.runIf(posix)('buildManifest images', () => {
   it('expands ~, $VAR and %XX in a destination like expand_path, keyed by the note spelling', async () => {
     // HOME is the note folder here: the expansion is under test, not the folder rule.

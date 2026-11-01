@@ -329,8 +329,13 @@ fm_profile=""
 fm_embed="true"
 fm_breaks="true"
 fm_template=""
-if [[ "$(head -n 1 "${src}" | tr -d '\r')" == "---" ]]; then
-  block="$(awk 'NR==1 { next } /^(---|\.\.\.)[[:space:]]*$/ { exit } { print }' "${src}" | tr -d '\r')"
+# Hat das Profil leere Header-Felder gefüllt, liegt die Notiz mit diesen Werten neben dem Manifest
+# (src/cli/stage.ts): Frontmatter und Set lesen dann diese Fassung, die Notiz selbst bleibt unberührt.
+header_src="${src}"
+merged_note="$(dirname "${MDO_MANIFEST}")/merged.md"
+if [[ -f "${merged_note}" ]]; then header_src="${merged_note}"; fi
+if [[ "$(head -n 1 "${header_src}" | tr -d '\r')" == "---" ]]; then
+  block="$(awk 'NR==1 { next } /^(---|\.\.\.)[[:space:]]*$/ { exit } { print }' "${header_src}" | tr -d '\r')"
   while IFS= read -r line; do
     case "${line}" in
       date:*)            fm_date="$(yaml_str "${line#date:}")" ;;
@@ -734,7 +739,11 @@ mkdir "${stage}/note" "${stage}/img" "${stage}/logo" "${stage}/profile" "${stage
 
 # Die Notiz selbst (ihr Dateiname bleibt: Anhangsname im PDF).
 note_name="$(basename "${src_abs}")"
-cp -- "${src_abs}" "${stage}/note/${note_name}"
+if [[ "${header_src}" == "${src}" ]]; then
+  cp -- "${src_abs}" "${stage}/note/${note_name}"
+else
+  cp -- "${header_src}" "${stage}/note/${note_name}"
+fi
 staged_note="/note/${note_name}"
 attach=""
 if [[ "${fm_embed}" != "false" ]]; then attach="${staged_note}"; fi
