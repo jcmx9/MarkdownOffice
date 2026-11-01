@@ -121,7 +121,7 @@ Schrift, Größen, Satzbreite und die Blöcke über und unter dem Text (etwa Abs
 | Mod+Shift+H | YAML-Header in der Vorschau ein-/ausblenden (ausgeblendet erscheint der Titelblock wie im PDF) |
 | Mod+Shift+O | Gliederung ein/aus (je Modus gemerkt) |
 | Mod+Shift+F | Fokus ein/aus: Kapitelüberschriften, der Pfad zum Abschnitt mit dem Cursor und nur dessen Text (Präsentation startet immer mit Fokus) |
-| Bild ab / Bild auf | im Fokus: nächster bzw. vorheriger Abschnitt mit Text (auch Präsentations-Fernbedienungen) |
+| Bild ab / Bild auf | im Fokus: nächster bzw. vorheriger Abschnitt mit Text (auch Präsentations-Fernbedienungen); beim Präsentieren im Fokus ebenso die Pfeile ← → in der Infozeile |
 | Mod+Shift+T | Formatierungsleiste ein/aus (siehe [Formatierungsleiste](#formatierungsleiste)) |
 | macOS Cmd+Alt+[ / ], sonst Ctrl+Shift+[ / ] | Abschnitt ein-/ausklappen |
 | macOS Ctrl+Alt+[ / ], sonst Alt+0 / Alt+Shift+0 | Alle Abschnitte ein-/ausklappen |

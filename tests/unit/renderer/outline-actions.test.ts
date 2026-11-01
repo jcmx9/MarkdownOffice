@@ -12,6 +12,7 @@ import {
   foldsChanged,
   jumpToEntry,
   OutlineSync,
+  stepSection,
   toggleEntryFold,
 } from '../../../src/renderer/editor/outline-actions'
 import { lineIsRendered, quietCursor } from '../../../src/renderer/editor/rendered'
@@ -112,6 +113,22 @@ describe('toggleEntryFold after the folded section changed', () => {
     const view = drifted()
     toggleEntryFold(view, { ...first(view), folded: false })
     expect(folds(view)).toEqual([])
+  })
+})
+
+describe('stepSection', () => {
+  it('skips a heading directly followed by the next one, quietly, both ways', () => {
+    const doc = '# A\ntext a\n\n# B\n\n## B1\n\ntext b1\n\n# C\ntext c\n'
+    const view = mkView(doc)
+    view.dispatch({ selection: { anchor: doc.indexOf('text a') } })
+    expect(stepSection(view, 1)).toBe(true)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('## B1') + '## B1'.length)
+    expect(view.state.field(quietCursor)).toBe(true)
+    expect(stepSection(view, 1)).toBe(true)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('# C') + '# C'.length)
+    expect(stepSection(view, 1)).toBe(false)
+    expect(stepSection(view, -1)).toBe(true)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('## B1') + '## B1'.length)
   })
 })
 

@@ -413,3 +413,23 @@ test('the status switches change view and mode; the info line returns to Edit', 
   if (!linux) await expect.poll(() => fullScreen(app)).toBe(false)
   await app.close()
 })
+
+test('focus: the info line arrows step through the sections', async () => {
+  const { app, page } = await openFixture()
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('#infoline')).toBeVisible()
+  const next = page.getByTestId('il-next')
+  await expect(next).toBeVisible()
+  const before = await page.evaluate(() => document.querySelector('.cm-content')?.textContent)
+  await next.click()
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('.cm-content')?.textContent))
+    .not.toBe(before)
+  // The first step reaches the first section with text; only from the second one a way back exists.
+  await expect(page.getByTestId('il-prev')).toBeDisabled()
+  await next.click()
+  await expect(page.getByTestId('il-prev')).toBeEnabled()
+  await page.getByTestId('il-focus').click()
+  await expect(next).toBeHidden()
+  await app.close()
+})

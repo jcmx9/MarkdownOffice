@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Present with focus: arrows ← → in the info line step to the previous or next section; a heading directly followed by the next one is skipped
 - Profiles for every set: a profile holds default values for the set's header fields, a value in the note wins; „Profil anlegen …“ is fixed to the shown note's set and starts from the header fields where a set has no example profile
 - Tables: „Zeile darüber einfügen“, „Spalte links einfügen“ and „Tabelle löschen“ in the toolbar's table menu and the Format menu
 

@@ -121,7 +121,7 @@ Font, sizes, text width and the blocks above and below the text (such as a lette
 | Mod+Shift+H | Show/hide the YAML header in the preview (hidden, the title block appears as in the PDF) |
 | Mod+Shift+O | Toggle outline (remembered per mode) |
 | Mod+Shift+F | Toggle focus: chapter headings, the path to the section with the cursor and only its text (Present always starts with focus) |
-| Page Down / Page Up | in focus: next or previous section with text (presenter remotes too) |
+| Page Down / Page Up | in focus: next or previous section with text (presenter remotes too); while presenting with focus also the arrows ← → in the info line |
 | Mod+Shift+T | Toggle the formatting toolbar (see [Formatting toolbar](#formatting-toolbar)) |
 | macOS Cmd+Alt+[ / ], otherwise Ctrl+Shift+[ / ] | Fold/unfold section |
 | macOS Ctrl+Alt+[ / ], otherwise Alt+0 / Alt+Shift+0 | Fold/unfold all sections |

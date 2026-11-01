@@ -36,7 +36,7 @@ import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header
 import { headerNote, insertTemplate } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
-import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
+import { jumpToEntry, OutlineSync, stepSection, toggleEntryFold } from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
 import { carrySelection, textChange } from './editor/reload-map'
@@ -233,6 +233,7 @@ export class App {
         this.outline.update(trs)
         // Every transaction may move the cursor into or out of a format (active state).
         this.toolbarSync.schedule()
+        if (trs.some((tr) => tr.selection)) this.renderSectionStep()
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           // The toolbar update is already scheduled for the next frame above: a burst of typing
@@ -310,6 +311,7 @@ export class App {
       zoomOut: () => this.setZoom(zoomOut(this.zoom[this.mode])),
       toggleOutline: () => void this.command('toggle-outline'),
       toggleFocus: () => void this.command('toggle-focus'),
+      stepSection: (dir) => stepSection(this.editor, dir),
     })
     this.outline = new OutlineSync(
       new Outline(root.outline, {
@@ -787,14 +789,27 @@ export class App {
     const dir = e.key === 'PageDown' ? 1 : -1
     const state = this.editor.state
     if (state.field(focusHiddenField, false)) {
-      const target = focusStepTarget(state, state.selection.main.head, dir)
-      if (target !== null)
-        this.editor.dispatch({ selection: { anchor: target }, userEvent: 'select' })
+      stepSection(this.editor, dir)
     } else {
       const page = this.editor.scrollDOM.clientHeight * 0.9
       this.editor.scrollDOM.scrollBy({ top: dir * page })
     }
     return true
+  }
+
+  /** Present's arrows: shown with focus on, resting at the first and last section with text. */
+  private renderSectionStep(): void {
+    if (this.mode !== 'present') return
+    const state = this.editor.state
+    const head = state.selection.main.head
+    this.infoLine.renderStep(
+      state.field(focusHiddenField, false)
+        ? {
+            prev: focusStepTarget(state, head, -1) !== null,
+            next: focusStepTarget(state, head, 1) !== null,
+          }
+        : null,
+    )
   }
 
   private setZoom(next: number): void {
@@ -2113,6 +2128,7 @@ export class App {
         this.outlineOn.present,
         this.focusOn.present,
       )
+      this.renderSectionStep()
     }
   }
 

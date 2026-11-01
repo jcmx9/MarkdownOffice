@@ -21,11 +21,19 @@ export interface InfoLineActions {
   toggleOutline(): void
   /** Focus mode on/off for Present (the same command as Mod+Shift+F). */
   toggleFocus(): void
+  /** The next (1) or previous (-1) section with text of its own. */
+  stepSection(dir: 1 | -1): void
+}
+
+/** Which arrows can step from the shown section; null hides them (focus is off). */
+export interface SectionStep {
+  prev: boolean
+  next: boolean
 }
 
 /**
- * Present's only chrome: clock, mode and view switches, outline and focus toggles, tabs, zoom,
- * save state.
+ * Present's only chrome: clock, mode and view switches, outline and focus toggles, section
+ * arrows (focus only), tabs, zoom, save state.
  */
 export class InfoLine {
   private readonly clock: Clock
@@ -33,6 +41,9 @@ export class InfoLine {
   /** Like Edit's status line; the YAML toggle stays out because Present refuses it. */
   private readonly outline: HTMLButtonElement
   private readonly focus: HTMLButtonElement
+  private readonly steps = document.createElement('span')
+  private readonly prev: HTMLButtonElement
+  private readonly next: HTMLButtonElement
   private readonly tabs = document.createElement('span')
   private readonly zoom = document.createElement('span')
   private readonly state = document.createElement('span')
@@ -67,6 +78,15 @@ export class InfoLine {
     const toggles = document.createElement('span')
     toggles.className = 'mdo-switches'
     toggles.append(this.outline, this.focus)
+    this.prev = chromeButton('il-prev', '←', 'Vorheriger Abschnitt (Bild auf)', () =>
+      actions.stepSection(-1),
+    )
+    this.next = chromeButton('il-next', '→', 'Nächster Abschnitt (Bild ab)', () =>
+      actions.stepSection(1),
+    )
+    this.steps.className = 'mdo-switches'
+    this.steps.hidden = true
+    this.steps.append(this.prev, this.next)
     this.tabs.className = 'mdo-il-tabs'
     this.zoom.className = 'mdo-il-zoom'
     this.zoom.dataset.testid = 'il-zoom'
@@ -78,6 +98,7 @@ export class InfoLine {
       this.clock.el,
       this.switches.el,
       toggles,
+      this.steps,
       this.tabs,
       spacer,
       chromeButton('il-zoom-out', '−', 'Verkleinern', () => actions.zoomOut()),
@@ -123,5 +144,12 @@ export class InfoLine {
     })
     this.state.textContent = saveText
     this.zoom.textContent = zoomLabel(zoom)
+  }
+
+  /** Separate from render(): the arrows follow every cursor move, not only refreshes. */
+  renderStep(step: SectionStep | null): void {
+    this.steps.hidden = step === null
+    this.prev.disabled = !step?.prev
+    this.next.disabled = !step?.next
   }
 }
