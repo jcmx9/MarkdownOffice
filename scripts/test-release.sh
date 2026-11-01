@@ -116,6 +116,7 @@ cat >"${fakebin}/gh" <<'GH'
 # FAKE_MERGE_NOOP: `pr merge --rebase` leaves the base unchanged.
 # FAKE_HOTFIX_FILE=<file>: after a rebase-merge, a hotfix commit on the base rewrites it.
 # FAKE_DEV_FILE=<file>: after a rebase-merge, someone else pushes a change of it to dev.
+# FAKE_DEV_ENTRY=<text>: after a rebase-merge, a PR adds it to dev's CHANGELOG [Unreleased].
 set -euo pipefail
 bare="${FAKE_ORIGIN}"
 state="${FAKE_STATE}"
@@ -172,6 +173,12 @@ github_rebase() {
     git -C "${wt}/w" checkout -q dev
     echo "dev later" >"${wt}/w/${FAKE_DEV_FILE}"
     git -C "${wt}/w" commit -q -am "fix: concurrent change on dev"
+    git -C "${wt}/w" push -q origin dev
+  fi
+  if [[ -n "${FAKE_DEV_ENTRY:-}" ]]; then
+    git -C "${wt}/w" checkout -q dev
+    echo "${FAKE_DEV_ENTRY}" >>"${wt}/w/CHANGELOG.md"
+    git -C "${wt}/w" commit -q -am "feat: merged during the release"
     git -C "${wt}/w" push -q origin dev
   fi
   rm -rf "${wt}"
@@ -505,6 +512,15 @@ FAKE_HOTFIX_FILE=a.txt run_release prod >"${tmp}/out.txt" 2>&1 || { cat "${tmp}/
 expect_eq "hotfix on main: dev gets it" "$(git -C "${FAKE_ORIGIN}" show dev:a.txt)" "hotfix"
 expect_eq "hotfix on main: dev continues" "$(pkg_version "${FAKE_ORIGIN}" dev)" "26.10.1-dev.0"
 expect_local_clean_dev "hotfix on main"
+
+# 3d2. CHANGELOG entries merged during the release stay unreleased -----------
+setup_repo
+dev_commit a.txt "dev"
+FAKE_DEV_ENTRY=$'- late\n\n### Fixed\n- other' run_release prod >"${tmp}/out.txt" 2>&1 || { cat "${tmp}/out.txt"; fail "prod with a late CHANGELOG entry failed"; }
+expect_eq "late entries: released section as tagged, entries under [Unreleased]" \
+  "$(git -C "${FAKE_ORIGIN}" show dev:CHANGELOG.md)" \
+  $'# Changelog\n\n## [Unreleased]\n\n### Added\n- late\n\n### Fixed\n- other\n\n## [26.10.0] - 2026-10-15\n\n### Added\n- first'
+expect_local_clean_dev "late entries"
 
 # 3e. back-merge with a real conflict aborts cleanly -------------------------
 setup_repo

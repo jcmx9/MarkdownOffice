@@ -510,6 +510,85 @@ merge_release_into_dev() {
     g -c merge.conflictStyle=merge apply -3 >/dev/null 2>&1
 }
 
+# A PR merged while the release runs adds to dev's [Unreleased]. The release delta then puts
+# "## [<version>]" above those lines without a conflict, so they would land in the released
+# section (scripts/check-changelog.sh fails every later PR on that). Restores the section as
+# tagged and moves what is new in it back under [Unreleased], in the same ### group.
+keep_late_changelog_entries() {
+  local version="$1" file="${root}/CHANGELOG.md" tagged fixed rc=0
+  tagged="$(mktemp)"
+  fixed="$(mktemp)"
+  g show "v${version}:CHANGELOG.md" >"${tagged}" ||
+    die "${EXIT_STEP}" "CHANGELOG.md von v${version} nicht lesbar."
+  awk -v want="## [${version}]" '
+    function flush(   i, line, group, key) {
+      print ""
+      group = ""
+      for (i = 1; i <= kept; i++) {
+        line = open[i]
+        if (line ~ /^### /) {
+          emit(group)
+          group = line
+          has[group] = 1
+          print line
+        } else if (line ~ /[^[:space:]]/) {
+          print line
+        }
+      }
+      emit(group)
+      for (i = 1; i <= groups; i++) {
+        key = order[i]
+        if (key == "" || has[key]) continue
+        print key
+        emit(key)
+      }
+      print title
+      for (i = 1; i <= n; i++) print sec[i]
+    }
+    function emit(group) {
+      if (group in late) printf "%s", late[group]
+      if (group != "" || group in late) print ""
+      delete late[group]
+    }
+    FNR == 1 { file++ }
+    file == 1 {
+      if (index($0, want) == 1) { inside = 1; next }
+      if (inside && /^## \[/) inside = 0
+      if (inside) { sec[++n] = $0; seen[$0] = 1 }
+      next
+    }
+    phase == 0 { print; if ($0 == "## [Unreleased]") phase = 1; next }
+    phase == 1 {
+      if (index($0, want) == 1) { title = $0; phase = 2; next }
+      if (/^## \[/) exit
+      open[++kept] = $0
+      next
+    }
+    phase == 2 {
+      if (/^## \[/) { flush(); phase = 3; print; next }
+      if ($0 != sec[++k]) changed = 1
+      if (/^### /) { cur = $0; next }
+      if (/[^[:space:]]/ && !($0 in seen)) {
+        if (!(cur in late)) order[++groups] = cur
+        late[cur] = late[cur] $0 "\n"
+      }
+      next
+    }
+    { print }
+    END {
+      if (phase == 2) flush()
+      if (phase < 2 || (!changed && k == n)) exit 3
+    }
+  ' "${tagged}" "${file}" >"${fixed}" || rc=$?
+  if [[ "${rc}" -eq 0 ]]; then
+    cat "${fixed}" >"${file}"
+    g add -- CHANGELOG.md
+    note "CHANGELOG: Einträge, die während des Releases dazukamen, stehen wieder unter [Unreleased]."
+  fi
+  rm -f "${tagged}" "${fixed}"
+  [[ "${rc}" -eq 0 || "${rc}" -eq 3 ]] || die "${EXIT_STEP}" "CHANGELOG.md konnte nicht geprüft werden."
+}
+
 # Merge main into dev and set the next dev version. Only the version lines of
 # package.json/package-lock.json and the READMEs may conflict; anything else aborts with nothing pushed.
 back_merge() {
@@ -546,6 +625,7 @@ back_merge() {
       fi
       for f in "${files[@]}"; do resolve_side ours "${f}"; done
     fi
+    keep_late_changelog_entries "${version}"
     bump_files "${next_dev}"
     g add -- "${version_files[@]}"
     commit_plain -m "chore(release): back-merge ${tag} into dev" -m "dev continues at ${next_dev}." ||
