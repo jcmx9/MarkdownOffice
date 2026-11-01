@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Tables: „Zeile darüber einfügen“, „Spalte links einfügen“ and „Tabelle löschen“ in the toolbar's table menu and the Format menu
+
 ## [26.10.14] - 2026-10-31
 
 ### Added
