@@ -425,6 +425,9 @@ test('focus: the info line arrows step through the sections', async () => {
   await expect
     .poll(() => page.evaluate(() => document.querySelector('.cm-content')?.textContent))
     .not.toBe(before)
+  // The first step reaches the first section with text; only from the second one a way back exists.
+  await expect(page.getByTestId('il-prev')).toBeDisabled()
+  await next.click()
   await expect(page.getByTestId('il-prev')).toBeEnabled()
   await page.getByTestId('il-focus').click()
   await expect(next).toBeHidden()
