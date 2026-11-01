@@ -236,10 +236,13 @@ export function buildMenuTemplate(d: MenuDeps): MenuItemConstructorOptions[] {
       sep,
       item('format-link', 'Link'),
       sep,
+      item('table-row-above', 'Tabellenzeile darüber einfügen'),
       item('table-row-below', 'Tabellenzeile darunter einfügen'),
+      item('table-col-left', 'Tabellenspalte links einfügen'),
       item('table-col-right', 'Tabellenspalte rechts einfügen'),
       item('table-row-delete', 'Tabellenzeile löschen'),
       item('table-col-delete', 'Tabellenspalte löschen'),
+      item('table-delete', 'Tabelle löschen'),
     ],
   }
 

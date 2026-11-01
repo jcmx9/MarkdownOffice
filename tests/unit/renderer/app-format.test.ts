@@ -139,7 +139,7 @@ describe('toolbarState', () => {
       shown: 'markdown',
       state: view('| a | b |\n| --- | --- |\n| 1 | 2 |', 30).state,
     })
-    expect(t.table).toEqual({ inTable: true, rowDelete: true, colDelete: true })
+    expect(t.table).toEqual({ inTable: true, rowAbove: true, rowDelete: true, colDelete: true })
     expect(t.active.has('table')).toBe(true)
   })
 })
@@ -187,6 +187,6 @@ describe('menu command coverage', () => {
       if (cmd === 'insert-table') continue
       expect(formatAction(cmd), cmd).not.toBeNull()
     }
-    expect(FORMAT_COMMANDS.size).toBe(23)
+    expect(FORMAT_COMMANDS.size).toBe(26)
   })
 })

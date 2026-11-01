@@ -8,7 +8,8 @@ import { presentMode } from './mode'
 
 /**
  * Table editing for the toolbar's „Tabelle ▾“ and the Format menu: insert a GFM table, add a
- * row below or a column right of the cursor, delete the cursor's row or column.
+ * row above or below or a column left or right of the cursor, delete the cursor's row or column
+ * or the whole table.
  *
  * Every command edits minimally (spec „Tables“): only the inserted or deleted cell spans
  * change, so the text, padding and escaped `\|` of all other cells stay byte-identical, and a
@@ -320,6 +321,16 @@ export function insertTable(view: EditorView, cols: number, rows: number): boole
   return true
 }
 
+/** Row above the cursor's body row; nothing can go above the header or between it and `---`. */
+export const tableRowAbove: Command = (view) => {
+  const ctx = context(view.state)
+  if (!ctx || ctx.r < 2) return false
+  const at = (ctx.rows[ctx.r] as RowLayout).line.from
+  const nl = view.state.lineBreak
+  dispatch(view, 'row-above', { from: at, insert: emptyRow(ctx.n) + nl }, () => at + 2)
+  return true
+}
+
 /** Row below the cursor's row (on the header or delimiter row: the first body row). */
 export const tableRowBelow: Command = (view) => {
   const ctx = context(view.state)
@@ -339,7 +350,38 @@ export const tableRowBelow: Command = (view) => {
 export const tableColRight: Command = (view) => {
   const ctx = context(view.state)
   if (!ctx) return false
-  const { c } = ctx
+  insertColRightOf(view, ctx, ctx.c, 'col-right')
+  return true
+}
+
+/**
+ * One empty cell left of the cursor's column: right of its neighbour, like tableColRight (a short
+ * row is padded the same way). The first column has no neighbour, so every row gets a new first
+ * cell; a row without leading pipe must open one, since an empty first cell without it vanishes
+ * (see emptyRow).
+ */
+export const tableColLeft: Command = (view) => {
+  const ctx = context(view.state)
+  if (!ctx) return false
+  if (ctx.c > 0) {
+    insertColRightOf(view, ctx, ctx.c - 1, 'col-left')
+    return true
+  }
+  const changes: ChangeSpec[] = []
+  let cursor = { pos: 0, offset: 0 }
+  ctx.rows.forEach((row, r) => {
+    const cell = r === 1 ? ' --- ' : '   '
+    const leading = row.pipes[0]
+    const pos = row.leading && leading !== undefined ? leading + 1 : (row.cells[0]?.from ?? row.end)
+    changes.push({ from: pos, insert: row.leading ? `${cell}|` : `|${cell}| ` })
+    if (r === ctx.r) cursor = { pos, offset: row.leading ? 1 : 2 }
+  })
+  dispatch(view, 'col-left', changes, (map) => map(cursor.pos) + cursor.offset)
+  return true
+}
+
+/** Inserts the column right of column `c`; the cursor lands in the new cell of its own row. */
+function insertColRightOf(view: EditorView, ctx: Context, c: number, op: string): void {
   // The cursor may sit in an extra cell beyond the header; the new column is then c + 1.
   const target = Math.max(ctx.n, c + 1) + 1
   const changes: ChangeSpec[] = []
@@ -366,8 +408,7 @@ export const tableColRight: Command = (view) => {
     }
     if (tail) changes.push({ from: row.end, insert: tail })
   })
-  dispatch(view, 'col-right', changes, (map) => map(cursor.pos) + cursor.offset)
-  return true
+  dispatch(view, op, changes, (map) => map(cursor.pos) + cursor.offset)
 }
 
 /** Deletes the cursor's body row; the header and delimiter rows cannot be deleted. */
@@ -432,15 +473,49 @@ export const tableColDelete: Command = (view) => {
   return true
 }
 
-/** Enabled flags for the table menu and grid: in a table, row delete, column delete. */
+/**
+ * Deletes the whole table with one blank line next to it, so the paragraphs around it keep the
+ * single blank line between them and the note does not end in an extra empty line.
+ */
+export const tableDelete: Command = (view) => {
+  const { state } = view
+  const ctx = context(state)
+  if (!ctx) return false
+  const doc = state.doc
+  const first = (ctx.rows[0] as RowLayout).line
+  const last = (ctx.rows[ctx.rows.length - 1] as RowLayout).line
+  const line = (n: number) => (n >= 1 && n <= doc.lines ? doc.line(n) : null)
+  const blank = (l: { text: string } | null) => l !== null && isBlank(l.text)
+  const next = line(last.number + 1)
+  const behind = line(last.number + 2)
+  const before = line(first.number - 1)
+  let from = first.from
+  let to = last.to
+  if (next && !blank(next)) {
+    to = next.from
+  } else if (behind) {
+    to = behind.from
+  } else {
+    // At the note's end the blank line before the table goes instead.
+    if (blank(before)) from = before?.from ?? from
+    if (next) to = next.from
+    else if (before) from = Math.max(from - 1, 0)
+  }
+  dispatch(view, 'delete', { from, to }, () => from)
+  return true
+}
+
+/** Enabled flags for the table menu and grid: in a table, row above, row and column delete. */
 export function tableCommandState(state: EditorState): {
   inTable: boolean
+  rowAbove: boolean
   rowDelete: boolean
   colDelete: boolean
 } {
   const ctx = context(state)
   return {
     inTable: ctx !== null,
+    rowAbove: ctx !== null && ctx.r >= 2,
     rowDelete: ctx !== null && ctx.r >= 2,
     colDelete: ctx !== null && ctx.n > 1,
   }

@@ -10,8 +10,11 @@ import {
   insertTable,
   tableAt,
   tableColDelete,
+  tableColLeft,
   tableColRight,
   tableCommandState,
+  tableDelete,
+  tableRowAbove,
   tableRowBelow,
   tableRowDelete,
 } from '../../../src/renderer/editor/table-edit'
@@ -496,12 +499,90 @@ describe('tableColDelete', () => {
   })
 })
 
+describe('tableRowAbove', () => {
+  it('inserts an empty row above the cursor, cursor in its first cell', () => {
+    const v = make('| A | B |\n|---|---|\n| 1 | 2 |\n| 3‸ | 4 |')
+    expect(runUndoable(v, tableRowAbove)).toBe(
+      '| A | B |\n|---|---|\n| 1 | 2 |\n| ‸  |   |\n| 3 | 4 |',
+    )
+  })
+
+  it('works on the first body row, also without outer pipes', () => {
+    const v = make('a | b\n--|--\n1‸ | 2')
+    expect(runUndoable(v, tableRowAbove)).toBe('a | b\n--|--\n| ‸  |   |\n1 | 2')
+  })
+
+  it('refuses on the header and the delimiter row: nothing goes above a header', () => {
+    for (const doc of ['| A‸ |\n|---|\n| 1 |', '| A |\n|-‸--|\n| 1 |']) {
+      expect(tableRowAbove(make(doc))).toBe(false)
+    }
+  })
+})
+
+describe('tableColLeft', () => {
+  it('inserts a cell left of the cursor column in every row, cursor in the new header cell', () => {
+    const v = make('| A | B‸ |\n|---|:-:|\n| 1 | 2 |')
+    expect(runUndoable(v, tableColLeft)).toBe('| A | ‸  | B |\n|---| --- |:-:|\n| 1 |   | 2 |')
+  })
+
+  it('in the first column goes behind the leading pipe', () => {
+    const v = make('| A‸ | B |\n|---|---|\n| 1 | 2 |')
+    expect(runUndoable(v, tableColLeft)).toBe('| ‸  | A | B |\n| --- |---|---|\n|   | 1 | 2 |')
+  })
+
+  it('in the first column of a table without outer pipes opens a leading pipe', () => {
+    const v = make('a‸ | b\n--|--\n1 | 2')
+    expect(runUndoable(v, tableColLeft)).toBe('| ‸  | a | b\n| --- | --|--\n|   | 1 | 2')
+    expect(reparsedCells(v)).toEqual([
+      ['', 'a', 'b'],
+      ['---', '--', '--'],
+      ['', '1', '2'],
+    ])
+  })
+
+  it('keeps the cells of a short row in their columns', () => {
+    const v = make('| A | B | C‸ |\n|---|---|---|\n| 1 |')
+    expect(tableColLeft(v)).toBe(true)
+    expect(reparsedCells(v)[2]).toEqual(['1', '', '', ''])
+  })
+
+  it('keeps escaped pipes in their cell', () => {
+    const v = make('| a \\| b | c‸ |\n|---|---|')
+    expect(tableColLeft(v)).toBe(true)
+    expect(reparsedCells(v)[0]).toEqual(['a \\| b', '', 'c'])
+  })
+})
+
+describe('tableDelete', () => {
+  it.each([
+    [
+      'between paragraphs: one blank line stays',
+      'Vor\n\n| A‸ |\n|---|\n| 1 |\n\nNach',
+      'Vor\n\n‸Nach',
+    ],
+    ['at the note end with a final line break', 'Vor\n\n| A |\n|---|\n| 1‸ |\n', 'Vor\n‸'],
+    ['at the note end without one', 'Vor\n\n| A |\n|---|\n| 1‸ |', 'Vor‸'],
+    ['alone in the note', '| A‸ |\n|---|', '‸'],
+    ['directly before a heading', '| A‸ |\n|---|\n# H', '‸# H'],
+  ])('%s', (_n, doc, want) => {
+    expect(runUndoable(make(doc), tableDelete)).toBe(want)
+  })
+
+  it('leaves the other table alone', () => {
+    const v = make('| A |\n|---|\n\n| B‸ |\n|---|\n\n| C |\n|---|')
+    expect(runUndoable(v, tableDelete)).toBe('| A |\n|---|\n\n‸| C |\n|---|')
+  })
+})
+
 describe('table commands outside a table', () => {
   const cmds: [string, Command][] = [
+    ['row above', tableRowAbove],
     ['row below', tableRowBelow],
+    ['col left', tableColLeft],
     ['col right', tableColRight],
     ['row delete', tableRowDelete],
     ['col delete', tableColDelete],
+    ['table delete', tableDelete],
   ]
   it.each(cmds)('%s refuses outside a table, in a quoted table and in Present', (_n, cmd) => {
     for (const [doc, mode] of [
@@ -537,11 +618,11 @@ describe('selections', () => {
 
 describe('tableCommandState', () => {
   it.each([
-    ['Text‸', { inTable: false, rowDelete: false, colDelete: false }],
-    [at(TABLE, 'A'), { inTable: true, rowDelete: false, colDelete: true }],
-    [at(TABLE, ':-:'), { inTable: true, rowDelete: false, colDelete: true }],
-    [at(TABLE, '5'), { inTable: true, rowDelete: true, colDelete: true }],
-    ['| A |\n|---|\n| 1‸ |', { inTable: true, rowDelete: true, colDelete: false }],
+    ['Text‸', { inTable: false, rowAbove: false, rowDelete: false, colDelete: false }],
+    [at(TABLE, 'A'), { inTable: true, rowAbove: false, rowDelete: false, colDelete: true }],
+    [at(TABLE, ':-:'), { inTable: true, rowAbove: false, rowDelete: false, colDelete: true }],
+    [at(TABLE, '5'), { inTable: true, rowAbove: true, rowDelete: true, colDelete: true }],
+    ['| A |\n|---|\n| 1‸ |', { inTable: true, rowAbove: true, rowDelete: true, colDelete: false }],
   ])('%j', (doc, want) => {
     expect(tableCommandState(make(doc).state)).toEqual(want)
   })
@@ -549,6 +630,7 @@ describe('tableCommandState', () => {
   it('is all false in Present', () => {
     expect(tableCommandState(make(at(TABLE, '5'), 'present').state)).toEqual({
       inTable: false,
+      rowAbove: false,
       rowDelete: false,
       colDelete: false,
     })
