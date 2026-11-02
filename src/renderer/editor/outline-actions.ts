@@ -2,6 +2,7 @@ import { foldEffect, foldedRanges, unfoldEffect } from '@codemirror/language'
 import type { EditorState, Transaction, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { focusHiddenField, focusStepTarget, pathTop } from './focus'
+import { frontmatterRange } from './frontmatter'
 import {
   activeEntry,
   foldsAt,
@@ -52,6 +53,22 @@ export function stepSection(view: EditorView, dir: 1 | -1): boolean {
   if (to === null) return false
   jumpToHeading(view, { from: view.state.doc.lineAt(to).from, to }, true)
   return true
+}
+
+/**
+ * A Present starts at the top of page one, wherever the cursor was in the editor (owner,
+ * 2026-11-02): the cursor goes behind the header, quiet, so the arrow keys step from there and no
+ * caret blinks. Clicking into the text edits as usual.
+ */
+export function showFirstPage(view: EditorView): void {
+  const { doc } = view.state
+  const header = frontmatterRange(doc)
+  const anchor = header ? Math.min(doc.lineAt(header.to).to + 1, doc.length) : 0
+  view.dispatch({
+    selection: { anchor },
+    effects: [EditorView.scrollIntoView(0, { y: 'start' }), setQuietCursor.of(true)],
+  })
+  view.contentDOM.blur()
 }
 
 function jumpToHeading(

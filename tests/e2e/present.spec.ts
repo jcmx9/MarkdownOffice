@@ -264,6 +264,8 @@ test('entering Present with the cursor in the header moves it out; typing spares
   await page.locator('.cm-line', { hasText: 'toptitle:' }).click()
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('.cm-editor.mdo-present .mdo-tb-title')).toBeVisible()
+  // Present starts without keyboard focus; a click into the text edits.
+  await page.locator('.cm-content').click({ position: { x: 5, y: 5 } })
   await page.keyboard.type('Zwischenruf')
   const saved = (
     await waitForFile(note, (b) => b.toString('utf8').includes('Zwischenruf'))
@@ -411,6 +413,27 @@ test('the status switches change view and mode; the info line returns to Edit', 
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(0)
   await expect(page.getByTestId('status-edit')).toHaveClass(/active/)
   if (!linux) await expect.poll(() => fullScreen(app)).toBe(false)
+  await app.close()
+})
+
+test('Present starts at the top of page one; the arrow keys step until the text is clicked', async () => {
+  const { app, page } = await openFixture()
+  await page.locator('.cm-line', { hasText: 'Text unter drei Rauten' }).click()
+  await clickMenu(app, 'toggle-present')
+  await expect(page.locator('#infoline')).toBeVisible()
+  const slide = () => page.evaluate(() => document.querySelector('.cm-content')?.textContent)
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.className ?? ''))
+    .not.toContain('cm-content')
+  const first = await slide()
+  await expect(page.locator('.cm-line', { hasText: 'Text unter drei Rauten' })).toHaveCount(0)
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(slide).not.toBe(first)
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('il-prev')).toBeEnabled()
+  const third = await slide()
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(slide).not.toBe(third)
   await app.close()
 })
 

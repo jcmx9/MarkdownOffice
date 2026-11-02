@@ -36,7 +36,13 @@ import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header
 import { headerNote, insertTemplate } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
-import { jumpToEntry, OutlineSync, stepSection, toggleEntryFold } from './editor/outline-actions'
+import {
+  jumpToEntry,
+  OutlineSync,
+  showFirstPage,
+  stepSection,
+  toggleEntryFold,
+} from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
 import { carrySelection, textChange } from './editor/reload-map'
@@ -776,23 +782,30 @@ export class App {
   }
 
   /**
-   * Present after an outline click: the editor has no keyboard focus (quiet cursor), so Page
-   * Down/Page Up (presenter remotes) are taken here. With focus on they step to the next or
-   * previous section as in the text; otherwise they scroll a page.
+   * Present while the text is not being edited: the editor has no keyboard focus (quiet cursor,
+   * from the start of a Present and after an outline click), so Page Down/Page Up (presenter
+   * remotes) and, with focus on, the arrow keys ← → are taken here. With focus on they step to the
+   * next or previous section as in the text; otherwise Page Down/Up scroll a page and the arrow
+   * keys stay free. A click into the text gives them back to the cursor.
    */
   private presentPageKey(e: KeyboardEvent): boolean {
     if (this.mode !== 'present' || this.shownId === null || this.editor.hasFocus) return false
-    if ((e.key !== 'PageDown' && e.key !== 'PageUp') || e.defaultPrevented) return false
+    const page = e.key === 'PageDown' || e.key === 'PageUp'
+    const arrow = e.key === 'ArrowRight' || e.key === 'ArrowLeft'
+    if ((!page && !arrow) || e.defaultPrevented) return false
     if (document.querySelector('dialog[open]')) return false
-    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return false
+    // A table cell edited in place is contenteditable: its arrows move its caret.
+    const fields = 'input, textarea, select, [contenteditable]'
+    if (e.target instanceof HTMLElement && e.target.closest(fields)) return false
+    const focused = this.editor.state.field(focusHiddenField, false) !== undefined
+    if (arrow && (!focused || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey)) return false
     e.preventDefault()
-    const dir = e.key === 'PageDown' ? 1 : -1
-    const state = this.editor.state
-    if (state.field(focusHiddenField, false)) {
+    const dir = e.key === 'PageDown' || e.key === 'ArrowRight' ? 1 : -1
+    if (focused) {
       stepSection(this.editor, dir)
     } else {
-      const page = this.editor.scrollDOM.clientHeight * 0.9
-      this.editor.scrollDOM.scrollBy({ top: dir * page })
+      const height = this.editor.scrollDOM.clientHeight * 0.9
+      this.editor.scrollDOM.scrollBy({ top: dir * height })
     }
     return true
   }
@@ -1191,7 +1204,7 @@ export class App {
     this.applyZoom()
     this.applyOutline()
     this.refresh()
-    this.editor.focus()
+    showFirstPage(this.editor)
     await this.fullScreenOps.run(async () => {
       try {
         await this.mdo.setFullScreen(true)
@@ -1506,7 +1519,8 @@ export class App {
       .catch((e: unknown) => console.error('saveSession(focus) failed', e))
     this.refresh()
     this.editor.dispatch({ scrollIntoView: true })
-    this.editor.focus()
+    // Presenting, not editing: the arrow keys stay on the sections (presentPageKey).
+    if (!this.editor.state.field(quietCursor, false)) this.editor.focus()
   }
 
   /** Outline on/off for the current mode; allowed in Present too. */

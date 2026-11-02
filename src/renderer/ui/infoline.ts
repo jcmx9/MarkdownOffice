@@ -32,8 +32,8 @@ export interface SectionStep {
 }
 
 /**
- * Present's only chrome: clock, mode and view switches, outline and focus toggles, section
- * arrows (focus only), tabs, zoom, save state.
+ * Present's only chrome: clock, mode and view switches, outline and focus toggles, tabs, section
+ * arrows (focus only, left of the zoom as the owner wanted, 2026-11-02), zoom, save state.
  */
 export class InfoLine {
   private readonly clock: Clock
@@ -78,10 +78,10 @@ export class InfoLine {
     const toggles = document.createElement('span')
     toggles.className = 'mdo-switches'
     toggles.append(this.outline, this.focus)
-    this.prev = chromeButton('il-prev', '←', 'Vorheriger Abschnitt (Bild auf)', () =>
+    this.prev = chromeButton('il-prev', '←', 'Vorheriger Abschnitt (← oder Bild auf)', () =>
       actions.stepSection(-1),
     )
-    this.next = chromeButton('il-next', '→', 'Nächster Abschnitt (Bild ab)', () =>
+    this.next = chromeButton('il-next', '→', 'Nächster Abschnitt (→ oder Bild ab)', () =>
       actions.stepSection(1),
     )
     this.steps.className = 'mdo-switches'
@@ -98,9 +98,9 @@ export class InfoLine {
       this.clock.el,
       this.switches.el,
       toggles,
-      this.steps,
       this.tabs,
       spacer,
+      this.steps,
       chromeButton('il-zoom-out', '−', 'Verkleinern', () => actions.zoomOut()),
       this.zoom,
       chromeButton('il-zoom-in', '+', 'Vergrößern', () => actions.zoomIn()),

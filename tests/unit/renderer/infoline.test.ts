@@ -25,6 +25,12 @@ describe('formatClock', () => {
 })
 
 describe('InfoLine', () => {
+  it('puts the section arrows directly left of the zoom', () => {
+    const el = document.createElement('footer')
+    new InfoLine(el, actions())
+    expect(q(el, 'il-prev').parentElement?.nextElementSibling).toBe(q(el, 'il-zoom-out'))
+  })
+
   it('shows the section arrows only with a step, resting at the ends', () => {
     const el = document.createElement('footer')
     const a = actions()
