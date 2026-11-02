@@ -13,6 +13,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Profiles for every set: a profile holds default values for the set's header fields, a value in the note wins; „Profil anlegen …“ is fixed to the shown note's set and starts from the header fields where a set has no example profile
 - Tables: „Zeile darüber einfügen“, „Spalte links einfügen“ and „Tabelle löschen“ in the toolbar's table menu and the Format menu
 
+### Fixed
+- App update: `update.log` in the app's data folder now also holds the app's own steps and why an update stopped, so a helper that never starts leaves a trace; „Protokoll zeigen“ always opens the file manager on it, before it did nothing without a log
+
 ## [26.10.14] - 2026-10-31
 
 ### Added

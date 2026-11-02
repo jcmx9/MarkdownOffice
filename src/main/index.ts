@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, promises as fs } from 'node:fs'
+import { appendFileSync, existsSync, promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { app, dialog, net } from 'electron'
 import { Ch } from '../shared/ipc'
@@ -137,9 +137,13 @@ function appUpdater(enabled: () => boolean, progress: (p: AppUpdateProgress) => 
       () => true,
       () => false,
     )
+  const logPath = join(userData, 'update.log')
+  // Synchronous: the last lines are written while the app is ending.
+  const log = (line: string) => appendFileSync(logPath, `${line} (${new Date().toString()})\n`)
   return new AppUpdater({
     statePath: join(userData, 'app-update.json'),
-    logPath: join(userData, 'update.log'),
+    logPath,
+    log,
     pidPath: join(userData, 'update.pid'),
     arch: process.arch,
     version: app.getVersion(),
@@ -190,7 +194,16 @@ function appUpdater(enabled: () => boolean, progress: (p: AppUpdateProgress) => 
       const env = { ...process.env }
       delete env.MDO_HOME
       if (mdoHome) env.MDO_HOME = mdoHome
-      spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, env }).unref()
+      const child = spawn(command, args, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        env,
+      })
+      // A missing command arrives as an event, not as a throw.
+      child.on('error', (err) => log(`mdo-update: helper failed: ${err.message}`))
+      log(`mdo-update: helper pid ${child.pid ?? 'none'}`)
+      child.unref()
     },
     pid: process.pid,
     quit: () => app.quit(),

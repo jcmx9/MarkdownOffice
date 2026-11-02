@@ -488,9 +488,11 @@ async function updater(o: Partial<UpdaterDeps> = {}) {
   const progress = vi.fn()
   const removed: string[] = []
   const written = new Map<string, string>()
+  const logged: string[] = []
   const deps: UpdaterDeps = {
     statePath: join(dir, 'app-update.json'),
     logPath: join(dir, 'update.log'),
+    log: (line) => logged.push(line),
     pidPath: join(dir, 'update.pid'),
     version: '26.10.6',
     packaged: true,
@@ -528,7 +530,7 @@ async function updater(o: Partial<UpdaterDeps> = {}) {
     quit,
     ...o,
   }
-  return { u: new AppUpdater(deps), deps, spawn, quit, written, progress, removed }
+  return { u: new AppUpdater(deps), deps, spawn, quit, written, progress, removed, logged }
 }
 
 describe('AppUpdater', () => {
@@ -628,6 +630,45 @@ describe('AppUpdater', () => {
     expect(quit).not.toHaveBeenCalled()
     u.onWillQuit()
     expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('log: the app notes its steps up to the helper', async () => {
+    const { u, logged } = await updater()
+    await u.check(true)
+    await u.install('26.10.7')
+    u.onWillQuit()
+    expect(logged).toEqual([
+      'mdo-update: app 26.10.6 starts the update to 26.10.7',
+      'mdo-update: archive checked, the app quits',
+      'mdo-update: app ends, starting the helper (/bin/sh)',
+    ])
+  })
+
+  it('log: a stopped update and a helper that cannot start leave their reason', async () => {
+    const bad = await updater({ fetch: network({ archive: 'tampered' }) })
+    await bad.u.check(true)
+    await bad.u.install('26.10.7')
+    expect(bad.logged.at(-1)).toMatch(/^mdo-update: stopped: .*Prüfsumme/)
+    const dead = await updater({
+      spawn: () => {
+        throw new Error('blocked')
+      },
+    })
+    await dead.u.check(true)
+    await dead.u.install('26.10.7')
+    dead.u.onWillQuit()
+    expect(dead.logged.at(-1)).toBe('mdo-update: helper did not start: blocked')
+  })
+
+  it('log: a log that cannot be written does not stop the update', async () => {
+    const { u, quit } = await updater({
+      log: () => {
+        throw new Error('disk full')
+      },
+    })
+    await u.check(true)
+    expect(await u.install('26.10.7')).toBeNull()
+    expect(quit).toHaveBeenCalledOnce()
   })
 
   it('install: SHA256SUMS without this archive refuses before any download', async () => {
