@@ -477,8 +477,10 @@ export function checkResult(
 export interface UpdaterDeps {
   /** <userData>/app-update.json */
   statePath: string
-  /** <userData>/update.log: the helper's output. */
+  /** <userData>/update.log: the app's own steps and the helper's output. */
   logPath: string
+  /** Appends one line to the log at once: it must be on disk before the app ends. */
+  log(line: string): void
   /** <userData>/update.pid: written by the helper while it installs. */
   pidPath: string
   version: string
@@ -528,6 +530,19 @@ export class AppUpdater {
 
   get logPath(): string {
     return this.d.logPath
+  }
+
+  /**
+   * The app's steps in update.log: a helper that never ran writes nothing itself, and a failed
+   * update on Windows left no file at all (owner, 2026-11-02). A log that cannot be written
+   * must not stop the update.
+   */
+  private note(line: string): void {
+    try {
+      this.d.log(`mdo-update: ${line}`)
+    } catch (err) {
+      console.warn('app update: log not written', err)
+    }
   }
 
   /** Serialises every read-modify-write of the state file. */
@@ -592,6 +607,14 @@ export class AppUpdater {
    * cancelled, or null when the quit is under way.
    */
   async install(version: string): Promise<string | null> {
+    this.note(`app ${this.d.version} starts the update to ${version}`)
+    const result = await this.prepare(version)
+    if (result === '') this.note('cancelled by the user')
+    else if (result !== null) this.note(`stopped: ${result}`)
+    return result
+  }
+
+  private async prepare(version: string): Promise<string | null> {
     if (!isReleaseVersion(version) || !this.offered.has(version))
       return 'Diese Version wurde nicht angeboten.'
     if (this.download) return 'Das Update wird schon geladen.'
@@ -647,6 +670,7 @@ export class AppUpdater {
       })
       await this.withState((s) => this.save({ ...s, pending: version }))
       this.prepared = { version, command }
+      this.note('archive checked, the app quits')
     } catch (err) {
       if (archive) await this.d.removeFile(archive).catch(() => undefined)
       if (abort.signal.aborted) return ''
@@ -680,6 +704,7 @@ export class AppUpdater {
   cancelInstall(): void {
     if (!this.prepared) return
     this.prepared = null
+    this.note('quit stopped by the user, no install')
     void this.withState((s) => this.save({ ...s, pending: null })).catch((err) =>
       console.warn('app update: state not written', err),
     )
@@ -690,9 +715,11 @@ export class AppUpdater {
     const p = this.prepared
     if (!p) return
     this.prepared = null
+    this.note(`app ends, starting the helper (${p.command.command})`)
     try {
       this.d.spawn(p.command.command, p.command.args, p.command.mdoHome)
     } catch (err) {
+      this.note(`helper did not start: ${message(err)}`)
       console.warn('app update: helper did not start', err)
     }
   }

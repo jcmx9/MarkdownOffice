@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, stat } from 'node:fs/promises'
+import { appendFile, mkdir, stat } from 'node:fs/promises'
 import { dirname, isAbsolute } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { validateMathBatch } from '../core/math'
@@ -203,8 +203,12 @@ export function registerIpc(ctx: AppContext): void {
   )
   ipcMain.handle(Ch.appUpdateCancel, () => ctx.appUpdate?.cancelDownload())
   ipcMain.handle(Ch.appUpdateOutcome, () => ctx.appUpdate?.outcome() ?? null)
-  ipcMain.handle(Ch.appUpdateShowLog, () => {
-    if (ctx.appUpdate) shell.showItemInFolder(ctx.appUpdate.logPath)
+  ipcMain.handle(Ch.appUpdateShowLog, async () => {
+    if (!ctx.appUpdate) return
+    // showItemInFolder does nothing for a missing file, so the button seemed dead (owner,
+    // 2026-11-02); an empty log at least opens and says that nothing was written.
+    await appendFile(ctx.appUpdate.logPath, '')
+    shell.showItemInFolder(ctx.appUpdate.logPath)
   })
   ipcMain.handle(
     Ch.spellCheckUpdates,
