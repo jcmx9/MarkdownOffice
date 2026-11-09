@@ -56,6 +56,6 @@
   },
   "dependencies": {
     "@codemirror/lang-yaml": "^6.1.3",
-    "linebreak": "1.1.0"
+    "linebreak": "2.0.0"
   }
 }
