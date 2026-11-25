@@ -155,10 +155,13 @@ export type MenuCommand =
   | 'insert-alert-warning'
   | 'insert-alert-caution'
   | 'insert-table'
+  | 'table-row-above'
   | 'table-row-below'
+  | 'table-col-left'
   | 'table-col-right'
   | 'table-row-delete'
   | 'table-col-delete'
+  | 'table-delete'
   | 'toggle-toolbar'
   | 'toggle-focus'
   | 'toggle-present'
@@ -245,7 +248,7 @@ export interface MdoApi {
    * The header a new note of this set starts with (its `<name>.header.md`, else a minimal
    * `template: <name>` header); null for an invalid name or a set that does not exist.
    */
-  readSetHeader(name: string): Promise<string | null>
+  readSetHeader(name: string, profile?: string | null): Promise<string | null>
   /** Profile names offered for this set (user profiles first in lookup, sorted); [] if none. */
   listProfiles(name: string): Promise<string[]>
   /**
@@ -321,6 +324,8 @@ export interface PreviewInputs {
   preview: string | null
   /** The resolved profile, flat source text; {} without a found profile. */
   profile: Record<string, string>
+  /** The profile's values for the set's header keys, as YAML lines; '' without any. */
+  defaults: string
   /** The profile's signature as data:image/svg+xml;base64,…; null when absent or refused. */
   signature: string | null
 }

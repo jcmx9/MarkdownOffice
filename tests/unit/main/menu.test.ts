@@ -298,10 +298,13 @@ describe('Format menu (formatting toolbar)', () => {
       'separator',
       'format-link',
       'separator',
+      'table-row-above',
       'table-row-below',
+      'table-col-left',
       'table-col-right',
       'table-row-delete',
       'table-col-delete',
+      'table-delete',
     ])
   })
 
@@ -310,7 +313,7 @@ describe('Format menu (formatting toolbar)', () => {
     const d = deps()
     const format = buildMenuTemplate(d).find((m) => m.label === 'Format')
     const items = (Array.isArray(format?.submenu) ? format.submenu : []).filter((i) => i.id)
-    expect(items).toHaveLength(17)
+    expect(items).toHaveLength(20)
     for (const i of items) {
       expect(i.accelerator).toBeUndefined()
       expect(i.label).toBeTruthy()

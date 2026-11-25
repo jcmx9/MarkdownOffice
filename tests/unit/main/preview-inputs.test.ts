@@ -53,8 +53,15 @@ describe('previewInputs', () => {
 
   it('memo for an empty template; built-in for .typ and unknown sets', async () => {
     const memo = await run('')
-    expect(memo).toEqual({ set: 'memo', css: [], preview: null, profile: {}, signature: null })
-    const none = { set: '', css: [], preview: null, profile: {}, signature: null }
+    expect(memo).toEqual({
+      set: 'memo',
+      css: [],
+      preview: null,
+      profile: {},
+      defaults: '',
+      signature: null,
+    })
+    const none = { set: '', css: [], preview: null, profile: {}, defaults: '', signature: null }
     expect(await run('/x/a.typ', 'fx')).toEqual(none)
     expect(await run('nope', 'fx')).toEqual(none)
   })
@@ -90,7 +97,11 @@ describe('previewInputs', () => {
 
   it('falls back to memo blocks (no profile keys) for a missing or broken description', async () => {
     await put(join(user, 'fx-brief', 'fx-brief.preview.yaml'), 'preview: 7\n')
-    expect(await run('fx-brief', 'fx')).toMatchObject({ profile: {}, signature: null })
+    expect(await run('fx-brief', 'fx')).toMatchObject({
+      profile: {},
+      defaults: '',
+      signature: null,
+    })
   })
 
   it.each([

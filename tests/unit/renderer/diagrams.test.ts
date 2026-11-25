@@ -225,7 +225,13 @@ describe('diagram widget', () => {
     const { d, state } = make(NOTE, AFTER, { load: async () => fake.plugin })
     const spec = { ...MEMO_PREVIEW, mermaid: null }
     const next = state.update({
-      effects: setPreviewSource.of({ set: 'plain', spec, profile: {}, signature: null }),
+      effects: setPreviewSource.of({
+        set: 'plain',
+        spec,
+        profile: {},
+        defaults: '',
+        signature: null,
+      }),
     }).state
     expect(shown(d, await settled(d, next))).toEqual([])
     expect(fake.sources).toEqual([])
@@ -237,7 +243,13 @@ describe('diagram widget', () => {
     const first = await settled(d, state)
     const spec = { ...MEMO_PREVIEW, mermaid: { ...MEMO_MERMAID, baseTheme: 'default' } }
     const next = first.update({
-      effects: setPreviewSource.of({ set: 'other', spec, profile: {}, signature: null }),
+      effects: setPreviewSource.of({
+        set: 'other',
+        spec,
+        profile: {},
+        defaults: '',
+        signature: null,
+      }),
     }).state
     expect(shown(d, next)).toHaveLength(1)
     expect(fake.sources).toHaveLength(2)

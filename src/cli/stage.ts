@@ -23,6 +23,7 @@ import {
   svgHasExternalRefs,
   visibleImages,
 } from '../core/export-files'
+import { profileDefaults, withProfileDefaults } from '../core/profile-defaults'
 import { MDO_FOLDER, mdoBaseDir } from '../main/templates'
 import type { Env } from './launch'
 
@@ -495,7 +496,7 @@ export async function windowsTemplates(
 export async function buildManifest(
   notePath: string,
   opts: ManifestOptions,
-): Promise<{ manifest: Manifest; hints: string[] }> {
+): Promise<{ manifest: Manifest; hints: string[]; merged: string | null }> {
   const win = opts.win ?? process.platform === 'win32'
   const P = win ? path.win32 : path.posix
   const cwd = opts.cwd ?? process.cwd()
@@ -542,12 +543,13 @@ export async function buildManifest(
     else hints.push(`Hinweis: kein gültiges Bild, kommt nicht ins PDF: ${ref}`)
   }
 
-  const fm = frontmatterRefs(text, win)
+  let fm = frontmatterRefs(text, win)
 
   // The CLI's --template wins; its relative .typ resolves from the caller's folder.
   const tplValue = opts.template || fm.template
   const tpl = await templateFile(c, tplValue, opts.template ? cwd : baseDir, !opts.template)
   let profile: Manifest['profile'] = null
+  let merged: string | null = null
   const yaml = tpl === null ? null : await findProfileYaml(c, fm.profile, tplValue, tpl)
   if (yaml !== null) {
     const dir = P.dirname(yaml)
@@ -564,6 +566,19 @@ export async function buildManifest(
       if ((await isFile(p)) && (await isSafeImage(p))) files.push(p)
     }
     profile = { yaml, files }
+    // The profile's values for empty header fields: the script reads and stages this text
+    // instead of the note, so script and set see them as the note's own (also `logo:`).
+    if (tpl !== null) {
+      const name = P.basename(tpl, '.typ')
+      const header = await fs
+        .readFile(P.join(P.dirname(tpl), `${name}.header.md`), 'utf8')
+        .catch(() => '')
+      const full = withProfileDefaults(text, profileDefaults(yamlText, header))
+      if (full !== text) {
+        merged = full
+        fm = frontmatterRefs(full, win)
+      }
+    }
   }
   // After the template and the profile: their folders are the logo's second and third place.
   const logo = await findLogo(
@@ -572,7 +587,7 @@ export async function buildManifest(
     [baseDir, yaml === null ? '' : P.dirname(yaml), tpl === null ? '' : P.dirname(tpl)],
     hints,
   )
-  return { manifest: { note, images, logo, profile }, hints }
+  return { manifest: { note, images, logo, profile }, hints, merged }
 }
 
 async function realOrNull(p: string): Promise<string | null> {
@@ -698,7 +713,7 @@ export async function writeManifest(
   opts: ManifestOptions,
   hint: (line: string) => void = () => {},
 ): Promise<string> {
-  const { manifest, hints } = await buildManifest(notePath, opts)
+  const { manifest, hints, merged } = await buildManifest(notePath, opts)
   for (const h of hints) hint(h)
   const tmp = opts.tmpDir ?? os.tmpdir()
   await fs.mkdir(tmp, { recursive: true })
@@ -708,6 +723,8 @@ export async function writeManifest(
     await fs.writeFile(path.join(dir, STAGE_MARKER), '', { mode: 0o600 })
     const file = path.join(dir, 'manifest.json')
     await fs.writeFile(file, `${JSON.stringify(manifest)}\n`, { mode: 0o600 })
+    // Next to the manifest, so it goes with it; build.sh and convert.ps1 look for this name.
+    if (merged !== null) await fs.writeFile(path.join(dir, 'merged.md'), merged, { mode: 0o600 })
     return file
   } catch (err) {
     await fs.rm(dir, { recursive: true, force: true })

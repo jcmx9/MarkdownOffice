@@ -25,7 +25,17 @@ export type ToolbarAction =
   | { kind: 'alert'; type: AlertType }
   | { kind: 'pagebreak' }
   | { kind: 'table-insert'; cols: number; rows: number }
-  | { kind: 'table'; op: 'row-below' | 'col-right' | 'row-delete' | 'col-delete' }
+  | {
+      kind: 'table'
+      op:
+        | 'row-above'
+        | 'row-below'
+        | 'col-left'
+        | 'col-right'
+        | 'row-delete'
+        | 'col-delete'
+        | 'delete'
+    }
 
 export interface ToolbarState {
   /** The row is shown (Edit mode, a note shown, the user's toggle on). */
@@ -35,7 +45,7 @@ export interface ToolbarState {
   /** activeFormats(state) of the main cursor. */
   active: ReadonlySet<FormatId | 'table'>
   /** tableCommandState(state). */
-  table: { inTable: boolean; rowDelete: boolean; colDelete: boolean }
+  table: { inTable: boolean; rowAbove: boolean; rowDelete: boolean; colDelete: boolean }
 }
 
 // Lucide icons (ISC, see THIRD_PARTY_NOTICES.md), bundled as text by Vite: nothing is loaded at
@@ -118,10 +128,13 @@ const FORMAT_GROUPS: FormatSpec[][] = [
 type TableOp = Extract<ToolbarAction, { kind: 'table' }>['op']
 
 const TABLE_ENTRIES: ReadonlyArray<{ op: TableOp; label: string }> = [
+  { op: 'row-above', label: 'Zeile darüber einfügen' },
   { op: 'row-below', label: 'Zeile darunter einfügen' },
+  { op: 'col-left', label: 'Spalte links einfügen' },
   { op: 'col-right', label: 'Spalte rechts einfügen' },
   { op: 'row-delete', label: 'Zeile löschen' },
   { op: 'col-delete', label: 'Spalte löschen' },
+  { op: 'delete', label: 'Tabelle löschen' },
 ]
 
 interface MenuEntry {
@@ -161,7 +174,7 @@ export class Toolbar {
     visible: true,
     enabled: true,
     active: new Set(),
-    table: { inTable: false, rowDelete: false, colDelete: false },
+    table: { inTable: false, rowAbove: false, rowDelete: false, colDelete: false },
   }
 
   constructor(
@@ -264,10 +277,13 @@ export class Toolbar {
       return
     }
     const flags: Record<TableOp, boolean> = {
+      'row-above': t.rowAbove,
       'row-below': true,
+      'col-left': true,
       'col-right': true,
       'row-delete': t.rowDelete,
       'col-delete': t.colDelete,
+      delete: true,
     }
     this.openMenu(
       this.tableButton,
@@ -428,5 +444,10 @@ function separator(): HTMLElement {
 }
 
 function sameTable(a: ToolbarState['table'], b: ToolbarState['table']): boolean {
-  return a.inTable === b.inTable && a.rowDelete === b.rowDelete && a.colDelete === b.colDelete
+  return (
+    a.inTable === b.inTable &&
+    a.rowAbove === b.rowAbove &&
+    a.rowDelete === b.rowDelete &&
+    a.colDelete === b.colDelete
+  )
 }

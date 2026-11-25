@@ -2,10 +2,11 @@ import { lstat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { flattenProfile, readFlatYaml } from '../core/flat-yaml'
 import { MEMO_PREVIEW, parsePreviewSpec, profileKeys } from '../core/preview-spec'
+import { profileDefaults } from '../core/profile-defaults'
 import { sanitizeSetCss } from '../core/set-css'
 import { DEFAULT_SET } from '../core/sets'
 import type { PreviewInputs } from '../shared/types'
-import { readCapped, readSmallText, resolveSet } from './templates'
+import { readCapped, readSetHeader, readSmallText, resolveSet } from './templates'
 import { findProfile } from './validation-inputs'
 
 /** A signature is an image in a letter, not artwork: larger files are refused, not shrunk. */
@@ -19,7 +20,14 @@ const SIGNATURE_RE = /^[^/\\]+\.svg$/i
 // After an optional UTF-8 BOM and whitespace: an SVG document, not some other file named `.svg`.
 const SVG_START_RE = /^(\uFEFF)?\s*(<svg|<\?xml)/
 
-const NONE: PreviewInputs = { set: '', css: [], preview: null, profile: {}, signature: null }
+const NONE: PreviewInputs = {
+  set: '',
+  css: [],
+  preview: null,
+  profile: {},
+  defaults: '',
+  signature: null,
+}
 
 /** The profile's `signature` as a data URL; null unless it is a bare small SVG next to it. */
 async function readSignature(
@@ -85,6 +93,7 @@ export async function previewInputs(o: {
     setDir,
   })
   let profile: Record<string, string> = {}
+  let defaults = ''
   let signature: string | null = null
   if (found?.status === 'found') {
     const text = await readSmallText(found.path)
@@ -97,7 +106,9 @@ export async function previewInputs(o: {
         [...wanted].filter((k) => Object.hasOwn(all, k)).map((k) => [k, all[k] as string]),
       )
       if (wanted.has('signature')) signature = await readSignature(found.path, all)
+      // Also only the set's header keys, for the same reason.
+      defaults = profileDefaults(text, (await readSetHeader(o.setsDir, o.userDir, set)) ?? '')
     }
   }
-  return { set, css, preview, profile, signature }
+  return { set, css, preview, profile, defaults, signature }
 }

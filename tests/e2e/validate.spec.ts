@@ -11,6 +11,7 @@ const MEMO_HEADER = [
   '---',
   '# Alle Schlüssel und Regeln: README von Markdown Office, Abschnitt „Frontmatter“',
   'template: memo          # Vorlagen-Set oder .typ-Datei',
+  'profile: ""             # Vorgabewerte für leere Felder; leer: keins',
   'title: ""               # Titelblock, Kopfzeile, PDF-Titel',
   'subtitle: ""            # unter dem Titel',
   'toptitle: ""            # klein über dem Titel',

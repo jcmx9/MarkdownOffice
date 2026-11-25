@@ -168,6 +168,33 @@ describe('template picker', () => {
     expect(d.profiles).not.toHaveBeenCalled()
   })
 
+  it('offers „kein Profil“ first where the set header leaves profile: empty', async () => {
+    const result = pickTemplate(
+      deps({
+        header: vi.fn(async () => '---\nprofile: ""\n---\n'),
+        profiles: vi.fn(async () => ['firma']),
+      }),
+    )
+    await flush()
+    const select = $<HTMLSelectElement>('tpl-profile')
+    expect([...select.options].map((o) => o.textContent)).toEqual(['kein Profil', 'firma'])
+    $('tpl-ok').click()
+    expect(await result).toEqual({ name: 'din5008a', profile: null })
+  })
+
+  it('hides the row without hint when the set has no profile yet and needs none', async () => {
+    const result = pickTemplate(
+      deps({
+        header: vi.fn(async () => '---\nprofile: ""\n---\n'),
+        profiles: vi.fn(async () => []),
+      }),
+    )
+    await flush()
+    expect($('tpl-profile-row').hidden).toBe(true)
+    $('tpl-cancel').click()
+    await result
+  })
+
   it('survives a failing profile lookup', async () => {
     const result = pickTemplate(
       deps({ profiles: vi.fn(async () => Promise.reject(new Error('x'))) }),

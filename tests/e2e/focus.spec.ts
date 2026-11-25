@@ -87,9 +87,13 @@ test('Present with the outline shown: chapter headings off the path are hidden t
   await writeFile(note, NOTE)
   const { app, page } = await launch({ dirs, args: [note] })
   const line = (text: string) => page.locator('.cm-line', { hasText: text })
-  await line('Text unter zwei.').click()
   await clickMenu(app, 'toggle-present')
   await expect(page.locator('body.mdo-mode-present')).toHaveCount(1)
+  // Present starts on page one; the arrow keys lead to the second chapter.
+  await page.keyboard.press('ArrowRight')
+  await expect(line('Geheimes im Unterkapitel.')).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(line('Text unter zwei.')).toBeVisible()
   // Without the outline every chapter heading stays as the agenda.
   await expect(line('Eins').first()).toBeVisible()
   await clickMenu(app, 'toggle-outline')

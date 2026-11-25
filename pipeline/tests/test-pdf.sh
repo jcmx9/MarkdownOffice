@@ -865,6 +865,26 @@ test_profiles() {
   [[ ! -e "${out_dir}/p5.pdf" ]] || die "profile: Tippfehler erzeugt trotzdem ein PDF"
   ok "profile: Notizordner → Vorlagen-Ordner → Set-Ordner, Pfad, Fehler bei Tippfehler"
 
+  # Vorgabewerte: das Profil füllt leere Header-Felder, ein Wert in der Notiz gewinnt, die Notiz
+  # selbst bleibt unverändert.
+  local dvorl="${out_dir}/Vorgabe Vorlagen" ddir="${out_dir}/Vorgabe Notiz"
+  mkdir -p "${dvorl}/dset/profiles" "${ddir}"
+  cp "${MDO_SETS_DIR}/memo/memo.typ" "${dvorl}/dset/dset.typ"
+  cp "${MDO_SETS_DIR}/memo/memo.header.md" "${dvorl}/dset/dset.header.md"
+  printf 'author: PROFILAUTOR\n' >"${dvorl}/dset/profiles/firma.yaml"
+  printf -- '---\ntemplate: dset\nprofile: firma\ndate: 2026-11-01\nauthor: ""\n---\n\nText.\n' >"${ddir}/leer.md"
+  printf -- '---\ntemplate: dset\nprofile: firma\ndate: 2026-11-01\nauthor: NOTIZAUTOR\n---\n\nText.\n' >"${ddir}/voll.md"
+  local before
+  before="$(cat "${ddir}/leer.md")"
+  MDO_TEMPLATES="${dvorl}" "${mdo[@]}" "${ddir}/leer.md" "${out_dir}/d1.pdf" >/dev/null 2>"${out_dir}/d.err" ||
+    die "profile: Vorgabewerte: $(cat "${out_dir}/d.err")"
+  expect "profile: leeres Feld aus dem Profil" "$(pdf_text "${out_dir}/d1.pdf")" "PROFILAUTOR"
+  [[ "$(cat "${ddir}/leer.md")" == "${before}" ]] || die "profile: Vorgabewerte ändern die Notiz"
+  MDO_TEMPLATES="${dvorl}" "${mdo[@]}" "${ddir}/voll.md" "${out_dir}/d2.pdf" >/dev/null 2>"${out_dir}/d.err" ||
+    die "profile: Vorgabewerte: $(cat "${out_dir}/d.err")"
+  reject "profile: Wert der Notiz gewinnt" "$(pdf_text "${out_dir}/d2.pdf")" "PROFILAUTOR"
+  ok "profile: Vorgabewerte füllen leere Felder, die Notiz gewinnt"
+
   # Profile eines Sets im Vorlagen-Ordner (<Vorlagen>/<set>/profiles) gewinnen über das
   # gemeinsame <Vorlagen>/profiles und über die Beispielprofile des mitgelieferten Sets. Der
   # Ordner <Vorlagen>/profset hat keine profset.typ und verdeckt das mitgelieferte Set nicht.

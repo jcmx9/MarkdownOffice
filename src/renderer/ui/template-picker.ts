@@ -146,12 +146,21 @@ export function pickTemplate(deps: TemplatePickerDeps): Promise<TemplateChoice |
         console.warn('template picker: profiles could not be read', e)
       }
       if (ticket !== lookup || settled) return
+      // `profile: ""` in the set's header: a profile is optional there (memo), not a sender the
+      // set needs, so nothing is missing without one and „kein Profil“ stays the default.
+      const optional = current === ''
       if (names.length === 0) {
-        profileHint.hidden = false
+        if (optional) profileRow.hidden = true
+        else profileHint.hidden = false
         return
       }
+      if (optional) select.append(el('option', { value: '', textContent: 'kein Profil' }))
       for (const n of names) select.append(el('option', { value: n, textContent: n }))
-      select.value = current !== null && names.includes(current) ? current : (names[0] ?? '')
+      select.value = optional
+        ? ''
+        : current !== null && names.includes(current)
+          ? current
+          : (names[0] ?? '')
       select.hidden = false
     }
 

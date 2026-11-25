@@ -13,8 +13,11 @@ import { isFrozen } from '../editor/setup'
 import {
   insertTable,
   tableColDelete,
+  tableColLeft,
   tableColRight,
   tableCommandState,
+  tableDelete,
+  tableRowAbove,
   tableRowBelow,
   tableRowDelete,
 } from '../editor/table-edit'
@@ -52,9 +55,17 @@ const MENU_ACTIONS: ReadonlyMap<MenuCommand, FormatAction> = new Map<MenuCommand
   ...(['note', 'tip', 'important', 'warning', 'caution'] as const).map(
     (type): [MenuCommand, FormatAction] => [`insert-alert-${type}`, { kind: 'alert', type }],
   ),
-  ...(['row-below', 'col-right', 'row-delete', 'col-delete'] as const).map(
-    (op): [MenuCommand, FormatAction] => [`table-${op}`, { kind: 'table', op }],
-  ),
+  ...(
+    [
+      'row-above',
+      'row-below',
+      'col-left',
+      'col-right',
+      'row-delete',
+      'col-delete',
+      'delete',
+    ] as const
+  ).map((op): [MenuCommand, FormatAction] => [`table-${op}`, { kind: 'table', op }]),
 ])
 
 /**
@@ -117,10 +128,13 @@ export function runFormatAction(
 }
 
 const TABLE_COMMANDS = {
+  'row-above': tableRowAbove,
   'row-below': tableRowBelow,
+  'col-left': tableColLeft,
   'col-right': tableColRight,
   'row-delete': tableRowDelete,
   'col-delete': tableColDelete,
+  delete: tableDelete,
 } as const
 
 function formatCommand(id: FormatId, view: EditorView, clipboardText: string | null): boolean {
@@ -148,7 +162,7 @@ export interface ToolbarInput {
   state: EditorState | null
 }
 
-const NO_TABLE = { inTable: false, rowDelete: false, colDelete: false }
+const NO_TABLE = { inTable: false, rowAbove: false, rowDelete: false, colDelete: false }
 
 /**
  * The toolbar's state (spec „Placement“, „Active state“): shown in Edit mode with a tab shown

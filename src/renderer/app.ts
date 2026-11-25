@@ -36,7 +36,13 @@ import { headerHidden, headerToggleSpec, moveOutOfHeader } from './editor/header
 import { headerNote, insertTemplate } from './editor/insert-header'
 import { modeCompartment, modeExtensions } from './editor/mode'
 import { setNoteProfile } from './editor/note-profile'
-import { jumpToEntry, OutlineSync, toggleEntryFold } from './editor/outline-actions'
+import {
+  jumpToEntry,
+  OutlineSync,
+  showFirstPage,
+  stepSection,
+  toggleEntryFold,
+} from './editor/outline-actions'
 import { insertPageBreak } from './editor/pagebreak'
 import { previewSource, previewSourceFrom, setPreviewSource } from './editor/preview-source'
 import { carrySelection, textChange } from './editor/reload-map'
@@ -233,6 +239,7 @@ export class App {
         this.outline.update(trs)
         // Every transaction may move the cursor into or out of a format (active state).
         this.toolbarSync.schedule()
+        if (trs.some((tr) => tr.selection)) this.renderSectionStep()
         if (trs.some((tr) => tr.docChanged)) {
           this.autosave.touch()
           // The toolbar update is already scheduled for the next frame above: a burst of typing
@@ -310,6 +317,7 @@ export class App {
       zoomOut: () => this.setZoom(zoomOut(this.zoom[this.mode])),
       toggleOutline: () => void this.command('toggle-outline'),
       toggleFocus: () => void this.command('toggle-focus'),
+      stepSection: (dir) => stepSection(this.editor, dir),
     })
     this.outline = new OutlineSync(
       new Outline(root.outline, {
@@ -774,27 +782,47 @@ export class App {
   }
 
   /**
-   * Present after an outline click: the editor has no keyboard focus (quiet cursor), so Page
-   * Down/Page Up (presenter remotes) are taken here. With focus on they step to the next or
-   * previous section as in the text; otherwise they scroll a page.
+   * Present while the text is not being edited: the editor has no keyboard focus (quiet cursor,
+   * from the start of a Present and after an outline click), so Page Down/Page Up (presenter
+   * remotes) and, with focus on, the arrow keys ← → are taken here. With focus on they step to the
+   * next or previous section as in the text; otherwise Page Down/Up scroll a page and the arrow
+   * keys stay free. A click into the text gives them back to the cursor.
    */
   private presentPageKey(e: KeyboardEvent): boolean {
     if (this.mode !== 'present' || this.shownId === null || this.editor.hasFocus) return false
-    if ((e.key !== 'PageDown' && e.key !== 'PageUp') || e.defaultPrevented) return false
+    const page = e.key === 'PageDown' || e.key === 'PageUp'
+    const arrow = e.key === 'ArrowRight' || e.key === 'ArrowLeft'
+    if ((!page && !arrow) || e.defaultPrevented) return false
     if (document.querySelector('dialog[open]')) return false
-    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return false
+    // A table cell edited in place is contenteditable: its arrows move its caret.
+    const fields = 'input, textarea, select, [contenteditable]'
+    if (e.target instanceof HTMLElement && e.target.closest(fields)) return false
+    const focused = this.editor.state.field(focusHiddenField, false) !== undefined
+    if (arrow && (!focused || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey)) return false
     e.preventDefault()
-    const dir = e.key === 'PageDown' ? 1 : -1
-    const state = this.editor.state
-    if (state.field(focusHiddenField, false)) {
-      const target = focusStepTarget(state, state.selection.main.head, dir)
-      if (target !== null)
-        this.editor.dispatch({ selection: { anchor: target }, userEvent: 'select' })
+    const dir = e.key === 'PageDown' || e.key === 'ArrowRight' ? 1 : -1
+    if (focused) {
+      stepSection(this.editor, dir)
     } else {
-      const page = this.editor.scrollDOM.clientHeight * 0.9
-      this.editor.scrollDOM.scrollBy({ top: dir * page })
+      const height = this.editor.scrollDOM.clientHeight * 0.9
+      this.editor.scrollDOM.scrollBy({ top: dir * height })
     }
     return true
+  }
+
+  /** Present's arrows: shown with focus on, resting at the first and last section with text. */
+  private renderSectionStep(): void {
+    if (this.mode !== 'present') return
+    const state = this.editor.state
+    const head = state.selection.main.head
+    this.infoLine.renderStep(
+      state.field(focusHiddenField, false)
+        ? {
+            prev: focusStepTarget(state, head, -1) !== null,
+            next: focusStepTarget(state, head, 1) !== null,
+          }
+        : null,
+    )
   }
 
   private setZoom(next: number): void {
@@ -904,27 +932,33 @@ export class App {
   }
 
   /**
-   * Datei → „Profil anlegen …“: asks for a set that knows profiles (preselected: the shown
-   * note's `template:` set, else the default), then a name; main copies the set's example
-   * profile to `Vorlagen/<set>/profiles/<name>.yaml` and the new YAML opens as a tab for
-   * editing. Works without an open note (owner, 2026-10-24: offer the sets found instead of
-   * expecting a note with a header). The shown note gets `profile: <name>` (one undo step) only
-   * when it names the same set; any other note stays untouched. Main refuses with a toast
-   * (no example profile, name taken: nothing is ever overwritten).
+   * Datei → „Profil anlegen …“: the profile is for the shown note's set, fixed (owner,
+   * 2026-11-01); without a note, or with a `.typ` as template, the sets found are offered. Then
+   * a name; main writes `Vorlagen/<set>/profiles/<name>.yaml` from the set's example profile or
+   * its header fields and the new YAML opens as a tab for editing. The shown note gets
+   * `profile: <name>` (one undo step); any other note stays untouched. Main refuses with a
+   * toast (set not found, name taken: nothing is ever overwritten).
    */
   private async createProfile(): Promise<void> {
     if (this.pickerOpen || this.settingsOpen) return
     const shown = this.shownId === null ? undefined : this.store.get(this.shownId)
     const tab = shown && isMarkdownTab(shown) ? shown : undefined
-    const noteSet = tab ? (frontmatterFields(this.editor.state.doc).template ?? '') : ''
-    const choice = await this.chooseTemplate('Profil anlegen', 'Weiter', () => !this.closing, {
-      filter: (s) => s.hasProfile,
-      selected: SET_NAME_RE.test(noteSet) ? noteSet : DEFAULT_SET,
-      withProfiles: false,
-      empty: 'Kein Vorlagen-Set mit Profilen gefunden.',
-    })
-    if (!choice || this.closing) return
-    const set = choice.name
+    const named = tab ? (frontmatterFields(this.editor.state.doc).template ?? '') : ''
+    const noteSet = tab
+      ? named === ''
+        ? DEFAULT_SET
+        : SET_NAME_RE.test(named)
+          ? named
+          : null
+      : null
+    const choice =
+      noteSet === null
+        ? await this.chooseTemplate('Profil anlegen', 'Weiter', () => !this.closing, {
+            withProfiles: false,
+          })
+        : null
+    const set = noteSet ?? choice?.name
+    if (!set || this.closing) return
     const name = await askText(
       'Profil anlegen',
       `Name des neuen ${set}-Profils (a–z, 0–9, - _)`,
@@ -970,7 +1004,7 @@ export class App {
     if (!choice || !still()) return null
     let header: string | null = null
     try {
-      header = await this.mdo.readSetHeader(choice.name)
+      header = await this.mdo.readSetHeader(choice.name, choice.profile)
     } catch (e) {
       console.warn('readSetHeader failed', e)
     }
@@ -1170,7 +1204,7 @@ export class App {
     this.applyZoom()
     this.applyOutline()
     this.refresh()
-    this.editor.focus()
+    showFirstPage(this.editor)
     await this.fullScreenOps.run(async () => {
       try {
         await this.mdo.setFullScreen(true)
@@ -1229,7 +1263,7 @@ export class App {
     if (!choice || !still()) return
     let header: string | null = null
     try {
-      header = await this.mdo.readSetHeader(choice.name)
+      header = await this.mdo.readSetHeader(choice.name, choice.profile)
     } catch (e) {
       console.warn('readSetHeader failed', e)
     }
@@ -1485,7 +1519,8 @@ export class App {
       .catch((e: unknown) => console.error('saveSession(focus) failed', e))
     this.refresh()
     this.editor.dispatch({ scrollIntoView: true })
-    this.editor.focus()
+    // Presenting, not editing: the arrow keys stay on the sections (presentPageKey).
+    if (!this.editor.state.field(quietCursor, false)) this.editor.focus()
   }
 
   /** Outline on/off for the current mode; allowed in Present too. */
@@ -2107,6 +2142,7 @@ export class App {
         this.outlineOn.present,
         this.focusOn.present,
       )
+      this.renderSectionStep()
     }
   }
 

@@ -1,7 +1,8 @@
 import { foldEffect, foldedRanges, unfoldEffect } from '@codemirror/language'
 import type { EditorState, Transaction, TransactionSpec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { focusHiddenField, pathTop } from './focus'
+import { focusHiddenField, focusStepTarget, pathTop } from './focus'
+import { frontmatterRange } from './frontmatter'
 import {
   activeEntry,
   foldsAt,
@@ -40,12 +41,47 @@ export function toggleEntryFold(view: EditorView, entry: OutlineEntry): void {
  */
 export function jumpToEntry(view: EditorView, entry: OutlineEntry, quiet = false): void {
   if (entry.to > view.state.doc.length) return
+  jumpToHeading(view, entry, quiet)
+}
+
+/**
+ * Present's arrows and remote keys: the next or previous section with text of its own, shown like
+ * an outline click (quiet, chapter heading at the top). False at the first or last such section.
+ */
+export function stepSection(view: EditorView, dir: 1 | -1): boolean {
+  const to = focusStepTarget(view.state, view.state.selection.main.head, dir)
+  if (to === null) return false
+  jumpToHeading(view, { from: view.state.doc.lineAt(to).from, to }, true)
+  return true
+}
+
+/**
+ * A Present starts at the top of page one, wherever the cursor was in the editor (owner,
+ * 2026-11-02): the cursor goes behind the header, quiet, so the arrow keys step from there and no
+ * caret blinks. Clicking into the text edits as usual.
+ */
+export function showFirstPage(view: EditorView): void {
+  const { doc } = view.state
+  const header = frontmatterRange(doc)
+  const anchor = header ? Math.min(doc.lineAt(header.to).to + 1, doc.length) : 0
+  view.dispatch({
+    selection: { anchor },
+    effects: [EditorView.scrollIntoView(0, { y: 'start' }), setQuietCursor.of(true)],
+  })
+  view.contentDOM.blur()
+}
+
+function jumpToHeading(
+  view: EditorView,
+  { from, to }: { from: number; to: number },
+  quiet: boolean,
+) {
   // Focus: every click puts the slide's chapter heading at the top (owner, 2026-10-30), also
   // when the section did not change and focus.ts's own scroll on a section change stays out.
   const focused = view.state.field(focusHiddenField, false) !== undefined
-  const top = focused ? (pathTop(view.state, entry.to) ?? entry.from) : entry.from
+  const top = focused ? (pathTop(view.state, to) ?? from) : from
   view.dispatch({
-    selection: { anchor: entry.to },
+    selection: { anchor: to },
     effects: [
       EditorView.scrollIntoView(top, { y: 'start', yMargin: 24 }),
       setQuietCursor.of(quiet),

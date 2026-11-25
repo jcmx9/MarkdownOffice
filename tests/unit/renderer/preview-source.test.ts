@@ -45,8 +45,29 @@ const inputs = (over: Partial<PreviewInputs> = {}): PreviewInputs => ({
   css: [],
   preview: null,
   profile: {},
+  defaults: '',
   signature: null,
   ...over,
+})
+
+describe('noteBlocks with profile defaults', () => {
+  it('fills an empty field from the profile, a value in the note wins', () => {
+    const blocks = (note: string) =>
+      noteBlocks(
+        createState(note, '\n', 'preview', true).update({
+          effects: setPreviewSource.of({
+            set: 'memo',
+            spec: MEMO_PREVIEW,
+            profile: {},
+            defaults: 'title: Aus dem Profil',
+            signature: null,
+          }),
+        }).state,
+        'head',
+      )
+    expect(blocks('---\ntitle: ""\n---\n')[0]).toMatchObject({ text: 'Aus dem Profil' })
+    expect(blocks('---\ntitle: Eigener\n---\n')[0]).toMatchObject({ text: 'Eigener' })
+  })
 })
 
 describe('previewSourceFrom', () => {
@@ -60,7 +81,13 @@ describe('previewSourceFrom', () => {
   it('memo blocks for a set without or with a broken description, with a problem only when broken', () => {
     const without = previewSourceFrom(inputs({ profile: { name: 'A' }, signature: SIG }))
     expect(without).toEqual({
-      source: { set: 'brief', spec: MEMO_PREVIEW, profile: { name: 'A' }, signature: SIG },
+      source: {
+        set: 'brief',
+        spec: MEMO_PREVIEW,
+        profile: { name: 'A' },
+        defaults: '',
+        signature: SIG,
+      },
       problem: null,
     })
     const broken = previewSourceFrom(inputs({ preview: 'preview: 2\n' }))
@@ -98,6 +125,7 @@ describe('noteBlocks', () => {
         set: 'brief',
         spec: spec.spec,
         profile: { name: 'Anna Muster', street: 'Weg 2', zip: '01067', city: 'Dresden' },
+        defaults: '',
         signature: SIG,
       }),
     }).state
@@ -128,6 +156,7 @@ describe('noteBlocks', () => {
         set: 'brief',
         spec: spec.spec,
         profile: {},
+        defaults: '',
         signature: 'http://x/a.svg',
       }),
     }).state

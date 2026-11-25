@@ -10,6 +10,7 @@ const actions = () => ({
   zoomOut: vi.fn(),
   toggleOutline: vi.fn(),
   toggleFocus: vi.fn(),
+  stepSection: vi.fn(),
 })
 const q = (el: HTMLElement, id: string) => el.querySelector(`[data-testid=${id}]`) as HTMLElement
 
@@ -24,6 +25,28 @@ describe('formatClock', () => {
 })
 
 describe('InfoLine', () => {
+  it('puts the section arrows directly left of the zoom', () => {
+    const el = document.createElement('footer')
+    new InfoLine(el, actions())
+    expect(q(el, 'il-prev').parentElement?.nextElementSibling).toBe(q(el, 'il-zoom-out'))
+  })
+
+  it('shows the section arrows only with a step, resting at the ends', () => {
+    const el = document.createElement('footer')
+    const a = actions()
+    const line = new InfoLine(el, a)
+    const prev = q(el, 'il-prev') as HTMLButtonElement
+    const next = q(el, 'il-next') as HTMLButtonElement
+    expect(prev.parentElement?.hidden).toBe(true)
+    line.renderStep({ prev: false, next: true })
+    expect(prev.parentElement?.hidden).toBe(false)
+    expect([prev.disabled, next.disabled]).toEqual([true, false])
+    next.click()
+    expect(a.stepSection).toHaveBeenCalledWith(1)
+    line.renderStep(null)
+    expect(prev.parentElement?.hidden).toBe(true)
+  })
+
   it('renders tabs, state and zoom, and calls the actions', () => {
     const el = document.createElement('footer')
     const a = actions()
