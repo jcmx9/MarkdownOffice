@@ -7,6 +7,7 @@ import {
   parsePreviewSpec,
   resolveBlocks,
 } from '../../core/preview-spec'
+import { withProfileDefaults } from '../../core/profile-defaults'
 import type { PreviewInputs } from '../../shared/types'
 import { frontmatterRange } from './frontmatter'
 
@@ -15,6 +16,8 @@ export interface PreviewSource {
   set: string
   spec: PreviewSpec
   profile: Record<string, string>
+  /** The profile's values for empty header fields (YAML lines). */
+  defaults: string
   signature: string | null
 }
 
@@ -45,15 +48,16 @@ export function previewSourceFrom(inputs: PreviewInputs | null): {
   problem: string | null
 } {
   if (!inputs || inputs.set === '') return { source: null, problem: null }
-  const { set, profile, signature } = inputs
+  const { set, profile, defaults, signature } = inputs
   if (inputs.preview === null) {
-    return { source: { set, spec: MEMO_PREVIEW, profile, signature }, problem: null }
+    return { source: { set, spec: MEMO_PREVIEW, profile, defaults, signature }, problem: null }
   }
   const parsed = parsePreviewSpec(inputs.preview)
-  if (parsed.ok) return { source: { set, spec: parsed.spec, profile, signature }, problem: null }
+  if (parsed.ok)
+    return { source: { set, spec: parsed.spec, profile, defaults, signature }, problem: null }
   // A broken description never breaks the editor: memo's blocks, with the set's CSS still applied.
   return {
-    source: { set, spec: MEMO_PREVIEW, profile, signature },
+    source: { set, spec: MEMO_PREVIEW, profile, defaults, signature },
     problem: `Die Vorschau-Beschreibung des Sets ${set} ist fehlerhaft (${parsed.error}); die Vorschau zeigt den Standard-Titelblock.`,
   }
 }
@@ -70,7 +74,7 @@ export function noteBlocks(
   const body = state.doc.sliceString(range.from, range.to).split('\n').slice(1, -1).join('\n')
   const source = state.field(previewSource, false) ?? null
   return resolveBlocks((source?.spec ?? MEMO_PREVIEW)[part], {
-    fm: readFlatYaml(body),
+    fm: readFlatYaml(withProfileDefaults(`---\n${body}\n---`, source?.defaults ?? '')),
     profile: source?.profile ?? {},
     today,
     signature: safeSignature(source?.signature) !== null,

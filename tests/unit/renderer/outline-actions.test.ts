@@ -12,6 +12,8 @@ import {
   foldsChanged,
   jumpToEntry,
   OutlineSync,
+  showFirstPage,
+  stepSection,
   toggleEntryFold,
 } from '../../../src/renderer/editor/outline-actions'
 import { lineIsRendered, quietCursor } from '../../../src/renderer/editor/rendered'
@@ -112,6 +114,40 @@ describe('toggleEntryFold after the folded section changed', () => {
     const view = drifted()
     toggleEntryFold(view, { ...first(view), folded: false })
     expect(folds(view)).toEqual([])
+  })
+})
+
+describe('stepSection', () => {
+  it('skips a heading directly followed by the next one, quietly, both ways', () => {
+    const doc = '# A\ntext a\n\n# B\n\n## B1\n\ntext b1\n\n# C\ntext c\n'
+    const view = mkView(doc)
+    view.dispatch({ selection: { anchor: doc.indexOf('text a') } })
+    expect(stepSection(view, 1)).toBe(true)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('## B1') + '## B1'.length)
+    expect(view.state.field(quietCursor)).toBe(true)
+    expect(stepSection(view, 1)).toBe(true)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('# C') + '# C'.length)
+    expect(stepSection(view, 1)).toBe(false)
+    expect(stepSection(view, -1)).toBe(true)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('## B1') + '## B1'.length)
+  })
+})
+
+describe('showFirstPage', () => {
+  it('puts a quiet cursor behind the header, wherever it was', () => {
+    const doc = '---\ntitle: x\n---\n\n# A\ntext\n# B\nbeta\n'
+    const view = mkView(doc)
+    view.dispatch({ selection: { anchor: doc.indexOf('beta') } })
+    showFirstPage(view)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('\n# A'))
+    expect(view.state.field(quietCursor)).toBe(true)
+  })
+
+  it('starts at the very top without a header', () => {
+    const view = mkView()
+    view.dispatch({ selection: { anchor: DOC.indexOf('beta') } })
+    showFirstPage(view)
+    expect(view.state.selection.main.head).toBe(0)
   })
 })
 

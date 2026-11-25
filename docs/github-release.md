@@ -58,7 +58,7 @@ would carry an older `YY.M` than today.
 6. Back-merge `chore/back-merge-<version>`: from `origin/dev`, a merge commit with `main`
    as second parent whose content is dev plus the release delta
    (`Release-Source..main`: version, CHANGELOG, hotfixes). Only conflicts in the version
-   lines (`package.json`, `package-lock.json`, the READMEs) are resolved automatically; dev then gets the next `YY.M.(MICRO+1)-dev.0`. The
+   lines (`package.json`, `package-lock.json`, the READMEs) are resolved automatically; dev then gets the next `YY.M.(MICRO+1)-dev.0`. CHANGELOG entries that a PR added to `dev` while the release ran end up in the released section after this merge without a conflict; the script restores that section as tagged and moves them back under `[Unreleased]`, in the same `###` group. The
    PR into `dev` is merged with a merge commit.
 
 Nothing is pushed on a failed precondition. The script aborts on every error.

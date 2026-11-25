@@ -21,7 +21,7 @@ function withSpec(text: string, spec: PreviewSpec | null): EditorState {
     selection: { anchor: doc.length },
     extensions: [markdown({ base: markdownLanguage, extensions: [Frontmatter] }), previewSource],
   })
-  const source = spec && { set: 'fx', spec, profile: {}, signature: null }
+  const source = spec && { set: 'fx', spec, profile: {}, defaults: '', signature: null }
   return parsed(state.update({ effects: setPreviewSource.of(source) }).state)
 }
 
@@ -214,7 +214,7 @@ describe('no-break phrases from the set description', () => {
     expect(marks()).toEqual(['mark:mdo-nobreak@8-13'])
     const spec: PreviewSpec = { ...MEMO_PREVIEW, nobreak: { words: [], units: [] } }
     view.dispatch({
-      effects: setPreviewSource.of({ set: 'fx', spec, profile: {}, signature: null }),
+      effects: setPreviewSource.of({ set: 'fx', spec, profile: {}, defaults: '', signature: null }),
     })
     expect(marks()).toEqual([])
     view.destroy()

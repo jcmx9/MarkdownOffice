@@ -9,7 +9,7 @@ const base = (over: Partial<State> = {}): State => ({
   visible: true,
   enabled: true,
   active: new Set(),
-  table: { inTable: false, rowDelete: false, colDelete: false },
+  table: { inTable: false, rowAbove: false, rowDelete: false, colDelete: false },
   ...over,
 })
 
@@ -180,9 +180,12 @@ describe('formatting toolbar', () => {
 
   describe('Tabelle ▾ in a table', () => {
     const inTable = (rowDelete: boolean, colDelete: boolean) =>
-      base({ active: new Set(['table']), table: { inTable: true, rowDelete, colDelete } })
+      base({
+        active: new Set(['table']),
+        table: { inTable: true, rowAbove: rowDelete, rowDelete, colDelete },
+      })
 
-    it('shows the four row/column entries with their enabled flags', () => {
+    it('shows the row, column and table entries with their enabled flags', () => {
       const { el, click } = setup(inTable(false, true))
       click('fmt-table')
       const menu = el.querySelector('[data-testid=fmt-table-menu]') as HTMLElement
@@ -190,12 +193,15 @@ describe('formatting toolbar', () => {
       expect(el.querySelector('[data-testid=fmt-grid]')).toBeNull()
       const items = [...menu.querySelectorAll('[role=menuitem]')] as HTMLButtonElement[]
       expect(items.map((i) => i.textContent)).toEqual([
+        'Zeile darüber einfügen',
         'Zeile darunter einfügen',
+        'Spalte links einfügen',
         'Spalte rechts einfügen',
         'Zeile löschen',
         'Spalte löschen',
+        'Tabelle löschen',
       ])
-      expect(items.map((i) => i.disabled)).toEqual([false, false, true, false])
+      expect(items.map((i) => i.disabled)).toEqual([true, false, false, false, true, false, false])
     })
 
     it('reports the chosen entry and closes', () => {
@@ -214,15 +220,19 @@ describe('formatting toolbar', () => {
       const id = () => (document.activeElement as HTMLElement).dataset.testid
       expect(id()).toBe('fmt-table-row-below')
       key(menu, 'ArrowDown')
+      expect(id()).toBe('fmt-table-col-left')
+      key(menu, 'ArrowDown')
       expect(id()).toBe('fmt-table-col-right')
       key(menu, 'ArrowDown')
       expect(id()).toBe('fmt-table-col-delete')
       key(menu, 'ArrowDown')
+      expect(id()).toBe('fmt-table-delete')
+      key(menu, 'ArrowDown')
       expect(id()).toBe('fmt-table-row-below')
       key(menu, 'ArrowUp')
-      expect(id()).toBe('fmt-table-col-delete')
+      expect(id()).toBe('fmt-table-delete')
       key(menu, 'Enter')
-      expect(onAction).toHaveBeenCalledWith({ kind: 'table', op: 'col-delete' })
+      expect(onAction).toHaveBeenCalledWith({ kind: 'table', op: 'delete' })
       click('fmt-table')
       key(el.querySelector('[data-testid=fmt-table-menu]') as HTMLElement, 'Escape')
       expect(el.querySelector('[data-testid=fmt-table-menu]')).toBeNull()
@@ -308,7 +318,9 @@ describe('formatting toolbar', () => {
     it('the table button announces a menu in a table and no popup type for the grid', () => {
       const { bar, q } = setup()
       expect(q('fmt-table').hasAttribute('aria-haspopup')).toBe(false)
-      bar.render(base({ table: { inTable: true, rowDelete: true, colDelete: true } }))
+      bar.render(
+        base({ table: { inTable: true, rowAbove: true, rowDelete: true, colDelete: true } }),
+      )
       expect(q('fmt-table').getAttribute('aria-haspopup')).toBe('menu')
     })
   })

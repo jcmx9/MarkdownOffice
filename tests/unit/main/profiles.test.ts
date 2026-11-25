@@ -116,23 +116,20 @@ describe('createProfile', () => {
     expect(await createProfile(sets, user, 'din5008a', 'kanzlei')).toMatchObject({ ok: true })
   })
 
-  it('refuses a set without an example profile and an unknown set', async () => {
-    const { sets, user } = await fixture()
-    expect(await createProfile(sets, user, 'memo', 'kanzlei')).toEqual({
-      ok: false,
-      error: 'Vorlage memo bringt kein Beispielprofil mit.',
-    })
-    expect(await createProfile(sets, user, 'fehlt', 'kanzlei')).toMatchObject({ ok: false })
-  })
-
-  it('refuses a header whose example file is missing', async () => {
+  it('starts from the header fields without an example profile, refuses an unknown set', async () => {
     const { sets, user } = await fixture({
       'sets/brief/brief.typ': '',
-      'sets/brief/brief.header.md': '---\ntemplate: brief\nprofile: weg\n---\n',
+      'sets/brief/brief.header.md':
+        '---\ntemplate: brief\nprofile: weg\ntitle: ""\nauthor: ""   # Autor\n---\n',
     })
-    expect(await createProfile(sets, user, 'brief', 'kanzlei')).toEqual({
+    const res = await createProfile(sets, user, 'brief', 'kanzlei')
+    expect(res).toMatchObject({ ok: true })
+    const yaml = await readFile(join(user, 'brief', 'profiles', 'kanzlei.yaml'), 'utf8')
+    expect(yaml).toContain('author: ""   # Autor\n')
+    expect(yaml).not.toMatch(/^(template|profile|title):/m)
+    expect(await createProfile(sets, user, 'fehlt', 'kanzlei')).toEqual({
       ok: false,
-      error: 'Vorlage brief bringt kein Beispielprofil mit.',
+      error: 'Vorlage fehlt nicht gefunden.',
     })
   })
 

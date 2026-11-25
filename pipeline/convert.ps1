@@ -684,7 +684,12 @@ function Convert-One {
   # passt so zum BOM-losen UTF-8-Schreiben des Render-Temps (siehe WriteAllText).
   # Nur fuer das Frontmatter; die Markdown-Vorverarbeitung macht das Template
   # (lib/markdown.typ) und liest die Quelle selbst.
-  $lines  = [IO.File]::ReadAllLines($Src, (New-Object Text.UTF8Encoding $false))
+  # Hat das Profil leere Header-Felder gefuellt, liegt die Notiz mit diesen Werten neben dem
+  # Manifest (src/cli/stage.ts): Frontmatter und Set lesen dann diese Fassung.
+  $headerSrc = $Src
+  $mergedNote = Join-Path (Split-Path -Parent $env:MDO_MANIFEST) 'merged.md'
+  if (Test-Path -LiteralPath $mergedNote -PathType Leaf) { $headerSrc = $mergedNote }
+  $lines  = [IO.File]::ReadAllLines($headerSrc, (New-Object Text.UTF8Encoding $false))
 
   # Optionalen YAML-Frontmatter (fuehrender ---...---) parsen. Bool-Schluessel
   # werden YAML-1.1-konform gelesen (siehe ConvertTo-YamlBool); ein erkannter
@@ -837,7 +842,7 @@ function Convert-One {
 
     # Die Notiz selbst (ihr Dateiname bleibt: Anhangsname im PDF).
     $noteName = [IO.Path]::GetFileName($Src)
-    & $copyOrFail $Src (Join-Path $stage "note\$noteName")
+    & $copyOrFail $headerSrc (Join-Path $stage "note\$noteName")
     $stagedNote = "/note/$noteName"
     $attach = if ($fmEmbed -ne 'false') { $stagedNote } else { '' }
 

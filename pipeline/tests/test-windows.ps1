@@ -838,6 +838,21 @@ foreach ($k in @(@{ N = 'aus'; V = 'false'; Soll = $false }, @{ N = 'wort'; V = 
   else { Ok "header: $($k.V) laeuft durch" }
 }
 
+# Profil-Vorgabewerte: fuellen ein leeres Feld (merged.md neben dem Manifest), die Notiz bleibt.
+$dSet = Join-Path $EmptyTemplates 'dset'
+New-Item -ItemType Directory -Force -Path (Join-Path $dSet 'profiles') | Out-Null
+Copy-Item -LiteralPath (Join-Path $env:MDO_SETS_DIR 'memo\memo.typ') -Destination (Join-Path $dSet 'dset.typ')
+[IO.File]::WriteAllText((Join-Path $dSet 'dset.header.md'), "---`nwatermark: `"`"`n---`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $dSet 'profiles\firma.yaml'), "watermark: ENTWURF`n", $utf8)
+$dNote = "---`ntemplate: dset`nprofile: firma`nwatermark: `"`"`n---`n`nText.`n"
+[IO.File]::WriteAllText((Join-Path $sbNote 'vorgabe.md'), $dNote, $utf8)
+Push-Location $sbNote
+$rr = Invoke-Convert @('vorgabe.md', (Join-Path $outDir 'vorgabe.pdf'))
+Pop-Location
+if ($rr.Code -ne 0) { Fail "Profil-Vorgabe: Exit $($rr.Code)`n$($rr.Text)" }
+elseif ([IO.File]::ReadAllText((Join-Path $sbNote 'vorgabe.md')) -ne $dNote) { Fail 'Profil-Vorgabe aendert die Notiz' }
+else { Ok 'Profil-Vorgabe: Export mit gefuelltem Feld, Notiz unveraendert' }
+
 # convert.ps1 allein (ohne Manifest des Wrappers) exportiert nicht.
 Push-Location $sbNote
 $rr = Invoke-ConvertDirect @('aussen.md', (Join-Path $outDir 'sb-direkt.pdf')) ''
