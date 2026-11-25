@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [26.11.0] - 2026-11-25
+
 ### Changed
 - A Present always starts at the top of page one, wherever the cursor was, with no blinking cursor; after it the cursor stays on the last section shown
 
